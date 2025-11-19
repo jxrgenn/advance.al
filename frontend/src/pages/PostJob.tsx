@@ -21,6 +21,8 @@ import {
   SimpleGrid,
   ThemeIcon,
   Stepper,
+  Switch,
+  Divider,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -36,6 +38,7 @@ const PostJob = () => {
   const [requirements, setRequirements] = useState<string[]>(['']);
   const [benefits, setBenefits] = useState<string[]>(['']);
   const [tags, setTags] = useState<string[]>(['']);
+  const [salaryPeriod, setSalaryPeriod] = useState<'monthly' | 'yearly'>('monthly');
 
   // Tutorial system state - same as other pages
   const [showTutorial, setShowTutorial] = useState(false);
@@ -76,13 +79,16 @@ const PostJob = () => {
         if (!values.jobType) errors.jobType = 'Lloji i punës është i detyrueshëm';
       }
 
-      // Step 1: Location and Salary validation
+      // Step 1: Location validation
       if (currentStep === 1) {
         if (!values.city) errors.city = 'Qyteti është i detyrueshëm';
       }
 
-      // Step 2: Requirements validation
-      if (currentStep === 2) {
+      // Step 2: Salary validation (optional step, no required fields)
+      // Step 2 has no required validation since salary is optional
+
+      // Step 3: Requirements validation
+      if (currentStep === 3) {
         if (!values.expiresAt) errors.expiresAt = 'Afati i aplikimit është i detyrueshëm';
         if (requirements.every(req => !req.trim())) {
           errors.requirements = 'Shto të paktën një kërkesë për punën';
@@ -96,7 +102,8 @@ const PostJob = () => {
   // Steps configuration for stepper
   const steps = [
     { label: 'Informacioni Bazë', icon: Briefcase },
-    { label: 'Lokacioni dhe Paga', icon: ArrowRight },
+    { label: 'Lokacioni', icon: ArrowRight },
+    { label: 'Paga (Opsionale)', icon: ArrowRight },
     { label: 'Kërkesat dhe Përfitimet', icon: CheckCircle }
   ];
 
@@ -124,18 +131,32 @@ const PostJob = () => {
       formStep: 0
     },
     {
+      selector: '[data-tutorial="experience"]',
+      title: "Niveli i Përvojës",
+      content: "Specifikoni nivelin e përvojës të kërkuar për këtë pozicion. Kjo ndihmon kandidatët të vlerësojnë nëse janë të përshtatshëm.",
+      position: "bottom",
+      formStep: 0
+    },
+    {
       selector: '[data-tutorial="location"]',
-      title: "Vendndodhja dhe Paga",
-      content: "Specifikoni qytetin ku ndodhet puna. Paga është opsionale - formati: 50000-80000 EUR.",
+      title: "Vendndodhja",
+      content: "Specifikoni qytetin ku ndodhet puna. Kjo është e detyrueshme dhe ndihmon kandidatët lokale.",
       position: "bottom",
       formStep: 1
+    },
+    {
+      selector: '[data-tutorial="salary"]',
+      title: "Paga (Opsionale)",
+      content: "Mund të specifikoni një gamë page për pozicionin. Kjo është plotësisht opsionale dhe mund ta kaloni nëse nuk dëshironi ta shfaqni.",
+      position: "bottom",
+      formStep: 2
     },
     {
       selector: '[data-tutorial="requirements"]',
       title: "Kërkesat dhe Përfitimet",
       content: "Listoni kërkesat për kandidatët dhe përfitimet që ofron kompania juaj. Jini të qartë dhe të saktë.",
       position: "bottom",
-      formStep: 2
+      formStep: 3
     }
   ];
 
@@ -170,7 +191,7 @@ const PostJob = () => {
   };
 
   const handleSubmit = async () => {
-    if (currentStep !== 2) return;
+    if (currentStep !== 3) return;
 
     try {
       setLoading(true);
@@ -240,11 +261,12 @@ const PostJob = () => {
         benefits: benefits.filter(b => b.trim()),
         tags: tags.filter(t => t.trim()),
         salary: (values.salaryMin && values.salaryMax) ? {
-          min: parseInt(values.salaryMin),
-          max: parseInt(values.salaryMax),
+          min: salaryPeriod === 'monthly' ? parseInt(values.salaryMin) * 12 : parseInt(values.salaryMin),
+          max: salaryPeriod === 'monthly' ? parseInt(values.salaryMax) * 12 : parseInt(values.salaryMax),
           currency: values.salaryCurrency,
           showPublic: values.showSalary,
-          negotiable: false
+          negotiable: false,
+          period: salaryPeriod
         } : undefined
       };
 
@@ -264,6 +286,7 @@ const PostJob = () => {
         setRequirements(['']);
         setBenefits(['']);
         setTags(['']);
+        setSalaryPeriod('monthly');
         setCurrentStep(0);
 
         // Set new expiry date
@@ -595,26 +618,29 @@ const PostJob = () => {
               />
             </SimpleGrid>
 
-            <Select
-              label="Niveli i Përvojës"
-              placeholder="Zgjidhni nivelin e përvojës"
-              {...jobForm.getInputProps('experienceLevel')}
-              data={[
-                { value: 'entry', label: 'Entry Level' },
-                { value: 'junior', label: 'Junior' },
-                { value: 'mid', label: 'Mid Level' },
-                { value: 'senior', label: 'Senior' },
-                { value: 'lead', label: 'Lead/Manager' }
-              ]}
-            />
+            <Box data-tutorial="experience">
+              <Select
+                label="Niveli i Përvojës"
+                placeholder="Zgjidhni nivelin e përvojës"
+                {...jobForm.getInputProps('experienceLevel')}
+                data={[
+                  { value: 'entry', label: 'Entry Level' },
+                  { value: 'junior', label: 'Junior' },
+                  { value: 'mid', label: 'Mid Level' },
+                  { value: 'senior', label: 'Senior' },
+                  { value: 'lead', label: 'Lead/Manager' }
+                ]}
+                description="Specifikoni nivelin e përvojës së kërkuar për këtë pozicion"
+              />
+            </Box>
           </Stack>
         );
       case 1:
         return (
           <Stack gap="md">
             <Box>
-              <Title order={3} mb="xs">Vendndodhja dhe Paga</Title>
-              <Text size="sm" c="dimmed">Specifikoni ku është puna dhe sa është paga</Text>
+              <Title order={3} mb="xs">Lokacioni i Punës</Title>
+              <Text size="sm" c="dimmed">Specifikoni ku do të jetë e vendosur puna</Text>
             </Box>
 
             <Box data-tutorial="location">
@@ -629,44 +655,77 @@ const PostJob = () => {
                   jobForm.setFieldValue('city', value || '');
                   jobForm.setFieldValue('region', location?.region || '');
                 }}
+                description="Zgjidhni qytetin ku do të jetë e vendosur puna. Kjo ndihmon kandidatët lokale."
               />
             </Box>
-
-            <Stack gap="md">
-              <Text fw={500}>Paga (Opsionale)</Text>
-              <SimpleGrid cols={3} spacing="md">
-                <TextInput
-                  label="Paga Minimale"
-                  placeholder="50000"
-                  type="number"
-                  {...jobForm.getInputProps('salaryMin')}
-                  description="Paga në vit (p.sh: 50000)"
-                />
-                <TextInput
-                  label="Paga Maksimale"
-                  placeholder="80000"
-                  type="number"
-                  {...jobForm.getInputProps('salaryMax')}
-                  description="Paga maksimale në vit"
-                />
-                <Select
-                  label="Monedha"
-                  {...jobForm.getInputProps('salaryCurrency')}
-                  data={[
-                    { value: 'EUR', label: 'EUR' },
-                    { value: 'USD', label: 'USD' },
-                    { value: 'ALL', label: 'ALL (Lek)' }
-                  ]}
-                />
-              </SimpleGrid>
-              {/* <Checkbox
-                label="Shfaq pagën publikisht në postim"
-                {...jobForm.getInputProps('showSalary', { type: 'checkbox' })}
-              /> */}
-            </Stack>
           </Stack>
         );
       case 2:
+        return (
+          <Stack gap="md">
+            <Box>
+              <Title order={3} mb="xs">Paga (Opsionale)</Title>
+              <Text size="sm" c="dimmed">Mund të specifikoni një gamë page për pozicionin. Kjo është plotësisht opsionale.</Text>
+            </Box>
+
+            <Box data-tutorial="salary">
+              <Stack gap="md">
+                <Text size="sm" c="dimmed" fs="italic">
+                  💡 Punët me pagë të specifikuar zakonisht marrin më shumë aplikime
+                </Text>
+
+                <Group justify="space-between" align="center">
+                  <Text fw={500}>Paga për pozicionin</Text>
+                  <Group gap="xs" align="center">
+                    <Text size="sm" c={salaryPeriod === 'monthly' ? 'blue' : 'dimmed'}>Mujore</Text>
+                    <Switch
+                      size="sm"
+                      checked={salaryPeriod === 'yearly'}
+                      onChange={(event) => setSalaryPeriod(event.currentTarget.checked ? 'yearly' : 'monthly')}
+                    />
+                    <Text size="sm" c={salaryPeriod === 'yearly' ? 'blue' : 'dimmed'}>Vjetore</Text>
+                  </Group>
+                </Group>
+
+                <SimpleGrid cols={3} spacing="md">
+                  <TextInput
+                    label={`Paga Minimale (${salaryPeriod === 'monthly' ? 'mujore' : 'vjetore'})`}
+                    placeholder={salaryPeriod === 'monthly' ? '800' : '10000'}
+                    type="number"
+                    {...jobForm.getInputProps('salaryMin')}
+                    description={`P.sh: ${salaryPeriod === 'monthly' ? '800-1200' : '10000-15000'}`}
+                  />
+                  <TextInput
+                    label={`Paga Maksimale (${salaryPeriod === 'monthly' ? 'mujore' : 'vjetore'})`}
+                    placeholder={salaryPeriod === 'monthly' ? '1200' : '15000'}
+                    type="number"
+                    {...jobForm.getInputProps('salaryMax')}
+                    description="Paga maksimale për pozicionin"
+                  />
+                  <Select
+                    label="Monedha"
+                    {...jobForm.getInputProps('salaryCurrency')}
+                    data={[
+                      { value: 'EUR', label: 'EUR' },
+                      { value: 'USD', label: 'USD' },
+                      { value: 'ALL', label: 'ALL (Lek)' }
+                    ]}
+                  />
+                </SimpleGrid>
+
+                <Divider />
+
+                <Center>
+                  <Text size="sm" c="dimmed" ta="center" style={{ maxWidth: 400 }}>
+                    Mund ta kaloni këtë hap nëse nuk dëshironi të specifikoni pagën tani.
+                    Do të mund ta shtoni më vonë.
+                  </Text>
+                </Center>
+              </Stack>
+            </Box>
+          </Stack>
+        );
+      case 3:
         return (
           <Stack gap="md">
             <Box>
