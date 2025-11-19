@@ -1,5 +1,24 @@
 // API Configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+console.log('🌍 Environment Variables Debug:', {
+  all_env_vars: import.meta.env,
+  VITE_API_URL: import.meta.env.VITE_API_URL,
+  NODE_ENV: import.meta.env.NODE_ENV,
+  MODE: import.meta.env.MODE
+});
+
+// Get the API URL and ensure it has the correct format
+let rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
+// Fix common issues with the API URL
+if (rawApiUrl.includes('.com.api')) {
+  rawApiUrl = rawApiUrl.replace('.com.api', '.com/api');
+}
+if (rawApiUrl.includes('.com/api/api')) {
+  rawApiUrl = rawApiUrl.replace('.com/api/api', '.com/api');
+}
+
+const API_BASE_URL = rawApiUrl;
+console.log('🔧 Fixed API_BASE_URL:', { original: import.meta.env.VITE_API_URL, fixed: API_BASE_URL });
 
 // Types
 export interface ApiResponse<T> {
