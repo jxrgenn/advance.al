@@ -288,56 +288,27 @@ const EmployersPage = () => {
         setElementPosition(rect);
 
         if (!isElementVisible) {
-          // Element needs scrolling - enable seamless tracking
+          // Element needs scrolling - temporarily unlock, use instant scroll, then re-lock
           document.body.style.overflow = 'auto';
 
-          // Start real-time position tracking with requestAnimationFrame
-          let animationFrameId: number;
-          let isScrolling = true;
-          let lastScrollTime = Date.now();
-
-          const trackElementDuringScroll = () => {
-            if (!isScrolling) return;
-
-            const currentElement = document.querySelector(step.selector);
-            if (currentElement) {
-              const currentRect = currentElement.getBoundingClientRect();
-
-              // Update highlight position in perfect sync with element
-              setElementPosition(currentRect);
-
-              // Check if element reached optimal position
-              const isNowOptimal = currentRect.top >= topMargin && currentRect.bottom <= viewportHeight - bottomMargin;
-              const currentTime = Date.now();
-
-              // Stop tracking when element is in good position and scrolling has settled
-              if (isNowOptimal && (currentTime - lastScrollTime > 50)) {
-                isScrolling = false;
-                document.body.style.overflow = 'hidden';
-
-                setIsAnimating(false);
-                setIsSpotlightAnimating(false);
-                cancelAnimationFrame(animationFrameId);
-              } else {
-                lastScrollTime = currentTime;
-                animationFrameId = requestAnimationFrame(trackElementDuringScroll);
-              }
-            }
-          };
-
-          // Start smooth scroll
+          // Use instant scroll to avoid conflicts with locked body
           element.scrollIntoView({
-            behavior: 'smooth',
+            behavior: 'instant', // Changed from 'smooth' to 'instant'
             block: 'center',
             inline: 'nearest'
           });
 
-          // Begin seamless position tracking immediately
-          animationFrameId = requestAnimationFrame(trackElementDuringScroll);
+          // Immediately get new position and re-lock
+          const newRect = element.getBoundingClientRect();
+          setElementPosition(newRect);
 
-        } else {
-          // Element already visible - finish immediately
+          // Re-lock scroll immediately
           document.body.style.overflow = 'hidden';
+
+          setIsAnimating(false);
+          setIsSpotlightAnimating(false);
+        } else {
+          // Element already visible - just finish
           setIsAnimating(false);
           setIsSpotlightAnimating(false);
         }

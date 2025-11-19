@@ -498,19 +498,24 @@ const PostJob = () => {
             }
           };
 
-          // Start smooth scroll
+          // Use instant scroll to avoid conflicts with locked body
           element.scrollIntoView({
-            behavior: 'smooth',
+            behavior: 'instant', // Changed from 'smooth' to 'instant'
             block: 'center',
             inline: 'nearest'
           });
 
-          // Begin seamless position tracking immediately
-          animationFrameId = requestAnimationFrame(trackElementDuringScroll);
+          // Immediately get new position and re-lock
+          const newRect = element.getBoundingClientRect();
+          setElementPosition(newRect);
 
-        } else {
-          // Element already visible - finish immediately
+          // Re-lock scroll immediately
           document.body.style.overflow = 'hidden';
+
+          setIsAnimating(false);
+          setIsSpotlightAnimating(false);
+        } else {
+          // Element already visible - just finish
           setIsAnimating(false);
           setIsSpotlightAnimating(false);
         }
