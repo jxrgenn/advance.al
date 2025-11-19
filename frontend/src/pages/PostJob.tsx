@@ -430,6 +430,7 @@ const PostJob = () => {
     const step = tutorialSteps[stepIndex];
     if (!step) return;
 
+    // Start animation with smoother transitions
     setIsSpotlightAnimating(true);
     setIsAnimating(true);
 
@@ -449,20 +450,24 @@ const PostJob = () => {
         const rect = element.getBoundingClientRect();
         const viewportHeight = window.innerHeight;
 
-        const topMargin = 100;
-        const bottomMargin = 250;
+        // Define visible area (account for fixed tutorial panel)
+        const topMargin = 120;
+        const bottomMargin = 280; // More space for better visibility
 
         const isElementVisible = rect.top >= topMargin && rect.bottom <= viewportHeight - bottomMargin;
 
         if (!isElementVisible) {
+          // Element needs scrolling - use smooth scroll for better UX
           document.body.style.overflow = 'auto';
 
+          // Use smooth scroll behavior for better visual experience
           element.scrollIntoView({
-            behavior: 'instant',
+            behavior: 'smooth',
             block: 'center',
             inline: 'nearest'
           });
 
+          // Wait longer for smooth scroll to complete, then re-lock and set position
           setTimeout(() => {
             document.body.style.overflow = 'hidden';
 
@@ -473,19 +478,22 @@ const PostJob = () => {
               setElementPosition(newRect);
             }
 
+            // End animations with proper timing for smooth transition
             setTimeout(() => {
               setIsAnimating(false);
               setIsSpotlightAnimating(false);
-            }, 100);
-          }, 150);
+            }, 200);
+          }, 400); // Wait longer for smooth scroll to complete
         } else {
+          // Element is already visible, set with smooth transition
           setHighlightedElement(element);
           setElementPosition(rect);
 
+          // End animations with proper timing
           setTimeout(() => {
             setIsAnimating(false);
             setIsSpotlightAnimating(false);
-          }, 100);
+          }, 200);
         }
       } else {
         console.warn(`Tutorial element not found: ${step.selector}`);
@@ -496,7 +504,7 @@ const PostJob = () => {
     };
 
     // Wait longer if we're switching form steps to allow for re-rendering
-    const delay = step.formStep !== undefined && step.formStep !== currentStep ? 100 : 25;
+    const delay = step.formStep !== undefined && step.formStep !== currentStep ? 150 : 50;
     setTimeout(findAndHighlightElement, delay);
   };
 
@@ -511,24 +519,26 @@ const PostJob = () => {
               <Text size="sm" c="dimmed">Plotëso të dhënat kryesore për pozicionin</Text>
             </Box>
 
-            <TextInput
-              label="Titulli i Punës"
-              placeholder="p.sh. Zhvillues Full Stack"
-              {...jobForm.getInputProps('title')}
-              data-tutorial="title"
-              description="Shkruani një titull të qartë që përshkruan pozicionin"
-              required
-            />
+            <Box data-tutorial="title">
+              <TextInput
+                label="Titulli i Punës"
+                placeholder="p.sh. Zhvillues Full Stack"
+                {...jobForm.getInputProps('title')}
+                description="Shkruani një titull të qartë që përshkruan pozicionin"
+                required
+              />
+            </Box>
 
-            <Textarea
-              label="Përshkrimi i Punës"
-              placeholder="Shkruaj një përshkrim të detajuar të punës, përgjegjësive dhe mjedisit të punës..."
-              {...jobForm.getInputProps('description')}
-              rows={6}
-              data-tutorial="description"
-              description="Përshkruani qartësisht përgjegjësitë, kërkesat dhe benefitet e pozicionit"
-              required
-            />
+            <Box data-tutorial="description">
+              <Textarea
+                label="Përshkrimi i Punës"
+                placeholder="Shkruaj një përshkrim të detajuar të punës, përgjegjësive dhe mjedisit të punës..."
+                {...jobForm.getInputProps('description')}
+                rows={6}
+                description="Përshkruani qartësisht përgjegjësitë, kërkesat dhe benefitet e pozicionit"
+                required
+              />
+            </Box>
 
             <SimpleGrid cols={2} spacing="md" data-tutorial="category">
               <Select
@@ -583,19 +593,20 @@ const PostJob = () => {
               <Text size="sm" c="dimmed">Specifikoni ku është puna dhe sa është paga</Text>
             </Box>
 
-            <Select
-              label="Qyteti"
-              placeholder="Zgjidhni qytetin"
-              {...jobForm.getInputProps('city')}
-              data={locations.map(location => ({ value: location.city, label: location.city }))}
-              data-tutorial="location"
-              required
-              onChange={(value) => {
-                const location = locations.find(l => l.city === value);
-                jobForm.setFieldValue('city', value || '');
-                jobForm.setFieldValue('region', location?.region || '');
-              }}
-            />
+            <Box data-tutorial="location">
+              <Select
+                label="Qyteti"
+                placeholder="Zgjidhni qytetin"
+                {...jobForm.getInputProps('city')}
+                data={locations.map(location => ({ value: location.city, label: location.city }))}
+                required
+                onChange={(value) => {
+                  const location = locations.find(l => l.city === value);
+                  jobForm.setFieldValue('city', value || '');
+                  jobForm.setFieldValue('region', location?.region || '');
+                }}
+              />
+            </Box>
 
             <Stack gap="md">
               <Text fw={500}>Paga (Opsionale)</Text>
@@ -766,35 +777,41 @@ const PostJob = () => {
 
     return (
       <div className="fixed inset-0 z-50 pointer-events-none">
+        {/* Overlay with spotlight effect - smoother transitions */}
         <div
           className="absolute inset-0 bg-black/70"
           style={{
-            transition: 'clip-path 250ms ease-out',
+            transition: 'clip-path 400ms cubic-bezier(0.4, 0, 0.2, 1)',
             clipPath: spotlightCoords
               ? `polygon(0% 0%, 0% 100%, ${spotlightCoords.left}px 100%, ${spotlightCoords.left}px ${spotlightCoords.top}px, ${spotlightCoords.right}px ${spotlightCoords.top}px, ${spotlightCoords.right}px ${spotlightCoords.bottom}px, ${spotlightCoords.left}px ${spotlightCoords.bottom}px, ${spotlightCoords.left}px 100%, 100% 100%, 100% 0%)`
               : 'polygon(0% 0%, 0% 100%, 100% 100%, 100% 0%)'
           }}
         />
 
+        {/* Highlighted element border - smoother animations with spring easing */}
         <div
           className="absolute border-3 border-yellow-400 rounded-lg shadow-lg shadow-yellow-400/50"
           style={{
-            transition: 'all 250ms ease-out',
+            transition: 'all 400ms cubic-bezier(0.175, 0.885, 0.32, 1.275)', // Spring easing
             left: spotlightCoords?.left || 0,
             top: spotlightCoords?.top || 0,
             width: spotlightCoords ? spotlightCoords.right - spotlightCoords.left : 0,
             height: spotlightCoords ? spotlightCoords.bottom - spotlightCoords.top : 0,
             pointerEvents: 'none',
-            boxShadow: '0 0 20px rgba(251, 191, 36, 0.5)',
-            opacity: spotlightCoords ? 1 : 0
+            boxShadow: spotlightCoords ? '0 0 30px rgba(251, 191, 36, 0.6), 0 0 60px rgba(251, 191, 36, 0.3)' : 'none',
+            opacity: spotlightCoords ? 1 : 0,
+            transform: spotlightCoords ? 'scale(1)' : 'scale(0.95)',
           }}
         />
 
+        {/* Fixed position tutorial panel - smooth entrance animation */}
         <div
           className="fixed bottom-6 right-6 bg-white rounded-lg shadow-2xl border border-gray-200 pointer-events-auto max-w-sm w-80"
           style={{
             maxHeight: '60vh',
-            transition: 'all 200ms ease-out'
+            transition: 'all 300ms cubic-bezier(0.34, 1.56, 0.64, 1)', // Bouncy easing
+            transform: showTutorial ? 'scale(1) translateY(0)' : 'scale(0.95) translateY(10px)',
+            opacity: showTutorial ? 1 : 0
           }}
         >
           <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-yellow-50 to-orange-50">
@@ -830,8 +847,11 @@ const PostJob = () => {
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
-                  className="bg-yellow-500 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${((tutorialStep + 1) / tutorialSteps.length) * 100}%` }}
+                  className="bg-yellow-500 h-2 rounded-full transition-all duration-700 ease-in-out"
+                  style={{
+                    width: `${((tutorialStep + 1) / tutorialSteps.length) * 100}%`,
+                    boxShadow: '0 0 8px rgba(251, 191, 36, 0.4)'
+                  }}
                 />
               </div>
             </div>

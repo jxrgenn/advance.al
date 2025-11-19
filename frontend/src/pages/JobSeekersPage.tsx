@@ -336,7 +336,7 @@ const JobSeekersPage = () => {
     const step = currentTutorialSteps[stepIndex];
     if (!step) return;
 
-    // Start animation
+    // Start animation with smoother transitions
     setIsSpotlightAnimating(true);
     setIsAnimating(true);
 
@@ -344,8 +344,6 @@ const JobSeekersPage = () => {
     if (elementPosition) {
       setPreviousElementPosition(elementPosition);
     }
-
-    // Don't clear elementPosition immediately to prevent overlay stutter
 
     // Find the element and handle automatic scrolling
     const findAndHighlightElement = () => {
@@ -356,31 +354,36 @@ const JobSeekersPage = () => {
         const viewportHeight = window.innerHeight;
 
         // Define visible area (account for fixed tutorial panel)
-        const topMargin = 100;
-        const bottomMargin = 250; // More space for the fixed tutorial panel
+        const topMargin = 120;
+        const bottomMargin = 280; // More space for better visibility
 
         // Check if element is fully visible in the safe area
         const isElementVisible = rect.top >= topMargin && rect.bottom <= viewportHeight - bottomMargin;
 
         if (!isElementVisible) {
-          // Element needs scrolling - DON'T show it until scroll is complete
+          // Element needs scrolling - use smooth scroll for better UX
 
           // Temporarily unlock scroll for automatic scrolling
           document.body.style.overflow = 'auto';
 
-          // Scroll element into view faster
+          // Calculate optimal scroll position for smooth centered view
+          const elementCenter = rect.top + rect.height / 2;
+          const viewportCenter = viewportHeight / 2;
+          const scrollOffset = elementCenter - viewportCenter;
+
+          // Use smooth scroll behavior for better visual experience
           element.scrollIntoView({
-            behavior: 'instant',
+            behavior: 'smooth',
             block: 'center',
             inline: 'nearest'
           });
 
-          // Wait for scroll to complete, then re-lock and set position
+          // Wait longer for smooth scroll to complete, then re-lock and set position
           setTimeout(() => {
             // Re-lock scroll
             document.body.style.overflow = 'hidden';
 
-            // NOW get the element position after scroll is complete
+            // Get the element position after scroll is complete
             const scrolledElement = document.querySelector(step.selector);
             if (scrolledElement) {
               const newRect = scrolledElement.getBoundingClientRect();
@@ -388,22 +391,22 @@ const JobSeekersPage = () => {
               setElementPosition(newRect);
             }
 
-            // End animations faster
+            // End animations with proper timing for smooth transition
             setTimeout(() => {
               setIsAnimating(false);
               setIsSpotlightAnimating(false);
-            }, 100);
-          }, 150); // Instant scroll needs less wait time
+            }, 200); // Longer for smoother feel
+          }, 400); // Wait longer for smooth scroll to complete
         } else {
-          // Element is already visible, set immediately
+          // Element is already visible, set with smooth transition
           setHighlightedElement(element);
           setElementPosition(rect);
 
-          // End animations quickly
+          // End animations with proper timing
           setTimeout(() => {
             setIsAnimating(false);
             setIsSpotlightAnimating(false);
-          }, 100);
+          }, 200);
         }
       } else {
         console.warn(`Tutorial element not found: ${step.selector}`);
@@ -413,8 +416,8 @@ const JobSeekersPage = () => {
       }
     };
 
-    // Small delay to allow form step changes to render
-    setTimeout(findAndHighlightElement, 25);
+    // Longer delay for form step changes to render completely
+    setTimeout(findAndHighlightElement, 50);
   };
 
   // Calculate optimal position for instruction panel
@@ -499,38 +502,41 @@ const JobSeekersPage = () => {
 
     return (
       <div className="fixed inset-0 z-50 pointer-events-none">
-        {/* Overlay with spotlight effect - always render to prevent stutter */}
+        {/* Overlay with spotlight effect - smoother transitions */}
         <div
           className="absolute inset-0 bg-black/70"
           style={{
-            transition: 'clip-path 250ms ease-out',
+            transition: 'clip-path 400ms cubic-bezier(0.4, 0, 0.2, 1)',
             clipPath: spotlightCoords
               ? `polygon(0% 0%, 0% 100%, ${spotlightCoords.left}px 100%, ${spotlightCoords.left}px ${spotlightCoords.top}px, ${spotlightCoords.right}px ${spotlightCoords.top}px, ${spotlightCoords.right}px ${spotlightCoords.bottom}px, ${spotlightCoords.left}px ${spotlightCoords.bottom}px, ${spotlightCoords.left}px 100%, 100% 100%, 100% 0%)`
               : 'polygon(0% 0%, 0% 100%, 100% 100%, 100% 0%)' // Full overlay when no spotlight
           }}
         />
 
-        {/* Highlighted element border - always render but conditionally position */}
+        {/* Highlighted element border - smoother animations with spring easing */}
         <div
           className="absolute border-3 border-yellow-400 rounded-lg shadow-lg shadow-yellow-400/50"
           style={{
-            transition: 'all 250ms ease-out',
+            transition: 'all 400ms cubic-bezier(0.175, 0.885, 0.32, 1.275)', // Spring easing
             left: spotlightCoords?.left || 0,
             top: spotlightCoords?.top || 0,
             width: spotlightCoords ? spotlightCoords.right - spotlightCoords.left : 0,
             height: spotlightCoords ? spotlightCoords.bottom - spotlightCoords.top : 0,
             pointerEvents: 'none',
-            boxShadow: '0 0 20px rgba(251, 191, 36, 0.5)',
-            opacity: spotlightCoords ? 1 : 0
+            boxShadow: spotlightCoords ? '0 0 30px rgba(251, 191, 36, 0.6), 0 0 60px rgba(251, 191, 36, 0.3)' : 'none',
+            opacity: spotlightCoords ? 1 : 0,
+            transform: spotlightCoords ? 'scale(1)' : 'scale(0.95)',
           }}
         />
 
-        {/* Fixed position tutorial panel - bottom right corner */}
+        {/* Fixed position tutorial panel - smooth entrance animation */}
         <div
           className="fixed bottom-6 right-6 bg-white rounded-lg shadow-2xl border border-gray-200 pointer-events-auto max-w-sm w-80"
           style={{
             maxHeight: '60vh',
-            transition: 'all 200ms ease-out'
+            transition: 'all 300ms cubic-bezier(0.34, 1.56, 0.64, 1)', // Bouncy easing
+            transform: showTutorial ? 'scale(1) translateY(0)' : 'scale(0.95) translateY(10px)',
+            opacity: showTutorial ? 1 : 0
           }}
         >
           {/* Header with close button */}
@@ -569,8 +575,11 @@ const JobSeekersPage = () => {
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
-                  className="bg-yellow-500 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${((tutorialStep + 1) / currentTutorialSteps.length) * 100}%` }}
+                  className="bg-yellow-500 h-2 rounded-full transition-all duration-700 ease-in-out"
+                  style={{
+                    width: `${((tutorialStep + 1) / currentTutorialSteps.length) * 100}%`,
+                    boxShadow: '0 0 8px rgba(251, 191, 36, 0.4)'
+                  }}
                 />
               </div>
             </div>
@@ -763,48 +772,52 @@ const JobSeekersPage = () => {
                         />
                       </SimpleGrid>
 
-                      <TextInput
-                        label="Email"
-                        placeholder="email@example.com"
-                        type="email"
-                        {...fullForm.getInputProps('email')}
-                        data-tutorial="email"
-                        required
-                      />
+                      <Box data-tutorial="email">
+                        <TextInput
+                          label="Email"
+                          placeholder="email@example.com"
+                          type="email"
+                          {...fullForm.getInputProps('email')}
+                          required
+                        />
+                      </Box>
 
-                      <TextInput
-                        label="Fjalëkalimi"
-                        placeholder="Të paktën 6 karaktere"
-                        type="password"
-                        {...fullForm.getInputProps('password')}
-                        data-tutorial="password"
-                        required
-                      />
+                      <Box data-tutorial="password">
+                        <TextInput
+                          label="Fjalëkalimi"
+                          placeholder="Të paktën 6 karaktere"
+                          type="password"
+                          {...fullForm.getInputProps('password')}
+                          required
+                        />
+                      </Box>
 
-                      <TextInput
-                        label="Telefoni"
-                        placeholder="+355 69 123 4567"
-                        {...fullForm.getInputProps('phone')}
-                        data-tutorial="phone"
-                      />
+                      <Box data-tutorial="phone">
+                        <TextInput
+                          label="Telefoni"
+                          placeholder="+355 69 123 4567"
+                          {...fullForm.getInputProps('phone')}
+                        />
+                      </Box>
 
-                      <Select
-                        label="Qyteti"
-                        placeholder="Zgjidhni qytetin"
-                        {...fullForm.getInputProps('city')}
-                        data-tutorial="city"
-                        data={[
-                          'Tiranë',
-                          'Durrës',
-                          'Vlorë',
-                          'Shkodër',
-                          'Korçë',
-                          'Elbasan',
-                          'Fier',
-                          'Berat',
-                          'Tjetër'
-                        ]}
-                      />
+                      <Box data-tutorial="city">
+                        <Select
+                          label="Qyteti"
+                          placeholder="Zgjidhni qytetin"
+                          {...fullForm.getInputProps('city')}
+                          data={[
+                            'Tiranë',
+                            'Durrës',
+                            'Vlorë',
+                            'Shkodër',
+                            'Korçë',
+                            'Elbasan',
+                            'Fier',
+                            'Berat',
+                            'Tjetër'
+                          ]}
+                        />
+                      </Box>
 
                       <Button
                         type="submit"
@@ -867,39 +880,42 @@ const JobSeekersPage = () => {
                         />
                       </SimpleGrid>
 
-                      <TextInput
-                        label="Email"
-                        placeholder="email@example.com"
-                        type="email"
-                        {...quickForm.getInputProps('email')}
-                        data-tutorial="quick-email"
-                        required
-                      />
+                      <Box data-tutorial="quick-email">
+                        <TextInput
+                          label="Email"
+                          placeholder="email@example.com"
+                          type="email"
+                          {...quickForm.getInputProps('email')}
+                          required
+                        />
+                      </Box>
 
-                      <TextInput
-                        label="Telefoni"
-                        placeholder="+355 69 123 4567"
-                        {...quickForm.getInputProps('phone')}
-                        data-tutorial="quick-phone"
-                      />
+                      <Box data-tutorial="quick-phone">
+                        <TextInput
+                          label="Telefoni"
+                          placeholder="+355 69 123 4567"
+                          {...quickForm.getInputProps('phone')}
+                        />
+                      </Box>
 
-                      <Select
-                        label="Qyteti"
-                        placeholder="Zgjidhni qytetin"
-                        {...quickForm.getInputProps('city')}
-                        data-tutorial="quick-city"
-                        data={[
-                          'Tiranë',
-                          'Durrës',
-                          'Vlorë',
-                          'Shkodër',
-                          'Korçë',
-                          'Elbasan',
-                          'Fier',
-                          'Berat',
-                          'Tjetër'
-                        ]}
-                      />
+                      <Box data-tutorial="quick-city">
+                        <Select
+                          label="Qyteti"
+                          placeholder="Zgjidhni qytetin"
+                          {...quickForm.getInputProps('city')}
+                          data={[
+                            'Tiranë',
+                            'Durrës',
+                            'Vlorë',
+                            'Shkodër',
+                            'Korçë',
+                            'Elbasan',
+                            'Fier',
+                            'Berat',
+                            'Tjetër'
+                          ]}
+                        />
+                      </Box>
 
                       <Box data-tutorial="interests">
                         <Text size="sm" fw={500} mb="xs">
