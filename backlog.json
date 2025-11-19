@@ -1,0 +1,142 @@
+[
+  {
+    "id": 1,
+    "title": "Enable Production Rate Limiting",
+    "priority": "critical",
+    "effort": "small",
+    "reason": "Rate limiting is currently disabled (backend/server.js:86-98), creating vulnerability to API abuse and DDoS attacks in production environment"
+  },
+  {
+    "id": 2,
+    "title": "Configure Production Email Delivery",
+    "priority": "critical",
+    "effort": "small",
+    "reason": "All emails currently sent to test address 'advance.al123456@gmail.com' instead of actual users, blocking real email communication"
+  },
+  {
+    "id": 3,
+    "title": "Implement Comprehensive Test Suite",
+    "priority": "high",
+    "effort": "large",
+    "reason": "No project-specific tests found. Critical for platform reliability, regression prevention, and confident feature development"
+  },
+  {
+    "id": 4,
+    "title": "Add Authentication Token Refresh",
+    "priority": "high",
+    "effort": "medium",
+    "reason": "Users may experience unexpected logouts after 2-hour JWT expiry. Implement refresh token pattern for better UX"
+  },
+  {
+    "id": 5,
+    "title": "Implement Code Splitting for Routes",
+    "priority": "high",
+    "effort": "medium",
+    "reason": "Large bundle size impacts initial page load. Route-based code splitting will improve performance and user experience"
+  },
+  {
+    "id": 6,
+    "title": "Create Dedicated Notifications Page",
+    "priority": "medium",
+    "effort": "small",
+    "reason": "TODO comment in Navigation.tsx indicates missing notifications page. Users need full notification history management"
+  },
+  {
+    "id": 7,
+    "title": "Add Real-time Metrics Calculation",
+    "priority": "medium",
+    "effort": "small",
+    "reason": "Mock data for admin statistics (reports.js:averageResolutionTime). Provide accurate admin insights for better decision making"
+  },
+  {
+    "id": 8,
+    "title": "Implement AI-Powered Job Recommendations",
+    "priority": "high",
+    "effort": "large",
+    "reason": "Basic search/filtering exists. AI recommendations based on user profiles will increase engagement and job placement success"
+  },
+  {
+    "id": 9,
+    "title": "Add Instant Search with Debouncing",
+    "priority": "medium",
+    "effort": "small",
+    "reason": "Current search requires full page refresh. Instant search with suggestions will improve user experience and engagement"
+  },
+  {
+    "id": 10,
+    "title": "Implement Progressive Web App (PWA)",
+    "priority": "high",
+    "effort": "large",
+    "reason": "Mobile-first approach needed for Albanian market. PWA enables offline browsing, push notifications, and app-like experience"
+  },
+  {
+    "id": 11,
+    "title": "Add Database Query Optimization",
+    "priority": "medium",
+    "effort": "medium",
+    "reason": "Add compound indexes for common queries and aggregation pipelines for analytics to improve performance under load"
+  },
+  {
+    "id": 12,
+    "title": "Enhance Error Handling Consistency",
+    "priority": "medium",
+    "effort": "small",
+    "reason": "Inconsistent error response formats across API endpoints. Standardize for better client-side error handling"
+  },
+  {
+    "id": 13,
+    "title": "Implement Saved Jobs Feature",
+    "priority": "medium",
+    "effort": "small",
+    "reason": "Users need ability to save interesting jobs for later application. Basic feature that significantly improves user experience"
+  },
+  {
+    "id": 14,
+    "title": "Add Real-time Chat System",
+    "priority": "medium",
+    "effort": "large",
+    "reason": "Enable direct messaging between employers and candidates to accelerate hiring process and improve satisfaction"
+  },
+  {
+    "id": 15,
+    "title": "Implement Enhanced Onboarding Flow",
+    "priority": "high",
+    "effort": "medium",
+    "reason": "Current registration flow has room for improvement. Interactive demo and guided tour will increase registration completion rates"
+  },
+  {
+    "id": 16,
+    "title": "Add Performance Monitoring Dashboard",
+    "priority": "medium",
+    "effort": "medium",
+    "reason": "No systematic performance monitoring. Add real-time metrics, alerts, and performance tracking for production stability"
+  },
+  {
+    "id": 17,
+    "title": "Implement File Upload Size Optimization",
+    "priority": "low",
+    "effort": "small",
+    "reason": "Current 10MB limit may be restrictive for detailed CVs. Implement tiered limits based on file type and user status"
+  },
+  {
+    "id": 18,
+    "title": "Add Security Headers Enhancement",
+    "priority": "medium",
+    "effort": "small",
+    "reason": "Add comprehensive security headers (X-API-Version, X-Content-Type-Options, etc.) for enhanced security posture"
+  },
+  {
+    "id": 19,
+    "title": "Implement Advanced Company Profiles",
+    "priority": "low",
+    "effort": "large",
+    "reason": "Basic company pages exist. Enhanced profiles with rich media, testimonials, and culture content will improve employer branding"
+  },
+  {
+    "id": 20,
+    "title": "Add Load Testing Infrastructure",
+    "priority": "medium",
+    "effort": "medium",
+    "reason": "No systematic load testing identified. Critical for understanding platform limits and scaling requirements"
+  }
+]

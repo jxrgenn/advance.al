@@ -1,0 +1,27 @@
+{
+  "name": "albania-jobflow-backend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch=src --watch=server.js server.js",
+    "start": "node server.js",
+    "seed": "node scripts/seed-database.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "mongoose": "^8.18.1",
+    "bcryptjs": "^3.0.2",
+    "jsonwebtoken": "^9.0.2",
+    "express-validator": "^7.2.1",
+    "express-rate-limit": "^8.1.0",
+    "cors": "^2.8.5",
+    "helmet": "^8.1.0",
+    "morgan": "^1.10.1",
+    "multer": "^2.0.2",
+    "dotenv": "^17.2.2",
+    "mongodb": "^6.20.0",
+    "nodemailer": "^7.0.6",
+    "resend": "^6.1.0"
+  }
+}
