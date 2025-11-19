@@ -474,71 +474,45 @@ const PostJob = () => {
         const rect = element.getBoundingClientRect();
         const viewportHeight = window.innerHeight;
 
-        // Define optimal viewing area
-        const topMargin = 120;
-        const bottomMargin = 280;
-        const isElementVisible = rect.top >= topMargin && rect.bottom <= viewportHeight - bottomMargin;
+        // Define optimal viewing area with more generous margins for better detection
+        const topMargin = 100;
+        const bottomMargin = 300;
+
+        // More robust visibility check - element should be reasonably centered
+        const isElementFullyVisible = rect.top >= topMargin && rect.bottom <= viewportHeight - bottomMargin;
+        const isElementPartiallyVisible = rect.top < viewportHeight && rect.bottom > 0;
+
+        // Force scroll if element is not in optimal viewing area, even if partially visible
+        const shouldScroll = !isElementFullyVisible || rect.top < 50 || rect.bottom > viewportHeight - 100;
 
         // IMMEDIATELY attach highlight to element - no waiting!
         setHighlightedElement(element);
         setElementPosition(rect);
 
-        if (!isElementVisible) {
-          // Element needs scrolling - enable seamless tracking
+        if (shouldScroll) {
+          // Element needs scrolling - temporarily unlock, use instant scroll, then re-lock
           document.body.style.overflow = 'auto';
-
-          // Start real-time position tracking with requestAnimationFrame
-          let animationFrameId: number;
-          let isScrolling = true;
-          let lastScrollTime = Date.now();
-
-          const trackElementDuringScroll = () => {
-            if (!isScrolling) return;
-
-            const currentElement = document.querySelector(step.selector);
-            if (currentElement) {
-              const currentRect = currentElement.getBoundingClientRect();
-
-              // Update highlight position in perfect sync with element
-              setElementPosition(currentRect);
-
-              // Check if element reached optimal position
-              const isNowOptimal = currentRect.top >= topMargin && currentRect.bottom <= viewportHeight - bottomMargin;
-              const currentTime = Date.now();
-
-              // Stop tracking when element is in good position and scrolling has settled
-              if (isNowOptimal && (currentTime - lastScrollTime > 50)) {
-                isScrolling = false;
-                document.body.style.overflow = 'hidden';
-
-                setIsAnimating(false);
-                setIsSpotlightAnimating(false);
-                cancelAnimationFrame(animationFrameId);
-              } else {
-                lastScrollTime = currentTime;
-                animationFrameId = requestAnimationFrame(trackElementDuringScroll);
-              }
-            }
-          };
 
           // Use instant scroll to avoid conflicts with locked body
           element.scrollIntoView({
-            behavior: 'instant', // Changed from 'smooth' to 'instant'
+            behavior: 'instant', // Use instant to avoid conflicts
             block: 'center',
             inline: 'nearest'
           });
 
-          // Immediately get new position and re-lock
-          const newRect = element.getBoundingClientRect();
-          setElementPosition(newRect);
+          // Wait a small moment for scroll to complete, then get new position
+          setTimeout(() => {
+            const newRect = element.getBoundingClientRect();
+            setElementPosition(newRect);
 
-          // Re-lock scroll immediately
-          document.body.style.overflow = 'hidden';
+            // Re-lock scroll immediately
+            document.body.style.overflow = 'hidden';
 
-          setIsAnimating(false);
-          setIsSpotlightAnimating(false);
+            setIsAnimating(false);
+            setIsSpotlightAnimating(false);
+          }, 10);
         } else {
-          // Element already visible - just finish
+          // Element already in optimal position - just finish
           setIsAnimating(false);
           setIsSpotlightAnimating(false);
         }

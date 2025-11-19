@@ -44,6 +44,7 @@ const EmployersPage = () => {
   const [isSpotlightAnimating, setIsSpotlightAnimating] = useState(false);
   const [lastClickTime, setLastClickTime] = useState(0);
   const [isScrollLocked, setIsScrollLocked] = useState(false);
+  const [tutorialStepsByFormStep, setTutorialStepsByFormStep] = useState<{[key: number]: number}>({});
 
   // Multi-step form based on database fields
   const employerForm = useForm({
@@ -146,9 +147,30 @@ const EmployersPage = () => {
     {
       selector: '[data-tutorial="companyInfo"]',
       title: "Informacioni i Kompanisë",
-      content: "Zgjidhni madhësinë dhe qytetin e kompanisë për të ndihmuar kandidatët.",
+      content: "Zgjidhni madhësinë e kompanisë për të ndihmuar kandidatët të kuptojnë përmasat e organizatës suaj.",
       position: "bottom",
       formStep: 1
+    },
+    {
+      selector: '[data-tutorial="location"]',
+      title: "Vendndodhja dhe Website",
+      content: "Specifikoni qytetin ku ndodhet kompania dhe website-in nëse keni. Kjo ndihmon kandidatët të mësojnë më shumë.",
+      position: "bottom",
+      formStep: 1
+    },
+    {
+      selector: '[data-tutorial="description"]',
+      title: "Përshkrimi i Kompanisë",
+      content: "Shtoni një përshkrim të shkurtër të kompanisë. Kjo është opsionale por ndihmon kandidatët të kuptojnë misionin tuaj.",
+      position: "bottom",
+      formStep: 1
+    },
+    {
+      selector: '[data-tutorial="confirmation"]',
+      title: "Konfirmimi Final",
+      content: "Shqyrtoni të gjithë informacionin tuaj para se të krijoni llogarinë. Mund të ndryshoni çdo gjë më vonë.",
+      position: "bottom",
+      formStep: 2
     }
   ];
 
@@ -176,11 +198,18 @@ const EmployersPage = () => {
   // Tutorial management functions (copied from JobSeekersPage)
   const startTutorial = () => {
     setShowTutorial(true);
-    setTutorialStep(0);
     setIsScrollLocked(true);
     // Lock scroll on body
     document.body.style.overflow = 'hidden';
-    highlightElement(0);
+
+    // Find the first tutorial step for current form step
+    const firstStepForCurrentForm = tutorialSteps.findIndex(step => step.formStep === currentStep);
+    const startingStep = tutorialStepsByFormStep[currentStep] !== undefined
+      ? tutorialStepsByFormStep[currentStep]
+      : (firstStepForCurrentForm >= 0 ? firstStepForCurrentForm : 0);
+
+    setTutorialStep(startingStep);
+    highlightElement(startingStep);
   };
 
   const nextTutorialStep = () => {
@@ -191,6 +220,16 @@ const EmployersPage = () => {
     if (tutorialStep < tutorialSteps.length - 1) {
       const newStep = tutorialStep + 1;
       setTutorialStep(newStep);
+
+      // Save progress for the current form step
+      const currentTutorialFormStep = tutorialSteps[tutorialStep]?.formStep;
+      if (currentTutorialFormStep !== undefined) {
+        setTutorialStepsByFormStep(prev => ({
+          ...prev,
+          [currentTutorialFormStep]: newStep
+        }));
+      }
+
       highlightElement(newStep);
     } else {
       closeTutorial();
@@ -205,11 +244,30 @@ const EmployersPage = () => {
     if (tutorialStep > 0) {
       const newStep = tutorialStep - 1;
       setTutorialStep(newStep);
+
+      // Save progress for the current form step
+      const currentTutorialFormStep = tutorialSteps[tutorialStep]?.formStep;
+      if (currentTutorialFormStep !== undefined) {
+        setTutorialStepsByFormStep(prev => ({
+          ...prev,
+          [currentTutorialFormStep]: newStep
+        }));
+      }
+
       highlightElement(newStep);
     }
   };
 
   const closeTutorial = () => {
+    // Save progress for the current form step before closing
+    const currentTutorialFormStep = tutorialSteps[tutorialStep]?.formStep;
+    if (currentTutorialFormStep !== undefined) {
+      setTutorialStepsByFormStep(prev => ({
+        ...prev,
+        [currentTutorialFormStep]: tutorialStep
+      }));
+    }
+
     setShowTutorial(false);
     setTutorialStep(0);
     setHighlightedElement(null);
@@ -278,37 +336,45 @@ const EmployersPage = () => {
         const rect = element.getBoundingClientRect();
         const viewportHeight = window.innerHeight;
 
-        // Define optimal viewing area
-        const topMargin = 120;
-        const bottomMargin = 280;
-        const isElementVisible = rect.top >= topMargin && rect.bottom <= viewportHeight - bottomMargin;
+        // Define optimal viewing area with more generous margins for better detection
+        const topMargin = 100;
+        const bottomMargin = 300;
+
+        // More robust visibility check - element should be reasonably centered
+        const isElementFullyVisible = rect.top >= topMargin && rect.bottom <= viewportHeight - bottomMargin;
+        const isElementPartiallyVisible = rect.top < viewportHeight && rect.bottom > 0;
+
+        // Force scroll if element is not in optimal viewing area, even if partially visible
+        const shouldScroll = !isElementFullyVisible || rect.top < 50 || rect.bottom > viewportHeight - 100;
 
         // IMMEDIATELY attach highlight to element - no waiting!
         setHighlightedElement(element);
         setElementPosition(rect);
 
-        if (!isElementVisible) {
+        if (shouldScroll) {
           // Element needs scrolling - temporarily unlock, use instant scroll, then re-lock
           document.body.style.overflow = 'auto';
 
           // Use instant scroll to avoid conflicts with locked body
           element.scrollIntoView({
-            behavior: 'instant', // Changed from 'smooth' to 'instant'
+            behavior: 'instant', // Use instant to avoid conflicts
             block: 'center',
             inline: 'nearest'
           });
 
-          // Immediately get new position and re-lock
-          const newRect = element.getBoundingClientRect();
-          setElementPosition(newRect);
+          // Wait a small moment for scroll to complete, then get new position
+          setTimeout(() => {
+            const newRect = element.getBoundingClientRect();
+            setElementPosition(newRect);
 
-          // Re-lock scroll immediately
-          document.body.style.overflow = 'hidden';
+            // Re-lock scroll immediately
+            document.body.style.overflow = 'hidden';
 
-          setIsAnimating(false);
-          setIsSpotlightAnimating(false);
+            setIsAnimating(false);
+            setIsSpotlightAnimating(false);
+          }, 10);
         } else {
-          // Element already visible - just finish
+          // Element already in optimal position - just finish
           setIsAnimating(false);
           setIsSpotlightAnimating(false);
         }
@@ -593,7 +659,7 @@ const EmployersPage = () => {
               /> */}
             </div>
 
-            <SimpleGrid cols={2} spacing="md">
+            <SimpleGrid cols={2} spacing="md" data-tutorial="location">
               <Select
                 label="Qyteti"
                 placeholder="Ku ndodhet kompania?"
@@ -608,17 +674,19 @@ const EmployersPage = () => {
               />
             </SimpleGrid>
 
-            <Textarea
-              label="Përshkrimi i Kompanisë (Opsional)"
-              placeholder="Shkruani një përshkrim të shkurtër të kompanisë suaj..."
-              {...employerForm.getInputProps('description')}
-              rows={3}
-            />
+            <Box data-tutorial="description">
+              <Textarea
+                label="Përshkrimi i Kompanisë (Opsional)"
+                placeholder="Shkruani një përshkrim të shkurtër të kompanisë suaj..."
+                {...employerForm.getInputProps('description')}
+                rows={3}
+              />
+            </Box>
           </Stack>
         );
       case 2:
         return (
-          <Stack gap="md">
+          <Stack gap="md" data-tutorial="confirmation">
             <Box>
               <Title order={3} mb="xs">Konfirmimi i Të Dhënave</Title>
               <Text size="sm" c="dimmed">Shqyrtoni informacionin tuaj para se të vazhdoni</Text>
