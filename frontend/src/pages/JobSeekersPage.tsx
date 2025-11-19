@@ -336,20 +336,16 @@ const JobSeekersPage = () => {
     const step = currentTutorialSteps[stepIndex];
     if (!step) return;
 
-    // Start animation states but DON'T show highlight yet
+    // Start animation states
     setIsSpotlightAnimating(true);
     setIsAnimating(true);
-
-    // Clear current highlight immediately to prevent jumping
-    setHighlightedElement(null);
-    setElementPosition(null);
 
     // Store previous position for transition
     if (elementPosition) {
       setPreviousElementPosition(elementPosition);
     }
 
-    // Find element and handle scrolling/positioning
+    // Find element and start seamless tracking
     const findAndHighlightElement = () => {
       const element = document.querySelector(step.selector);
 
@@ -357,51 +353,68 @@ const JobSeekersPage = () => {
         const rect = element.getBoundingClientRect();
         const viewportHeight = window.innerHeight;
 
-        // Define visible area
+        // Define optimal viewing area
         const topMargin = 120;
         const bottomMargin = 280;
-
         const isElementVisible = rect.top >= topMargin && rect.bottom <= viewportHeight - bottomMargin;
 
+        // IMMEDIATELY attach highlight to element - no waiting!
+        setHighlightedElement(element);
+        setElementPosition(rect);
+
         if (!isElementVisible) {
-          // Element needs scrolling - DON'T show highlight until scroll is complete
+          // Element needs scrolling - enable seamless tracking
           document.body.style.overflow = 'auto';
 
+          // Start real-time position tracking with requestAnimationFrame
+          let animationFrameId: number;
+          let isScrolling = true;
+          let lastScrollTime = Date.now();
+
+          const trackElementDuringScroll = () => {
+            if (!isScrolling) return;
+
+            const currentElement = document.querySelector(step.selector);
+            if (currentElement) {
+              const currentRect = currentElement.getBoundingClientRect();
+
+              // Update highlight position in perfect sync with element
+              setElementPosition(currentRect);
+
+              // Check if element reached optimal position
+              const isNowOptimal = currentRect.top >= topMargin && currentRect.bottom <= viewportHeight - bottomMargin;
+              const currentTime = Date.now();
+
+              // Stop tracking when element is in good position and scrolling has settled
+              if (isNowOptimal && (currentTime - lastScrollTime > 50)) {
+                isScrolling = false;
+                document.body.style.overflow = 'hidden';
+
+                setIsAnimating(false);
+                setIsSpotlightAnimating(false);
+                cancelAnimationFrame(animationFrameId);
+              } else {
+                lastScrollTime = currentTime;
+                animationFrameId = requestAnimationFrame(trackElementDuringScroll);
+              }
+            }
+          };
+
+          // Start smooth scroll
           element.scrollIntoView({
             behavior: 'smooth',
             block: 'center',
             inline: 'nearest'
           });
 
-          // Wait for scroll to complete, then show highlight
-          setTimeout(() => {
-            document.body.style.overflow = 'hidden';
+          // Begin seamless position tracking immediately
+          animationFrameId = requestAnimationFrame(trackElementDuringScroll);
 
-            // Get final position after scroll
-            const scrolledElement = document.querySelector(step.selector);
-            if (scrolledElement) {
-              const finalRect = scrolledElement.getBoundingClientRect();
-
-              // NOW show the highlight at the correct position
-              setHighlightedElement(scrolledElement);
-              setElementPosition(finalRect);
-
-              // End animation states
-              setTimeout(() => {
-                setIsAnimating(false);
-                setIsSpotlightAnimating(false);
-              }, 100);
-            }
-          }, 600); // Wait longer for smooth scroll to fully complete
         } else {
-          // Element is visible - show highlight immediately
-          setHighlightedElement(element);
-          setElementPosition(rect);
-
-          setTimeout(() => {
-            setIsAnimating(false);
-            setIsSpotlightAnimating(false);
-          }, 100);
+          // Element already visible - finish immediately
+          document.body.style.overflow = 'hidden';
+          setIsAnimating(false);
+          setIsSpotlightAnimating(false);
         }
       } else {
         console.warn(`Tutorial element not found: ${step.selector}`);
@@ -411,8 +424,8 @@ const JobSeekersPage = () => {
       }
     };
 
-    // Wait longer for form step changes to fully render before finding element
-    setTimeout(findAndHighlightElement, 100);
+    // Small delay for form step changes to render
+    setTimeout(findAndHighlightElement, 50);
   };
 
   // Calculate optimal position for instruction panel
