@@ -224,10 +224,11 @@ const removeAuthToken = (): void => {
 };
 
 const apiRequest = async <T>(
-  endpoint: string, 
+  endpoint: string,
   options: RequestInit & { isFormData?: boolean } = {}
 ): Promise<ApiResponse<T>> => {
   const url = `${API_BASE_URL}${endpoint}`;
+  console.log('🔍 API Debug:', { API_BASE_URL, endpoint, url, envVar: import.meta.env.VITE_API_URL });
   const token = getAuthToken();
   
   const headers: Record<string, string> = {
