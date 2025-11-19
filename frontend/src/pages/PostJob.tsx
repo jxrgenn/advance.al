@@ -1,51 +1,151 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, X, Loader2, Play, CheckCircle, ArrowLeft, ArrowRight } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import {
+  Container,
+  Title,
+  Text,
+  Button,
+  Paper,
+  TextInput,
+  Select,
+  Textarea,
+  Group,
+  Stack,
+  Card,
+  Grid,
+  ActionIcon,
+  Badge,
+  Center,
+  Box,
+  SimpleGrid,
+  ThemeIcon,
+  Stepper,
+} from '@mantine/core';
+import { useForm } from '@mantine/form';
+import { notifications } from '@mantine/notifications';
+import { Plus, X, Loader2, Play, CheckCircle, ArrowLeft, ArrowRight, Briefcase, HelpCircle, Lightbulb } from "lucide-react";
 import { locationsApi, Location, jobsApi, isAuthenticated, getUserType } from "@/lib/api";
 
 const PostJob = () => {
   const navigate = useNavigate();
-  const { toast } = useToast();
 
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(0); // Changed to 0-based indexing to match tutorial system
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(false);
   const [requirements, setRequirements] = useState<string[]>(['']);
   const [benefits, setBenefits] = useState<string[]>(['']);
   const [tags, setTags] = useState<string[]>(['']);
 
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    category: '',
-    jobType: '',
-    experienceLevel: '',
-    city: '',
-    region: '',
-    salaryMin: '',
-    salaryMax: '',
-    salaryCurrency: 'EUR',
-    showSalary: false,
-    applicationMethod: 'one_click',
-    expiresAt: ''
+  // Tutorial system state - same as other pages
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const [highlightedElement, setHighlightedElement] = useState<Element | null>(null);
+  const [elementPosition, setElementPosition] = useState<DOMRect | null>(null);
+  const [previousElementPosition, setPreviousElementPosition] = useState<DOMRect | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [isSpotlightAnimating, setIsSpotlightAnimating] = useState(false);
+  const [lastClickTime, setLastClickTime] = useState(0);
+  const [isScrollLocked, setIsScrollLocked] = useState(false);
+
+  // Mantine form for job posting
+  const jobForm = useForm({
+    initialValues: {
+      title: '',
+      description: '',
+      category: '',
+      jobType: '',
+      experienceLevel: '',
+      city: '',
+      region: '',
+      salaryMin: '',
+      salaryMax: '',
+      salaryCurrency: 'EUR',
+      showSalary: false,
+      applicationMethod: 'one_click',
+      expiresAt: ''
+    },
+    validate: (values) => {
+      const errors: any = {};
+
+      // Step 0: Basic Information validation
+      if (currentStep === 0) {
+        if (!values.title) errors.title = 'Titulli i punës është i detyrueshëm';
+        if (!values.description) errors.description = 'Përshkrimi i punës është i detyrueshëm';
+        if (!values.category) errors.category = 'Kategoria është e detyrueshme';
+        if (!values.jobType) errors.jobType = 'Lloji i punës është i detyrueshëm';
+      }
+
+      // Step 1: Location and Salary validation
+      if (currentStep === 1) {
+        if (!values.city) errors.city = 'Qyteti është i detyrueshëm';
+      }
+
+      // Step 2: Requirements validation
+      if (currentStep === 2) {
+        if (!values.expiresAt) errors.expiresAt = 'Afati i aplikimit është i detyrueshëm';
+        if (requirements.every(req => !req.trim())) {
+          errors.requirements = 'Shto të paktën një kërkesë për punën';
+        }
+      }
+
+      return errors;
+    },
   });
+
+  // Steps configuration for stepper
+  const steps = [
+    { label: 'Informacioni Bazë', icon: Briefcase },
+    { label: 'Lokacioni dhe Paga', icon: ArrowRight },
+    { label: 'Kërkesat dhe Përfitimet', icon: CheckCircle }
+  ];
+
+  // Tutorial steps configuration for job posting form
+  const tutorialSteps = [
+    {
+      selector: '[data-tutorial="title"]',
+      title: "Titulli i Punës",
+      content: "Shkruani një titull të qartë dhe tërheqës për pozicionin që ofron kompania juaj. P.sh: 'Zhvillues Full Stack' ose 'Marketing Manager'.",
+      position: "bottom",
+      formStep: 0
+    },
+    {
+      selector: '[data-tutorial="description"]',
+      title: "Përshkrimi i Punës",
+      content: "Përshkruani detajet e punës, përgjegjësitë dhe mjedisit të punës. Jini specifikë dhe profesionalë.",
+      position: "bottom",
+      formStep: 0
+    },
+    {
+      selector: '[data-tutorial="category"]',
+      title: "Kategoria dhe Lloji",
+      content: "Zgjidhni kategorinë dhe llojin e punës për të ndihmuar kandidatët ta gjejnë më lehtë në kërkime.",
+      position: "bottom",
+      formStep: 0
+    },
+    {
+      selector: '[data-tutorial="location"]',
+      title: "Vendndodhja dhe Paga",
+      content: "Specifikoni qytetin ku ndodhet puna. Paga është opsionale - formati: 50000-80000 EUR.",
+      position: "bottom",
+      formStep: 1
+    },
+    {
+      selector: '[data-tutorial="requirements"]',
+      title: "Kërkesat dhe Përfitimet",
+      content: "Listoni kërkesat për kandidatët dhe përfitimet që ofron kompania juaj. Jini të qartë dhe të saktë.",
+      position: "bottom",
+      formStep: 2
+    }
+  ];
 
   useEffect(() => {
     // Check authentication first
     if (!isAuthenticated() || getUserType() !== 'employer') {
-      toast({
+      notifications.show({
         title: "Gabim",
-        description: "Duhet të jeni të regjistruar si punëdhënës për të postuar pune.",
-        variant: "destructive"
+        message: "Duhet të jeni të regjistruar si punëdhënës për të postuar pune.",
+        color: "red"
       });
       navigate('/employers');
       return;
@@ -55,8 +155,8 @@ const PostJob = () => {
     // Set default expiry date (30 days from now)
     const expiryDate = new Date();
     expiryDate.setDate(expiryDate.getDate() + 30);
-    setFormData(prev => ({ ...prev, expiresAt: expiryDate.toISOString().split('T')[0] }));
-  }, [navigate, toast]);
+    jobForm.setFieldValue('expiresAt', expiryDate.toISOString().split('T')[0]);
+  }, [navigate]);
 
   const loadLocations = async () => {
     try {
@@ -69,12 +169,13 @@ const PostJob = () => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    console.log('🚀 PostJob form submitted to jobs API!', formData);
+  const handleSubmit = async () => {
+    if (currentStep !== 2) return;
 
     try {
       setLoading(true);
+      const values = jobForm.values;
+      console.log('🚀 PostJob form submitted to jobs API!', values);
 
       // Map form values to backend enum values
       const mapJobType = (type: string) => {
@@ -123,26 +224,26 @@ const PostJob = () => {
 
       // Prepare job data for the API
       const jobData = {
-        title: formData.title,
-        description: formData.description,
-        category: mapCategory(formData.category),
-        jobType: mapJobType(formData.jobType),
-        seniority: mapSeniority(formData.experienceLevel),
+        title: values.title,
+        description: values.description,
+        category: mapCategory(values.category),
+        jobType: mapJobType(values.jobType),
+        seniority: mapSeniority(values.experienceLevel),
         location: {
-          city: formData.city,
-          region: formData.region || '',
-          remote: formData.jobType === 'Remote',
-          remoteType: formData.jobType === 'Remote' ? 'full' : 'none'
+          city: values.city,
+          region: values.region || '',
+          remote: values.jobType === 'Remote',
+          remoteType: values.jobType === 'Remote' ? 'full' : 'none'
         },
-        applicationMethod: mapApplicationMethod(formData.applicationMethod),
+        applicationMethod: mapApplicationMethod(values.applicationMethod),
         requirements: requirements.filter(r => r.trim()),
         benefits: benefits.filter(b => b.trim()),
         tags: tags.filter(t => t.trim()),
-        salary: (formData.salaryMin && formData.salaryMax) ? {
-          min: parseInt(formData.salaryMin),
-          max: parseInt(formData.salaryMax),
-          currency: formData.salaryCurrency,
-          showPublic: formData.showSalary,
+        salary: (values.salaryMin && values.salaryMax) ? {
+          min: parseInt(values.salaryMin),
+          max: parseInt(values.salaryMax),
+          currency: values.salaryCurrency,
+          showPublic: values.showSalary,
           negotiable: false
         } : undefined
       };
@@ -152,39 +253,27 @@ const PostJob = () => {
       const response = await jobsApi.createJob(jobData);
 
       if (response.success) {
-        toast({
+        notifications.show({
           title: "Puna u postua!",
-          description: "Puna juaj u postua me sukses dhe është tani e dukshme për kandidatët.",
+          message: "Puna juaj u postua me sukses dhe është tani e dukshme për kandidatët.",
+          color: "green"
         });
 
         // Reset form
-        setFormData({
-          title: '',
-          description: '',
-          category: '',
-          jobType: '',
-          experienceLevel: '',
-          city: '',
-          region: '',
-          salaryMin: '',
-          salaryMax: '',
-          salaryCurrency: 'EUR',
-          showSalary: false,
-          applicationMethod: 'one_click',
-          expiresAt: ''
-        });
+        jobForm.reset();
         setRequirements(['']);
         setBenefits(['']);
         setTags(['']);
+        setCurrentStep(0);
 
         // Set new expiry date
         const expiryDate = new Date();
         expiryDate.setDate(expiryDate.getDate() + 30);
-        setFormData(prev => ({ ...prev, expiresAt: expiryDate.toISOString().split('T')[0] }));
+        jobForm.setFieldValue('expiresAt', expiryDate.toISOString().split('T')[0]);
 
-        // Redirect to home page after successful submission
+        // Redirect to employer dashboard after successful submission
         setTimeout(() => {
-          navigate('/');
+          navigate('/employer-dashboard');
         }, 2000);
 
       } else {
@@ -203,10 +292,10 @@ const PostJob = () => {
         console.error('❌ Validation errors:', error.response.errors);
       }
 
-      toast({
+      notifications.show({
         title: "Gabim",
-        description: errorMessage,
-        variant: "destructive"
+        message: errorMessage,
+        color: "red"
       });
     } finally {
       setLoading(false);
@@ -243,484 +332,731 @@ const PostJob = () => {
     }
   };
 
-  // Step navigation functions
-  const handleNext = () => {
-    if (currentStep < 3) {
+  // Step navigation functions (updated for 0-based indexing)
+  const handleNextStep = () => {
+    const errors = jobForm.validate();
+    if (Object.keys(errors.errors).length === 0 && currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
     }
   };
 
-  const handlePrevious = () => {
-    if (currentStep > 1) {
+  const handlePrevStep = () => {
+    if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
     }
   };
 
-  // Validation for each step
-  const validateStep = (step: number): boolean => {
-    switch (step) {
-      case 1:
-        return !!formData.title && !!formData.description && !!formData.category && !!formData.jobType;
-      case 2:
-        return !!formData.city;
-      case 3:
-        return !!formData.expiresAt && requirements.some(req => req.trim() !== '');
-      default:
-        return true;
-    }
+  // Tutorial management functions (copied from JobSeekersPage)
+  const startTutorial = () => {
+    setShowTutorial(true);
+    setTutorialStep(0);
+    setIsScrollLocked(true);
+    // Lock scroll on body
+    document.body.style.overflow = 'hidden';
+    highlightElement(0);
   };
 
-  // Validate all steps before final submission
-  const validateAllSteps = (): boolean => {
-    return validateStep(1) && validateStep(2) && validateStep(3);
-  };
+  const nextTutorialStep = () => {
+    const now = Date.now();
+    if (now - lastClickTime < 150) return; // Debounce 150ms
+    setLastClickTime(now);
 
-  const handleStepNavigation = (direction: 'next' | 'previous') => {
-    if (direction === 'next') {
-      if (validateStep(currentStep)) {
-        handleNext();
-      } else {
-        toast({
-          title: "Gabim",
-          description: "Ju lutemi plotësoni të gjitha fushat e kërkuara.",
-          variant: "destructive"
-        });
-      }
+    if (tutorialStep < tutorialSteps.length - 1) {
+      const newStep = tutorialStep + 1;
+      setTutorialStep(newStep);
+      highlightElement(newStep);
     } else {
-      handlePrevious();
+      closeTutorial();
     }
   };
 
-  return (
-    <div className="min-h-screen bg-background">
-      <Navigation />
+  const previousTutorialStep = () => {
+    const now = Date.now();
+    if (now - lastClickTime < 150) return; // Debounce 150ms
+    setLastClickTime(now);
 
-      {/* Hero Section with Video Tutorial */}
-      <section className="bg-gradient-to-br from-primary/10 via-primary/5 to-background py-8">
-        <div className="container mx-auto px-4">
-          <div className="text-center space-y-4 mb-8">
-            <h1 className="text-3xl md:text-4xl font-bold text-foreground">
-              Posto Punë të Re
-              <span className="text-primary block">në advance.al</span>
-            </h1>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Plotëso formularin në 3 hapa të thjeshtë dhe gjej kandidatin perfekt për kompaninë tënde.
-            </p>
-          </div>
+    if (tutorialStep > 0) {
+      const newStep = tutorialStep - 1;
+      setTutorialStep(newStep);
+      highlightElement(newStep);
+    }
+  };
 
-          {/* Video Tutorial Section */}
-          <div className="max-w-4xl mx-auto mb-8">
-            <div className="text-center mb-6">
-              <h2 className="text-2xl font-bold mb-2">
-                Si të Postosh një Punë në advance.al
-              </h2>
-              <p className="text-muted-foreground">Shiko video tutorialin për të mësuar procesin (2 minuta)</p>
-            </div>
+  const closeTutorial = () => {
+    setShowTutorial(false);
+    setTutorialStep(0);
+    setHighlightedElement(null);
+    setElementPosition(null);
+    setPreviousElementPosition(null);
+    setIsAnimating(false);
+    setIsSpotlightAnimating(false);
+    setLastClickTime(0);
+    setIsScrollLocked(false);
+    // Unlock scroll on body
+    document.body.style.overflow = 'auto';
+  };
 
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <div className="relative w-full h-96 bg-gray-100 rounded-lg flex items-center justify-center">
-                <div className="text-center">
-                  <div className="w-20 h-20 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
-                    <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M8 5v14l11-7z"/>
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-2">Video Tutorial</h3>
-                  <p className="text-gray-600 mb-4">Si të postosh punë në advance.al - Proces i thjeshtë në 3 hapa</p>
-                  <Button
-                    onClick={() => window.open('https://www.youtube.com/watch?v=dQw4w9WgXcQ', '_blank')}
-                    className="bg-primary hover:bg-primary/90"
-                  >
-                    <Play className="mr-2 h-4 w-4" />
-                    Shiko Tutorialin (2 min)
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+  // Tutorial element tracking and highlighting
+  useEffect(() => {
+    if (!highlightedElement || !showTutorial) return;
 
-      <div className="container py-8">
-        <div className="max-w-4xl mx-auto">
-          {/* Progress Indicator */}
-          <div className="flex items-center justify-center mb-8">
-            {[1, 2, 3].map((step) => (
-              <div key={step} className="flex items-center">
-                <div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold border-2 ${
-                    step === currentStep
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : step < currentStep
-                      ? 'bg-green-600 text-white border-green-600'
-                      : 'bg-background text-muted-foreground border-muted-foreground/30'
-                  }`}
-                >
-                  {step < currentStep ? (
-                    <CheckCircle className="h-6 w-6" />
-                  ) : (
-                    step
-                  )}
-                </div>
-                {step < 3 && (
-                  <div
-                    className={`w-16 h-1 mx-2 ${
-                      step < currentStep ? 'bg-green-600' : 'bg-muted-foreground/30'
-                    }`}
+    const updateElementPosition = () => {
+      if (highlightedElement) {
+        const rect = highlightedElement.getBoundingClientRect();
+        setElementPosition(rect);
+      }
+    };
+
+    updateElementPosition();
+
+    const handleResize = () => {
+      updateElementPosition();
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [highlightedElement, showTutorial]);
+
+  // Cleanup scroll lock on component unmount
+  useEffect(() => {
+    return () => {
+      document.body.style.overflow = 'auto';
+    };
+  }, []);
+
+  const highlightElement = (stepIndex: number) => {
+    const step = tutorialSteps[stepIndex];
+    if (!step) return;
+
+    setIsSpotlightAnimating(true);
+    setIsAnimating(true);
+
+    if (elementPosition) {
+      setPreviousElementPosition(elementPosition);
+    }
+
+    // Auto-switch form step if needed
+    if (step.formStep !== undefined && step.formStep !== currentStep) {
+      setCurrentStep(step.formStep);
+    }
+
+    const findAndHighlightElement = () => {
+      const element = document.querySelector(step.selector);
+
+      if (element) {
+        const rect = element.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
+
+        const topMargin = 100;
+        const bottomMargin = 250;
+
+        const isElementVisible = rect.top >= topMargin && rect.bottom <= viewportHeight - bottomMargin;
+
+        if (!isElementVisible) {
+          document.body.style.overflow = 'auto';
+
+          element.scrollIntoView({
+            behavior: 'instant',
+            block: 'center',
+            inline: 'nearest'
+          });
+
+          setTimeout(() => {
+            document.body.style.overflow = 'hidden';
+
+            const scrolledElement = document.querySelector(step.selector);
+            if (scrolledElement) {
+              const newRect = scrolledElement.getBoundingClientRect();
+              setHighlightedElement(scrolledElement);
+              setElementPosition(newRect);
+            }
+
+            setTimeout(() => {
+              setIsAnimating(false);
+              setIsSpotlightAnimating(false);
+            }, 100);
+          }, 150);
+        } else {
+          setHighlightedElement(element);
+          setElementPosition(rect);
+
+          setTimeout(() => {
+            setIsAnimating(false);
+            setIsSpotlightAnimating(false);
+          }, 100);
+        }
+      } else {
+        console.warn(`Tutorial element not found: ${step.selector}`);
+        setHighlightedElement(null);
+        setIsAnimating(false);
+        setIsSpotlightAnimating(false);
+      }
+    };
+
+    // Wait longer if we're switching form steps to allow for re-rendering
+    const delay = step.formStep !== undefined && step.formStep !== currentStep ? 100 : 25;
+    setTimeout(findAndHighlightElement, delay);
+  };
+
+  // Render step content for the form
+  const renderStepContent = () => {
+    switch (currentStep) {
+      case 0:
+        return (
+          <Stack gap="md">
+            <Box>
+              <Title order={3} mb="xs">Informacioni Bazë të Punës</Title>
+              <Text size="sm" c="dimmed">Plotëso të dhënat kryesore për pozicionin</Text>
+            </Box>
+
+            <TextInput
+              label="Titulli i Punës"
+              placeholder="p.sh. Zhvillues Full Stack"
+              {...jobForm.getInputProps('title')}
+              data-tutorial="title"
+              description="Shkruani një titull të qartë që përshkruan pozicionin"
+              required
+            />
+
+            <Textarea
+              label="Përshkrimi i Punës"
+              placeholder="Shkruaj një përshkrim të detajuar të punës, përgjegjësive dhe mjedisit të punës..."
+              {...jobForm.getInputProps('description')}
+              rows={6}
+              data-tutorial="description"
+              description="Përshkruani qartësisht përgjegjësitë, kërkesat dhe benefitet e pozicionit"
+              required
+            />
+
+            <SimpleGrid cols={2} spacing="md" data-tutorial="category">
+              <Select
+                label="Kategoria"
+                placeholder="Zgjidhni kategorinë"
+                {...jobForm.getInputProps('category')}
+                data={[
+                  { value: 'teknologji', label: 'Teknologji' },
+                  { value: 'marketing', label: 'Marketing' },
+                  { value: 'financat', label: 'Financa' },
+                  { value: 'shitjet', label: 'Shitjet' },
+                  { value: 'hr', label: 'Burime Njerëzore' },
+                  { value: 'dizajni', label: 'Dizajn' },
+                  { value: 'tjeter', label: 'Tjetër' }
+                ]}
+                required
+              />
+              <Select
+                label="Lloji i Punës"
+                placeholder="Zgjidhni llojin"
+                {...jobForm.getInputProps('jobType')}
+                data={[
+                  { value: 'Full-time', label: 'Full-time' },
+                  { value: 'Part-time', label: 'Part-time' },
+                  { value: 'Contract', label: 'Kontratë' },
+                  { value: 'Internship', label: 'Praktikë' },
+                  { value: 'Remote', label: 'Remote' }
+                ]}
+                required
+              />
+            </SimpleGrid>
+
+            <Select
+              label="Niveli i Përvojës"
+              placeholder="Zgjidhni nivelin e përvojës"
+              {...jobForm.getInputProps('experienceLevel')}
+              data={[
+                { value: 'entry', label: 'Entry Level' },
+                { value: 'junior', label: 'Junior' },
+                { value: 'mid', label: 'Mid Level' },
+                { value: 'senior', label: 'Senior' },
+                { value: 'lead', label: 'Lead/Manager' }
+              ]}
+            />
+          </Stack>
+        );
+      case 1:
+        return (
+          <Stack gap="md">
+            <Box>
+              <Title order={3} mb="xs">Vendndodhja dhe Paga</Title>
+              <Text size="sm" c="dimmed">Specifikoni ku është puna dhe sa është paga</Text>
+            </Box>
+
+            <Select
+              label="Qyteti"
+              placeholder="Zgjidhni qytetin"
+              {...jobForm.getInputProps('city')}
+              data={locations.map(location => ({ value: location.city, label: location.city }))}
+              data-tutorial="location"
+              required
+              onChange={(value) => {
+                const location = locations.find(l => l.city === value);
+                jobForm.setFieldValue('city', value || '');
+                jobForm.setFieldValue('region', location?.region || '');
+              }}
+            />
+
+            <Stack gap="md">
+              <Text fw={500}>Paga (Opsionale)</Text>
+              <SimpleGrid cols={3} spacing="md">
+                <TextInput
+                  label="Paga Minimale"
+                  placeholder="50000"
+                  type="number"
+                  {...jobForm.getInputProps('salaryMin')}
+                  description="Paga në vit (p.sh: 50000)"
+                />
+                <TextInput
+                  label="Paga Maksimale"
+                  placeholder="80000"
+                  type="number"
+                  {...jobForm.getInputProps('salaryMax')}
+                  description="Paga maksimale në vit"
+                />
+                <Select
+                  label="Monedha"
+                  {...jobForm.getInputProps('salaryCurrency')}
+                  data={[
+                    { value: 'EUR', label: 'EUR' },
+                    { value: 'USD', label: 'USD' },
+                    { value: 'ALL', label: 'ALL (Lek)' }
+                  ]}
+                />
+              </SimpleGrid>
+              {/* <Checkbox
+                label="Shfaq pagën publikisht në postim"
+                {...jobForm.getInputProps('showSalary', { type: 'checkbox' })}
+              /> */}
+            </Stack>
+          </Stack>
+        );
+      case 2:
+        return (
+          <Stack gap="md">
+            <Box>
+              <Title order={3} mb="xs">Kërkesat dhe Përfitimet</Title>
+              <Text size="sm" c="dimmed">Çfarë kërkon dhe çfarë ofron kompania</Text>
+            </Box>
+
+            <Box data-tutorial="requirements">
+              <Text fw={500} mb="xs">Kërkesat e Punës</Text>
+              <Text size="sm" c="dimmed" mb="md">Shto kërkesat për pozicionin (përvoja, aftësi, etj.)</Text>
+              {requirements.map((req, index) => (
+                <Group key={index} mb="xs">
+                  <TextInput
+                    style={{ flex: 1 }}
+                    value={req}
+                    onChange={(e) => updateField('requirements', index, e.target.value)}
+                    placeholder="p.sh. 2+ vjet përvojë me React"
                   />
-                )}
+                  <ActionIcon
+                    variant="outline"
+                    color="red"
+                    onClick={() => removeField('requirements', index)}
+                  >
+                    <X size={16} />
+                  </ActionIcon>
+                </Group>
+              ))}
+              <Button
+                variant="outline"
+                leftSection={<Plus size={16} />}
+                onClick={() => addField('requirements')}
+                size="sm"
+              >
+                Shto Kërkesë
+              </Button>
+            </Box>
+
+            <Box>
+              <Text fw={500} mb="xs">Përfitimet e Punës</Text>
+              <Text size="sm" c="dimmed" mb="md">Çfarë përfitimesh ofron kompania (sigurim, trajnime, etj.)</Text>
+              {benefits.map((benefit, index) => (
+                <Group key={index} mb="xs">
+                  <TextInput
+                    style={{ flex: 1 }}
+                    value={benefit}
+                    onChange={(e) => updateField('benefits', index, e.target.value)}
+                    placeholder="p.sh. Sigurim shëndetësor i plotë"
+                  />
+                  <ActionIcon
+                    variant="outline"
+                    color="red"
+                    onClick={() => removeField('benefits', index)}
+                  >
+                    <X size={16} />
+                  </ActionIcon>
+                </Group>
+              ))}
+              <Button
+                variant="outline"
+                leftSection={<Plus size={16} />}
+                onClick={() => addField('benefits')}
+                size="sm"
+              >
+                Shto Përfitim
+              </Button>
+            </Box>
+
+            <Box>
+              <Text fw={500} mb="xs">Tags (Opsionale)</Text>
+              <Text size="sm" c="dimmed" mb="md">Fjalë kyçe për t'u ndihmuar kandidatëve të gjejnë punën</Text>
+              {tags.map((tag, index) => (
+                <Group key={index} mb="xs">
+                  <TextInput
+                    style={{ flex: 1 }}
+                    value={tag}
+                    onChange={(e) => updateField('tags', index, e.target.value)}
+                    placeholder="p.sh. JavaScript, React, MongoDB"
+                  />
+                  <ActionIcon
+                    variant="outline"
+                    color="red"
+                    onClick={() => removeField('tags', index)}
+                  >
+                    <X size={16} />
+                  </ActionIcon>
+                </Group>
+              ))}
+              <Button
+                variant="outline"
+                leftSection={<Plus size={16} />}
+                onClick={() => addField('tags')}
+                size="sm"
+              >
+                Shto Tag
+              </Button>
+            </Box>
+
+            <TextInput
+              label="Afati i Aplikimit"
+              type="date"
+              {...jobForm.getInputProps('expiresAt')}
+              description="Zgjidhni datën kur të mbyllet aplikimi për këtë pozicion"
+              required
+            />
+          </Stack>
+        );
+      default:
+        return null;
+    }
+  };
+
+  // Tutorial overlay component (copied from other pages)
+  const TutorialOverlay = () => {
+    if (!showTutorial || tutorialStep >= tutorialSteps.length) return null;
+
+    const currentStepData = tutorialSteps[tutorialStep];
+
+    const getSpotlightCoordinates = () => {
+      const position = elementPosition || previousElementPosition;
+      if (!position) return null;
+
+      const padding = 8;
+      return {
+        left: Math.round(Math.max(0, position.left - padding)),
+        top: Math.round(Math.max(0, position.top - padding)),
+        right: Math.round(Math.min(window.innerWidth, position.right + padding)),
+        bottom: Math.round(Math.min(window.innerHeight, position.bottom + padding))
+      };
+    };
+
+    const spotlightCoords = getSpotlightCoordinates();
+
+    return (
+      <div className="fixed inset-0 z-50 pointer-events-none">
+        <div
+          className="absolute inset-0 bg-black/70"
+          style={{
+            transition: 'clip-path 250ms ease-out',
+            clipPath: spotlightCoords
+              ? `polygon(0% 0%, 0% 100%, ${spotlightCoords.left}px 100%, ${spotlightCoords.left}px ${spotlightCoords.top}px, ${spotlightCoords.right}px ${spotlightCoords.top}px, ${spotlightCoords.right}px ${spotlightCoords.bottom}px, ${spotlightCoords.left}px ${spotlightCoords.bottom}px, ${spotlightCoords.left}px 100%, 100% 100%, 100% 0%)`
+              : 'polygon(0% 0%, 0% 100%, 100% 100%, 100% 0%)'
+          }}
+        />
+
+        <div
+          className="absolute border-3 border-yellow-400 rounded-lg shadow-lg shadow-yellow-400/50"
+          style={{
+            transition: 'all 250ms ease-out',
+            left: spotlightCoords?.left || 0,
+            top: spotlightCoords?.top || 0,
+            width: spotlightCoords ? spotlightCoords.right - spotlightCoords.left : 0,
+            height: spotlightCoords ? spotlightCoords.bottom - spotlightCoords.top : 0,
+            pointerEvents: 'none',
+            boxShadow: '0 0 20px rgba(251, 191, 36, 0.5)',
+            opacity: spotlightCoords ? 1 : 0
+          }}
+        />
+
+        <div
+          className="fixed bottom-6 right-6 bg-white rounded-lg shadow-2xl border border-gray-200 pointer-events-auto max-w-sm w-80"
+          style={{
+            maxHeight: '60vh',
+            transition: 'all 200ms ease-out'
+          }}
+        >
+          <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-yellow-50 to-orange-50">
+            <div className="flex items-center gap-2">
+              <div className="p-1 rounded-full bg-yellow-100">
+                <HelpCircle className="h-4 w-4 text-yellow-600" />
               </div>
-            ))}
-          </div>
-
-          {/* Step Titles */}
-          <div className="text-center mb-8">
-            {currentStep === 1 && (
-              <>
-                <h2 className="text-2xl font-bold mb-2">Hapi 1: Informacioni Bazë</h2>
-                <p className="text-muted-foreground">Titulli, përshkrimi dhe detajet kryesore të punës</p>
-              </>
-            )}
-            {currentStep === 2 && (
-              <>
-                <h2 className="text-2xl font-bold mb-2">Hapi 2: Lokacioni dhe Paga</h2>
-                <p className="text-muted-foreground">Ku është puna dhe sa është paga</p>
-              </>
-            )}
-            {currentStep === 3 && (
-              <>
-                <h2 className="text-2xl font-bold mb-2">Hapi 3: Kërkesat dhe Përfitimet</h2>
-                <p className="text-muted-foreground">Çfarë kërkon dhe çfarë ofron kompania</p>
-              </>
-            )}
-          </div>
-
-          <div className="space-y-6">
-            {/* Step 1: Basic Information */}
-            {currentStep === 1 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-2xl font-bold">Informacioni Bazë të Punës</CardTitle>
-                  <p className="text-muted-foreground text-lg">Plotëso të dhënat kryesore për punën</p>
-                </CardHeader>
-                <CardContent className="space-y-8">
-                  <div>
-                    <Label htmlFor="title" className="text-xl font-semibold">Titulli i Punës *</Label>
-                    <Input
-                      id="title"
-                      value={formData.title}
-                      onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                      placeholder="p.sh. Zhvillues Full Stack"
-                      className="mt-3 text-xl p-6 h-16"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="description" className="text-xl font-semibold">Përshkrimi i Punës *</Label>
-                    <Textarea
-                      id="description"
-                      value={formData.description}
-                      onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                      rows={8}
-                      placeholder="Shkruaj një përshkrim të detajuar të punës, përgjegjësive dhe mjedisit të punës..."
-                      className="mt-3 text-lg p-6"
-                      required
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div>
-                      <Label htmlFor="category" className="text-xl font-semibold">Kategoria *</Label>
-                      <Select value={formData.category} onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}>
-                        <SelectTrigger className="mt-3 text-xl p-6 h-16">
-                          <SelectValue placeholder="Zgjidhni kategorinë" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="teknologji" className="text-lg p-4">Teknologji</SelectItem>
-                          <SelectItem value="marketing" className="text-lg p-4">Marketing</SelectItem>
-                          <SelectItem value="financat" className="text-lg p-4">Financa</SelectItem>
-                          <SelectItem value="shitjet" className="text-lg p-4">Shitjet</SelectItem>
-                          <SelectItem value="hr" className="text-lg p-4">Burime Njerëzore</SelectItem>
-                          <SelectItem value="dizajni" className="text-lg p-4">Dizajn</SelectItem>
-                          <SelectItem value="tjeter" className="text-lg p-4">Tjetër</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <Label htmlFor="jobType" className="text-xl font-semibold">Lloji i Punës *</Label>
-                      <Select value={formData.jobType} onValueChange={(value) => setFormData(prev => ({ ...prev, jobType: value }))}>
-                        <SelectTrigger className="mt-3 text-xl p-6 h-16">
-                          <SelectValue placeholder="Zgjidhni llojin" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Full-time" className="text-lg p-4">Full-time</SelectItem>
-                          <SelectItem value="Part-time" className="text-lg p-4">Part-time</SelectItem>
-                          <SelectItem value="Contract" className="text-lg p-4">Kontratë</SelectItem>
-                          <SelectItem value="Internship" className="text-lg p-4">Praktikë</SelectItem>
-                          <SelectItem value="Remote" className="text-lg p-4">Remote</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="experienceLevel" className="text-xl font-semibold">Niveli i Përvojës</Label>
-                    <Select value={formData.experienceLevel} onValueChange={(value) => setFormData(prev => ({ ...prev, experienceLevel: value }))}>
-                      <SelectTrigger className="mt-3 text-xl p-6 h-16">
-                        <SelectValue placeholder="Zgjidhni nivelin e përvojës" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="entry" className="text-lg p-4">Entry Level</SelectItem>
-                        <SelectItem value="junior" className="text-lg p-4">Junior</SelectItem>
-                        <SelectItem value="mid" className="text-lg p-4">Mid Level</SelectItem>
-                        <SelectItem value="senior" className="text-lg p-4">Senior</SelectItem>
-                        <SelectItem value="lead" className="text-lg p-4">Lead/Manager</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Step 2: Location and Salary */}
-            {currentStep === 2 && (
-              <>
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-2xl font-bold">Vendndodhja dhe Paga</CardTitle>
-                    <p className="text-muted-foreground text-lg">Specifikoni ku është puna dhe sa është paga</p>
-                  </CardHeader>
-                  <CardContent className="space-y-8">
-                    <div>
-                      <Label htmlFor="city" className="text-xl font-semibold">Qyteti *</Label>
-                      <Select value={formData.city} onValueChange={(value) => {
-                        const location = locations.find(l => l.city === value);
-                        setFormData(prev => ({
-                          ...prev,
-                          city: value,
-                          region: location?.region || ''
-                        }));
-                      }}>
-                        <SelectTrigger className="mt-3 text-xl p-6 h-16">
-                          <SelectValue placeholder="Zgjidhni qytetin" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {locations.map((location) => (
-                            <SelectItem key={location._id} value={location.city} className="text-lg p-4">
-                              {location.city}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <Label className="text-xl font-semibold">Paga (Opsionale)</Label>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-3">
-                        <div>
-                          <Label htmlFor="salaryMin" className="text-lg">Paga Minimale</Label>
-                          <Input
-                            id="salaryMin"
-                            type="number"
-                            value={formData.salaryMin}
-                            onChange={(e) => setFormData(prev => ({ ...prev, salaryMin: e.target.value }))}
-                            placeholder="50000"
-                            className="text-lg p-4 h-14"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="salaryMax" className="text-lg">Paga Maksimale</Label>
-                          <Input
-                            id="salaryMax"
-                            type="number"
-                            value={formData.salaryMax}
-                            onChange={(e) => setFormData(prev => ({ ...prev, salaryMax: e.target.value }))}
-                            placeholder="80000"
-                            className="text-lg p-4 h-14"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="currency" className="text-lg">Monedha</Label>
-                          <Select value={formData.salaryCurrency} onValueChange={(value) => setFormData(prev => ({ ...prev, salaryCurrency: value }))}>
-                            <SelectTrigger className="text-lg p-4 h-14">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="EUR" className="text-lg p-4">EUR</SelectItem>
-                              <SelectItem value="USD" className="text-lg p-4">USD</SelectItem>
-                              <SelectItem value="ALL" className="text-lg p-4">ALL</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-3 mt-6">
-                        <Checkbox
-                          id="showSalary"
-                          checked={formData.showSalary}
-                          onCheckedChange={(checked) => setFormData(prev => ({ ...prev, showSalary: !!checked }))}
-                          className="w-6 h-6"
-                        />
-                        <Label htmlFor="showSalary" className="text-lg">Shfaq pagën publikisht në postim</Label>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </>
-            )}
-
-            {/* Step 3: Requirements and Benefits */}
-            {currentStep === 3 && (
-              <>
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-2xl font-bold">Kërkesat dhe Përfitimet</CardTitle>
-                    <p className="text-muted-foreground text-lg">Çfarë kërkon dhe çfarë ofron kompania</p>
-                  </CardHeader>
-                  <CardContent className="space-y-8">
-                    <div>
-                      <Label className="text-xl font-semibold">Kërkesat e Punës</Label>
-                      <p className="text-muted-foreground mb-4">Shto kërkesat për pozicionin (përvoja, aftësi, etj.)</p>
-                      {requirements.map((req, index) => (
-                        <div key={index} className="flex gap-3 mb-3">
-                          <Input
-                            value={req}
-                            onChange={(e) => updateField('requirements', index, e.target.value)}
-                            placeholder="p.sh. 2+ vjet përvojë me React"
-                            className="text-lg p-4 h-14"
-                          />
-                          <Button type="button" variant="outline" size="lg" onClick={() => removeField('requirements', index)}>
-                            <X className="h-5 w-5" />
-                          </Button>
-                        </div>
-                      ))}
-                      <Button type="button" variant="outline" onClick={() => addField('requirements')} className="text-lg p-6 h-14">
-                        <Plus className="mr-2 h-5 w-5" />
-                        Shto Kërkesë
-                      </Button>
-                    </div>
-
-                    <div>
-                      <Label className="text-xl font-semibold">Përfitimet e Punës</Label>
-                      <p className="text-muted-foreground mb-4">Çfarë përfitimesh ofron kompania (sigurim, trajnime, etj.)</p>
-                      {benefits.map((benefit, index) => (
-                        <div key={index} className="flex gap-3 mb-3">
-                          <Input
-                            value={benefit}
-                            onChange={(e) => updateField('benefits', index, e.target.value)}
-                            placeholder="p.sh. Sigurim shëndetësor i plotë"
-                            className="text-lg p-4 h-14"
-                          />
-                          <Button type="button" variant="outline" size="lg" onClick={() => removeField('benefits', index)}>
-                            <X className="h-5 w-5" />
-                          </Button>
-                        </div>
-                      ))}
-                      <Button type="button" variant="outline" onClick={() => addField('benefits')} className="text-lg p-6 h-14">
-                        <Plus className="mr-2 h-5 w-5" />
-                        Shto Përfitim
-                      </Button>
-                    </div>
-
-                    <div>
-                      <Label className="text-xl font-semibold">Tags (Opsionale)</Label>
-                      <p className="text-muted-foreground mb-4">Fjalë kyçe për t'u ndihmuar kandidatëve të gjejnë punën</p>
-                      {tags.map((tag, index) => (
-                        <div key={index} className="flex gap-3 mb-3">
-                          <Input
-                            value={tag}
-                            onChange={(e) => updateField('tags', index, e.target.value)}
-                            placeholder="p.sh. JavaScript, React, MongoDB"
-                            className="text-lg p-4 h-14"
-                          />
-                          <Button type="button" variant="outline" size="lg" onClick={() => removeField('tags', index)}>
-                            <X className="h-5 w-5" />
-                          </Button>
-                        </div>
-                      ))}
-                      <Button type="button" variant="outline" onClick={() => addField('tags')} className="text-lg p-6 h-14">
-                        <Plus className="mr-2 h-5 w-5" />
-                        Shto Tag
-                      </Button>
-                    </div>
-
-                    <div>
-                      <Label htmlFor="expiresAt" className="text-xl font-semibold">Afati i Aplikimit *</Label>
-                      <p className="text-muted-foreground mb-3">Deri kur mund të aplikojnë kandidatët</p>
-                      <Input
-                        id="expiresAt"
-                        type="date"
-                        value={formData.expiresAt}
-                        onChange={(e) => setFormData(prev => ({ ...prev, expiresAt: e.target.value }))}
-                        className="text-lg p-4 h-14"
-                        required
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-              </>
-            )}
-
-            {/* Navigation Buttons */}
-            <div className="flex gap-6 mt-8">
-              {currentStep > 1 && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => handleStepNavigation('previous')}
-                  className="flex-1 text-xl p-6 h-16"
-                >
-                  <ArrowLeft className="mr-2 h-6 w-6" />
-                  Kthehu Prapa
-                </Button>
-              )}
-
-              {currentStep < 3 ? (
-                <Button
-                  type="button"
-                  onClick={() => handleStepNavigation('next')}
-                  className="flex-1 text-xl p-6 h-16"
-                >
-                  Vazhdo
-                  <ArrowRight className="ml-2 h-6 w-6" />
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  disabled={loading}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    if (validateAllSteps()) {
-                      handleSubmit(e as any);
-                    } else {
-                      toast({
-                        title: "Gabim",
-                        description: "Ju lutemi plotësoni të gjitha fushat e kërkuara në të gjithë hapat.",
-                        variant: "destructive"
-                      });
-                    }
-                  }}
-                  className="flex-1 text-xl p-6 h-16"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="mr-2 h-6 w-6 animate-spin" />
-                      Duke postuar...
-                    </>
-                  ) : (
-                    <>
-                      Posto Punën
-                      <CheckCircle className="ml-2 h-6 w-6" />
-                    </>
-                  )}
-                </Button>
-              )}
+              <h3 className="font-semibold text-gray-900 text-sm">Tutorial Guide</h3>
             </div>
+            <Button
+              onClick={closeTutorial}
+              variant="ghost"
+              size="sm"
+              className="text-gray-500 hover:text-gray-700 h-8 w-8 p-0"
+              title="Mbyll tutorialin"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="p-4">
+            <div className="mb-4">
+              <h4 className="font-semibold text-gray-900 mb-2 text-sm">{currentStepData.title}</h4>
+              <p className="text-gray-700 text-sm leading-relaxed">
+                {currentStepData.content}
+              </p>
+            </div>
+
+            <div className="mb-4">
+              <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+                <span>Progress</span>
+                <span>{tutorialStep + 1} / {tutorialSteps.length}</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-yellow-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${((tutorialStep + 1) / tutorialSteps.length) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between p-3 border-t border-gray-200 bg-gray-50">
+            <Button
+              onClick={previousTutorialStep}
+              disabled={tutorialStep === 0}
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-1"
+            >
+              ‹ Back
+            </Button>
+
+            <Button
+              onClick={nextTutorialStep}
+              size="sm"
+              className="flex items-center gap-1 bg-yellow-600 hover:bg-yellow-700"
+            >
+              {tutorialStep === tutorialSteps.length - 1 ? (
+                <>
+                  Finish ✓
+                </>
+              ) : (
+                <>
+                  Next ›
+                </>
+              )}
+            </Button>
           </div>
         </div>
       </div>
-    </div>
+    );
+  };
+
+  return (
+    <Box style={{ minHeight: '100vh' }}>
+      <Navigation />
+
+      {/* Tutorial Overlay */}
+      <TutorialOverlay />
+
+      <Container size="lg" py={40}>
+        {/* Header */}
+        <Center mb={30}>
+          <Stack align="center" gap="sm">
+            <ThemeIcon size={40} radius="md" color="blue" variant="light">
+              <Briefcase size={20} />
+            </ThemeIcon>
+            <Title ta="center" size="2.2rem" fw={700} lh={1.1} maw={600} c="dark">
+              Posto punë të re dhe gjej kandidatin ideal
+            </Title>
+            <Text ta="center" size="sm" c="dimmed" maw={400} lh={1.4}>
+              advance.al të ndihmon të gjesh dhe të rekrutosh kandidatë të shkëlqyer për kompaninë tënde.
+            </Text>
+          </Stack>
+        </Center>
+
+        {/* Two Column Layout - matches JobSeekersPage/EmployersPage */}
+        <Grid>
+          <Grid.Col span={{ base: 12, lg: 6 }}>
+            {/* Left: Video Tutorial */}
+            <Stack gap="xl">
+              <Box>
+                <Title order={2} size="2rem" fw={600} mb="md">
+                  Si të Postosh Punë
+                </Title>
+                <Text c="dimmed" size="lg">
+                  Mësoni procesin e postimit të punës në advance.al - vetëm 3 minuta
+                </Text>
+              </Box>
+
+              <Card shadow="sm" padding="0" radius="md" withBorder>
+                <Box
+                  style={{
+                    position: 'relative',
+                    aspectRatio: '16/9',
+                    cursor: 'pointer',
+                    overflow: 'hidden'
+                  }}
+                  onClick={() => window.open('https://www.youtube.com/watch?v=dQw4w9WgXcQ', '_blank')}
+                >
+                  {/* Video Thumbnail */}
+                  <img
+                    src="https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg"
+                    alt="Si të postoni punë në advance.al"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover'
+                    }}
+                  />
+
+                  {/* Play Overlay */}
+                  <Box
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                      transition: 'all 0.3s ease'
+                    }}
+                  >
+                    <ActionIcon
+                      size={60}
+                      radius="xl"
+                      color="white"
+                      variant="filled"
+                      style={{
+                        backgroundColor: 'white',
+                        color: 'black',
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+                      }}
+                    >
+                      <Play size={24} style={{ marginLeft: '4px' }} />
+                    </ActionIcon>
+                  </Box>
+
+                  {/* Duration Badge */}
+                  <Badge
+                    style={{
+                      position: 'absolute',
+                      bottom: 12,
+                      right: 12,
+                      backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                      color: 'white'
+                    }}
+                    size="sm"
+                  >
+                    3:20
+                  </Badge>
+                </Box>
+              </Card>
+            </Stack>
+          </Grid.Col>
+
+          <Grid.Col span={{ base: 12, lg: 6 }}>
+            {/* Right: Multi-step Job Posting Form */}
+            <Stack gap="xl">
+              {/* Tutorial Help Link */}
+              {!showTutorial && (
+                <Center>
+                  <Button
+                    variant="light"
+                    color="gray"
+                    leftSection={<Lightbulb size={16} />}
+                    onClick={startTutorial}
+                    size="sm"
+                  >
+                    Nuk e di si të fillosh? Kliko këtu për ndihmë
+                  </Button>
+                </Center>
+              )}
+
+              <Paper shadow="sm" p="xl" radius="md" withBorder>
+                {/* Header with Step Progress */}
+                <Group mb="xl">
+                  <ThemeIcon size={40} radius="md" color="blue" variant="light">
+                    <Briefcase size={20} />
+                  </ThemeIcon>
+                  <Box style={{ flex: 1 }}>
+                    <Title order={3} fw={600}>Posto Punë të Re</Title>
+                    <Text size="sm" c="dimmed">Plotëso formularin për të postuar punën tënde</Text>
+                  </Box>
+                </Group>
+
+                {/* Step Indicator */}
+                <Stepper active={currentStep} onStepClick={setCurrentStep} mb="xl" size="sm">
+                  {steps.map((step, index) => (
+                    <Stepper.Step
+                      key={index}
+                      label={step.label}
+                      icon={<step.icon size={16} />}
+                      allowStepSelect={currentStep > index}
+                    />
+                  ))}
+                </Stepper>
+
+                {/* Step Content */}
+                {renderStepContent()}
+
+                {/* Navigation Buttons */}
+                <Group justify="space-between" mt="xl">
+                  <Button
+                    variant="subtle"
+                    leftSection={<ArrowLeft size={16} />}
+                    onClick={handlePrevStep}
+                    disabled={currentStep === 0}
+                  >
+                    Kthehu Prapa
+                  </Button>
+
+                  <Group>
+                    {currentStep < steps.length - 1 ? (
+                      <Button
+                        rightSection={<ArrowRight size={16} />}
+                        onClick={handleNextStep}
+                      >
+                        Vazhdo
+                      </Button>
+                    ) : (
+                      <Button
+                        rightSection={<CheckCircle size={16} />}
+                        onClick={handleSubmit}
+                        loading={loading}
+                        color="green"
+                      >
+                        {loading ? 'Duke postuar...' : 'Posto Punën'}
+                      </Button>
+                    )}
+                  </Group>
+                </Group>
+              </Paper>
+            </Stack>
+          </Grid.Col>
+        </Grid>
+      </Container>
+    </Box>
   );
 };
 

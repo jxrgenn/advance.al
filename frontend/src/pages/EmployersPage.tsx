@@ -112,31 +112,43 @@ const EmployersPage = () => {
       selector: '[data-tutorial="firstName"]',
       title: "Emri dhe Mbiemri",
       content: "Shkruani emrin dhe mbiemrin tuaj si do të shfaqen në profilin e kompanisë.",
-      position: "bottom"
+      position: "bottom",
+      formStep: 0
     },
     {
       selector: '[data-tutorial="email"]',
       title: "Email i Kompanisë",
       content: "Përdorni një email të vlefshëm të kompanisë. Do të merrni konfirmim dhe njoftime këtu.",
-      position: "bottom"
+      position: "bottom",
+      formStep: 0
     },
     {
       selector: '[data-tutorial="password"]',
       title: "Fjalëkalimi",
       content: "Krijoni një fjalëkalim të sigurt me të paktën 6 karaktere.",
-      position: "bottom"
+      position: "bottom",
+      formStep: 0
+    },
+    {
+      selector: '[data-tutorial="phone"]',
+      title: "Numri i Telefonit",
+      content: "Formati i pranueshëm: 69 123 4567 ose +355 69 123 4567. Ky numer do të përdoret për kontakt.",
+      position: "bottom",
+      formStep: 0
     },
     {
       selector: '[data-tutorial="companyName"]',
       title: "Emri i Kompanisë",
       content: "Shkruani emrin e plotë të kompanisë suaj si do të shfaqet në postimet e punës.",
-      position: "bottom"
+      position: "bottom",
+      formStep: 1
     },
     {
       selector: '[data-tutorial="companyInfo"]',
       title: "Informacioni i Kompanisë",
-      content: "Zgjidhni madhësinë, industrinë dhe qytetin e kompanisë për të ndihmuar kandidatët.",
-      position: "bottom"
+      content: "Zgjidhni madhësinë dhe qytetin e kompanisë për të ndihmuar kandidatët.",
+      position: "bottom",
+      formStep: 1
     }
   ];
 
@@ -252,6 +264,11 @@ const EmployersPage = () => {
       setPreviousElementPosition(elementPosition);
     }
 
+    // Auto-switch form step if needed
+    if (step.formStep !== undefined && step.formStep !== currentStep) {
+      setCurrentStep(step.formStep);
+    }
+
     const findAndHighlightElement = () => {
       const element = document.querySelector(step.selector);
 
@@ -305,7 +322,9 @@ const EmployersPage = () => {
       }
     };
 
-    setTimeout(findAndHighlightElement, 25);
+    // Wait longer if we're switching form steps to allow for re-rendering
+    const delay = step.formStep !== undefined && step.formStep !== currentStep ? 100 : 25;
+    setTimeout(findAndHighlightElement, delay);
   };
 
   const handleEmployerSubmit = async () => {
@@ -525,6 +544,8 @@ const EmployersPage = () => {
               label="🇦🇱 Telefoni (+355)"
               placeholder="69 123 4567"
               {...employerForm.getInputProps('phone')}
+              data-tutorial="phone"
+              description="Formati: 69 123 4567 ose +355 69 123 4567"
             />
           </Stack>
         );
