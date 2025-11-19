@@ -430,10 +430,15 @@ const PostJob = () => {
     const step = tutorialSteps[stepIndex];
     if (!step) return;
 
-    // Start animation with smoother transitions
+    // Start animation states but DON'T show highlight yet
     setIsSpotlightAnimating(true);
     setIsAnimating(true);
 
+    // Clear current highlight immediately to prevent jumping
+    setHighlightedElement(null);
+    setElementPosition(null);
+
+    // Store previous position for transition
     if (elementPosition) {
       setPreviousElementPosition(elementPosition);
     }
@@ -450,50 +455,51 @@ const PostJob = () => {
         const rect = element.getBoundingClientRect();
         const viewportHeight = window.innerHeight;
 
-        // Define visible area (account for fixed tutorial panel)
+        // Define visible area
         const topMargin = 120;
-        const bottomMargin = 280; // More space for better visibility
+        const bottomMargin = 280;
 
         const isElementVisible = rect.top >= topMargin && rect.bottom <= viewportHeight - bottomMargin;
 
         if (!isElementVisible) {
-          // Element needs scrolling - use smooth scroll for better UX
+          // Element needs scrolling - DON'T show highlight until scroll is complete
           document.body.style.overflow = 'auto';
 
-          // Use smooth scroll behavior for better visual experience
           element.scrollIntoView({
             behavior: 'smooth',
             block: 'center',
             inline: 'nearest'
           });
 
-          // Wait longer for smooth scroll to complete, then re-lock and set position
+          // Wait for scroll to complete, then show highlight
           setTimeout(() => {
             document.body.style.overflow = 'hidden';
 
+            // Get final position after scroll
             const scrolledElement = document.querySelector(step.selector);
             if (scrolledElement) {
-              const newRect = scrolledElement.getBoundingClientRect();
-              setHighlightedElement(scrolledElement);
-              setElementPosition(newRect);
-            }
+              const finalRect = scrolledElement.getBoundingClientRect();
 
-            // End animations with proper timing for smooth transition
-            setTimeout(() => {
-              setIsAnimating(false);
-              setIsSpotlightAnimating(false);
-            }, 200);
-          }, 400); // Wait longer for smooth scroll to complete
+              // NOW show the highlight at the correct position
+              setHighlightedElement(scrolledElement);
+              setElementPosition(finalRect);
+
+              // End animation states
+              setTimeout(() => {
+                setIsAnimating(false);
+                setIsSpotlightAnimating(false);
+              }, 100);
+            }
+          }, 600); // Wait longer for smooth scroll to fully complete
         } else {
-          // Element is already visible, set with smooth transition
+          // Element is visible - show highlight immediately
           setHighlightedElement(element);
           setElementPosition(rect);
 
-          // End animations with proper timing
           setTimeout(() => {
             setIsAnimating(false);
             setIsSpotlightAnimating(false);
-          }, 200);
+          }, 100);
         }
       } else {
         console.warn(`Tutorial element not found: ${step.selector}`);
@@ -503,8 +509,8 @@ const PostJob = () => {
       }
     };
 
-    // Wait longer if we're switching form steps to allow for re-rendering
-    const delay = step.formStep !== undefined && step.formStep !== currentStep ? 150 : 50;
+    // Wait longer for form step changes to fully render before finding element
+    const delay = step.formStep !== undefined && step.formStep !== currentStep ? 250 : 100;
     setTimeout(findAndHighlightElement, delay);
   };
 
