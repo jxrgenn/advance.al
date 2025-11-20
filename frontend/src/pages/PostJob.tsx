@@ -462,12 +462,15 @@ const PostJob = () => {
       setPreviousElementPosition(elementPosition);
     }
 
-    // Auto-switch form step if needed
-    if (step.formStep !== undefined && step.formStep !== currentStep) {
-      setCurrentStep(step.formStep);
-    }
-
     const findAndHighlightElement = () => {
+      // Auto-switch form step if needed BEFORE trying to find element
+      if (step.formStep !== undefined && step.formStep !== currentStep) {
+        setCurrentStep(step.formStep);
+        // Wait longer for React to update DOM completely
+        setTimeout(() => findAndHighlightElement(), 200);
+        return;
+      }
+
       const element = document.querySelector(step.selector);
 
       if (element) {
@@ -532,9 +535,8 @@ const PostJob = () => {
       }
     };
 
-    // Wait for form step changes to render completely
-    const delay = step.formStep !== undefined && step.formStep !== currentStep ? 100 : 50;
-    setTimeout(findAndHighlightElement, delay);
+    // Start the highlighting process immediately
+    findAndHighlightElement();
   };
 
   // Render step content for the form
