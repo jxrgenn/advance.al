@@ -340,25 +340,13 @@ const EmployersPage = () => {
         const topMargin = 100;
         const bottomMargin = 300;
 
-        // Tutorial panel dimensions and position (bottom-6 right-6 = 24px from bottom, 24px from right)
-        const tutorialPanelHeight = 400; // Estimate max height of tutorial panel
-        const tutorialPanelWidth = 320; // w-80 = 320px
+        // Tutorial panel positioned at bottom-6 (24px from bottom) with dynamic height
+        const tutorialPanelHeight = Math.min(400, viewportHeight * 0.6); // max-height: 60vh
         const tutorialPanelBottom = 24; // bottom-6 = 24px
-        const tutorialPanelRight = 24; // right-6 = 24px
+        const panelTopY = viewportHeight - tutorialPanelHeight - tutorialPanelBottom;
 
-        // Calculate tutorial panel bounds
-        const panelTop = viewportHeight - tutorialPanelHeight - tutorialPanelBottom;
-        const panelLeft = window.innerWidth - tutorialPanelWidth - tutorialPanelRight;
-        const panelRight = window.innerWidth - tutorialPanelRight;
-        const panelBottom = viewportHeight - tutorialPanelBottom;
-
-        // Check if element overlaps with tutorial panel area
-        const elementOverlapsTutorialPanel = !(
-          rect.right < panelLeft || // Element is completely to the left of panel
-          rect.left > panelRight || // Element is completely to the right of panel
-          rect.bottom < panelTop || // Element is completely above panel
-          rect.top > panelBottom    // Element is completely below panel
-        );
+        // Simple vertical overlap check: Does any part of the element overlap with tutorial panel height?
+        const elementOverlapsTutorialPanel = rect.bottom > panelTopY;
 
         // More robust visibility check - element should be reasonably centered
         const isElementFullyVisible = rect.top >= topMargin && rect.bottom <= viewportHeight - bottomMargin;
