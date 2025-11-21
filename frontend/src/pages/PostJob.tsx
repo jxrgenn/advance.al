@@ -465,10 +465,21 @@ const PostJob = () => {
     const findAndHighlightElement = () => {
       // Auto-switch form step if needed BEFORE trying to find element
       if (step.formStep !== undefined && step.formStep !== currentStep) {
-        setCurrentStep(step.formStep);
-        // Wait longer for React to update DOM completely
-        setTimeout(() => findAndHighlightElement(), 200);
-        return;
+        // Check if we can legally move to the target step (validate current step first)
+        const errors = jobForm.validate();
+        const hasErrors = Object.keys(errors.errors).length > 0;
+
+        // If there are validation errors preventing step advance, skip the form step change
+        // and just highlight the element on the current step (if it exists)
+        if (hasErrors && step.formStep > currentStep) {
+          console.warn(`Cannot advance to step ${step.formStep} due to validation errors:`, errors.errors);
+          // Try to find element on current step instead
+        } else {
+          setCurrentStep(step.formStep);
+          // Wait for React to update DOM completely
+          setTimeout(() => findAndHighlightElement(), 200);
+          return;
+        }
       }
 
       const element = document.querySelector(step.selector);
@@ -501,15 +512,28 @@ const PostJob = () => {
         setElementPosition(rect);
 
         if (shouldScroll) {
-          // Element needs scrolling - temporarily unlock, use instant scroll, then re-lock
+          // Element needs scrolling - temporarily unlock, use manual scroll calculation
           document.body.style.overflow = 'auto';
 
-          // Use instant scroll to avoid conflicts with locked body
-          element.scrollIntoView({
-            behavior: 'instant', // Use instant to avoid conflicts
-            block: 'center',
-            inline: 'nearest'
+          // Manual scroll calculation - more reliable than scrollIntoView
+          const elementTop = rect.top + window.pageYOffset;
+          const windowHeight = window.innerHeight;
+          const tutorialPanelHeight = Math.min(400, windowHeight * 0.6);
+
+          // Scroll so element is centered, but account for tutorial panel
+          const targetScrollTop = elementTop - (windowHeight - tutorialPanelHeight) / 2;
+
+          console.log('PostJob Tutorial Scroll:', {
+            elementTop,
+            windowHeight,
+            targetScrollTop,
+            currentScroll: window.pageYOffset,
+            shouldScroll,
+            elementOverlapsTutorialPanel
           });
+
+          // Use instant scroll
+          window.scrollTo(0, Math.max(0, targetScrollTop));
 
           // Wait a small moment for scroll to complete, then get new position
           setTimeout(() => {
@@ -524,6 +548,7 @@ const PostJob = () => {
           }, 10);
         } else {
           // Element already in optimal position - just finish
+          console.log('PostJob Tutorial: No scroll needed', { shouldScroll, elementPosition: rect });
           setIsAnimating(false);
           setIsSpotlightAnimating(false);
         }
