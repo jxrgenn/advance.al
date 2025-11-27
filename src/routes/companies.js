@@ -19,11 +19,11 @@ router.get('/', optionalAuth, async (req, res) => {
       sortOrder = 'asc'
     } = req.query;
 
-    // Build query for verified employers
+    // Build query for active employers (temporarily include unverified)
     const matchQuery = {
       userType: 'employer',
       status: 'active',
-      'profile.employerProfile.verified': true,
+      // 'profile.employerProfile.verified': true, // Temporarily disabled to show all employers
       isDeleted: false
     };
 
@@ -102,10 +102,15 @@ router.get('/', optionalAuth, async (req, res) => {
       { $limit: parseInt(limit) }
     ];
 
+    console.log('🏢 Companies query:', JSON.stringify(matchQuery, null, 2));
+    console.log('🔍 Companies pipeline:', JSON.stringify(pipeline, null, 2));
+
     const companies = await User.aggregate(pipeline);
+    console.log('📊 Found companies:', companies.length);
 
     // Get total count for pagination
     const totalCompanies = await User.countDocuments(matchQuery);
+    console.log('📈 Total companies count:', totalCompanies);
     const totalPages = Math.ceil(totalCompanies / parseInt(limit));
 
     // Format response
