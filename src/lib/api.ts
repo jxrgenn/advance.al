@@ -200,6 +200,21 @@ export interface PlatformStats {
   }>;
 }
 
+export interface Company {
+  _id: string;
+  name: string;
+  industry: string;
+  companySize: string;
+  description: string;
+  website?: string;
+  logo?: string;
+  city: string;
+  region: string;
+  activeJobs: number;
+  verified: boolean;
+  joinedAt: string;
+}
+
 // API Helper Functions
 class ApiError extends Error {
   constructor(public response: any, public status: number) {
@@ -706,6 +721,70 @@ export const locationsApi = {
   // Get popular locations
   getPopularLocations: async (limit = 10): Promise<ApiResponse<{ locations: Location[] }>> => {
     return apiRequest<{ locations: Location[] }>(`/locations/popular?limit=${limit}`);
+  }
+};
+
+// Companies API
+export const companiesApi = {
+  // Get all companies with filters
+  getCompanies: async (params: {
+    search?: string;
+    city?: string;
+    industry?: string;
+    page?: number;
+    limit?: number;
+    sortBy?: string;
+    sortOrder?: string;
+  } = {}): Promise<ApiResponse<{
+    companies: Company[];
+    pagination: {
+      currentPage: number;
+      totalPages: number;
+      totalCompanies: number;
+      hasNextPage: boolean;
+      hasPrevPage: boolean;
+    };
+    filters: any;
+  }>> => {
+    const queryParams = new URLSearchParams();
+
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        queryParams.append(key, value.toString());
+      }
+    });
+
+    const endpoint = queryParams.toString() ? `/companies?${queryParams}` : '/companies';
+    return apiRequest<any>(endpoint);
+  },
+
+  // Get single company profile
+  getCompany: async (id: string): Promise<ApiResponse<{ company: any }>> => {
+    return apiRequest<{ company: any }>(`/companies/${id}`);
+  },
+
+  // Get company's jobs
+  getCompanyJobs: async (id: string, params: {
+    status?: string;
+    page?: number;
+    limit?: number;
+    sortBy?: string;
+    sortOrder?: string;
+  } = {}): Promise<ApiResponse<{
+    jobs: Job[];
+    company: any;
+    pagination: any;
+  }>> => {
+    const queryParams = new URLSearchParams();
+
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        queryParams.append(key, value.toString());
+      }
+    });
+
+    const endpoint = queryParams.toString() ? `/companies/${id}/jobs?${queryParams}` : `/companies/${id}/jobs`;
+    return apiRequest<any>(endpoint);
   }
 };
 
