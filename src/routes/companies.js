@@ -8,6 +8,10 @@ const router = express.Router();
 // @desc    Get all companies (employers)
 // @access  Public
 router.get('/', optionalAuth, async (req, res) => {
+  console.log('🚨🚨🚨 COMPANIES ROUTE HIT AT', new Date().toISOString(), '🚨🚨🚨');
+  console.log('📋 Query params:', req.query);
+  console.log('🌐 User Agent:', req.headers['user-agent']);
+  console.log('🔗 Origin:', req.headers.origin);
   try {
     const {
       search = '',
@@ -129,11 +133,13 @@ router.get('/', optionalAuth, async (req, res) => {
       joinedAt: company.createdAt
     }));
 
-    // Force cache invalidation
+    // Force cache invalidation with additional headers
     res.set({
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
       'Pragma': 'no-cache',
-      'Expires': '0'
+      'Expires': '0',
+      'Last-Modified': new Date().toUTCString(),
+      'ETag': `"${Date.now()}"` // Dynamic ETag to prevent 304
     });
 
     res.json({
