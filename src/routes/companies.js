@@ -129,6 +129,13 @@ router.get('/', optionalAuth, async (req, res) => {
       joinedAt: company.createdAt
     }));
 
+    // Force cache invalidation
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
+
     res.json({
       success: true,
       data: {
@@ -145,7 +152,9 @@ router.get('/', optionalAuth, async (req, res) => {
           city,
           industry
         }
-      }
+      },
+      timestamp: new Date().toISOString(), // Cache buster
+      debug: { queryExecuted: true, foundCount: companies.length }
     });
 
   } catch (error) {
