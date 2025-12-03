@@ -233,11 +233,11 @@ const CompaniesPageSimple = () => {
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {filteredCompanies.map((company) => (
               <Link to={`/company/${company._id}`} className="block">
-                <Card className="p-6 hover:border-primary/50 hover:shadow-lg transition-all duration-200 cursor-pointer group">
-                  <CardContent className="p-0">
-                    <div className="flex flex-col items-center text-center space-y-4">
+                <Card className="p-8 hover:border-primary/50 hover:shadow-lg transition-all duration-200 cursor-pointer group h-64">
+                  <CardContent className="p-0 h-full">
+                    <div className="flex flex-col items-center text-center space-y-6 h-full justify-center">
                       {/* Company Logo */}
-                      <div className="w-20 h-20 bg-white border-2 border-border rounded-xl flex items-center justify-center shadow-md group-hover:shadow-lg transition-shadow">
+                      <div className="w-32 h-32 bg-white border-2 border-border rounded-xl flex items-center justify-center shadow-md group-hover:shadow-lg transition-shadow">
                         {company.logo ? (
                           <img
                             src={company.logo}
@@ -256,17 +256,17 @@ const CompaniesPageSimple = () => {
                             }}
                           />
                         ) : null}
-                        <Building className={`building-icon h-12 w-12 text-primary ${company.logo ? 'hidden' : ''}`} />
+                        <Building className={`building-icon h-16 w-16 text-primary ${company.logo ? 'hidden' : ''}`} />
                       </div>
 
                       {/* Company Name */}
-                      <h3 className="text-lg font-bold group-hover:text-primary transition-colors">
+                      <h3 className="text-xl font-bold group-hover:text-primary transition-colors">
                         {company.name}
                       </h3>
 
                       {/* Location */}
-                      <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                        <MapPin className="h-4 w-4" />
+                      <div className="flex items-center justify-center gap-2 text-base text-muted-foreground">
+                        <MapPin className="h-5 w-5" />
                         <span>{company.city}</span>
                       </div>
                     </div>
