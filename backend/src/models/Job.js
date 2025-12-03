@@ -381,8 +381,8 @@ jobSchema.statics.findActive = function(filter = {}) {
 jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
   const query = {
     isDeleted: false,
-    status: 'active',
-    expiresAt: { $gt: new Date() }
+    // status: 'active',  // Temporarily disabled to show all non-deleted jobs
+    // expiresAt: { $gt: new Date() }  // Temporarily disabled to show expired jobs too
   };
 
   // Text search

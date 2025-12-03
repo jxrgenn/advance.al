@@ -87,6 +87,7 @@ const createJobValidation = [
 // @desc    Get all jobs with search and filters
 // @access  Public
 router.get('/', optionalAuth, async (req, res) => {
+  console.log('🚨🚨🚨 JOBS ROUTE HIT AT', new Date().toISOString(), '🚨🚨🚨');
   try {
     const {
       search = '',
@@ -151,6 +152,18 @@ router.get('/', optionalAuth, async (req, res) => {
     if (administrata === 'true') filters.administrata = true;
     if (sezonale === 'true') filters.sezonale = true;
 
+    // DEBUG: Check total jobs in database
+    const allJobsCount = await Job.countDocuments({});
+    const allActiveJobs = await Job.countDocuments({ isDeleted: false });
+    const jobsByStatus = await Job.aggregate([
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]);
+
+    console.log('📊 JOBS DEBUG:');
+    console.log('- Total jobs in DB:', allJobsCount);
+    console.log('- Non-deleted jobs:', allActiveJobs);
+    console.log('- Jobs by status:', jobsByStatus);
+
     // Execute search
     let query = Job.searchJobs(search, filters);
 
@@ -173,18 +186,18 @@ router.get('/', optionalAuth, async (req, res) => {
     // Execute query
     const jobs = await query.exec();
     
-    // Get total count for pagination
+    // Get total count for pagination (temporarily remove restrictive filters)
     const countQuery = {
       isDeleted: false,
-      status: 'active',
-      expiresAt: { $gt: new Date() },
+      // status: 'active',  // Temporarily disabled
+      // expiresAt: { $gt: new Date() },  // Temporarily disabled
       ...(search && { $text: { $search: search } }),
       ...(city && { 'location.city': city }),
       ...(category && { category }),
       ...(jobType && { jobType }),
       ...(company && mongoose.Types.ObjectId.isValid(company) && { employerId: company }),
       ...(diaspora === 'true' && { 'platformCategories.diaspora': true }),
-      ...(ngaShtepια === 'true' && { 'platformCategories.ngaShtepια': true }),
+      ...(ngaShtepια === 'true' && { 'platformCategories.ngaShtepία': true }),
       ...(partTime === 'true' && { 'platformCategories.partTime': true }),
       ...(administrata === 'true' && { 'platformCategories.administrata': true }),
       ...(sezonale === 'true' && { 'platformCategories.sezonale': true })
