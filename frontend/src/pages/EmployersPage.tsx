@@ -175,9 +175,9 @@ const EmployersPage = () => {
   ];
 
   useEffect(() => {
-    // If already authenticated, redirect to dashboard
+    // If already authenticated, redirect to employer dashboard
     if (isAuthenticated && user?.userType === 'employer') {
-      navigate('/dashboard');
+      navigate('/employer-dashboard');
     }
   }, [isAuthenticated, user, navigate]);
 
@@ -455,7 +455,7 @@ const EmployersPage = () => {
           message: "Llogaria juaj u krijua me sukses! Ju jeni gati të filloni punësimin.",
           color: "green"
         });
-        navigate('/dashboard');
+        navigate('/employer-dashboard');
       }
     } catch (error: any) {
       notifications.show({

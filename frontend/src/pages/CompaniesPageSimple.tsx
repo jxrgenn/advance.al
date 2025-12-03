@@ -232,85 +232,47 @@ const CompaniesPageSimple = () => {
               </div>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {filteredCompanies.map((company) => (
-              <Card key={company._id} className="p-8 hover:border-primary/50 hover:shadow-lg transition-all duration-200 cursor-pointer group">
-                <CardContent className="p-0">
-                  {/* Logo Hero Section - Main Focus */}
-                  <div className="flex flex-col items-center text-center space-y-6">
-
-                    {/* Large Company Logo */}
-                    <div className="w-32 h-32 bg-white border-2 border-border rounded-xl flex items-center justify-center shadow-md group-hover:shadow-lg transition-shadow">
-                      {company.logo ? (
-                        <img
-                          src={company.logo}
-                          alt={`${company.name} logo`}
-                          className="max-w-full max-h-full object-contain rounded-lg"
-                          onError={(e) => {
-                            console.log('Image failed to load:', company.logo);
-                            // Fallback to Building icon if image fails to load
-                            const target = e.target as HTMLImageElement;
-                            const container = target.parentElement;
-                            target.style.display = 'none';
-                            const buildingIcon = container?.querySelector('.building-icon');
-                            if (buildingIcon) {
-                              buildingIcon.classList.remove('hidden');
-                            }
-                          }}
-                        />
-                      ) : null}
-                      <Building className={`building-icon h-16 w-16 text-primary ${company.logo ? 'hidden' : ''}`} />
-                    </div>
-
-                    {/* Company Name & Verification */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-center gap-2">
-                        <h3 className="text-xl font-bold group-hover:text-primary transition-colors">
-                          {company.name}
-                        </h3>
-                        {company.verified && (
-                          <CheckCircle className="h-6 w-6 text-green-600" />
-                        )}
+              <Link to={`/company/${company._id}`} className="block">
+                <Card className="p-6 hover:border-primary/50 hover:shadow-lg transition-all duration-200 cursor-pointer group">
+                  <CardContent className="p-0">
+                    <div className="flex flex-col items-center text-center space-y-4">
+                      {/* Company Logo */}
+                      <div className="w-20 h-20 bg-white border-2 border-border rounded-xl flex items-center justify-center shadow-md group-hover:shadow-lg transition-shadow">
+                        {company.logo ? (
+                          <img
+                            src={company.logo}
+                            alt={`${company.name} logo`}
+                            className="max-w-full max-h-full object-contain rounded-lg"
+                            onError={(e) => {
+                              console.log('Image failed to load:', company.logo);
+                              // Fallback to Building icon if image fails to load
+                              const target = e.target as HTMLImageElement;
+                              const container = target.parentElement;
+                              target.style.display = 'none';
+                              const buildingIcon = container?.querySelector('.building-icon');
+                              if (buildingIcon) {
+                                buildingIcon.classList.remove('hidden');
+                              }
+                            }}
+                          />
+                        ) : null}
+                        <Building className={`building-icon h-12 w-12 text-primary ${company.logo ? 'hidden' : ''}`} />
                       </div>
 
+                      {/* Company Name */}
+                      <h3 className="text-lg font-bold group-hover:text-primary transition-colors">
+                        {company.name}
+                      </h3>
+
                       {/* Location */}
-                      <div className="flex items-center justify-center gap-2 text-base text-muted-foreground">
-                        <MapPin className="h-5 w-5" />
+                      <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                        <MapPin className="h-4 w-4" />
                         <span>{company.city}</span>
                       </div>
                     </div>
-
-                    {/* Company Stats */}
-                    <div className="w-full space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-base text-muted-foreground">Industria:</span>
-                        <Badge variant="outline" className="text-sm px-3 py-1">
-                          {company.industry}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-base text-muted-foreground">Punë aktive:</span>
-                        <Badge className="bg-green-100 text-green-800 text-sm px-3 py-1">
-                          {company.activeJobs} vende
-                        </Badge>
-                      </div>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="w-full space-y-3 pt-4">
-                      <Button size="lg" className="w-full" asChild>
-                        <Link to={`/jobs?company=${company._id}`}>
-                          <Briefcase className="mr-2 h-5 w-5" />
-                          Shiko Punët ({company.activeJobs})
-                        </Link>
-                      </Button>
-                      <Button variant="outline" size="lg" className="w-full" asChild>
-                        <Link to={`/company/${company._id}`}>
-                          Shiko Profilin
-                        </Link>
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </Link>
                 ))}
               </div>
             </>
