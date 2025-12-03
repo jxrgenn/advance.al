@@ -60,7 +60,31 @@ router.get('/', optionalAuth, async (req, res) => {
       sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
     }
 
-    // Aggregation pipeline to get companies with job counts
+    // SIMPLIFIED DEBUG: Let's first try a basic find query
+    console.log('🔥🔥🔥 DEBUGGING: Starting companies route...');
+    console.log('🔍 Match query:', JSON.stringify(matchQuery, null, 2));
+
+    // First, let's try a simple find to see if we get any results
+    const basicCompanies = await User.find(matchQuery).limit(5);
+    console.log('🚨 BASIC FIND RESULT:', basicCompanies.length, 'companies found');
+    console.log('🚨 BASIC COMPANIES SAMPLE:', basicCompanies.map(c => ({
+      id: c._id,
+      type: c.userType,
+      status: c.status,
+      companyName: c.profile?.employerProfile?.companyName
+    })));
+
+    // Now try the aggregation with simplified pipeline
+    const simplePipeline = [
+      { $match: matchQuery },
+      { $limit: 5 }
+    ];
+
+    console.log('🔍 Simple pipeline:', JSON.stringify(simplePipeline, null, 2));
+    const simpleAggregateResult = await User.aggregate(simplePipeline);
+    console.log('🚨 SIMPLE AGGREGATE RESULT:', simpleAggregateResult.length, 'companies found');
+
+    // Use the original pipeline but log each step
     const pipeline = [
       { $match: matchQuery },
       {
@@ -106,11 +130,10 @@ router.get('/', optionalAuth, async (req, res) => {
       { $limit: parseInt(limit) }
     ];
 
-    console.log('🏢 Companies query:', JSON.stringify(matchQuery, null, 2));
-    console.log('🔍 Companies pipeline:', JSON.stringify(pipeline, null, 2));
+    console.log('🔍 Full pipeline:', JSON.stringify(pipeline, null, 2));
 
     const companies = await User.aggregate(pipeline);
-    console.log('📊 Found companies:', companies.length);
+    console.log('📊 FULL AGGREGATE RESULT:', companies.length, 'companies found');
 
     // Get total count for pagination
     const totalCompanies = await User.countDocuments(matchQuery);
