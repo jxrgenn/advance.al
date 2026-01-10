@@ -5,6 +5,7 @@ import JobCard from "@/components/JobCard";
 import SearchInput from "@/components/SearchInput";
 import CoreFilters from "@/components/CoreFilters";
 import RecentlyViewedJobs from "@/components/RecentlyViewedJobs";
+import PremiumJobsCarousel from "@/components/PremiumJobsCarousel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -475,6 +476,11 @@ const Index = () => {
           </div>
 
           <div className="lg:col-span-3">
+            {/* Premium Jobs Carousel - Show when not filtering */}
+            {/* {!loading && !searchQuery && !selectedLocation && !selectedType && (
+              <PremiumJobsCarousel jobs={jobs} />
+            )} */}
+
             {/* Recently Viewed Jobs - Show when not searching and user is authenticated */}
             {!loading && !searchQuery && !selectedLocation && !selectedType && isAuthenticated && (
               <RecentlyViewedJobs className="mb-6" limit={4} />

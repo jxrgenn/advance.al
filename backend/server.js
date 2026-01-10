@@ -3,7 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
-// import rateLimit from 'express-rate-limit'; // DISABLED FOR DEVELOPMENT
+import rateLimit from 'express-rate-limit';
 import { connectDB } from './src/config/database.js';
 
 // Import routes (will create these next)
@@ -83,19 +83,22 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// Rate Limiting - DISABLED FOR DEVELOPMENT
-// const limiter = rateLimit({
-//   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-//   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
-//   message: {
-//     error: 'Shumë kërkesa nga kjo IP, ju lutemi provoni përsëri më vonë.',
-//     retryAfter: Math.ceil((parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000) / 1000)
-//   },
-//   standardHeaders: true,
-//   legacyHeaders: false
-// });
+// Rate Limiting - Environment-aware configuration
+const limiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes default
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // 100 requests per window default
+  message: {
+    error: 'Shumë kërkesa nga kjo IP, ju lutemi provoni përsëri më vonë.',
+    retryAfter: Math.ceil((parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000) / 1000)
+  },
+  standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
+  legacyHeaders: false, // Disable `X-RateLimit-*` headers
+  // Skip rate limiting in development if needed
+  skip: (req) => process.env.NODE_ENV === 'development' && process.env.SKIP_RATE_LIMIT === 'true'
+});
 
-// app.use('/api/', limiter);
+// Apply rate limiting to all API routes
+app.use('/api/', limiter);
 
 // Logging Middleware
 if (process.env.NODE_ENV === 'development') {

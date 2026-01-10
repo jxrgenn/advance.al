@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Clock, Euro, Building, ArrowRight, CheckCircle, Bookmark, Sparkles } from "lucide-react";
+import { MapPin, Euro, Building, ArrowRight, CheckCircle, Bookmark, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Job, usersApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -29,18 +29,6 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false }: Jo
   
   const handleCardClick = () => {
     navigate(`/jobs/${job._id}`);
-  };
-
-  const formatPostedDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - date.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 1) return "1 ditë më parë";
-    if (diffDays < 7) return `${diffDays} ditë më parë`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)} javë më parë`;
-    return `${Math.floor(diffDays / 30)} muaj më parë`;
   };
 
   // Check if job is saved when component mounts or user changes
@@ -171,7 +159,7 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false }: Jo
               </span>
             </div>
 
-            {/* Row 4: Salary + Posted Date */}
+            {/* Row 4: Salary */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 md:gap-6 text-sm sm:text-base text-muted-foreground">
               {job.salary?.showPublic && job.formattedSalary && (
                 <div className="flex items-center gap-1.5 sm:gap-2">
@@ -181,10 +169,6 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false }: Jo
                   </span>
                 </div>
               )}
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                <Clock className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
-                <span className="text-xs sm:text-sm">{formatPostedDate(job.postedAt)}</span>
-              </div>
             </div>
           </div>
 
