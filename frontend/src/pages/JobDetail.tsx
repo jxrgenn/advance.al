@@ -7,7 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { MapPin, Clock, Euro, Building, ArrowLeft, CheckCircle, Users, Calendar, Loader2, Zap, MessageCircle, Phone } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { MapPin, Clock, Euro, Building, ArrowLeft, CheckCircle, Users, Calendar, Loader2, Zap, MessageCircle, Phone, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { jobsApi, applicationsApi, Job } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,6 +28,11 @@ const JobDetail = () => {
   const [applying, setApplying] = useState(false);
   const [hasApplied, setHasApplied] = useState(false);
   const [showQuickApply, setShowQuickApply] = useState(false);
+
+  // Contact modal state
+  const [contactModalOpen, setContactModalOpen] = useState(false);
+  const [contactType, setContactType] = useState<'email' | 'phone' | 'whatsapp' | null>(null);
+  const [contactMessage, setContactMessage] = useState('');
 
   useEffect(() => {
     if (id) {
@@ -159,6 +167,52 @@ const JobDetail = () => {
     } finally {
       setApplying(false);
     }
+  };
+
+  // Open contact modal with pre-filled template
+  const openContactModal = (method: 'email' | 'phone' | 'whatsapp', contactInfo: string) => {
+    if (!job) return;
+
+    setContactType(method);
+
+    // Set pre-filled template message
+    const jobTitle = job.title;
+    const companyName = job.employerId?.profile?.employerProfile?.companyName || 'kompania juaj';
+    const applicantName = user?.profile ? `${user.profile.firstName} ${user.profile.lastName}` : '';
+
+    let template = '';
+    if (method === 'email' || method === 'whatsapp') {
+      template = `Përshëndetje,\n\nJam ${applicantName} dhe kam parë pozicionin "${jobTitle}" në platformën e rekrutimit.\n\nDo të doja të mësoj më shumë rreth kësaj mundësie pune dhe të diskutoj se si aftësitë dhe përvoja ime mund të kontribuojnë në ${companyName}.\n\nA do të ishit të disponueshëm për një intervistë në ditët në vijim?\n\nMe respekt,\n${applicantName}`;
+    }
+
+    setContactMessage(template);
+    setContactModalOpen(true);
+  };
+
+  // Send contact message
+  const handleSendContact = () => {
+    if (!job || !contactType) return;
+
+    const phoneNumber = job.employerId?.profile?.employerProfile?.phone || job.employerId?.profile?.phone;
+    const employerEmail = job.employerId?.email;
+
+    if (contactType === 'email' && employerEmail) {
+      const subject = encodeURIComponent(`Rreth pozicionit: ${job.title}`);
+      const body = encodeURIComponent(contactMessage);
+      window.location.href = `mailto:${employerEmail}?subject=${subject}&body=${body}`;
+    } else if (contactType === 'phone' && phoneNumber) {
+      window.location.href = `tel:${phoneNumber}`;
+    } else if (contactType === 'whatsapp' && phoneNumber) {
+      const cleanPhone = phoneNumber.replace(/[\s\-\(\)]/g, '');
+      const encodedMessage = encodeURIComponent(contactMessage);
+      window.open(`https://wa.me/${cleanPhone}?text=${encodedMessage}`, '_blank');
+    }
+
+    setContactModalOpen(false);
+    toast({
+      title: "Kontakti u hap!",
+      description: "Mesazhi juaj është gati për t'u dërguar.",
+    });
   };
 
   if (loading) {
@@ -353,42 +407,55 @@ const JobDetail = () => {
                     {/* Simple Contact Options */}
                     <div className="space-y-3">
                       <h4 className="font-medium text-foreground">Ose kontakto direkt:</h4>
-                      <div className="grid md:grid-cols-2 gap-3">
+                      <div className="grid md:grid-cols-3 gap-3">
+                        {/* Email Button */}
+                        {job.employerId?.email && (
+                          <Button
+                            variant="outline"
+                            size="lg"
+                            className="text-lg py-4 hover:bg-orange-50 hover:border-orange-200"
+                            onClick={() => openContactModal('email', job.employerId.email)}
+                          >
+                            <Mail className="mr-2 h-5 w-5 text-orange-600" />
+                            Email
+                          </Button>
+                        )}
+
                         {/* WhatsApp Button */}
-                        <Button
-                          variant="outline"
-                          size="lg"
-                          className="text-lg py-4 hover:bg-green-50 hover:border-green-200"
-                          onClick={() => {
-                            const phoneNumber = job.employerId?.profile?.employerProfile?.phone || job.employerId?.profile?.phone;
-                            if (phoneNumber) {
-                              const whatsappMessage = encodeURIComponent(
-                                `Përshëndetje! Kam parë pozicionin "${job.title}" në advance.al dhe do të doja të mësoj më shumë rreth mundësisë së punës.`
-                              );
-                              const cleanNumber = phoneNumber.replace(/[^\d+]/g, '');
-                              window.open(`https://wa.me/${cleanNumber}?text=${whatsappMessage}`, '_blank');
-                            }
-                          }}
-                        >
-                          <MessageCircle className="mr-2 h-5 w-5 text-green-600" />
-                          WhatsApp
-                        </Button>
+                        {(job.employerId?.profile?.employerProfile?.phone || job.employerId?.profile?.phone) && (
+                          <Button
+                            variant="outline"
+                            size="lg"
+                            className="text-lg py-4 hover:bg-green-50 hover:border-green-200"
+                            onClick={() => {
+                              const phoneNumber = job.employerId?.profile?.employerProfile?.phone || job.employerId?.profile?.phone;
+                              if (phoneNumber) {
+                                openContactModal('whatsapp', phoneNumber);
+                              }
+                            }}
+                          >
+                            <MessageCircle className="mr-2 h-5 w-5 text-green-600" />
+                            WhatsApp
+                          </Button>
+                        )}
 
                         {/* Phone Button */}
-                        <Button
-                          variant="outline"
-                          size="lg"
-                          className="text-lg py-4 hover:bg-blue-50 hover:border-blue-200"
-                          onClick={() => {
-                            const phoneNumber = job.employerId?.profile?.employerProfile?.phone || job.employerId?.profile?.phone;
-                            if (phoneNumber) {
-                              window.open(`tel:${phoneNumber}`, '_self');
-                            }
-                          }}
-                        >
-                          <Phone className="mr-2 h-5 w-5 text-blue-600" />
-                          Telefon
-                        </Button>
+                        {(job.employerId?.profile?.employerProfile?.phone || job.employerId?.profile?.phone) && (
+                          <Button
+                            variant="outline"
+                            size="lg"
+                            className="text-lg py-4 hover:bg-blue-50 hover:border-blue-200"
+                            onClick={() => {
+                              const phoneNumber = job.employerId?.profile?.employerProfile?.phone || job.employerId?.profile?.phone;
+                              if (phoneNumber) {
+                                openContactModal('phone', phoneNumber);
+                              }
+                            }}
+                          >
+                            <Phone className="mr-2 h-5 w-5 text-blue-600" />
+                            Telefon
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -469,6 +536,96 @@ const JobDetail = () => {
           onClose={() => setShowQuickApply(false)}
           onSuccess={handleApplicationSuccess}
         />
+
+        {/* Contact Employer Modal */}
+        <Dialog open={contactModalOpen} onOpenChange={setContactModalOpen}>
+          <DialogContent className="max-w-2xl w-[95vw] sm:w-auto">
+            <DialogHeader>
+              <DialogTitle className="text-base sm:text-lg">
+                {contactType === 'email' && '📧 Dërgo Email'}
+                {contactType === 'whatsapp' && '💬 Dërgo Mesazh WhatsApp'}
+                {contactType === 'phone' && '📞 Telefono Punëdhënësin'}
+              </DialogTitle>
+            </DialogHeader>
+
+            {job && (
+              <div className="space-y-4">
+                {/* Employer Info */}
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <h4 className="font-semibold text-sm">
+                    {job.employerId?.profile?.employerProfile?.companyName || 'Kompani'}
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Pozicioni: {job.title}
+                  </p>
+                </div>
+
+                {/* Message Input (for email and whatsapp) */}
+                {(contactType === 'email' || contactType === 'whatsapp') && (
+                  <div className="space-y-2">
+                    <Label htmlFor="message">Mesazhi</Label>
+                    <Textarea
+                      id="message"
+                      value={contactMessage}
+                      onChange={(e) => setContactMessage(e.target.value)}
+                      rows={10}
+                      className="text-sm"
+                      placeholder="Shkruani mesazhin tuaj këtu..."
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Mund ta ndryshoni mesazhin përpara se ta dërgoni.
+                    </p>
+                  </div>
+                )}
+
+                {/* Phone Info (for phone calls) */}
+                {contactType === 'phone' && (
+                  <div className="space-y-3 py-6">
+                    <div className="text-center">
+                      <Phone className="h-16 w-16 text-primary mx-auto mb-4" />
+                      <p className="text-lg font-semibold mb-2">
+                        {job.employerId?.profile?.employerProfile?.phone || job.employerId?.profile?.phone}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Kliko butonin më poshtë për të telefonuar punëdhënësin.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex justify-end gap-2 pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    onClick={() => setContactModalOpen(false)}
+                  >
+                    Anulo
+                  </Button>
+                  <Button onClick={handleSendContact}>
+                    {contactType === 'email' && (
+                      <>
+                        <Mail className="mr-2 h-4 w-4" />
+                        Hap Email
+                      </>
+                    )}
+                    {contactType === 'whatsapp' && (
+                      <>
+                        <MessageCircle className="mr-2 h-4 w-4" />
+                        Dërgo në WhatsApp
+                      </>
+                    )}
+                    {contactType === 'phone' && (
+                      <>
+                        <Phone className="mr-2 h-4 w-4" />
+                        Telefono Tani
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
