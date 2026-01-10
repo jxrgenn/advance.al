@@ -12,10 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, Clock, UserCheck, UserX, Star, FileText } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin } from "lucide-react";
 import ReportUserModal from "@/components/ReportUserModal";
 import { useToast } from "@/hooks/use-toast";
-import { jobsApi, applicationsApi, usersApi, locationsApi, Job, Application, Location } from "@/lib/api";
+import { jobsApi, applicationsApi, usersApi, locationsApi, matchingApi, Job, Application, Location, CandidateMatch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 
 const EmployerDashboard = () => {
@@ -42,6 +42,15 @@ const EmployerDashboard = () => {
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reportUserId, setReportUserId] = useState('');
   const [reportUserName, setReportUserName] = useState('');
+
+  // Candidate matching state
+  const [matchingModalOpen, setMatchingModalOpen] = useState(false);
+  const [selectedJobForMatching, setSelectedJobForMatching] = useState<Job | null>(null);
+  const [candidateMatches, setCandidateMatches] = useState<CandidateMatch[]>([]);
+  const [loadingMatches, setLoadingMatches] = useState(false);
+  const [hasMatchingAccess, setHasMatchingAccess] = useState<Record<string, boolean>>({});
+  const [purchasingAccess, setPurchasingAccess] = useState(false);
+
   const [profileData, setProfileData] = useState({
     companyName: '',
     description: '',
@@ -312,10 +321,10 @@ const EmployerDashboard = () => {
   const handleDownloadCV = async (cvUrl: string, applicantName: string) => {
     console.log(`📄 Attempting to download CV for: ${applicantName}`);
     console.log(`🔗 CV URL: ${cvUrl}`);
-    
+
     try {
       setDownloadingCV(true);
-      
+
       // Check if CV URL exists
       if (!cvUrl) {
         throw new Error('CV URL not found');
@@ -344,14 +353,14 @@ const EmployerDashboard = () => {
       link.href = fullUrl;
       link.download = `CV_${applicantName.replace(/\s+/g, '_')}.pdf`;
       link.target = '_blank';
-      
+
       // Add to DOM, click, then remove
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
 
       console.log(`🎉 CV download initiated successfully`);
-      
+
       toast({
         title: "CV në proces shkarkimi",
         description: `CV-ja e ${applicantName} po shkarkohet`,
@@ -359,7 +368,7 @@ const EmployerDashboard = () => {
 
     } catch (error: any) {
       console.error('❌ Error downloading CV:', error);
-      
+
       toast({
         title: "Gabim në shkarkimin e CV-së",
         description: error.message || "CV-ja nuk është e disponueshme për shkarkım",
@@ -367,6 +376,132 @@ const EmployerDashboard = () => {
       });
     } finally {
       setDownloadingCV(false);
+    }
+  };
+
+  // Candidate Matching Handlers
+  const handleViewCandidates = async (job: Job) => {
+    console.log(`🔍 Opening candidate matching for job: ${job._id}`);
+
+    try {
+      setSelectedJobForMatching(job);
+      setMatchingModalOpen(true);
+      setLoadingMatches(true);
+
+      // Check if employer has access to this job
+      const accessResponse = await matchingApi.checkAccess(job._id);
+
+      if (accessResponse.success && accessResponse.data) {
+        const hasAccess = accessResponse.data.hasAccess;
+        setHasMatchingAccess(prev => ({ ...prev, [job._id]: hasAccess }));
+
+        if (hasAccess) {
+          // Employer has access - fetch matching candidates
+          const matchesResponse = await matchingApi.getMatchingCandidates(job._id, 15);
+
+          if (matchesResponse.success && matchesResponse.data) {
+            setCandidateMatches(matchesResponse.data.matches);
+            console.log(`✅ Loaded ${matchesResponse.data.matches.length} matching candidates (from ${matchesResponse.data.fromCache ? 'cache' : 'fresh calculation'})`);
+          } else {
+            throw new Error(matchesResponse.message || 'Failed to load candidates');
+          }
+        } else {
+          // No access - show payment prompt
+          console.log(`🔒 Employer does not have access to candidate matching for this job`);
+          setCandidateMatches([]);
+        }
+      }
+
+    } catch (error: any) {
+      console.error('❌ Error loading candidate matches:', error);
+      toast({
+        title: "Gabim",
+        description: error.message || "Nuk mund të ngarkohen kandidatët",
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingMatches(false);
+    }
+  };
+
+  const handlePurchaseMatching = async (jobId: string) => {
+    console.log(`💳 Processing payment for job: ${jobId}`);
+
+    try {
+      setPurchasingAccess(true);
+
+      // Call mock payment API (always succeeds)
+      const response = await matchingApi.purchaseMatching(jobId);
+
+      if (response.success && response.data) {
+        console.log(`✅ Payment successful! Access granted to job ${jobId}`);
+
+        // Update access state
+        setHasMatchingAccess(prev => ({ ...prev, [jobId]: true }));
+
+        // Now fetch the candidates
+        const matchesResponse = await matchingApi.getMatchingCandidates(jobId, 15);
+
+        if (matchesResponse.success && matchesResponse.data) {
+          setCandidateMatches(matchesResponse.data.matches);
+
+          toast({
+            title: "Pagesa u krye me sukses!",
+            description: `U gjetën ${matchesResponse.data.matches.length} kandidatë që përputhen me këtë punë`,
+          });
+        }
+      } else {
+        throw new Error(response.message || 'Payment failed');
+      }
+
+    } catch (error: any) {
+      console.error('❌ Error processing payment:', error);
+      toast({
+        title: "Gabim në pagesë",
+        description: error.message || "Pagesa nuk u krye dot",
+        variant: "destructive"
+      });
+    } finally {
+      setPurchasingAccess(false);
+    }
+  };
+
+  const handleContactCandidate = async (candidateId: string, contactMethod: 'email' | 'phone' | 'whatsapp', contactInfo: string) => {
+    console.log(`📞 Contacting candidate ${candidateId} via ${contactMethod}: ${contactInfo}`);
+
+    try {
+      if (!selectedJobForMatching) return;
+
+      // Track the contact in backend
+      await matchingApi.trackContact(selectedJobForMatching._id, candidateId, contactMethod);
+
+      // Update local state to mark as contacted
+      setCandidateMatches(prev => prev.map(match =>
+        match.candidateId._id === candidateId
+          ? { ...match, contacted: true, contactMethod }
+          : match
+      ));
+
+      // Open email/phone/whatsapp based on method
+      if (contactMethod === 'email') {
+        window.location.href = `mailto:${contactInfo}?subject=Rreth aplikimit tuaj në ${selectedJobForMatching.title}`;
+      } else if (contactMethod === 'phone') {
+        window.location.href = `tel:${contactInfo}`;
+      } else if (contactMethod === 'whatsapp') {
+        // Clean phone number for WhatsApp (remove spaces, dashes, etc.)
+        const cleanPhone = contactInfo.replace(/[\s\-\(\)]/g, '');
+        window.open(`https://wa.me/${cleanPhone}`, '_blank');
+      }
+
+      toast({
+        title: "Kontakti u hap",
+        description: `Duke hapur ${contactMethod === 'email' ? 'email' : contactMethod === 'phone' ? 'telefon' : 'WhatsApp'}...`,
+      });
+
+    } catch (error: any) {
+      console.error('❌ Error tracking contact:', error);
+      // Don't show error to user, but log it
+      console.warn('Failed to track contact, but continuing with contact action');
     }
   };
 
@@ -510,6 +645,10 @@ const EmployerDashboard = () => {
                           </div>
                         </div>
                         <div className="flex items-center gap-1 sm:gap-2 ml-2 flex-shrink-0">
+                          <Button size="sm" variant="default" onClick={() => handleViewCandidates(job)} className="h-8 w-8 sm:h-9 sm:w-auto sm:px-3 bg-primary text-primary-foreground hover:bg-primary/90">
+                            <Users className="h-3 w-3 sm:h-4 sm:w-4" />
+                            <span className="sr-only sm:not-sr-only sm:ml-1 hidden sm:inline">Kandidatë</span>
+                          </Button>
                           <Button size="sm" variant="outline" onClick={() => window.open(`/jobs/${job._id}`, '_blank')} className="h-8 w-8 sm:h-9 sm:w-auto sm:px-3">
                             <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
                             <span className="sr-only sm:not-sr-only sm:ml-1 hidden sm:inline">Shiko</span>
@@ -1002,6 +1141,261 @@ const EmployerDashboard = () => {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Candidate Matching Modal */}
+      <Dialog open={matchingModalOpen} onOpenChange={setMatchingModalOpen}>
+        <DialogContent className="max-w-6xl max-h-[85vh] overflow-y-auto w-[95vw] sm:w-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base sm:text-lg">
+              {selectedJobForMatching ? `Kandidatë për: ${selectedJobForMatching.title}` : 'Kandidatë që Përputhen'}
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedJobForMatching && (
+            <div className="space-y-6">
+              {/* Job Info */}
+              <div className="p-3 sm:p-4 bg-muted/50 rounded-lg">
+                <h3 className="font-semibold text-sm sm:text-base mb-2">{selectedJobForMatching.title}</h3>
+                <div className="flex flex-wrap gap-2 text-xs sm:text-sm text-muted-foreground">
+                  <span>{selectedJobForMatching.location?.city}, {selectedJobForMatching.location?.region}</span>
+                  <span>•</span>
+                  <span>{selectedJobForMatching.jobType}</span>
+                  <span>•</span>
+                  <span>{selectedJobForMatching.category}</span>
+                </div>
+              </div>
+
+              {loadingMatches ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <span className="ml-2 text-muted-foreground">Duke ngarkuar kandidatët...</span>
+                </div>
+              ) : !hasMatchingAccess[selectedJobForMatching._id] ? (
+                /* Payment Prompt */
+                <div className="text-center py-12 space-y-4">
+                  <Users className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold">Shiko Kandidatët më të Mirë</h3>
+                  <p className="text-muted-foreground max-w-md mx-auto">
+                    Zgjero mundësitë e punësimit duke parë kandidatët më të mirë që përputhen me këtë pozicion.
+                    Algoritmi ynë do të gjejë 10-15 kandidatë idealë për ju.
+                  </p>
+                  <div className="bg-primary/10 border border-primary/20 rounded-lg p-6 max-w-md mx-auto">
+                    <h4 className="font-semibold mb-2 text-lg">Çfarë Përfiton:</h4>
+                    <ul className="text-sm text-left space-y-2 mb-4">
+                      <li className="flex items-start gap-2">
+                        <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                        <span>10-15 kandidatë të përzgjedhur që përputhen me pozicionin</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                        <span>Skor përputhshmërie bazuar në 7 kritere (aftësi, përvojë, vendndodhje, etj.)</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                        <span>Profile të plota me CV, kontakt email, telefon dhe WhatsApp</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                        <span>Aksesi i përjetshëm për këtë pozicion</span>
+                      </li>
+                    </ul>
+                    <div className="text-2xl font-bold text-primary mb-4">DEMO: GRATIS</div>
+                    <p className="text-xs text-muted-foreground mb-4">
+                      (Kjo është një version demonstrativ - pagesa gjithmonë kalon me sukses për teste)
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => handlePurchaseMatching(selectedJobForMatching._id)}
+                    disabled={purchasingAccess}
+                    size="lg"
+                    className="mt-4"
+                  >
+                    {purchasingAccess ? (
+                      <>
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        Duke procesuar...
+                      </>
+                    ) : (
+                      <>
+                        <Users className="mr-2 h-5 w-5" />
+                        Shiko Kandidatët (DEMO)
+                      </>
+                    )}
+                  </Button>
+                </div>
+              ) : candidateMatches.length === 0 ? (
+                /* No Matches Found */
+                <div className="text-center py-12">
+                  <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium mb-2">Nuk u gjetën kandidatë</h3>
+                  <p className="text-muted-foreground">
+                    Nuk ka kandidatë që përputhen me këtë pozicion aktualisht. Provo të rishikosh kriteret e punës ose prit për aplikues të rinj.
+                  </p>
+                </div>
+              ) : (
+                /* Candidate List */
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-sm sm:text-base">
+                      U gjetën {candidateMatches.length} kandidatë që përputhen
+                    </h3>
+                  </div>
+
+                  <div className="space-y-3">
+                    {candidateMatches.map((match) => (
+                      <div key={match._id} className="border rounded-lg p-3 sm:p-4 space-y-3">
+                        {/* Candidate Header */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-sm sm:text-base truncate">
+                              {match.candidateId.profile.firstName} {match.candidateId.profile.lastName}
+                            </h4>
+                            <p className="text-xs sm:text-sm text-muted-foreground truncate">
+                              {match.candidateId.profile.jobSeekerProfile?.title || 'Kërkues pune'}
+                            </p>
+                            {match.candidateId.profile.location && (
+                              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                <MapPin className="h-3 w-3" />
+                                {match.candidateId.profile.location.city}, {match.candidateId.profile.location.region}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Match Score */}
+                          <div className="text-right flex-shrink-0">
+                            <div className="text-xl sm:text-2xl font-bold text-primary">
+                              {Math.round(match.matchScore)}%
+                            </div>
+                            <p className="text-xs text-muted-foreground">Përputhshmëri</p>
+                          </div>
+                        </div>
+
+                        {/* Match Breakdown */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                          <div>
+                            <span className="text-muted-foreground">Titulli:</span>
+                            <span className="ml-1 font-medium">{match.matchBreakdown.titleMatch}/20</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Aftësitë:</span>
+                            <span className="ml-1 font-medium">{match.matchBreakdown.skillsMatch}/25</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Përvoja:</span>
+                            <span className="ml-1 font-medium">{match.matchBreakdown.experienceMatch}/15</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Vendndodhja:</span>
+                            <span className="ml-1 font-medium">{match.matchBreakdown.locationMatch}/15</span>
+                          </div>
+                        </div>
+
+                        {/* Candidate Details */}
+                        {match.candidateId.profile.jobSeekerProfile && (
+                          <div className="space-y-2 pt-2 border-t">
+                            {match.candidateId.profile.jobSeekerProfile.experience && (
+                              <div className="text-xs sm:text-sm">
+                                <span className="font-medium">Përvojë: </span>
+                                <span className="text-muted-foreground">{match.candidateId.profile.jobSeekerProfile.experience}</span>
+                              </div>
+                            )}
+
+                            {match.candidateId.profile.jobSeekerProfile.skills && match.candidateId.profile.jobSeekerProfile.skills.length > 0 && (
+                              <div className="text-xs sm:text-sm">
+                                <span className="font-medium">Aftësi: </span>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {match.candidateId.profile.jobSeekerProfile.skills.slice(0, 5).map((skill, idx) => (
+                                    <Badge key={idx} variant="outline" className="text-xs">
+                                      {skill}
+                                    </Badge>
+                                  ))}
+                                  {match.candidateId.profile.jobSeekerProfile.skills.length > 5 && (
+                                    <Badge variant="outline" className="text-xs">
+                                      +{match.candidateId.profile.jobSeekerProfile.skills.length - 5} më shumë
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {match.candidateId.profile.jobSeekerProfile.availability && (
+                              <div className="text-xs sm:text-sm">
+                                <span className="font-medium">Disponueshmëri: </span>
+                                <span className="text-muted-foreground">
+                                  {match.candidateId.profile.jobSeekerProfile.availability === 'immediately' ? 'Menjëherë' :
+                                   match.candidateId.profile.jobSeekerProfile.availability === '2weeks' ? 'Brenda 2 javëve' :
+                                   match.candidateId.profile.jobSeekerProfile.availability === '1month' ? 'Brenda 1 muaji' :
+                                   match.candidateId.profile.jobSeekerProfile.availability === '3months' ? 'Brenda 3 muajve' :
+                                   match.candidateId.profile.jobSeekerProfile.availability}
+                                </span>
+                              </div>
+                            )}
+
+                            {match.candidateId.profile.jobSeekerProfile.bio && (
+                              <div className="text-xs sm:text-sm">
+                                <span className="font-medium">Biografia: </span>
+                                <p className="text-muted-foreground mt-1 line-clamp-2">
+                                  {match.candidateId.profile.jobSeekerProfile.bio}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Contact Actions */}
+                        <div className="flex flex-wrap gap-2 pt-2 border-t">
+                          {match.candidateId.email && (
+                            <Button
+                              size="sm"
+                              variant={match.contacted && match.contactMethod === 'email' ? 'secondary' : 'default'}
+                              onClick={() => handleContactCandidate(match.candidateId._id, 'email', match.candidateId.email)}
+                              className="text-xs"
+                            >
+                              <Mail className="mr-1 h-3 w-3" />
+                              Email {match.contacted && match.contactMethod === 'email' && '(Kontaktuar)'}
+                            </Button>
+                          )}
+
+                          {match.candidateId.profile.phone && (
+                            <Button
+                              size="sm"
+                              variant={match.contacted && match.contactMethod === 'phone' ? 'secondary' : 'default'}
+                              onClick={() => handleContactCandidate(match.candidateId._id, 'phone', match.candidateId.profile.phone!)}
+                              className="text-xs"
+                            >
+                              <Phone className="mr-1 h-3 w-3" />
+                              Telefon {match.contacted && match.contactMethod === 'phone' && '(Kontaktuar)'}
+                            </Button>
+                          )}
+
+                          {match.candidateId.profile.phone && (
+                            <Button
+                              size="sm"
+                              variant={match.contacted && match.contactMethod === 'whatsapp' ? 'secondary' : 'default'}
+                              onClick={() => handleContactCandidate(match.candidateId._id, 'whatsapp', match.candidateId.profile.phone!)}
+                              className="text-xs"
+                            >
+                              <MessageCircle className="mr-1 h-3 w-3" />
+                              WhatsApp {match.contacted && match.contactMethod === 'whatsapp' && '(Kontaktuar)'}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Close Button */}
+              <div className="flex justify-end pt-4 border-t">
+                <Button variant="outline" onClick={() => setMatchingModalOpen(false)}>
+                  Mbyll
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>
