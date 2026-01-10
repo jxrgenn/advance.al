@@ -414,8 +414,15 @@ const Jobs = () => {
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
-      
+
       <div className="container py-8">
+        {/* Premium Jobs Carousel - Full width, above heading */}
+        {!loading && !searchQuery && !selectedLocation && !selectedType && (
+          <div className="mb-8">
+            <PremiumJobsCarousel jobs={jobs} />
+          </div>
+        )}
+
         {/* Search Header */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-foreground mb-2">
@@ -484,11 +491,6 @@ const Jobs = () => {
           </div>
 
           <div className="lg:col-span-3">
-            {/* Premium Jobs Carousel - Show when not filtering */}
-            {!loading && !searchQuery && !selectedLocation && !selectedType && (
-              <PremiumJobsCarousel jobs={jobs} />
-            )}
-
             {/* Recently Viewed Jobs - Show when not searching and user is authenticated */}
             {!loading && !searchQuery && !selectedLocation && !selectedType && isAuthenticated && (
               <RecentlyViewedJobs className="mb-8" limit={4} asJobCards={true} />
