@@ -1204,52 +1204,51 @@ const EmployerDashboard = () => {
                 </div>
               ) : !hasMatchingAccess[selectedJobForMatching._id] ? (
                 /* Payment Prompt */
-                <div className="text-center py-12 space-y-4">
-                  <Users className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-xl font-semibold">Shiko Kandidatët më të Mirë</h3>
-                  <p className="text-muted-foreground max-w-md mx-auto">
+                <div className="text-center py-6 space-y-3">
+                  <Users className="h-12 w-12 text-muted-foreground mx-auto" />
+                  <h3 className="text-lg font-semibold">Shiko Kandidatët më të Mirë</h3>
+                  <p className="text-sm text-muted-foreground max-w-md mx-auto">
                     Zgjero mundësitë e punësimit duke parë kandidatët më të mirë që përputhen me këtë pozicion.
-                    Algoritmi ynë do të gjejë 10-15 kandidatë idealë për ju.
                   </p>
-                  <div className="bg-primary/10 border border-primary/20 rounded-lg p-6 max-w-md mx-auto">
-                    <h4 className="font-semibold mb-2 text-lg">Çfarë Përfiton:</h4>
-                    <ul className="text-sm text-left space-y-2 mb-4">
-                      <li className="flex items-start gap-2">
-                        <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                  <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 max-w-md mx-auto">
+                    <h4 className="font-semibold mb-2 text-base">Çfarë Përfiton:</h4>
+                    <ul className="text-xs text-left space-y-1.5 mb-3">
+                      <li className="flex items-start gap-1.5">
+                        <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
                         <span>10-15 kandidatë të përzgjedhur që përputhen me pozicionin</span>
                       </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                        <span>Skor përputhshmërie bazuar në 7 kritere (aftësi, përvojë, vendndodhje, etj.)</span>
+                      <li className="flex items-start gap-1.5">
+                        <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                        <span>Skor përputhshmërie bazuar në 7 kritere</span>
                       </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                        <span>Profile të plota me CV, kontakt email, telefon dhe WhatsApp</span>
+                      <li className="flex items-start gap-1.5">
+                        <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                        <span>Profile të plota me CV dhe kontakt</span>
                       </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                      <li className="flex items-start gap-1.5">
+                        <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
                         <span>Aksesi i përjetshëm për këtë pozicion</span>
                       </li>
                     </ul>
-                    <div className="text-2xl font-bold text-primary mb-4">DEMO: GRATIS</div>
-                    <p className="text-xs text-muted-foreground mb-4">
-                      (Kjo është një version demonstrativ - pagesa gjithmonë kalon me sukses për teste)
+                    <div className="text-xl font-bold text-primary mb-2">DEMO: GRATIS</div>
+                    <p className="text-[10px] text-muted-foreground">
+                      (Version demonstrativ - pagesa gjithmonë kalon me sukses)
                     </p>
                   </div>
                   <Button
                     onClick={() => handlePurchaseMatching(selectedJobForMatching._id)}
                     disabled={purchasingAccess}
-                    size="lg"
-                    className="mt-4"
+                    size="default"
+                    className="mt-2"
                   >
                     {purchasingAccess ? (
                       <>
-                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Duke procesuar...
                       </>
                     ) : (
                       <>
-                        <Users className="mr-2 h-5 w-5" />
+                        <Users className="mr-2 h-4 w-4" />
                         Shiko Kandidatët (DEMO)
                       </>
                     )}
