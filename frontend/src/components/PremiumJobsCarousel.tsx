@@ -53,7 +53,7 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
     <div className="mb-8">
       {/* Header */}
       <div className="mb-4">
-        <h2 className="text-xl font-bold text-foreground">Punë të Promovuara</h2>
+        <h2 className="text-xl font-bold bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">Punë të Promovuara</h2>
         <p className="text-sm text-muted-foreground">Mundësi të veçanta nga kompanitë tona partnere</p>
       </div>
 
@@ -64,27 +64,27 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
             {premiumJobs.map((job) => (
               <div
                 key={job._id}
-                className="flex-[0_0_100%] min-w-0 pl-4 md:flex-[0_0_50%] lg:flex-[0_0_33.333%]"
+                className="flex-[0_0_50%] min-w-0 pl-4 lg:flex-[0_0_33.333%]"
               >
                 <Card
-                  className="group hover:shadow-xl transition-all duration-300 cursor-pointer border-2 border-primary/20 hover:border-primary/40 bg-card h-full"
+                  className="group hover:shadow-lg transition-all duration-300 cursor-pointer border border-primary/15 hover:border-primary/40 hover:shadow-primary/20 bg-gradient-to-br from-card to-primary/[0.02] h-full"
                   onClick={() => navigate(`/jobs/${job._id}`)}
                 >
-                  <CardContent className="p-6">
+                  <CardContent className="p-5">
                     {/* Main Layout: Content Left, Logo Right */}
-                    <div className="flex items-start gap-4 min-h-[180px]">
+                    <div className="flex items-start gap-3 min-h-[120px]">
                       {/* Left Side: Job Information */}
-                      <div className="flex-1 min-w-0 space-y-3">
+                      <div className="flex-1 min-w-0 space-y-2">
                         {/* Job Title */}
                         <div>
-                          <h3 className="text-lg font-bold text-foreground group-hover:text-primary transition-colors line-clamp-2">
+                          <h3 className="text-base font-bold text-foreground group-hover:text-primary transition-colors line-clamp-2">
                             {job.title}
                           </h3>
                         </div>
 
                         {/* Job Type Badge */}
                         <div>
-                          <Badge variant="secondary" className="text-xs">
+                          <Badge variant="secondary" className="text-xs bg-primary/10 text-primary border-primary/20">
                             {job.jobType}
                           </Badge>
                         </div>
@@ -121,8 +121,8 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
                       </div>
 
                       {/* Right Side: Logo */}
-                      <div className="relative w-20 h-20 flex-shrink-0">
-                        <div className="w-20 h-20 bg-background border-2 border-border rounded-lg flex items-center justify-center shadow-sm">
+                      <div className="relative w-16 h-16 flex-shrink-0">
+                        <div className="w-16 h-16 bg-background border border-primary/20 rounded-lg flex items-center justify-center shadow-sm">
                           {job.employerId?.profile?.employerProfile?.logo ? (
                             <img
                               src={job.employerId.profile.employerProfile.logo}
@@ -146,7 +146,7 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
                     </div>
 
                     {/* View Count and Application Count */}
-                    <div className="mt-4 pt-4 border-t border-border flex items-center gap-4 text-xs text-muted-foreground">
+                    <div className="mt-3 pt-3 border-t border-primary/10 flex items-center gap-4 text-xs text-muted-foreground">
                       {job.viewCount > 0 && (
                         <span>{job.viewCount} shikime</span>
                       )}

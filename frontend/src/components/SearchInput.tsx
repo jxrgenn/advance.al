@@ -235,10 +235,10 @@ const SearchInput = ({
             }, 150);
           }}
           onKeyDown={handleKeyDown}
-          className="pl-10 pr-20"
+          className="pl-10 pr-16"
         />
 
-        <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
+        <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
           {isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
 
           {value && (
@@ -249,7 +249,7 @@ const SearchInput = ({
               onClick={handleClear}
               className="h-6 w-6 p-0 hover:bg-transparent"
             >
-              <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+              <X className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
             </Button>
           )}
         </div>

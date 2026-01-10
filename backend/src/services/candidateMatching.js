@@ -66,7 +66,7 @@ class CandidateMatchingService {
     const candidateSkills = (candidate.profile?.jobSeekerProfile?.skills || [])
       .map(skill => skill.toLowerCase());
 
-    const jobRequirements = (job.requirements || '').toLowerCase();
+    const jobRequirements = (job.requirements || []).join(' ').toLowerCase();
 
     if (candidateSkills.length === 0 || !jobRequirements) return 0;
 
@@ -156,7 +156,7 @@ class CandidateMatchingService {
     const candidateEdu = (candidate.profile?.jobSeekerProfile?.education || [])
       .map(edu => edu.degree?.toLowerCase() || '')
       .join(' ');
-    const jobReq = (job.requirements || '').toLowerCase();
+    const jobReq = (job.requirements || []).join(' ').toLowerCase();
 
     if (!candidateEdu || !jobReq) return 0;
 
