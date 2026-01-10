@@ -51,6 +51,12 @@ const EmployerDashboard = () => {
   const [hasMatchingAccess, setHasMatchingAccess] = useState<Record<string, boolean>>({});
   const [purchasingAccess, setPurchasingAccess] = useState(false);
 
+  // Contact modal state
+  const [contactModalOpen, setContactModalOpen] = useState(false);
+  const [contactType, setContactType] = useState<'email' | 'phone' | 'whatsapp' | null>(null);
+  const [selectedCandidate, setSelectedCandidate] = useState<any>(null);
+  const [contactMessage, setContactMessage] = useState('');
+
   const [profileData, setProfileData] = useState({
     companyName: '',
     description: '',
@@ -466,42 +472,64 @@ const EmployerDashboard = () => {
     }
   };
 
-  const handleContactCandidate = async (candidateId: string, contactMethod: 'email' | 'phone' | 'whatsapp', contactInfo: string) => {
-    console.log(`📞 Contacting candidate ${candidateId} via ${contactMethod}: ${contactInfo}`);
+  const openContactModal = (candidate: any, method: 'email' | 'phone' | 'whatsapp', contactInfo: string) => {
+    setSelectedCandidate({ ...candidate, contactInfo });
+    setContactType(method);
+
+    // Set pre-filled template message
+    const candidateName = `${candidate.profile.firstName} ${candidate.profile.lastName}`;
+    const jobTitle = selectedJobForMatching?.title || '';
+    const companyName = user?.profile?.employerProfile?.companyName || 'kompania jonë';
+
+    let template = '';
+    if (method === 'email' || method === 'whatsapp') {
+      template = `Përshëndetje ${candidateName},\n\nJu kontaktojmë lidhur me aplikimin tuaj për pozicionin "${jobTitle}" në ${companyName}.\n\nDo të donim të planifikonim një intervistë me ju për të diskutuar më tej rreth mundësisë së punësimit. A jeni të disponueshëm për një takim në ditët në vijim?\n\nJu faleminderit për interesimin tuaj.\n\nMe respekt,\n${companyName}`;
+    }
+
+    setContactMessage(template);
+    setContactModalOpen(true);
+  };
+
+  const handleSendContact = async () => {
+    if (!selectedCandidate || !contactType || !selectedJobForMatching) return;
 
     try {
-      if (!selectedJobForMatching) return;
-
       // Track the contact in backend
-      await matchingApi.trackContact(selectedJobForMatching._id, candidateId, contactMethod);
+      await matchingApi.trackContact(selectedJobForMatching._id, selectedCandidate._id, contactType);
 
       // Update local state to mark as contacted
       setCandidateMatches(prev => prev.map(match =>
-        match.candidateId._id === candidateId
-          ? { ...match, contacted: true, contactMethod }
+        match.candidateId._id === selectedCandidate._id
+          ? { ...match, contacted: true, contactMethod: contactType }
           : match
       ));
 
-      // Open email/phone/whatsapp based on method
-      if (contactMethod === 'email') {
-        window.location.href = `mailto:${contactInfo}?subject=Rreth aplikimit tuaj në ${selectedJobForMatching.title}`;
-      } else if (contactMethod === 'phone') {
-        window.location.href = `tel:${contactInfo}`;
-      } else if (contactMethod === 'whatsapp') {
-        // Clean phone number for WhatsApp (remove spaces, dashes, etc.)
-        const cleanPhone = contactInfo.replace(/[\s\-\(\)]/g, '');
-        window.open(`https://wa.me/${cleanPhone}`, '_blank');
+      // Perform actual contact action
+      if (contactType === 'email') {
+        const subject = encodeURIComponent(`Rreth aplikimit tuaj në ${selectedJobForMatching.title}`);
+        const body = encodeURIComponent(contactMessage);
+        window.location.href = `mailto:${selectedCandidate.contactInfo}?subject=${subject}&body=${body}`;
+      } else if (contactType === 'phone') {
+        window.location.href = `tel:${selectedCandidate.contactInfo}`;
+      } else if (contactType === 'whatsapp') {
+        const cleanPhone = selectedCandidate.contactInfo.replace(/[\s\-\(\)]/g, '');
+        const encodedMessage = encodeURIComponent(contactMessage);
+        window.open(`https://wa.me/${cleanPhone}?text=${encodedMessage}`, '_blank');
       }
 
+      setContactModalOpen(false);
       toast({
-        title: "Kontakti u hap",
-        description: `Duke hapur ${contactMethod === 'email' ? 'email' : contactMethod === 'phone' ? 'telefon' : 'WhatsApp'}...`,
+        title: "Mesazhi u dërgua!",
+        description: `Kontakti me kandidatin u hap me sukses.`,
       });
 
     } catch (error: any) {
-      console.error('❌ Error tracking contact:', error);
-      // Don't show error to user, but log it
-      console.warn('Failed to track contact, but continuing with contact action');
+      console.error('❌ Error sending contact:', error);
+      toast({
+        title: "Gabim",
+        description: "Ndodhi një gabim gjatë kontaktit",
+        variant: "destructive"
+      });
     }
   };
 
@@ -1352,7 +1380,7 @@ const EmployerDashboard = () => {
                             <Button
                               size="sm"
                               variant={match.contacted && match.contactMethod === 'email' ? 'secondary' : 'default'}
-                              onClick={() => handleContactCandidate(match.candidateId._id, 'email', match.candidateId.email)}
+                              onClick={() => openContactModal(match.candidateId, 'email', match.candidateId.email)}
                               className="text-xs"
                             >
                               <Mail className="mr-1 h-3 w-3" />
@@ -1364,7 +1392,7 @@ const EmployerDashboard = () => {
                             <Button
                               size="sm"
                               variant={match.contacted && match.contactMethod === 'phone' ? 'secondary' : 'default'}
-                              onClick={() => handleContactCandidate(match.candidateId._id, 'phone', match.candidateId.profile.phone!)}
+                              onClick={() => openContactModal(match.candidateId, 'phone', match.candidateId.profile.phone!)}
                               className="text-xs"
                             >
                               <Phone className="mr-1 h-3 w-3" />
@@ -1376,7 +1404,7 @@ const EmployerDashboard = () => {
                             <Button
                               size="sm"
                               variant={match.contacted && match.contactMethod === 'whatsapp' ? 'secondary' : 'default'}
-                              onClick={() => handleContactCandidate(match.candidateId._id, 'whatsapp', match.candidateId.profile.phone!)}
+                              onClick={() => openContactModal(match.candidateId, 'whatsapp', match.candidateId.profile.phone!)}
                               className="text-xs"
                             >
                               <MessageCircle className="mr-1 h-3 w-3" />
@@ -1408,6 +1436,98 @@ const EmployerDashboard = () => {
         userId={reportUserId}
         userName={reportUserName}
       />
+
+      {/* Contact Candidate Modal */}
+      <Dialog open={contactModalOpen} onOpenChange={setContactModalOpen}>
+        <DialogContent className="max-w-2xl w-[95vw] sm:w-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base sm:text-lg">
+              {contactType === 'email' && '📧 Dërgo Email'}
+              {contactType === 'whatsapp' && '💬 Dërgo Mesazh WhatsApp'}
+              {contactType === 'phone' && '📞 Telefono Kandidatin'}
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedCandidate && (
+            <div className="space-y-4">
+              {/* Candidate Info */}
+              <div className="p-3 bg-muted/50 rounded-lg">
+                <h4 className="font-semibold text-sm">
+                  {selectedCandidate.profile.firstName} {selectedCandidate.profile.lastName}
+                </h4>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {contactType === 'email' && `Email: ${selectedCandidate.contactInfo}`}
+                  {contactType === 'phone' && `Telefon: ${selectedCandidate.contactInfo}`}
+                  {contactType === 'whatsapp' && `WhatsApp: ${selectedCandidate.contactInfo}`}
+                </p>
+              </div>
+
+              {/* Message Input (for email and whatsapp) */}
+              {(contactType === 'email' || contactType === 'whatsapp') && (
+                <div className="space-y-2">
+                  <Label htmlFor="message">Mesazhi</Label>
+                  <Textarea
+                    id="message"
+                    value={contactMessage}
+                    onChange={(e) => setContactMessage(e.target.value)}
+                    rows={10}
+                    className="text-sm"
+                    placeholder="Shkruani mesazhin tuaj këtu..."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Mund ta ndryshoni mesazhin përpara se ta dërgoni.
+                  </p>
+                </div>
+              )}
+
+              {/* Phone Info (for phone calls) */}
+              {contactType === 'phone' && (
+                <div className="space-y-3 py-6">
+                  <div className="text-center">
+                    <Phone className="h-16 w-16 text-primary mx-auto mb-4" />
+                    <p className="text-lg font-semibold mb-2">
+                      {selectedCandidate.contactInfo}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Kliko butonin më poshtë për të telefonuar kandidatin.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => setContactModalOpen(false)}
+                >
+                  Anulo
+                </Button>
+                <Button onClick={handleSendContact}>
+                  {contactType === 'email' && (
+                    <>
+                      <Mail className="mr-2 h-4 w-4" />
+                      Hap Email
+                    </>
+                  )}
+                  {contactType === 'whatsapp' && (
+                    <>
+                      <MessageCircle className="mr-2 h-4 w-4" />
+                      Dërgo në WhatsApp
+                    </>
+                  )}
+                  {contactType === 'phone' && (
+                    <>
+                      <Phone className="mr-2 h-4 w-4" />
+                      Telefono Tani
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
