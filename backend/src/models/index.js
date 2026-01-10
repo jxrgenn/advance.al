@@ -14,6 +14,7 @@ import SystemHealth from './SystemHealth.js';
 import BusinessCampaign from './BusinessCampaign.js';
 import PricingRule from './PricingRule.js';
 import RevenueAnalytics from './RevenueAnalytics.js';
+import CandidateMatch from './CandidateMatch.js';
 
 export {
   User,
@@ -30,5 +31,6 @@ export {
   SystemHealth,
   BusinessCampaign,
   PricingRule,
-  RevenueAnalytics
+  RevenueAnalytics,
+  CandidateMatch
 };

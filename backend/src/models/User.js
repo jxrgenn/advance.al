@@ -162,7 +162,30 @@ const employerProfileSchema = new Schema({
       enum: ['phone', 'whatsapp', 'email', 'form'],
       default: 'form'
     }
-  }
+  },
+
+  // Candidate Matching Feature
+  candidateMatchingEnabled: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+  candidateMatchingJobs: [
+    {
+      jobId: {
+        type: Schema.Types.ObjectId,
+        ref: 'Job'
+      },
+      enabledAt: {
+        type: Date,
+        default: Date.now
+      },
+      expiresAt: {
+        type: Date,
+        default: null // null means no expiration
+      }
+    }
+  ]
 });
 
 // Main User Schema
