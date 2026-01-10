@@ -485,9 +485,9 @@ const Jobs = () => {
 
           <div className="lg:col-span-3">
             {/* Premium Jobs Carousel - Show when not filtering */}
-            {/* {!loading && !searchQuery && !selectedLocation && !selectedType && (
+            {!loading && !searchQuery && !selectedLocation && !selectedType && (
               <PremiumJobsCarousel jobs={jobs} />
-            )} */}
+            )}
 
             {/* Recently Viewed Jobs - Show when not searching and user is authenticated */}
             {!loading && !searchQuery && !selectedLocation && !selectedType && isAuthenticated && (
