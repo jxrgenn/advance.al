@@ -235,10 +235,10 @@ const SearchInput = ({
             }, 150);
           }}
           onKeyDown={handleKeyDown}
-          className="pl-10 pr-16"
+          className="pl-10 pr-12"
         />
 
-        <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
+        <div className="absolute right-1 top-1/2 transform -translate-y-1/2 flex items-center gap-0.5">
           {isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
 
           {value && (

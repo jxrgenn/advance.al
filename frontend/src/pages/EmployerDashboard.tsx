@@ -1148,7 +1148,7 @@ const EmployerDashboard = () => {
 
       {/* Candidate Matching Modal */}
       <Dialog open={matchingModalOpen} onOpenChange={setMatchingModalOpen}>
-        <DialogContent className="max-w-6xl max-h-[85vh] overflow-y-auto w-[95vw] sm:w-auto">
+        <DialogContent className="max-w-6xl max-h-[90vh] w-[95vw] sm:w-auto overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="text-base sm:text-lg">
               {selectedJobForMatching ? `Kandidatë për: ${selectedJobForMatching.title}` : 'Kandidatë që Përputhen'}
@@ -1156,7 +1156,7 @@ const EmployerDashboard = () => {
           </DialogHeader>
 
           {selectedJobForMatching && (
-            <div className="space-y-6">
+            <div className="space-y-6 overflow-y-auto flex-1">
               {/* Job Info */}
               <div className="p-3 sm:p-4 bg-muted/50 rounded-lg">
                 <h3 className="font-semibold text-sm sm:text-base mb-2">{selectedJobForMatching.title}</h3>

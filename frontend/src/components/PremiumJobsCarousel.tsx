@@ -67,14 +67,14 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
                 className="flex-[0_0_50%] min-w-0 pl-4 lg:flex-[0_0_33.333%]"
               >
                 <Card
-                  className="group hover:shadow-lg transition-all duration-300 cursor-pointer border border-primary/15 hover:border-primary/40 hover:shadow-primary/20 bg-gradient-to-br from-card to-primary/[0.02] h-full"
+                  className="group hover:shadow-md transition-all duration-300 cursor-pointer border-0 ring-1 ring-primary/30 hover:ring-primary/60 hover:shadow-blue-100/50 bg-gradient-to-br from-blue-50/40 via-card to-blue-50/20 h-full"
                   onClick={() => navigate(`/jobs/${job._id}`)}
                 >
-                  <CardContent className="p-5">
+                  <CardContent className="p-4">
                     {/* Main Layout: Content Left, Logo Right */}
-                    <div className="flex items-start gap-3 min-h-[120px]">
+                    <div className="flex items-start gap-2.5 min-h-[95px]">
                       {/* Left Side: Job Information */}
-                      <div className="flex-1 min-w-0 space-y-2">
+                      <div className="flex-1 min-w-0 space-y-1.5">
                         {/* Job Title */}
                         <div>
                           <h3 className="text-base font-bold text-foreground group-hover:text-primary transition-colors line-clamp-2">
@@ -84,7 +84,7 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
 
                         {/* Job Type Badge */}
                         <div>
-                          <Badge variant="secondary" className="text-xs bg-primary/10 text-primary border-primary/20">
+                          <Badge variant="secondary" className="text-[10px] py-0 px-2 h-5 bg-blue-100 text-blue-700 border-blue-200 font-medium">
                             {job.jobType}
                           </Badge>
                         </div>
@@ -121,8 +121,8 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
                       </div>
 
                       {/* Right Side: Logo */}
-                      <div className="relative w-16 h-16 flex-shrink-0">
-                        <div className="w-16 h-16 bg-background border border-primary/20 rounded-lg flex items-center justify-center shadow-sm">
+                      <div className="relative w-14 h-14 flex-shrink-0">
+                        <div className="w-14 h-14 bg-white ring-1 ring-blue-200 rounded-md flex items-center justify-center">
                           {job.employerId?.profile?.employerProfile?.logo ? (
                             <img
                               src={job.employerId.profile.employerProfile.logo}
@@ -146,7 +146,7 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
                     </div>
 
                     {/* View Count and Application Count */}
-                    <div className="mt-3 pt-3 border-t border-primary/10 flex items-center gap-4 text-xs text-muted-foreground">
+                    <div className="mt-2.5 pt-2.5 border-t border-blue-100 flex items-center gap-3 text-[10px] text-muted-foreground">
                       {job.viewCount > 0 && (
                         <span>{job.viewCount} shikime</span>
                       )}
