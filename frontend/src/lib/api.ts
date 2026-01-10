@@ -1666,3 +1666,98 @@ export const reportsApi = {
     });
   }
 };
+
+// Candidate Match Interface
+export interface CandidateMatch {
+  _id: string;
+  jobId: string;
+  candidateId: {
+    _id: string;
+    email: string;
+    profile: {
+      firstName: string;
+      lastName: string;
+      phone?: string;
+      location?: {
+        city: string;
+        region: string;
+      };
+      jobSeekerProfile?: {
+        title?: string;
+        experience?: string;
+        skills?: string[];
+        bio?: string;
+        resume?: string;
+        availability?: string;
+        desiredSalary?: {
+          min: number;
+          max: number;
+          currency: string;
+        };
+      };
+    };
+    createdAt: string;
+  };
+  matchScore: number;
+  matchBreakdown: {
+    titleMatch: number;
+    skillsMatch: number;
+    experienceMatch: number;
+    locationMatch: number;
+    educationMatch: number;
+    salaryMatch: number;
+    availabilityMatch: number;
+  };
+  calculatedAt: string;
+  expiresAt: string;
+  contacted: boolean;
+  contactedAt?: string;
+  contactMethod?: 'email' | 'phone' | 'whatsapp';
+}
+
+// Candidate Matching API
+export const matchingApi = {
+  /**
+   * Get matching candidates for a job
+   */
+  getMatchingCandidates: async (jobId: string, limit: number = 15): Promise<ApiResponse<{
+    jobId: string;
+    matches: CandidateMatch[];
+    fromCache: boolean;
+    count: number;
+  }>> => {
+    return apiRequest(`/matching/jobs/${jobId}/candidates?limit=${limit}`);
+  },
+
+  /**
+   * Purchase candidate matching access for a job
+   */
+  purchaseMatching: async (jobId: string): Promise<ApiResponse<{
+    jobId: string;
+    accessGranted: boolean;
+  }>> => {
+    return apiRequest(`/matching/jobs/${jobId}/purchase`, {
+      method: 'POST'
+    });
+  },
+
+  /**
+   * Track when employer contacts a candidate
+   */
+  trackContact: async (jobId: string, candidateId: string, contactMethod: 'email' | 'phone' | 'whatsapp'): Promise<ApiResponse<{}>> => {
+    return apiRequest('/matching/track-contact', {
+      method: 'POST',
+      body: JSON.stringify({ jobId, candidateId, contactMethod })
+    });
+  },
+
+  /**
+   * Check if employer has access to candidate matching for a job
+   */
+  checkAccess: async (jobId: string): Promise<ApiResponse<{
+    jobId: string;
+    hasAccess: boolean;
+  }>> => {
+    return apiRequest(`/matching/jobs/${jobId}/access`);
+  }
+};
