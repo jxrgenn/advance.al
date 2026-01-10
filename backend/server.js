@@ -23,6 +23,7 @@ import reportRoutes from './src/routes/reports.js';
 import bulkNotificationRoutes from './src/routes/bulk-notifications.js';
 import configurationRoutes from './src/routes/configuration.js';
 import businessControlRoutes from './src/routes/business-control.js';
+import matchingRoutes from './src/routes/matching.js';
 
 // Load environment variables
 dotenv.config();
@@ -141,6 +142,7 @@ app.use('/api/verification', verificationRoutes);
 app.use('/api/quickusers', quickUserRoutes);
 app.use('/api/companies', companiesRoutes);
 app.use('/api/send-verification', sendVerificationRoutes);
+app.use('/api/matching', matchingRoutes);
 
 // Welcome Route
 app.get('/', (req, res) => {
