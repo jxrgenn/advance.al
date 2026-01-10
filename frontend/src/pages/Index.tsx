@@ -429,21 +429,24 @@ const Index = () => {
         {/* Search and Filters */}
         <Card className="mb-8">
           <CardContent className="p-6">
-            <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex flex-col gap-4">
+              {/* Search Input - Full width on all devices */}
               <SearchInput
                 value={searchQuery}
                 onChange={setSearchQuery}
                 onSearch={handleInstantSearch}
                 isLoading={searchLoading}
                 placeholder="Kërko punë, kompani, ose aftësi..."
-                className="flex-1"
+                className="w-full"
               />
 
-              <div className="flex gap-2">
+              {/* Filter Buttons - Wrap on mobile */}
+              <div className="flex flex-wrap gap-2">
                 <Button
                   variant={selectedLocation ? "default" : "outline"}
                   size="sm"
                   onClick={() => setSelectedLocation(selectedLocation === "Tiranë" ? "" : "Tiranë")}
+                  className="flex-shrink-0"
                 >
                   <MapPin className="mr-2 h-4 w-4" />
                   Tiranë
@@ -452,11 +455,12 @@ const Index = () => {
                   variant={selectedType ? "default" : "outline"}
                   size="sm"
                   onClick={() => setSelectedType(selectedType === "Full-time" ? "" : "Full-time")}
+                  className="flex-shrink-0"
                 >
                   <Briefcase className="mr-2 h-4 w-4" />
                   Full-time
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleShowFilters}>
+                <Button variant="outline" size="sm" onClick={handleShowFilters} className="flex-shrink-0">
                   <Filter className="mr-2 h-4 w-4" />
                   Filtro
                 </Button>
