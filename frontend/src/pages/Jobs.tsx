@@ -659,7 +659,7 @@ const Jobs = () => {
               </Card>
 
               {/* Workshop Event */}
-              <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-green-500">
+              <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-blue-500">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <Badge variant="secondary" className="text-[10px]">18 Janar</Badge>
@@ -675,7 +675,7 @@ const Jobs = () => {
               </Card>
 
               {/* Tech Meetup */}
-              <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-purple-500">
+              <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-blue-500">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <Badge variant="secondary" className="text-[10px]">22 Janar</Badge>
@@ -690,8 +690,40 @@ const Jobs = () => {
                 </CardContent>
               </Card>
 
+              {/* LinkedIn Workshop */}
+              <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-blue-500">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <Badge variant="secondary" className="text-[10px]">25 Janar</Badge>
+                  </div>
+                  <h3 className="font-semibold text-sm text-foreground mb-1">LinkedIn Profile Optimization</h3>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Online Webinar - 14:00
+                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Maksimizo profilin tënd të LinkedIn për të tërhequr rekruterë.
+                  </p>
+                </CardContent>
+              </Card>
+
+              {/* Startup Event */}
+              <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-blue-500">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <Badge variant="secondary" className="text-[10px]">28 Janar</Badge>
+                  </div>
+                  <h3 className="font-semibold text-sm text-foreground mb-1">Startup Networking Night</h3>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Tirana Smart City - 19:00
+                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Taku themeluesit e startup-eve shqiptare dhe eksploro mundësitë.
+                  </p>
+                </CardContent>
+              </Card>
+
               {/* Internship Deadline */}
-              <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-orange-500">
+              <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-blue-500">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <Badge variant="secondary" className="text-[10px]">Deadline: 31 Jan</Badge>
@@ -702,6 +734,38 @@ const Jobs = () => {
                   </p>
                   <p className="text-xs text-muted-foreground leading-relaxed">
                     Apliko tani për praktika verore në Big Tech companies.
+                  </p>
+                </CardContent>
+              </Card>
+
+              {/* Coding Bootcamp */}
+              <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-blue-500">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <Badge variant="secondary" className="text-[10px]">1 Shkurt</Badge>
+                  </div>
+                  <h3 className="font-semibold text-sm text-foreground mb-1">Free Coding Bootcamp</h3>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Universiteti Politeknik
+                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    2-javë intensive bootcamp në Web Development. Regjistrohu falas!
+                  </p>
+                </CardContent>
+              </Card>
+
+              {/* Job Interview Seminar */}
+              <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-blue-500">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <Badge variant="secondary" className="text-[10px]">5 Shkurt</Badge>
+                  </div>
+                  <h3 className="font-semibold text-sm text-foreground mb-1">Ace Your Job Interview</h3>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    American University of Tirana
+                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Strategji dhe këshilla për të kaluar intervista me sukses.
                   </p>
                 </CardContent>
               </Card>
