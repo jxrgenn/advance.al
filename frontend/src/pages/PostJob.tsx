@@ -9,6 +9,7 @@ import {
   Paper,
   TextInput,
   Select,
+  MultiSelect,
   Textarea,
   Group,
   Stack,
@@ -1118,73 +1119,28 @@ const PostJob = () => {
             <Divider my="lg" />
 
             <Box data-tutorial="platformCategories">
-              <Stack gap="xs">
-                <Group gap="xs">
-                  <input
-                    type="checkbox"
-                    id="diaspora"
-                    checked={jobForm.values.platformCategories?.diaspora || false}
-                    onChange={(e) => jobForm.setFieldValue('platformCategories', {
-                      ...jobForm.values.platformCategories,
-                      diaspora: e.target.checked
-                    })}
-                  />
-                  <label htmlFor="diaspora" className="text-sm cursor-pointer">Diaspora (Për shqiptarë jashtë vendit)</label>
-                </Group>
-
-                <Group gap="xs">
-                  <input
-                    type="checkbox"
-                    id="ngaShtepia"
-                    checked={jobForm.values.platformCategories?.ngaShtepia || false}
-                    onChange={(e) => jobForm.setFieldValue('platformCategories', {
-                      ...jobForm.values.platformCategories,
-                      ngaShtepia: e.target.checked
-                    })}
-                  />
-                  <label htmlFor="ngaShtepia" className="text-sm cursor-pointer">Nga shtëpia (Punë në distancë)</label>
-                </Group>
-
-                <Group gap="xs">
-                  <input
-                    type="checkbox"
-                    id="partTime"
-                    checked={jobForm.values.platformCategories?.partTime || false}
-                    onChange={(e) => jobForm.setFieldValue('platformCategories', {
-                      ...jobForm.values.platformCategories,
-                      partTime: e.target.checked
-                    })}
-                  />
-                  <label htmlFor="partTime" className="text-sm cursor-pointer">Part Time (Orar i reduktuar)</label>
-                </Group>
-
-                <Group gap="xs">
-                  <input
-                    type="checkbox"
-                    id="administrata"
-                    checked={jobForm.values.platformCategories?.administrata || false}
-                    onChange={(e) => jobForm.setFieldValue('platformCategories', {
-                      ...jobForm.values.platformCategories,
-                      administrata: e.target.checked
-                    })}
-                  />
-                  <label htmlFor="administrata" className="text-sm cursor-pointer">Administrata (Pozicione administrative)</label>
-                </Group>
-
-                <Group gap="xs">
-                  <input
-                    type="checkbox"
-                    id="sezonale"
-                    checked={jobForm.values.platformCategories?.sezonale || false}
-                    onChange={(e) => jobForm.setFieldValue('platformCategories', {
-                      ...jobForm.values.platformCategories,
-                      sezonale: e.target.checked
-                    })}
-                  />
-                  <label htmlFor="sezonale" className="text-sm cursor-pointer">Sezonale (Punë të përkohshme)</label>
-                </Group>
-              </Stack>
-              <Text size="xs" c="dimmed" mt="xs">Zgjidhni kategoritë që përputhen me këtë pozicion për të rritur dukshmërinë</Text>
+              <MultiSelect
+                label="Kategoritë e Platformës"
+                placeholder="Zgjidhni kategoritë"
+                description="Kategoritë që përputhen me këtë pozicion për të rritur dukshmërinë"
+                data={[
+                  { value: 'diaspora', label: 'Diaspora - Për shqiptarë jashtë vendit' },
+                  { value: 'ngaShtepia', label: 'Nga shtëpia - Punë në distancë' },
+                  { value: 'partTime', label: 'Part Time - Orar i reduktuar' },
+                  { value: 'administrata', label: 'Administrata - Pozicione administrative' },
+                  { value: 'sezonale', label: 'Sezonale - Punë të përkohshme' }
+                ]}
+                value={Object.keys(jobForm.values.platformCategories || {}).filter(key => jobForm.values.platformCategories[key as keyof typeof jobForm.values.platformCategories])}
+                onChange={(values) => {
+                  jobForm.setFieldValue('platformCategories', {
+                    diaspora: values.includes('diaspora'),
+                    ngaShtepia: values.includes('ngaShtepia'),
+                    partTime: values.includes('partTime'),
+                    administrata: values.includes('administrata'),
+                    sezonale: values.includes('sezonale')
+                  });
+                }}
+              />
             </Box>
           </Stack>
         );

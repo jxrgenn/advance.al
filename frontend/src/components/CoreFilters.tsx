@@ -13,7 +13,7 @@ import {
 interface CoreFiltersProps {
   filters: {
     diaspora: boolean;
-    ngaShtepια: boolean;
+    ngaShtepia: boolean;
     partTime: boolean;
     administrata: boolean;
     sezonale: boolean;
@@ -34,7 +34,7 @@ const CoreFilters: React.FC<CoreFiltersProps> = ({
       icon: Globe
     },
     {
-      key: 'ngaShtepια',
+      key: 'ngaShtepia',
       label: 'Nga shtëpia',
       icon: Home
     },

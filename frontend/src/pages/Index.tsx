@@ -28,14 +28,15 @@ const Index = () => {
   const [loading, setLoading] = useState(true);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedLocation, setSelectedLocation] = useState("");
+  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
+  const [selectedRemoteType, setSelectedRemoteType] = useState("");
   const [selectedType, setSelectedType] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
   // Core Platform Filters State
   const [coreFilters, setCoreFilters] = useState({
     diaspora: false,
-    ngaShtepία: false,
+    ngaShtepia: false,
     partTime: false,
     administrata: false,
     sezonale: false
@@ -102,7 +103,7 @@ const Index = () => {
     }, searchQuery.length >= 2 ? 300 : 0); // Faster debounce for better UX
 
     return () => clearTimeout(debounceTimeout);
-  }, [searchQuery, selectedLocation, selectedType, advancedFilters, coreFilters]);
+  }, [searchQuery, selectedLocations, selectedRemoteType, selectedType, advancedFilters, coreFilters]);
 
   const loadJobs = async (page = 1, isSearch = false) => {
     try {
@@ -116,7 +117,8 @@ const Index = () => {
       // Build query params with advanced filters
       const queryParams: any = {
         search: searchQuery || undefined,
-        city: selectedLocation || undefined,
+        city: selectedLocations.length > 0 ? selectedLocations.join(',') : undefined,
+        remoteType: selectedRemoteType || undefined,
         jobType: selectedType || undefined,
         page,
         limit: 10
@@ -149,8 +151,8 @@ const Index = () => {
       if (coreFilters.diaspora) {
         queryParams.diaspora = 'true';
       }
-      if (coreFilters.ngaShtepία) {
-        queryParams.ngaShtepία = 'true';
+      if (coreFilters.ngaShtepia) {
+        queryParams.ngaShtepia = 'true';
       }
       if (coreFilters.partTime) {
         queryParams.partTime = 'true';
@@ -312,11 +314,12 @@ const Index = () => {
 
   const clearFilters = () => {
     setSearchQuery("");
-    setSelectedLocation("");
+    setSelectedLocations([]);
+    setSelectedRemoteType("");
     setSelectedType("");
     setCoreFilters({
       diaspora: false,
-      ngaShtepία: false,
+      ngaShtepia: false,
       partTime: false,
       administrata: false,
       sezonale: false
@@ -351,12 +354,13 @@ const Index = () => {
     });
     setCoreFilters({
       diaspora: false,
-      ngaShtepία: false,
+      ngaShtepia: false,
       partTime: false,
       administrata: false,
       sezonale: false
     });
-    setSelectedLocation('');
+    setSelectedLocations([]);
+    setSelectedRemoteType('');
     setSelectedType('');
     setSearchQuery('');
 
@@ -381,7 +385,7 @@ const Index = () => {
   // Merge recommendations with regular jobs intelligently
   const getMergedJobs = () => {
     const recommendationIds = new Set(recommendations.map(job => job._id));
-    const hasActiveFilters = searchQuery || selectedLocation || selectedType ||
+    const hasActiveFilters = searchQuery || selectedLocations.length > 0 || selectedRemoteType || selectedType ||
       Object.values(coreFilters).some(Boolean) ||
       advancedFilters.company ||
       advancedFilters.experience ||
@@ -414,7 +418,7 @@ const Index = () => {
 
       <div className="container py-8 pt-24">
         {/* Premium Jobs Carousel - Full width, above heading */}
-        {!loading && !searchQuery && !selectedLocation && !selectedType && (
+        {!loading && !searchQuery && selectedLocations.length === 0 && !selectedRemoteType && !selectedType && (
           <div className="mb-8">
             <PremiumJobsCarousel jobs={jobs} />
           </div>
@@ -448,26 +452,51 @@ const Index = () => {
                 className="w-full"
               />
 
-              {/* Filter Buttons - Wrap on mobile */}
+              {/* Filter Dropdowns - Wrap on mobile */}
               <div className="flex flex-wrap gap-2">
-                <Button
-                  variant={selectedLocation ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSelectedLocation(selectedLocation === "Tiranë" ? "" : "Tiranë")}
-                  className="flex-shrink-0"
+                {/* City Multi-Select Dropdown */}
+                <Select
+                  value={selectedLocations.length === 1 ? selectedLocations[0] : selectedLocations.length > 1 ? "_multiple_" : ""}
+                  onValueChange={(value) => {
+                    if (value === "_all_") {
+                      setSelectedLocations([]);
+                    } else if (value) {
+                      setSelectedLocations(selectedLocations.includes(value)
+                        ? selectedLocations.filter(c => c !== value)
+                        : [...selectedLocations, value]
+                      );
+                    }
+                  }}
                 >
-                  <MapPin className="mr-2 h-4 w-4" />
-                  Tiranë
-                </Button>
-                <Button
-                  variant={selectedType ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSelectedType(selectedType === "Full-time" ? "" : "Full-time")}
-                  className="flex-shrink-0"
-                >
-                  <Briefcase className="mr-2 h-4 w-4" />
-                  Full-time
-                </Button>
+                  <SelectTrigger className="w-[180px]">
+                    <MapPin className="mr-2 h-4 w-4" />
+                    <SelectValue placeholder={selectedLocations.length > 0 ? `${selectedLocations.length} qytete` : "Qyteti"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all_">Të gjitha qytetet</SelectItem>
+                    {locations.map((location) => (
+                      <SelectItem key={location.city} value={location.city}>
+                        {location.city}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* Remote Type Dropdown */}
+                <Select value={selectedRemoteType || ""} onValueChange={(value) => setSelectedRemoteType(value === "_none_" ? "" : value)}>
+                  <SelectTrigger className="w-[180px]">
+                    <Briefcase className="mr-2 h-4 w-4" />
+                    <SelectValue placeholder="Lloji i punës" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none_">Të gjitha llojet</SelectItem>
+                    <SelectItem value="full">Plotësisht nga shtëpia</SelectItem>
+                    <SelectItem value="hybrid">Hibride</SelectItem>
+                    <SelectItem value="none">Në zyrë</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {/* Advanced Filters Button */}
                 <Button variant="outline" size="sm" onClick={handleShowFilters} className="flex-shrink-0">
                   <Filter className="mr-2 h-4 w-4" />
                   Filtro
@@ -490,18 +519,29 @@ const Index = () => {
 
           {/* Main Content - Job Listings (60%) */}
           <div className="lg:col-span-6">
-            {/* Recently Viewed Jobs - Show when not searching and user is authenticated */}
-            {!loading && !searchQuery && !selectedLocation && !selectedType && isAuthenticated && (
+            {/* Recently Viewed Jobs - Show when not filtering and user is authenticated */}
+            {!loading && !searchQuery && selectedLocations.length === 0 && !selectedRemoteType && !selectedType && !Object.values(coreFilters).some(Boolean) && isAuthenticated && (
               <RecentlyViewedJobs className="mb-6" limit={4} />
             )}
 
             {/* Active Filters */}
-            {(selectedLocation || selectedType || Object.values(coreFilters).some(Boolean)) && (
+            {(selectedLocations.length > 0 || selectedRemoteType || selectedType || Object.values(coreFilters).some(Boolean)) && (
           <div className="flex items-center gap-2 mb-6">
             <span className="text-sm text-muted-foreground">Filtrat aktive:</span>
-            {selectedLocation && (
-              <Badge variant="secondary" className="cursor-pointer" onClick={() => setSelectedLocation("")}>
-                {selectedLocation} ×
+            {selectedLocations.map((city) => (
+              <Badge
+                key={city}
+                variant="secondary"
+                className="cursor-pointer"
+                onClick={() => setSelectedLocations(selectedLocations.filter(c => c !== city))}
+              >
+                {city} ×
+              </Badge>
+            ))}
+            {selectedRemoteType && (
+              <Badge variant="secondary" className="cursor-pointer" onClick={() => setSelectedRemoteType("")}>
+                {selectedRemoteType === 'full' ? 'Plotësisht nga shtëpia' :
+                 selectedRemoteType === 'hybrid' ? 'Hibride' : 'Në zyrë'} ×
               </Badge>
             )}
             {selectedType && (
@@ -514,8 +554,8 @@ const Index = () => {
                 Diaspora ×
               </Badge>
             )}
-            {coreFilters.ngaShtepία && (
-              <Badge variant="secondary" className="cursor-pointer" onClick={() => handleCoreFilterChange('ngaShtepία', false)}>
+            {coreFilters.ngaShtepia && (
+              <Badge variant="secondary" className="cursor-pointer" onClick={() => handleCoreFilterChange('ngaShtepia', false)}>
                 Nga shtëpia ×
               </Badge>
             )}
@@ -574,7 +614,7 @@ const Index = () => {
                     <p className="text-muted-foreground mb-4">
                       Provo të ndryshosh kriteret e kërkimit
                     </p>
-                    {(selectedLocation || selectedType || searchQuery || Object.values(coreFilters).some(Boolean)) && (
+                    {(selectedLocations.length > 0 || selectedRemoteType || selectedType || searchQuery || Object.values(coreFilters).some(Boolean)) && (
                       <Button onClick={clearFilters} variant="outline">
                         Pastro filtrat
                       </Button>
