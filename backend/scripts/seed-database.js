@@ -330,7 +330,7 @@ const seedDatabase = async () => {
         ],
         benefits: [
           'Pagë konkurruese',
-          'Mundësi për rritje profesionale', 
+          'Mundësi për rritje profesionale',
           'Ambiente pune moderne',
           'Fleksibilitet në oraret e punës'
         ],
@@ -349,6 +349,14 @@ const seedDatabase = async () => {
           currency: 'EUR',
           negotiable: true,
           showPublic: true
+        },
+        // Platform Categories - intelligently set based on job characteristics
+        platformCategories: {
+          diaspora: job.city === 'Diaspora' || job.title.toLowerCase().includes('diaspora'),
+          ngaShtepια: job.city === 'Online/Remote' || job.title.toLowerCase().includes('remote'),
+          partTime: job.jobType === 'part-time',
+          administrata: job.category === 'Burime Njerëzore' || job.title.toLowerCase().includes('admin') || job.title.toLowerCase().includes('hr'),
+          sezonale: job.title.toLowerCase().includes('seasonal') || job.title.toLowerCase().includes('summer')
         },
         status: 'active',
         tier: job.tier,

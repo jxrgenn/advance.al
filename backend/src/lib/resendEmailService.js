@@ -2,12 +2,27 @@ import { Resend } from 'resend';
 
 class ResendEmailService {
   constructor() {
-    this.resend = new Resend(process.env.RESEND_API_KEY);
+    const apiKey = process.env.RESEND_API_KEY;
+
+    if (!apiKey) {
+      console.warn('⚠️  RESEND_API_KEY not set - email sending disabled');
+      this.enabled = false;
+      this.resend = null;
+    } else {
+      this.resend = new Resend(apiKey);
+      this.enabled = true;
+    }
+
     this.testEmail = 'advance.al123456@gmail.com'; // Your email for testing
   }
 
   // Send welcome email to new full account user
   async sendFullAccountWelcomeEmail(user) {
+    if (!this.enabled) {
+      console.log('📧 Email sending disabled - skipping full account welcome email');
+      return { success: false, message: 'Email service disabled' };
+    }
+
     try {
       const subject = 'Mirë se vini në advance.al! 🎉 Llogaria juaj u krijua me sukses';
 
@@ -139,6 +154,11 @@ advance.al - Platforma e Punës në Shqipëri
 
   // Send welcome email to new quick user
   async sendQuickUserWelcomeEmail(user) {
+    if (!this.enabled) {
+      console.log('📧 Email sending disabled - skipping quick user welcome email');
+      return { success: false, message: 'Email service disabled' };
+    }
+
     try {
       const subject = 'Mirë se vini në advance.al! 🎉 Regjistrimi për njoftimet u krye me sukses';
 
@@ -282,6 +302,11 @@ advance.al - Platforma e Punës në Shqipëri
 
   // Send account action email (warning, suspension, ban)
   async sendAccountActionEmail(user, action, reason, duration = null) {
+    if (!this.enabled) {
+      console.log('📧 Email sending disabled - skipping account action email');
+      return { success: false, message: 'Email service disabled' };
+    }
+
     try {
       const actionDetails = {
         warning: {
@@ -468,6 +493,11 @@ advance.al - Platforma e Punës në Shqipëri
 
   // Send bulk notification email
   async sendBulkNotificationEmail(toEmail, notificationData) {
+    if (!this.enabled) {
+      console.log('📧 Email sending disabled - skipping bulk notification email');
+      return { success: false, message: 'Email service disabled' };
+    }
+
     try {
       const { title, message, type, userName } = notificationData;
 

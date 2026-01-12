@@ -83,7 +83,14 @@ const PostJob = () => {
       salaryCurrency: 'EUR',
       showSalary: false,
       applicationMethod: 'one_click',
-      expiresAt: ''
+      expiresAt: '',
+      platformCategories: {
+        diaspora: false,
+        ngaShtepια: false,
+        partTime: false,
+        administrata: false,
+        sezonale: false
+      }
     },
     validate: (values) => {
       const errors: any = {};
@@ -306,7 +313,8 @@ const PostJob = () => {
           showPublic: values.showSalary,
           negotiable: false,
           period: salaryPeriod
-        } : undefined
+        } : undefined,
+        platformCategories: values.platformCategories
       };
 
       console.log('📤 Sending job data:', jobData);
@@ -332,6 +340,15 @@ const PostJob = () => {
         const expiryDate = new Date();
         expiryDate.setDate(expiryDate.getDate() + 30);
         jobForm.setFieldValue('expiresAt', expiryDate.toISOString().split('T')[0]);
+
+        // Reset platformCategories
+        jobForm.setFieldValue('platformCategories', {
+          diaspora: false,
+          ngaShtepια: false,
+          partTime: false,
+          administrata: false,
+          sezonale: false
+        });
 
         // Redirect to employer dashboard after successful submission
         setTimeout(() => {
@@ -1089,6 +1106,100 @@ const PostJob = () => {
               >
                 Shto Tag
               </Button>
+            </Box>
+
+            <Divider my="lg" />
+
+            <Box data-tutorial="platformCategories">
+              <Text fw={500} mb="xs">Kategoritë e Platformës</Text>
+              <Text size="sm" c="dimmed" mb="md">Zgjidhni kategoritë që përputhen me këtë pozicion për të rritur dukshmërinë</Text>
+
+              <SimpleGrid cols={2} spacing="md">
+                <div className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                  <input
+                    type="checkbox"
+                    id="diaspora"
+                    className="mt-1"
+                    checked={jobForm.values.platformCategories?.diaspora || false}
+                    onChange={(e) => jobForm.setFieldValue('platformCategories', {
+                      ...jobForm.values.platformCategories,
+                      diaspora: e.target.checked
+                    })}
+                  />
+                  <div>
+                    <label htmlFor="diaspora" className="font-medium text-sm cursor-pointer">Diaspora</label>
+                    <p className="text-xs text-gray-500">Për shqiptarë jashtë vendit</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                  <input
+                    type="checkbox"
+                    id="ngaShtepια"
+                    className="mt-1"
+                    checked={jobForm.values.platformCategories?.ngaShtepια || false}
+                    onChange={(e) => jobForm.setFieldValue('platformCategories', {
+                      ...jobForm.values.platformCategories,
+                      ngaShtepια: e.target.checked
+                    })}
+                  />
+                  <div>
+                    <label htmlFor="ngaShtepια" className="font-medium text-sm cursor-pointer">Nga shtëpia</label>
+                    <p className="text-xs text-gray-500">Punë në distancë</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                  <input
+                    type="checkbox"
+                    id="partTime"
+                    className="mt-1"
+                    checked={jobForm.values.platformCategories?.partTime || false}
+                    onChange={(e) => jobForm.setFieldValue('platformCategories', {
+                      ...jobForm.values.platformCategories,
+                      partTime: e.target.checked
+                    })}
+                  />
+                  <div>
+                    <label htmlFor="partTime" className="font-medium text-sm cursor-pointer">Part Time</label>
+                    <p className="text-xs text-gray-500">Orar i reduktuar</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                  <input
+                    type="checkbox"
+                    id="administrata"
+                    className="mt-1"
+                    checked={jobForm.values.platformCategories?.administrata || false}
+                    onChange={(e) => jobForm.setFieldValue('platformCategories', {
+                      ...jobForm.values.platformCategories,
+                      administrata: e.target.checked
+                    })}
+                  />
+                  <div>
+                    <label htmlFor="administrata" className="font-medium text-sm cursor-pointer">Administrata</label>
+                    <p className="text-xs text-gray-500">Pozicione administrative</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                  <input
+                    type="checkbox"
+                    id="sezonale"
+                    className="mt-1"
+                    checked={jobForm.values.platformCategories?.sezonale || false}
+                    onChange={(e) => jobForm.setFieldValue('platformCategories', {
+                      ...jobForm.values.platformCategories,
+                      sezonale: e.target.checked
+                    })}
+                  />
+                  <div>
+                    <label htmlFor="sezonale" className="font-medium text-sm cursor-pointer">Sezonale</label>
+                    <p className="text-xs text-gray-500">Punë të përkohshme</p>
+                  </div>
+                </div>
+              </SimpleGrid>
             </Box>
           </Stack>
         );
