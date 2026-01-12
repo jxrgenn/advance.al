@@ -624,94 +624,70 @@ const Index = () => {
             )}
           </div>
 
-          {/* Right Sidebar - Educational Announcements (20%) */}
+          {/* Right Sidebar - Event Announcements (20%) */}
           <div className="hidden lg:block lg:col-span-2">
             <div className="sticky top-4 space-y-3">
-              {/* University Partnership Announcement */}
-              <Card className="hover:shadow-md transition-shadow duration-200">
+              {/* Career Fair Event */}
+              <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-blue-500">
                 <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <GraduationCap className="h-4 w-4 text-muted-foreground" />
-                    <h3 className="font-semibold text-sm text-foreground">Partneritet Universitar</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <Badge variant="secondary" className="text-[10px]">15 Janar</Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
-                    Advance.al bashkëpunon me universitetet kryesore për mundësi pune ekskluzive.
+                  <h3 className="font-semibold text-sm text-foreground mb-1">Career Fair 2026</h3>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Universiteti i Tiranës
                   </p>
-                  <div className="space-y-1.5 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px]">•</span>
-                      <span>Universiteti i Tiranës</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px]">•</span>
-                      <span>Universiteti Politeknik</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px]">•</span>
-                      <span>EPOKA University</span>
-                    </div>
-                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Më shumë se 50 kompani do të jenë prezent. Sillni CV-në tuaj!
+                  </p>
                 </CardContent>
               </Card>
 
-              {/* Student Career Resources */}
-              <Card className="hover:shadow-md transition-shadow duration-200">
+              {/* Workshop Event */}
+              <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-green-500">
                 <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                    <h3 className="font-semibold text-sm text-foreground">Burime për Studentë</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <Badge variant="secondary" className="text-[10px]">18 Janar</Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
-                    Kurse falas, workshop dhe mentorë për zhvillimin e karrierës.
+                  <h3 className="font-semibold text-sm text-foreground mb-1">Workshop: Resume Building</h3>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    EPOKA University - 10:00 AM
                   </p>
-                  <div className="space-y-1.5 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px]">•</span>
-                      <span>CV Workshop</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px]">•</span>
-                      <span>Interview Preparation</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px]">•</span>
-                      <span>Career Mentorship</span>
-                    </div>
-                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Mëso si të shkruash një CV profesionale që bie në sy.
+                  </p>
                 </CardContent>
               </Card>
 
-              {/* Internship Opportunities */}
-              <Card className="hover:shadow-md transition-shadow duration-200">
+              {/* Tech Meetup */}
+              <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-purple-500">
                 <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Briefcase className="h-4 w-4 text-muted-foreground" />
-                    <h3 className="font-semibold text-sm text-foreground">Praktika Profesionale</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <Badge variant="secondary" className="text-[10px]">22 Janar</Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
-                    Gjej praktika të paguara në kompani të njohura. Përvojë reale pune.
+                  <h3 className="font-semibold text-sm text-foreground mb-1">Tech Meetup Tirana</h3>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Destil Hostel - 18:00
                   </p>
-                  <div className="border-t pt-2">
-                    <p className="text-lg font-bold text-foreground">150+</p>
-                    <p className="text-xs text-muted-foreground">Praktika aktive</p>
-                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Network me profesionistë të IT dhe startup founders.
+                  </p>
                 </CardContent>
               </Card>
 
-              {/* Student Discount Program */}
-              <Card className="hover:shadow-md transition-shadow duration-200">
+              {/* Internship Deadline */}
+              <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-orange-500">
                 <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Award className="h-4 w-4 text-muted-foreground" />
-                    <h3 className="font-semibold text-sm text-foreground">Zbritje për Studentë</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <Badge variant="secondary" className="text-[10px]">Deadline: 31 Jan</Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
-                    20% zbritje në shërbime premium me kartën e studentit.
+                  <h3 className="font-semibold text-sm text-foreground mb-1">Summer Internships 2026</h3>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Google, Microsoft, Amazon
                   </p>
-                  <div className="border-t pt-2">
-                    <p className="text-lg font-bold text-foreground">20% OFF</p>
-                    <p className="text-xs text-muted-foreground">Premium Features</p>
-                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Apliko tani për praktika verore në Big Tech companies.
+                  </p>
                 </CardContent>
               </Card>
             </div>
