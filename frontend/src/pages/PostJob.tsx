@@ -86,7 +86,7 @@ const PostJob = () => {
       expiresAt: '',
       platformCategories: {
         diaspora: false,
-        ngaShtepiaα: false,
+        ngaShtepia: false,
         partTime: false,
         administrata: false,
         sezonale: false
@@ -193,6 +193,13 @@ const PostJob = () => {
       selector: '[data-tutorial="tags"]',
       title: "Tags",
       content: "Shtoni tags që përshkruajnë pozicionin. Këto ndihmojnë kandidatët të gjejnë punën tuaj më lehtë.",
+      position: "bottom",
+      formStep: 3
+    },
+    {
+      selector: '[data-tutorial="platformCategories"]',
+      title: "Kategoritë e Platformës",
+      content: "Zgjidhni kategoritë speciale që përputhen me këtë pozicion (Diaspora, Nga shtëpia, Part Time, Administrata, Sezonale). Kjo rrit dukshmërinë e punës në kërkime të specializuara.",
       position: "bottom",
       formStep: 3
     }
@@ -344,7 +351,7 @@ const PostJob = () => {
         // Reset platformCategories
         jobForm.setFieldValue('platformCategories', {
           diaspora: false,
-          ngaShtepiaα: false,
+          ngaShtepia: false,
           partTime: false,
           administrata: false,
           sezonale: false
@@ -1111,95 +1118,73 @@ const PostJob = () => {
             <Divider my="lg" />
 
             <Box data-tutorial="platformCategories">
-              <Text fw={500} mb="xs">Kategoritë e Platformës</Text>
-              <Text size="sm" c="dimmed" mb="md">Zgjidhni kategoritë që përputhen me këtë pozicion për të rritur dukshmërinë</Text>
-
-              <SimpleGrid cols={2} spacing="md">
-                <div className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+              <Stack gap="xs">
+                <Group gap="xs">
                   <input
                     type="checkbox"
                     id="diaspora"
-                    className="mt-1"
                     checked={jobForm.values.platformCategories?.diaspora || false}
                     onChange={(e) => jobForm.setFieldValue('platformCategories', {
                       ...jobForm.values.platformCategories,
                       diaspora: e.target.checked
                     })}
                   />
-                  <div>
-                    <label htmlFor="diaspora" className="font-medium text-sm cursor-pointer">Diaspora</label>
-                    <p className="text-xs text-gray-500">Për shqiptarë jashtë vendit</p>
-                  </div>
-                </div>
+                  <label htmlFor="diaspora" className="text-sm cursor-pointer">Diaspora (Për shqiptarë jashtë vendit)</label>
+                </Group>
 
-                <div className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                <Group gap="xs">
                   <input
                     type="checkbox"
-                    id="ngaShtepiaα"
-                    className="mt-1"
-                    checked={jobForm.values.platformCategories?.ngaShtepiaα || false}
+                    id="ngaShtepia"
+                    checked={jobForm.values.platformCategories?.ngaShtepia || false}
                     onChange={(e) => jobForm.setFieldValue('platformCategories', {
                       ...jobForm.values.platformCategories,
-                      ngaShtepiaα: e.target.checked
+                      ngaShtepia: e.target.checked
                     })}
                   />
-                  <div>
-                    <label htmlFor="ngaShtepiaα" className="font-medium text-sm cursor-pointer">Nga shtëpia</label>
-                    <p className="text-xs text-gray-500">Punë në distancë</p>
-                  </div>
-                </div>
+                  <label htmlFor="ngaShtepia" className="text-sm cursor-pointer">Nga shtëpia (Punë në distancë)</label>
+                </Group>
 
-                <div className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                <Group gap="xs">
                   <input
                     type="checkbox"
                     id="partTime"
-                    className="mt-1"
                     checked={jobForm.values.platformCategories?.partTime || false}
                     onChange={(e) => jobForm.setFieldValue('platformCategories', {
                       ...jobForm.values.platformCategories,
                       partTime: e.target.checked
                     })}
                   />
-                  <div>
-                    <label htmlFor="partTime" className="font-medium text-sm cursor-pointer">Part Time</label>
-                    <p className="text-xs text-gray-500">Orar i reduktuar</p>
-                  </div>
-                </div>
+                  <label htmlFor="partTime" className="text-sm cursor-pointer">Part Time (Orar i reduktuar)</label>
+                </Group>
 
-                <div className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                <Group gap="xs">
                   <input
                     type="checkbox"
                     id="administrata"
-                    className="mt-1"
                     checked={jobForm.values.platformCategories?.administrata || false}
                     onChange={(e) => jobForm.setFieldValue('platformCategories', {
                       ...jobForm.values.platformCategories,
                       administrata: e.target.checked
                     })}
                   />
-                  <div>
-                    <label htmlFor="administrata" className="font-medium text-sm cursor-pointer">Administrata</label>
-                    <p className="text-xs text-gray-500">Pozicione administrative</p>
-                  </div>
-                </div>
+                  <label htmlFor="administrata" className="text-sm cursor-pointer">Administrata (Pozicione administrative)</label>
+                </Group>
 
-                <div className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                <Group gap="xs">
                   <input
                     type="checkbox"
                     id="sezonale"
-                    className="mt-1"
                     checked={jobForm.values.platformCategories?.sezonale || false}
                     onChange={(e) => jobForm.setFieldValue('platformCategories', {
                       ...jobForm.values.platformCategories,
                       sezonale: e.target.checked
                     })}
                   />
-                  <div>
-                    <label htmlFor="sezonale" className="font-medium text-sm cursor-pointer">Sezonale</label>
-                    <p className="text-xs text-gray-500">Punë të përkohshme</p>
-                  </div>
-                </div>
-              </SimpleGrid>
+                  <label htmlFor="sezonale" className="text-sm cursor-pointer">Sezonale (Punë të përkohshme)</label>
+                </Group>
+              </Stack>
+              <Text size="xs" c="dimmed" mt="xs">Zgjidhni kategoritë që përputhen me këtë pozicion për të rritur dukshmërinë</Text>
             </Box>
           </Stack>
         );
