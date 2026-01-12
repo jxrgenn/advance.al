@@ -86,7 +86,7 @@ const PostJob = () => {
       expiresAt: '',
       platformCategories: {
         diaspora: false,
-        ngaShtepια: false,
+        ngaShtepiaα: false,
         partTime: false,
         administrata: false,
         sezonale: false
@@ -344,7 +344,7 @@ const PostJob = () => {
         // Reset platformCategories
         jobForm.setFieldValue('platformCategories', {
           diaspora: false,
-          ngaShtepια: false,
+          ngaShtepiaα: false,
           partTime: false,
           administrata: false,
           sezonale: false
@@ -1135,16 +1135,16 @@ const PostJob = () => {
                 <div className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                   <input
                     type="checkbox"
-                    id="ngaShtepια"
+                    id="ngaShtepiaα"
                     className="mt-1"
-                    checked={jobForm.values.platformCategories?.ngaShtepια || false}
+                    checked={jobForm.values.platformCategories?.ngaShtepiaα || false}
                     onChange={(e) => jobForm.setFieldValue('platformCategories', {
                       ...jobForm.values.platformCategories,
-                      ngaShtepια: e.target.checked
+                      ngaShtepiaα: e.target.checked
                     })}
                   />
                   <div>
-                    <label htmlFor="ngaShtepια" className="font-medium text-sm cursor-pointer">Nga shtëpia</label>
+                    <label htmlFor="ngaShtepiaα" className="font-medium text-sm cursor-pointer">Nga shtëpia</label>
                     <p className="text-xs text-gray-500">Punë në distancë</p>
                   </div>
                 </div>

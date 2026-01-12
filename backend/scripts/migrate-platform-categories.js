@@ -93,7 +93,7 @@ async function migrateplatformCategories() {
     let updated = 0;
     let stats = {
       diaspora: 0,
-      ngaShtepια: 0,
+      ngaShtepiaα: 0,
       partTime: 0,
       administrata: 0,
       sezonale: 0
@@ -102,7 +102,7 @@ async function migrateplatformCategories() {
     for (const job of jobs) {
       const platformCategories = {
         diaspora: determineDiaspora(job),
-        ngaShtepια: determineRemote(job),
+        ngaShtepiaα: determineRemote(job),
         partTime: determinePartTime(job),
         administrata: determineAdmin(job),
         sezonale: determineSeasonal(job)
@@ -110,7 +110,7 @@ async function migrateplatformCategories() {
 
       // Count statistics
       if (platformCategories.diaspora) stats.diaspora++;
-      if (platformCategories.ngaShtepια) stats.ngaShtepια++;
+      if (platformCategories.ngaShtepiaα) stats.ngaShtepiaα++;
       if (platformCategories.partTime) stats.partTime++;
       if (platformCategories.administrata) stats.administrata++;
       if (platformCategories.sezonale) stats.sezonale++;
@@ -130,7 +130,7 @@ async function migrateplatformCategories() {
     console.log(`📈 Statistics:`);
     console.log(`   - Total jobs updated: ${updated}`);
     console.log(`   - Diaspora: ${stats.diaspora} jobs (${((stats.diaspora/updated)*100).toFixed(1)}%)`);
-    console.log(`   - Nga shtëpia (Remote): ${stats.ngaShtepια} jobs (${((stats.ngaShtepια/updated)*100).toFixed(1)}%)`);
+    console.log(`   - Nga shtëpia (Remote): ${stats.ngaShtepiaα} jobs (${((stats.ngaShtepiaα/updated)*100).toFixed(1)}%)`);
     console.log(`   - Part Time: ${stats.partTime} jobs (${((stats.partTime/updated)*100).toFixed(1)}%)`);
     console.log(`   - Administrata: ${stats.administrata} jobs (${((stats.administrata/updated)*100).toFixed(1)}%)`);
     console.log(`   - Sezonale: ${stats.sezonale} jobs (${((stats.sezonale/updated)*100).toFixed(1)}%)`);

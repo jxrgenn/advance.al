@@ -69,7 +69,7 @@ const createJobValidation = [
   body('platformCategories.diaspora')
     .isBoolean()
     .withMessage('Diaspora duhet të jetë true ose false'),
-  body('platformCategories.ngaShtepια')
+  body('platformCategories.ngaShtepia')
     .isBoolean()
     .withMessage('Nga shtëpia duhet të jetë true ose false'),
   body('platformCategories.partTime')
@@ -103,7 +103,7 @@ router.get('/', optionalAuth, async (req, res) => {
       sortOrder = 'desc',
       // Core Platform Filters
       diaspora = '',
-      ngaShtepια = '',
+      ngaShtepia = '',
       partTime = '',
       administrata = '',
       sezonale = ''
@@ -147,7 +147,7 @@ router.get('/', optionalAuth, async (req, res) => {
 
     // Add platform category filters
     if (diaspora === 'true') filters.diaspora = true;
-    if (ngaShtepια === 'true') filters.ngaShtepια = true;
+    if (ngaShtepia === 'true') filters.ngaShtepia = true;
     if (partTime === 'true') filters.partTime = true;
     if (administrata === 'true') filters.administrata = true;
     if (sezonale === 'true') filters.sezonale = true;
@@ -197,7 +197,7 @@ router.get('/', optionalAuth, async (req, res) => {
       ...(jobType && { jobType }),
       ...(company && mongoose.Types.ObjectId.isValid(company) && { employerId: company }),
       ...(diaspora === 'true' && { 'platformCategories.diaspora': true }),
-      ...(ngaShtepια === 'true' && { 'platformCategories.ngaShtepία': true }),
+      ...(ngaShtepia === 'true' && { 'platformCategories.ngaShtepία': true }),
       ...(partTime === 'true' && { 'platformCategories.partTime': true }),
       ...(administrata === 'true' && { 'platformCategories.administrata': true }),
       ...(sezonale === 'true' && { 'platformCategories.sezonale': true })
@@ -498,7 +498,7 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, createJ
       tier = 'basic',
       platformCategories = {
         diaspora: false,
-        ngaShtepια: false,
+        ngaShtepia: false,
         partTime: false,
         administrata: false,
         sezonale: false
@@ -567,7 +567,7 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, createJ
       },
       platformCategories: {
         diaspora: platformCategories.diaspora || false,
-        ngaShtepια: platformCategories.ngaShtepια || false,
+        ngaShtepia: platformCategories.ngaShtepia || false,
         partTime: platformCategories.partTime || false,
         administrata: platformCategories.administrata || false,
         sezonale: platformCategories.sezonale || false

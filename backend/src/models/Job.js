@@ -66,7 +66,7 @@ const jobSchema = new Schema({
       default: false, // Jobs outside Albania
       required: true
     },
-    ngaShtepια: {
+    ngaShtepia: {
       type: Boolean,
       default: false, // Remote work
       required: true
@@ -414,8 +414,8 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
   if (filters.diaspora === true) {
     query['platformCategories.diaspora'] = true;
   }
-  if (filters.ngaShtepια === true) {
-    query['platformCategories.ngaShtepια'] = true;
+  if (filters.ngaShtepia === true) {
+    query['platformCategories.ngaShtepia'] = true;
   }
   if (filters.partTime === true) {
     query['platformCategories.partTime'] = true;
