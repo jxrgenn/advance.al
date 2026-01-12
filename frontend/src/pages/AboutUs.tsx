@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import Navigation from "@/components/Navigation";
+import Footer from "@/components/Footer";
 import {
   Users,
   Building,
@@ -14,7 +15,11 @@ import {
   Clock,
   MapPin,
   Mail,
-  Phone
+  Phone,
+  Zap,
+  UserCheck,
+  Bell,
+  Lightbulb
 } from "lucide-react";
 
 const AboutUs = () => {
@@ -23,7 +28,7 @@ const AboutUs = () => {
       <Navigation />
 
       {/* Hero Section */}
-      <section className="bg-gradient-to-br from-primary/10 via-primary/5 to-background py-12 md:py-20">
+      <section className="bg-gradient-to-br from-primary/10 via-primary/5 to-background py-12 md:py-20 pt-24 md:pt-28">
         <div className="container mx-auto px-4">
           <div className="text-center space-y-6">
             <Badge variant="secondary" className="text-lg px-6 py-2 mb-4">
@@ -170,6 +175,150 @@ const AboutUs = () => {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works - Different Ways to Use Platform */}
+      <section className="py-16 bg-gradient-to-br from-blue-50/50 to-background">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              Tre Mënyra për të Përdorur advance.al
+            </h2>
+            <p className="text-lg md:text-xl text-muted-foreground max-w-3xl mx-auto">
+              Zgjidhni mënyrën që ju përshtatet më së miri. Fleksibël, i thjeshtë, dhe gjithmonë efektiv.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8 mb-12">
+            {/* Full Account */}
+            <Card className="p-6 bg-background border-2 hover:border-primary/60 transition-all duration-300 hover:shadow-lg">
+              <CardContent className="space-y-4 p-0">
+                <div className="bg-primary/10 p-4 rounded-full w-16 h-16 mx-auto flex items-center justify-center">
+                  <UserCheck className="h-8 w-8 text-primary" />
+                </div>
+                <h3 className="text-xl font-semibold text-center">Profil i Plotë</h3>
+                <p className="text-muted-foreground text-center text-sm">
+                  Krijoni një llogari të plotë dhe aplikoni për punë me vetëm një klik.
+                </p>
+                <div className="space-y-3 pt-4">
+                  <div className="flex items-start space-x-2">
+                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                    <span className="text-sm">Aplikim me 1 klik për të gjitha punët</span>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                    <span className="text-sm">Menaxhim i aplikimeve tuaja</span>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                    <span className="text-sm">Njoftime për përputhje të reja</span>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <Lightbulb className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                    <span className="text-sm font-medium">Gjenero CV me AI automatikisht</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Flexible Application */}
+            <Card className="p-6 bg-background border-2 hover:border-primary/60 transition-all duration-300 hover:shadow-lg">
+              <CardContent className="space-y-4 p-0">
+                <div className="bg-orange-500/10 p-4 rounded-full w-16 h-16 mx-auto flex items-center justify-center">
+                  <Zap className="h-8 w-8 text-orange-600" />
+                </div>
+                <h3 className="text-xl font-semibold text-center">Aplikim Fleksibël</h3>
+                <p className="text-muted-foreground text-center text-sm">
+                  Krijoni llogari por plotësoni të dhënat për çdo aplikim veç e veç.
+                </p>
+                <div className="space-y-3 pt-4">
+                  <div className="flex items-start space-x-2">
+                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                    <span className="text-sm">Kontroll i plotë mbi çdo aplikim</span>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                    <span className="text-sm">Personalizoni mesazhin për çdo punë</span>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                    <span className="text-sm">Zgjidhni çfarë informacioni të ndani</span>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                    <span className="text-sm">Ideal për aplikime të kujdesshme</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Quick Profile */}
+            <Card className="p-6 bg-background border-2 hover:border-primary/60 transition-all duration-300 hover:shadow-lg">
+              <CardContent className="space-y-4 p-0">
+                <div className="bg-green-500/10 p-4 rounded-full w-16 h-16 mx-auto flex items-center justify-center">
+                  <Bell className="h-8 w-8 text-green-600" />
+                </div>
+                <h3 className="text-xl font-semibold text-center">Profil i Shpejtë</h3>
+                <p className="text-muted-foreground text-center text-sm">
+                  Vetëm jepni të dhënat bazë dhe merrni njoftime për punë të reja.
+                </p>
+                <div className="space-y-3 pt-4">
+                  <div className="flex items-start space-x-2">
+                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                    <span className="text-sm">Pa nevojë për regjistrim të plotë</span>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                    <span className="text-sm">Email njoftime për punë të reja</span>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                    <span className="text-sm">Punëdhënësit mund t'ju kontaktojnë</span>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                    <span className="text-sm">Më e shpejta - vetëm 2 minuta</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* AI CV Generation CTA */}
+          <div className="mt-12 max-w-5xl mx-auto">
+            <Card className="overflow-hidden border-2 border-primary/20 hover:border-primary/40 transition-all duration-300">
+              <CardContent className="p-0">
+                <div className="flex flex-col md:flex-row items-center">
+                  {/* Left side - Icon & Info */}
+                  <div className="bg-gradient-to-br from-primary/10 to-primary/5 p-8 md:w-2/5 flex flex-col items-center justify-center text-center">
+                    <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
+                      <Lightbulb className="h-12 w-12 text-primary" />
+                    </div>
+                    <h3 className="text-2xl font-bold mb-2">Gjenero CV me AI</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Shkrim i lirë • Çdo gjuhë • Automatik
+                    </p>
+                  </div>
+                  
+                  {/* Right side - Description & CTA */}
+                  <div className="p-8 md:w-3/5">
+                    <p className="text-muted-foreground mb-6 leading-relaxed">
+                      Krijoni një CV profesionale në sekonda duke shkruar thjesht për veten, 
+                      eksperiencën dhe aftësitë tuaja në mënyrë të natyrshme. AI-ja jonë 
+                      analizon tekstin dhe krijon një CV të formatuar dhe të optimizuar automatikisht.
+                    </p>
+                    <Button size="lg" className="w-full md:w-auto" asChild>
+                      <Link to="/jobseekers#ai-cv-section">
+                        <Lightbulb className="mr-2 h-5 w-5" />
+                        Provo Gjenerimin e CV-së
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </section>
@@ -361,6 +510,8 @@ const AboutUs = () => {
           </div>
         </div>
       </section>
+      
+      <Footer />
     </div>
   );
 };

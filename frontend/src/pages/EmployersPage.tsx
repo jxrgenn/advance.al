@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
+import Footer from "@/components/Footer";
 import {
   Container,
   Title,
@@ -24,17 +25,17 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { Play, Building, ArrowRight, ArrowLeft, User, FileText, CheckCircle, HelpCircle, X, Lightbulb } from "lucide-react";
+import { Play, Building, ArrowRight, ArrowLeft, User, FileText, CheckCircle, HelpCircle, X, Lightbulb, Euro, TrendingUp, Star } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi } from "@/lib/api";
 
 const EmployersPage = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, register } = useAuth();
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
 
-  // Tutorial system state - same as JobSeekersPage
+  // Tutorial system state
   const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
   const [highlightedElement, setHighlightedElement] = useState<Element | null>(null);
@@ -45,6 +46,8 @@ const EmployersPage = () => {
   const [lastClickTime, setLastClickTime] = useState(0);
   const [isScrollLocked, setIsScrollLocked] = useState(false);
   const [tutorialStepsByFormStep, setTutorialStepsByFormStep] = useState<{[key: number]: number}>({});
+  const [hasScrolledOnDesktop, setHasScrolledOnDesktop] = useState(false); // Track initial desktop scroll
+  const [lastScrolledFormStep, setLastScrolledFormStep] = useState<number | null>(null); // Track which form step we last scrolled for
 
   // Multi-step form based on database fields
   const employerForm = useForm({
@@ -70,15 +73,26 @@ const EmployersPage = () => {
       if (currentStep === 0) {
         if (!values.firstName) errors.firstName = 'Emri është i detyrueshëm';
         if (!values.lastName) errors.lastName = 'Mbiemri është i detyrueshëm';
-        if (!/^\S+@\S+$/.test(values.email)) errors.email = 'Email i pavlefshëm';
-        if (values.password.length < 6) errors.password = 'Fjalëkalimi duhet të ketë të paktën 6 karaktere';
+        
+        // Better email validation
+        if (!values.email) {
+          errors.email = 'Email është i detyrueshëm';
+        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
+          errors.email = 'Email i pavlefshëm';
+        }
+        
+        if (!values.password) {
+          errors.password = 'Fjalëkalimi është i detyrueshëm';
+        } else if (values.password.length < 6) {
+          errors.password = 'Fjalëkalimi duhet të ketë të paktën 6 karaktere';
+        }
+        // Phone is optional for step 0
       }
 
       // Step 2: Company Information validation
       if (currentStep === 1) {
         if (!values.companyName) errors.companyName = 'Emri i kompanisë është i detyrueshëm';
         if (!values.companySize) errors.companySize = 'Madhësia e kompanisë është e detyrueshme';
-        // if (!values.industry) errors.industry = 'Industria është e detyrueshme';
         if (!values.city) errors.city = 'Qyteti është i detyrueshëm';
       }
 
@@ -174,12 +188,7 @@ const EmployersPage = () => {
     }
   ];
 
-  useEffect(() => {
-    // If already authenticated, redirect to employer dashboard
-    if (isAuthenticated && user?.userType === 'employer') {
-      navigate('/employer-dashboard');
-    }
-  }, [isAuthenticated, user, navigate]);
+  // Removed auto-redirect - users can visit this page even when logged in
 
   // Step navigation functions
   const handleNextStep = () => {
@@ -219,18 +228,128 @@ const EmployersPage = () => {
 
     if (tutorialStep < tutorialSteps.length - 1) {
       const newStep = tutorialStep + 1;
-      setTutorialStep(newStep);
+      const currentStepData = tutorialSteps[tutorialStep];
+      const nextStepData = tutorialSteps[newStep];
 
-      // Save progress for the current form step
-      const currentTutorialFormStep = tutorialSteps[tutorialStep]?.formStep;
-      if (currentTutorialFormStep !== undefined) {
+      // Check if we're moving to a different form step
+      const isChangingFormStep = currentStepData.formStep !== nextStepData.formStep;
+
+      if (isChangingFormStep) {
+        // We're trying to leave the current form step
+        const formStepToValidate = currentStepData.formStep;
+        const values = employerForm.values;
+        
+        // Validation logic for each step
+        if (formStepToValidate === 0) {
+          // Step 0: Personal Info - MUST be filled
+          if (!values.firstName || values.firstName.trim() === '') {
+            notifications.show({
+              title: 'Plotëso fushat e kërkuara',
+              message: 'Ju lutemi plotësoni të gjitha fushat e kërkuara para se të vazhdoni.',
+              color: 'red',
+              autoClose: 4000,
+            });
+            return;
+          }
+          if (!values.lastName || values.lastName.trim() === '') {
+            notifications.show({
+              title: 'Plotëso fushat e kërkuara',
+              message: 'Ju lutemi plotësoni të gjitha fushat e kërkuara para se të vazhdoni.',
+              color: 'red',
+              autoClose: 4000,
+            });
+            return;
+          }
+          if (!values.email || values.email.trim() === '') {
+            notifications.show({
+              title: 'Plotëso fushat e kërkuara',
+              message: 'Email është i detyrueshëm.',
+              color: 'red',
+              autoClose: 4000,
+            });
+            return;
+          } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
+            notifications.show({
+              title: 'Email i pavlefshëm',
+              message: 'Ju lutemi shkruani një email të vlefshëm.',
+              color: 'red',
+              autoClose: 4000,
+            });
+            return;
+          }
+          if (!values.password || values.password === '') {
+            notifications.show({
+              title: 'Plotëso fjalëkalimin',
+              message: 'Fjalëkalimi është i detyrueshëm.',
+              color: 'red',
+              autoClose: 4000,
+            });
+            return;
+          } else if (values.password.length < 6) {
+            notifications.show({
+              title: 'Fjalëkalim shumë i shkurtër',
+              message: 'Fjalëkalimi duhet të ketë të paktën 6 karaktere.',
+              color: 'red',
+              autoClose: 4000,
+            });
+            return;
+          }
+        } else if (formStepToValidate === 1) {
+          // Step 1: Company Info - MUST be filled
+          if (!values.companyName || values.companyName.trim() === '') {
+            notifications.show({
+              title: 'Plotëso emrin e kompanisë',
+              message: 'Emri i kompanisë është i detyrueshëm.',
+              color: 'red',
+              autoClose: 4000,
+            });
+            return;
+          }
+          if (!values.companySize) {
+            notifications.show({
+              title: 'Zgjidh madhësinë e kompanisë',
+              message: 'Madhësia e kompanisë është e detyrueshme.',
+              color: 'red',
+              autoClose: 4000,
+            });
+            return;
+          }
+          if (!values.city) {
+            notifications.show({
+              title: 'Zgjidh qytetin',
+              message: 'Qyteti është i detyrueshëm.',
+              color: 'red',
+              autoClose: 4000,
+            });
+            return;
+          }
+        }
+        
+        // All validation passed! Now change the form step
+        const targetFormStep = nextStepData.formStep;
+        
+        // Step 1: Change form step
+        setCurrentStep(targetFormStep);
+        
+        // Step 2: Save progress
         setTutorialStepsByFormStep(prev => ({
           ...prev,
-          [currentTutorialFormStep]: newStep
+          [currentStepData.formStep]: newStep
         }));
+        
+        // Step 3: Wait for form to FULLY render (400ms breathing room)
+        setTimeout(() => {
+          setTutorialStep(newStep);
+          // useEffect will handle highlighting after tutorialStep updates
+        }, 400);
+      } else {
+        // Same form step - advance immediately
+        setTutorialStepsByFormStep(prev => ({
+          ...prev,
+          [currentStepData.formStep]: newStep
+        }));
+        setTutorialStep(newStep);
       }
-
-      highlightElement(newStep);
     } else {
       closeTutorial();
     }
@@ -243,18 +362,38 @@ const EmployersPage = () => {
 
     if (tutorialStep > 0) {
       const newStep = tutorialStep - 1;
-      setTutorialStep(newStep);
+      const currentStepData = tutorialSteps[tutorialStep];
+      const prevStepData = tutorialSteps[newStep];
 
-      // Save progress for the current form step
-      const currentTutorialFormStep = tutorialSteps[tutorialStep]?.formStep;
-      if (currentTutorialFormStep !== undefined) {
+      // Check if we need to go back to previous form step
+      const isChangingFormStep = currentStepData.formStep !== prevStepData.formStep;
+
+      if (isChangingFormStep) {
+        // Going back to previous form step - ALWAYS allowed
+        const targetFormStep = prevStepData.formStep;
+        
+        // Step 1: Change form step
+        setCurrentStep(targetFormStep);
+        
+        // Step 2: Save progress
         setTutorialStepsByFormStep(prev => ({
           ...prev,
-          [currentTutorialFormStep]: newStep
+          [currentStepData.formStep]: newStep
         }));
+        
+        // Step 3: Wait for form to FULLY render (350ms breathing room)
+        setTimeout(() => {
+          setTutorialStep(newStep);
+          // useEffect will handle highlighting after tutorialStep updates
+        }, 350);
+      } else {
+        // Same form step - go back immediately
+        setTutorialStepsByFormStep(prev => ({
+          ...prev,
+          [currentStepData.formStep]: newStep
+        }));
+        setTutorialStep(newStep);
       }
-
-      highlightElement(newStep);
     }
   };
 
@@ -277,6 +416,8 @@ const EmployersPage = () => {
     setIsSpotlightAnimating(false);
     setLastClickTime(0);
     setIsScrollLocked(false);
+    setHasScrolledOnDesktop(false); // Reset on close
+    setLastScrolledFormStep(null); // Reset on close
     // Unlock scroll on body
     document.body.style.overflow = 'auto';
   };
@@ -311,157 +452,266 @@ const EmployersPage = () => {
     };
   }, []);
 
+  // Highlight element whenever tutorial step changes
+  useEffect(() => {
+    if (showTutorial && tutorialStep < tutorialSteps.length) {
+      // Delay to ensure DOM is fully rendered, especially after form step changes
+      const timer = setTimeout(() => {
+        highlightElement(tutorialStep);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [tutorialStep]);
+
   const highlightElement = (stepIndex: number) => {
     const step = tutorialSteps[stepIndex];
     if (!step) return;
 
-    // Start animation states
-    setIsSpotlightAnimating(true);
-    setIsAnimating(true);
-
-    // Store previous position for transition
+    // Store previous position for smooth transition
     if (elementPosition) {
       setPreviousElementPosition(elementPosition);
     }
 
-    const findAndHighlightElement = () => {
-      // Auto-switch form step if needed BEFORE trying to find element
-      if (step.formStep !== undefined && step.formStep !== currentStep) {
-        // Check if we can legally move to the target step (validate current step first)
-        const errors = employerForm.validate();
-        const hasErrors = Object.keys(errors.errors).length > 0;
+    // IMPORTANT: Auto-switch form step if needed (KEEP THIS STATE MANAGEMENT!)
+    if (step.formStep !== undefined && step.formStep !== currentStep) {
+      // Check if we can legally move to the target step (validate current step first)
+      const errors = employerForm.validate();
+      const hasErrors = Object.keys(errors.errors).length > 0;
 
-        // If there are validation errors preventing step advance, skip the form step change
-        if (hasErrors && step.formStep > currentStep) {
-          console.warn(`Cannot advance to step ${step.formStep} due to validation errors:`, errors.errors);
-          // Try to find element on current step instead
-        } else {
-          setCurrentStep(step.formStep);
-          // Wait for React to update DOM completely
-          setTimeout(() => findAndHighlightElement(), 200);
-          return;
-        }
+      // If there are validation errors preventing step advance, skip the form step change
+      if (hasErrors && step.formStep > currentStep) {
+        console.warn(`Cannot advance to step ${step.formStep} due to validation errors:`, errors.errors);
+        // Don't proceed with highlight
+        return;
+      } else {
+        setCurrentStep(step.formStep);
+        // Wait for React to update DOM completely, then highlight
+        setTimeout(() => highlightElement(stepIndex), 200);
+        return;
       }
+    }
 
-      const element = document.querySelector(step.selector);
+    // NOW proceed with NEW smooth highlighting logic
+    const element = document.querySelector(step.selector);
+    if (!element) {
+      console.warn(`Tutorial element not found: ${step.selector}`);
+      return;
+    }
 
-      if (element) {
-        const rect = element.getBoundingClientRect();
-        const viewportHeight = window.innerHeight;
-
-        // Define optimal viewing area with more generous margins for better detection
-        const topMargin = 100;
-        const bottomMargin = 300;
-
-        // Tutorial panel positioned at bottom-6 (24px from bottom) with dynamic height
-        const tutorialPanelHeight = Math.min(400, viewportHeight * 0.6); // max-height: 60vh
-        const tutorialPanelBottom = 24; // bottom-6 = 24px
-        const panelTopY = viewportHeight - tutorialPanelHeight - tutorialPanelBottom;
-
-        // Simple vertical overlap check: Does any part of the element overlap with tutorial panel height?
-        const elementOverlapsTutorialPanel = rect.bottom > panelTopY;
-
-        // More robust visibility check - element should be reasonably centered
-        const isElementFullyVisible = rect.top >= topMargin && rect.bottom <= viewportHeight - bottomMargin;
-        const isElementPartiallyVisible = rect.top < viewportHeight && rect.bottom > 0;
-
-        // Force scroll if element is not in optimal viewing area, partially visible, or blocked by tutorial panel
-        const shouldScroll = !isElementFullyVisible || rect.top < 50 || rect.bottom > viewportHeight - 100 || elementOverlapsTutorialPanel;
-
-        // IMMEDIATELY attach highlight to element - no waiting!
-        setHighlightedElement(element);
-        setElementPosition(rect);
-
-        if (shouldScroll) {
-          // Element needs scrolling - temporarily unlock, use manual scroll calculation
-          document.body.style.overflow = 'auto';
-
-          // Manual scroll calculation - more reliable than scrollIntoView
-          const elementTop = rect.top + window.pageYOffset;
-          const windowHeight = window.innerHeight;
-          const tutorialPanelHeight = Math.min(400, windowHeight * 0.6);
-
-          // Scroll so element is centered, but account for tutorial panel
-          const targetScrollTop = elementTop - (windowHeight - tutorialPanelHeight) / 2;
-
-          console.log('EmployersPage Tutorial Scroll:', {
-            elementTop,
-            windowHeight,
-            targetScrollTop,
-            currentScroll: window.pageYOffset,
-            shouldScroll,
-            elementOverlapsTutorialPanel
-          });
-
-          // Use instant scroll
-          window.scrollTo(0, Math.max(0, targetScrollTop));
-
-          // Wait a small moment for scroll to complete, then get new position
+    // Get element and viewport dimensions
+    const rect = element.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    
+    const isMobile = viewportWidth < 768;
+    const currentFormStep = step.formStep ?? 0;
+    const isNewFormStep = lastScrolledFormStep !== currentFormStep;
+    
+    // DESKTOP STRATEGY: Scroll on form step changes, but not within same step
+    if (!isMobile) {
+      if (isNewFormStep) {
+        // New form step on desktop: scroll to show ENTIRE FORM, then mark this step as scrolled
+        document.body.style.overflow = 'auto';
+        
+        // Find the form container (the Paper/Card containing the form)
+        const formContainer = element.closest('form') || element.closest('[class*="mantine-Paper"]') || element.closest('[class*="mantine-Card"]');
+        const scrollTarget = formContainer || element;
+        
+        scrollTarget.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'start', // Scroll to top of form to show entire form
+          inline: 'center'
+        });
+        
+        setLastScrolledFormStep(currentFormStep);
+        
+        setTimeout(() => {
+          const newRect = element.getBoundingClientRect();
+          setHighlightedElement(element);
+          setElementPosition(newRect);
+          document.body.style.overflow = 'hidden';
+          
+          setIsAnimating(true);
+          setIsSpotlightAnimating(true);
           setTimeout(() => {
-            const newRect = element.getBoundingClientRect();
-            setElementPosition(newRect);
-
-            // Re-lock scroll immediately
-            document.body.style.overflow = 'hidden';
-
             setIsAnimating(false);
             setIsSpotlightAnimating(false);
-          }, 10);
-        } else {
-          // Element already in optimal position - just finish
-          console.log('EmployersPage Tutorial: No scroll needed', { shouldScroll, elementPosition: rect });
+          }, 400);
+        }, 400);
+        return;
+      } else {
+        // Desktop: Within same form step, NEVER scroll - just highlight (no jitter!)
+        setHighlightedElement(element);
+        setElementPosition(rect);
+        
+        setIsAnimating(true);
+        setIsSpotlightAnimating(true);
+        setTimeout(() => {
           setIsAnimating(false);
           setIsSpotlightAnimating(false);
-        }
-      } else {
-        console.warn(`Tutorial element not found: ${step.selector}`);
-        setHighlightedElement(null);
+        }, 400);
+        return;
+      }
+    }
+    
+    // MOBILE STRATEGY: Scroll on form step changes AND when covered by card
+    const tutorialCardWidth = Math.min(320, viewportWidth - 40);
+    const tutorialCardHeight = Math.min(400, viewportHeight * 0.6);
+    const tutorialCardRight = 24;
+    const tutorialCardBottom = 24;
+    const tutorialCardLeft = viewportWidth - tutorialCardWidth - tutorialCardRight;
+    const tutorialCardTop = viewportHeight - tutorialCardHeight - tutorialCardBottom;
+    
+    // Check if element's MIDDLE is covered by tutorial card
+    const elementMiddleY = rect.top + (rect.height / 2);
+    const isCoveredByCard = elementMiddleY > tutorialCardTop;
+    
+    // On mobile, ALWAYS scroll when form step changes
+    if (isNewFormStep) {
+      document.body.style.overflow = 'auto';
+      
+      // Find the form container (the Paper/Card containing the form)
+      const formContainer = element.closest('form') || element.closest('[class*="mantine-Paper"]') || element.closest('[class*="mantine-Card"]');
+      const scrollTarget = formContainer || element;
+      
+      scrollTarget.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'start', // Scroll to top of form to show entire form
+        inline: 'center'
+      });
+      
+      // Mark this form step as scrolled
+      setLastScrolledFormStep(currentFormStep);
+      
+      setTimeout(() => {
+        const newRect = element.getBoundingClientRect();
+        setHighlightedElement(element);
+        setElementPosition(newRect);
+        document.body.style.overflow = 'hidden';
+        
+        setIsAnimating(true);
+        setIsSpotlightAnimating(true);
+        setTimeout(() => {
+          setIsAnimating(false);
+          setIsSpotlightAnimating(false);
+        }, 400);
+      }, 400);
+      return;
+    }
+    
+    const checkMargin = 60;
+    const bottomMargin = 180;
+    const checkBottom = bottomMargin;
+    
+    const isVisible = !isCoveredByCard && 
+                     rect.top >= checkMargin && 
+                     rect.bottom <= viewportHeight - checkBottom;
+
+    // Mobile: Scroll if not visible or covered (within same form step)
+    if (!isVisible) {
+      document.body.style.overflow = 'auto';
+      
+      element.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'center',
+        inline: 'center'
+      });
+      
+      setTimeout(() => {
+        const newRect = element.getBoundingClientRect();
+        setHighlightedElement(element);
+        setElementPosition(newRect);
+        document.body.style.overflow = 'hidden';
+        
+        setIsAnimating(true);
+        setIsSpotlightAnimating(true);
+        setTimeout(() => {
+          setIsAnimating(false);
+          setIsSpotlightAnimating(false);
+        }, 400);
+      }, 400);
+    } else {
+      // Mobile: Element visible, highlight immediately
+      setHighlightedElement(element);
+      setElementPosition(rect);
+      
+      setIsAnimating(true);
+      setIsSpotlightAnimating(true);
+      setTimeout(() => {
         setIsAnimating(false);
         setIsSpotlightAnimating(false);
-      }
-    };
-
-    // Start the highlighting process immediately
-    findAndHighlightElement();
+      }, 400);
+    }
   };
 
   const handleEmployerSubmit = async () => {
     if (currentStep !== 2) return;
 
+    // Final validation before submit
+    const validationResult = employerForm.validate();
+    if (Object.keys(validationResult.errors).length > 0) {
+      notifications.show({
+        title: 'Plotëso fushat e kërkuara',
+        message: 'Ju lutemi plotësoni të gjitha fushat e kërkuara para se të krijoni llogarinë.',
+        color: 'red',
+        autoClose: 4000,
+      });
+      return;
+    }
+
     try {
       setLoading(true);
       const values = employerForm.values;
 
-      // Format phone
-      const cleanPhone = values.phone.replace(/[\s\-\(\)]/g, '');
-      const formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : '+355' + cleanPhone.replace(/^0/, '');
+      // Format phone (optional field)
+      let formattedPhone = '';
+      if (values.phone) {
+        const cleanPhone = values.phone.replace(/[\s\-\(\)]/g, '');
+        formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : '+355' + cleanPhone.replace(/^0/, '');
+      }
 
-      const response = await authApi.register({
-        email: values.email,
+      // Use AuthContext's register function for proper state management
+      await register({
+        email: values.email.trim().toLowerCase(),
         password: values.password,
         userType: 'employer',
-        firstName: values.firstName,
-        lastName: values.lastName,
+        firstName: values.firstName.trim(),
+        lastName: values.lastName.trim(),
         phone: formattedPhone,
         city: values.city,
-        companyName: values.companyName,
+        companyName: values.companyName.trim(),
         industry: values.industry || 'Tjetër',
-        companySize: values.companySize || '1-10'
+        companySize: values.companySize || '1-10',
       });
 
-      if (response.success) {
-        notifications.show({
-          title: "Mirë se vini!",
-          message: "Llogaria juaj u krijua me sukses! Ju jeni gati të filloni punësimin.",
-          color: "green"
-        });
-        navigate('/employer-dashboard');
+      // Success - registration handled by AuthContext
+      notifications.show({
+        title: "Mirë se vini!",
+        message: "Llogaria juaj u krijua me sukses!",
+        color: "green",
+        autoClose: 3000,
+      });
+      
+      // Close tutorial if open
+      if (showTutorial) {
+        closeTutorial();
       }
+      
+      // Navigate immediately - user data is now in context
+      navigate('/employer-dashboard');
+      
     } catch (error: any) {
+      console.error('Registration error:', error);
+      
+      const errorMessage = error?.response?.data?.message 
+        || error?.message 
+        || "Nuk mund të krijohet llogaria. Provoni përsëri.";
+      
       notifications.show({
         title: "Gabim",
-        message: "Nuk mund të krijohet llogaria. Provoni përsëri.",
-        color: "red"
+        message: errorMessage,
+        color: "red",
+        autoClose: 6000,
       });
     } finally {
       setLoading(false);
@@ -474,47 +724,32 @@ const EmployersPage = () => {
 
     const currentStepData = tutorialSteps[tutorialStep];
 
-    const getSpotlightCoordinates = () => {
-      const position = elementPosition || previousElementPosition;
-      if (!position) return null;
-
-      const padding = 8;
-      return {
-        left: Math.round(Math.max(0, position.left - padding)),
-        top: Math.round(Math.max(0, position.top - padding)),
-        right: Math.round(Math.min(window.innerWidth, position.right + padding)),
-        bottom: Math.round(Math.min(window.innerHeight, position.bottom + padding))
-      };
-    };
-
-    const spotlightCoords = getSpotlightCoordinates();
+    // Use current position if available, fallback to previous position during transitions
+    const position = elementPosition || previousElementPosition;
+    if (!position) return null;
 
     return (
-      <div className="fixed inset-0 z-50 pointer-events-none">
-        {/* Overlay with spotlight effect - smoother transitions */}
+      <div className="fixed inset-0 z-[9999] pointer-events-none">
+        {/* Dark Overlay */}
         <div
-          className="absolute inset-0 bg-black/70"
-          style={{
-            transition: 'clip-path 400ms cubic-bezier(0.4, 0, 0.2, 1)',
-            clipPath: spotlightCoords
-              ? `polygon(0% 0%, 0% 100%, ${spotlightCoords.left}px 100%, ${spotlightCoords.left}px ${spotlightCoords.top}px, ${spotlightCoords.right}px ${spotlightCoords.top}px, ${spotlightCoords.right}px ${spotlightCoords.bottom}px, ${spotlightCoords.left}px ${spotlightCoords.bottom}px, ${spotlightCoords.left}px 100%, 100% 100%, 100% 0%)`
-              : 'polygon(0% 0%, 0% 100%, 100% 100%, 100% 0%)'
-          }}
+          className="absolute inset-0 bg-black opacity-40 pointer-events-auto"
+          onClick={closeTutorial}
         />
 
-        {/* Highlighted element border - smoother animations with spring easing */}
+        {/* Highlighted Element Cutout with box-shadow spotlight */}
         <div
-          className="absolute border-3 border-yellow-400 rounded-lg shadow-lg shadow-yellow-400/50"
           style={{
-            transition: 'all 400ms cubic-bezier(0.175, 0.885, 0.32, 1.275)', // Spring easing
-            left: spotlightCoords?.left || 0,
-            top: spotlightCoords?.top || 0,
-            width: spotlightCoords ? spotlightCoords.right - spotlightCoords.left : 0,
-            height: spotlightCoords ? spotlightCoords.bottom - spotlightCoords.top : 0,
+            position: 'absolute',
+            top: Math.max(0, position.top - 8),
+            left: position.left - 8,
+            width: position.width + 16,
+            height: position.height + 16,
+            boxShadow: '0 0 0 99999px rgba(0, 0, 0, 0.4)',
+            borderRadius: '8px',
             pointerEvents: 'none',
-            boxShadow: spotlightCoords ? '0 0 30px rgba(251, 191, 36, 0.6), 0 0 60px rgba(251, 191, 36, 0.3)' : 'none',
-            opacity: spotlightCoords ? 1 : 0,
-            transform: spotlightCoords ? 'scale(1)' : 'scale(0.95)',
+            transition: 'all 450ms cubic-bezier(0.175, 0.885, 0.32, 1.2)',
+            border: '2px solid rgb(251, 191, 36)',
+            overflow: 'hidden'
           }}
         />
 
@@ -523,9 +758,10 @@ const EmployersPage = () => {
           className="fixed bottom-6 right-6 bg-white rounded-lg shadow-2xl border border-gray-200 pointer-events-auto max-w-sm w-80"
           style={{
             maxHeight: '60vh',
-            transition: 'all 300ms cubic-bezier(0.34, 1.56, 0.64, 1)', // Bouncy easing
+            transition: 'all 350ms cubic-bezier(0.34, 1.56, 0.64, 1)',
             transform: showTutorial ? 'scale(1) translateY(0)' : 'scale(0.95) translateY(10px)',
-            opacity: showTutorial ? 1 : 0
+            opacity: showTutorial ? 1 : 0,
+            zIndex: 10001
           }}
         >
           <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-yellow-50 to-orange-50">
@@ -783,7 +1019,7 @@ const EmployersPage = () => {
       {/* Tutorial Overlay */}
       <TutorialOverlay />
 
-      <Container size="lg" py={40}>
+      <Container size="lg" py={40} pt={100}>
         {/* Header */}
         <Center mb={30}>
           <Stack align="center" gap="sm">
@@ -799,86 +1035,89 @@ const EmployersPage = () => {
           </Stack>
         </Center>
 
-        {/* Two Column Layout - ORIGINAL STRUCTURE */}
+        {/* Two Column Layout */}
         <Grid>
           <Grid.Col span={{ base: 12, lg: 6 }}>
-            {/* Left: Video */}
-            <Stack gap="xl">
-              <Box>
-                <Title order={2} size="2rem" fw={600} mb="md">
-                  Si të Postoni Punë
+            {/* Left: Simple Stats & Benefits */}
+            <Stack gap="lg">
+              <Paper p="xl" radius="md" withBorder>
+                <Title order={3} mb="lg" c="dark">
+                  Si Funksionon?
                 </Title>
-                <Text c="dimmed" size="lg">
-                  Mësoni si të përdorni platformën për të gjetur punonjës - vetëm 2 minuta
-                </Text>
-              </Box>
+                
+                <Stack gap="lg">
+                  <Group wrap="nowrap" align="flex-start">
+                    <Center style={{ 
+                      minWidth: 36, 
+                      height: 36, 
+                      borderRadius: '50%', 
+                      background: '#228be6', 
+                      color: 'white',
+                      fontWeight: 700,
+                      fontSize: '1.1rem'
+                    }}>
+                      1
+                    </Center>
+                    <Box style={{ flex: 1 }}>
+                      <Text fw={600} mb={4}>Krijoni Llogarinë</Text>
+                      <Text size="sm" c="dimmed">
+                        Plotësoni formularin në vetëm 2 minuta
+                      </Text>
+                    </Box>
+                  </Group>
 
-              <Card shadow="sm" padding="0" radius="md" withBorder>
-                <Box
-                  style={{
-                    position: 'relative',
-                    aspectRatio: '16/9',
-                    cursor: 'pointer',
-                    overflow: 'hidden'
-                  }}
-                  onClick={() => window.open('https://www.youtube.com/watch?v=dQw4w9WgXcQ', '_blank')}
-                >
-                  {/* Video Thumbnail */}
-                  <img
-                    src="https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg"
-                    alt="Si të postoni punë në advance.al"
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover'
-                    }}
-                  />
+                  <Group wrap="nowrap" align="flex-start">
+                    <Center style={{ 
+                      minWidth: 36, 
+                      height: 36, 
+                      borderRadius: '50%', 
+                      background: '#228be6', 
+                      color: 'white',
+                      fontWeight: 700,
+                      fontSize: '1.1rem'
+                    }}>
+                      2
+                    </Center>
+                    <Box style={{ flex: 1 }}>
+                      <Text fw={600} mb={4}>Postoni Punën</Text>
+                      <Text size="sm" c="dimmed">
+                        28€ për postim standard, 50€ për të promovuar
+                      </Text>
+                    </Box>
+                  </Group>
 
-                  {/* Play Overlay */}
-                  <Box
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: 'rgba(0, 0, 0, 0.3)',
-                      transition: 'all 0.3s ease'
-                    }}
-                  >
-                    <ActionIcon
-                      size={60}
-                      radius="xl"
-                      color="white"
-                      variant="filled"
-                      style={{
-                        backgroundColor: 'white',
-                        color: 'black',
-                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
-                      }}
-                    >
-                      <Play size={24} style={{ marginLeft: '4px' }} />
-                    </ActionIcon>
-                  </Box>
+                  <Group wrap="nowrap" align="flex-start">
+                    <Center style={{ 
+                      minWidth: 36, 
+                      height: 36, 
+                      borderRadius: '50%', 
+                      background: '#228be6', 
+                      color: 'white',
+                      fontWeight: 700,
+                      fontSize: '1.1rem'
+                    }}>
+                      3
+                    </Center>
+                    <Box style={{ flex: 1 }}>
+                      <Text fw={600} mb={4}>Merrni Aplikime</Text>
+                      <Text size="sm" c="dimmed">
+                        Ose zgjidhni Top 10 kandidatët për 10€
+                      </Text>
+                    </Box>
+                  </Group>
+                </Stack>
+              </Paper>
 
-                  {/* Duration Badge */}
-                  <Badge
-                    style={{
-                      position: 'absolute',
-                      bottom: 12,
-                      right: 12,
-                      backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                      color: 'white'
-                    }}
-                    size="sm"
-                  >
-                    2:30
-                  </Badge>
-                </Box>
-              </Card>
+              <SimpleGrid cols={2} spacing="md">
+                <Paper p="md" radius="md" withBorder style={{ textAlign: 'center' }}>
+                  <Text size="2xl" fw={700} c="blue" mb={4}>1,000+</Text>
+                  <Text size="sm" c="dimmed">Kandidatë Aktivë</Text>
+                </Paper>
+                <Paper p="md" radius="md" withBorder style={{ textAlign: 'center' }}>
+                  <Text size="2xl" fw={700} c="blue" mb={4}>95%</Text>
+                  <Text size="sm" c="dimmed">Kënaqësi</Text>
+                </Paper>
+              </SimpleGrid>
             </Stack>
           </Grid.Col>
 
@@ -887,17 +1126,28 @@ const EmployersPage = () => {
             <Stack gap="xl">
               {/* Tutorial Help Link */}
               {!showTutorial && (
-                <Center>
-                  <Button
-                    variant="light"
-                    color="gray"
-                    leftSection={<Lightbulb size={16} />}
-                    onClick={startTutorial}
-                    size="sm"
-                  >
-                    Nuk e di si të fillosh? Kliko këtu për ndihmë
-                  </Button>
-                </Center>
+                <Paper shadow="xs" p="md" radius="md" withBorder style={{ backgroundColor: '#f8f9fa' }}>
+                  <Group justify="space-between" wrap="nowrap">
+                    <Group gap="sm">
+                      <ThemeIcon size={30} radius="md" color="blue" variant="light">
+                        <Lightbulb size={16} />
+                      </ThemeIcon>
+                      <Box>
+                        <Text size="sm" fw={500}>Nuk e di si të fillosh?</Text>
+                        <Text size="xs" c="dimmed">Fillo tutorialin për ndihmë hap pas hapi</Text>
+                      </Box>
+                    </Group>
+                    <Button
+                      variant="subtle"
+                      color="blue"
+                      leftSection={<Play size={14} />}
+                      onClick={startTutorial}
+                      size="xs"
+                    >
+                      Fillo Tutorialin
+                    </Button>
+                  </Group>
+                </Paper>
               )}
 
               <Paper shadow="sm" p="xl" radius="md" withBorder>
@@ -976,7 +1226,74 @@ const EmployersPage = () => {
             </Stack>
           </Grid.Col>
         </Grid>
+
+        {/* Pricing Section - Below Form */}
+        <Box mt={60}>
+          <Title order={2} size="h2" fw={600} ta="center" mb="md">
+            Çmimet
+          </Title>
+          <Text c="dimmed" size="lg" ta="center" mb={40}>
+            Zgjidhni opsionin që ju përshtatet më mirë
+          </Text>
+
+          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="lg">
+            <Paper shadow="sm" p="xl" radius="md" withBorder>
+              <Stack gap="md">
+                <Title order={3} size="h3">Postim Standard</Title>
+                <Group gap="xs" align="baseline">
+                  <Text size="3rem" fw={700}>28€</Text>
+                  <Text c="dimmed">/28 ditë</Text>
+                </Group>
+                <Stack gap="xs">
+                  <Text size="sm">✓ Postimi aktiv për 28 ditë</Text>
+                  <Text size="sm">✓ Shfaqje në listën e punëve</Text>
+                  <Text size="sm">✓ Aplikime të pakufizuara</Text>
+                  <Text size="sm">✓ Menaxhim aplikimesh</Text>
+                </Stack>
+              </Stack>
+            </Paper>
+
+            <Paper shadow="sm" p="xl" radius="md" withBorder style={{ borderColor: '#228be6', borderWidth: 2 }}>
+              <Badge color="blue" mb="md">Rekomanduar</Badge>
+              <Stack gap="md">
+                <Title order={3} size="h3">Postim i Promovuar</Title>
+                <Group gap="xs" align="baseline">
+                  <Text size="3rem" fw={700}>50€</Text>
+                  <Text c="dimmed">/28 ditë</Text>
+                </Group>
+                <Stack gap="xs">
+                  <Text size="sm">✓ Të gjitha nga Standard</Text>
+                  <Text size="sm" fw={600}>✓ Pozicion prioritar në listë</Text>
+                  <Text size="sm" fw={600}>✓ Badge "E Promovuar"</Text>
+                  <Text size="sm" fw={600}>✓ 3x më shumë vizibilitet</Text>
+                </Stack>
+              </Stack>
+            </Paper>
+
+            <Paper shadow="sm" p="xl" radius="md" withBorder>
+              <Stack gap="md">
+                <Title order={3} size="h3">Top 10 Kandidatët</Title>
+                <Group gap="xs" align="baseline">
+                  <Text size="3rem" fw={700}>10€</Text>
+                  <Text c="dimmed">/postim</Text>
+                </Group>
+                <Stack gap="xs">
+                  <Text size="sm" fw={600}>✓ 10 kandidatët më të mirë</Text>
+                  <Text size="sm">✓ Përzgjedhur nga AI</Text>
+                  <Text size="sm">✓ Bazuar në përshtatshmëri</Text>
+                  <Text size="sm">✓ Kurseni kohë përzgjedhje</Text>
+                </Stack>
+              </Stack>
+            </Paper>
+          </SimpleGrid>
+
+          <Text c="dimmed" ta="center" size="sm" mt="xl">
+            💡 Kombinoni postimin e promovuar me Top 10 Kandidatët për rezultate më të mira
+          </Text>
+        </Box>
       </Container>
+      
+      <Footer />
     </Box>
   );
 };

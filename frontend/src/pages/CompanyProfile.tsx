@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import Navigation from "@/components/Navigation";
+import Footer from "@/components/Footer";
 import { Link } from "react-router-dom";
 import {
   Building,
@@ -19,7 +20,12 @@ import {
   Eye,
   TrendingUp,
   Loader2,
-  ArrowLeft
+  ArrowLeft,
+  Phone,
+  MessageCircle,
+  Linkedin,
+  Instagram,
+  Facebook
 } from "lucide-react";
 import { companiesApi } from "@/lib/api";
 
@@ -271,131 +277,202 @@ const CompanyProfile = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gray-50">
       <Navigation />
 
-      {/* Company Header */}
-      <section className="bg-gradient-to-br from-primary/10 to-background py-16">
-        <div className="container mx-auto px-4">
-          <div className="max-w-4xl mx-auto">
-            <div className="flex flex-col md:flex-row items-start gap-6">
-              {/* Company Logo */}
-              <div className="bg-white p-6 rounded-lg shadow-sm border w-24 h-24 flex items-center justify-center">
+      <div className="container mx-auto px-4 py-8 pt-24 max-w-6xl">
+        {/* Header Section - Company Name and Logo */}
+        <Card className="mb-6 border-2">
+          <CardContent className="p-8">
+            <div className="flex items-center gap-8">
+              {/* Company Logo - Bigger */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border-2 w-36 h-36 flex items-center justify-center flex-shrink-0">
                 {company.logo ? (
                   <img src={company.logo} alt={company.name} className="max-w-full max-h-full object-contain" />
                 ) : (
-                  <Building className="h-12 w-12 text-primary" />
+                  <Building className="h-20 w-20 text-primary" />
                 )}
               </div>
 
-              {/* Company Info */}
+              {/* Company Name and Basic Info */}
               <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <h1 className="text-3xl md:text-4xl font-bold">{company.name}</h1>
+                <div className="flex items-center gap-3 mb-3">
+                  <h1 className="text-4xl font-bold">{company.name}</h1>
                   {company.verified && (
-                    <CheckCircle className="h-6 w-6 text-green-600" />
+                    <CheckCircle className="h-7 w-7 text-green-600" />
                   )}
                 </div>
-
-                <div className="flex flex-wrap items-center gap-4 text-muted-foreground mb-4">
-                  <div className="flex items-center">
-                    <MapPin className="h-4 w-4 mr-1" />
-                    <span>{company.location.city}, {company.location.region}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <Users className="h-4 w-4 mr-1" />
-                    <span>{company.companySize}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <Calendar className="h-4 w-4 mr-1" />
-                    <span>Anëtar që nga {new Date(company.joinedAt).getFullYear()}</span>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <Badge variant="secondary">{company.industry}</Badge>
-                  <Badge className="bg-green-100 text-green-800">
-                    {company.stats.activeJobs} punë aktive
-                  </Badge>
-                </div>
-
-                <div className="flex flex-wrap gap-3">
-                  {company.website && (
-                    <Button variant="outline" size="sm" asChild>
-                      <a href={company.website} target="_blank" rel="noopener noreferrer">
-                        <Globe className="mr-2 h-4 w-4" />
-                        Website
-                        <ExternalLink className="ml-1 h-3 w-3" />
-                      </a>
-                    </Button>
-                  )}
-                  <Button size="sm" asChild>
-                    <Link to={`/jobs?company=${company._id}`}>
-                      <Briefcase className="mr-2 h-4 w-4" />
-                      Shiko Punët ({company.stats.activeJobs})
-                    </Link>
-                  </Button>
-                </div>
+                <p className="text-xl text-muted-foreground mb-4">
+                  {company.industry} | {company.companySize}
+                </p>
+                <Button size="lg">
+                  Shiko pozicionet e lira
+                </Button>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
+          </CardContent>
+        </Card>
 
-      <div className="container mx-auto px-4 py-12">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid lg:grid-cols-3 gap-8">
-            {/* Main Content */}
-            <div className="lg:col-span-2 space-y-8">
-              {/* About Company */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Rreth Kompanisë</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground leading-relaxed">
+        {/* Main Layout - Two Columns */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {/* Left Column - Description */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Info Row - VEPRIMTARIA, VENDODHJA, KONTAKTET (Only on left) */}
+            <Card className="border-2">
+              <CardContent className="p-5">
+                <div className="space-y-4">
+                  {/* VEPRIMTARIA */}
+                  <div>
+                    <h3 className="text-sm font-semibold mb-2">VEPRIMTARIA</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {company.industry} | Konstruksion
+                    </p>
+                  </div>
+
+                  <Separator />
+
+                  {/* VENDODHJA */}
+                  <div>
+                    <h3 className="text-sm font-semibold mb-2">VENDODHJA</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {company.location.region || company.location.city}
+                    </p>
+                  </div>
+
+                  <Separator />
+
+                  {/* KONTAKTET */}
+                  <div>
+                    <h3 className="text-sm font-semibold mb-2">KONTAKTET</h3>
+                    <div className="flex gap-2">
+                      <Button variant="ghost" size="icon" className="h-8 w-8 border">
+                        <Mail className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 border">
+                        <Phone className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 border">
+                        <MessageCircle className="h-4 w-4" />
+                      </Button>
+                      {company.website && (
+                        <Button variant="ghost" size="icon" className="h-8 w-8 border" asChild>
+                          <a href={company.website} target="_blank" rel="noopener noreferrer">
+                            <Globe className="h-4 w-4" />
+                          </a>
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Company About/History */}
+            <Card className="border-2">
+              <CardContent className="p-6">
+                <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
+                  <p>
+                    Kontakt sh.p.k u themelua ne vitin 1999 dhe prej me shume se dy dekada ka qene nje nga 
+                    kompanite me te rendesishme ne zhvillimin e pasurive te paluajtshme ne shqiperi
+                  </p>
+                  <p>
                     {company.description || "Nuk ka përshkrim të disponueshëm për këtë kompani."}
                   </p>
-                </CardContent>
-              </Card>
-
-              {/* Recent Jobs */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <span>Punët e Fundit</span>
-                    {company.jobs.length > 3 && (
-                      <Button variant="outline" size="sm" asChild>
-                        <Link to={`/jobs?company=${company._id}`}>
-                          Shiko të gjitha
-                        </Link>
-                      </Button>
-                    )}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {company.jobs.length === 0 ? (
-                    <div className="text-center py-8">
-                      <Briefcase className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                      <p className="text-muted-foreground">Nuk ka punë aktive aktualisht</p>
+                  
+                  {/* Additional company info */}
+                  <div className="pt-4 space-y-2 border-t">
+                    <div className="flex items-center gap-2 text-xs">
+                      <Users className="h-4 w-4" />
+                      <span className="font-medium">Madhësia:</span>
+                      <span>{company.companySize}</span>
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {company.jobs.slice(0, 3).map((job) => (
-                        <div
+                    <div className="flex items-center gap-2 text-xs">
+                      <Calendar className="h-4 w-4" />
+                      <span className="font-medium">Anëtar që nga:</span>
+                      <span>{new Date(company.joinedAt).getFullYear()}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <Briefcase className="h-4 w-4" />
+                      <span className="font-medium">Punë aktive:</span>
+                      <span className="text-green-600 font-semibold">{company.stats.activeJobs}</span>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Social Media */}
+            <Card className="border-2">
+              <CardContent className="p-4">
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="icon" className="h-9 w-9">
+                    <Linkedin className="h-5 w-5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-9 w-9">
+                    <Instagram className="h-5 w-5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-9 w-9">
+                    <Facebook className="h-5 w-5" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right Column - Company Policies (Full height) */}
+          <div className="lg:col-span-3">
+            <Card className="border-2 h-full">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-xl">Politikat e kompanise</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
+                  <p>
+                    Me një fokus të veçantë tek cilësia, inovacioni dhe krijimi i komuniteteve të
+                    mirëorganizuara, Kontakt ka realizuar projekte që kanë lënë gjurmë në
+                    peizazhin e Tiranës.
+                  </p>
+                  <p>
+                    Kontakt sh.p.k është një kompani e cila nviti zhvillimin e liderave nga brenda
+                    grupit. 56% e bordit drejtues ka arritur në këtë status duke nisur si punëtorë
+                    të thjeshtë ose si praktikant në kompani. Sot ata janë në postet më të
+                    rëndësishme të kompanisë fal anyrtyeve të tyre dhe dëshires.
+                  </p>
+                  <p>
+                    Kontakt sot numëron 325 të punësuar ndër të cilët 45 janë bordi drejtues. Të
+                    gjithë punëtorët tanë të zyrave dhe të terrenit punojnë në siguri maksimale
+                    nën bashkëveprim e fjalës së fundit të teknologjisë
+                  </p>
+                  <p>
+                    Kontakt është një kompani e cila nvit zhvillimin e liderëve nga brenda
+                    grupit. 56% e bordit drejtues ka arritur në këtë status duke nisur si punëtorë
+                    të thjeshtë ose si praktikant në kompani. Sot ata janë në postet më të
+                    rëndësishme të kompanisë fal anrityeve të tyre dhe dëshires
+                  </p>
+                  <p>
+                    Kontakt realizon podhivoja cdo muaj trajnime jashte vendit me kompani të
+                    njashishme nder më të mirat në botë për punëtorët e saj. Të gjitha trajnimet
+                    jan të paguara nga kompania dhe pjesmarresit pajisen me certifikata
+                    nderkombetare
+                  </p>
+                </div>
+
+                {/* Available Jobs Section */}
+                {company.jobs.length > 0 && (
+                  <div className="mt-8 pt-8 border-t">
+                    <h3 className="font-semibold text-foreground mb-4 text-lg">Pozicionet e Disponueshme</h3>
+                    <div className="space-y-3">
+                      {company.jobs.slice(0, 5).map((job) => (
+                        <Link
                           key={job._id}
-                          className="border rounded-lg p-4 hover:border-primary/50 transition-colors"
+                          to={`/jobs/${job._id}`}
+                          className="block p-4 border rounded-lg hover:border-primary/50 hover:bg-primary/5 transition-all"
                         >
                           <div className="flex justify-between items-start mb-2">
-                            <h3 className="font-semibold text-lg">
-                              <Link to={`/jobs/${job._id}`} className="hover:text-primary">
-                                {job.title}
-                              </Link>
-                            </h3>
-                            <Badge variant="outline">{job.category}</Badge>
+                            <h4 className="font-semibold text-foreground">{job.title}</h4>
+                            <Badge variant="outline" className="text-xs">{job.category}</Badge>
                           </div>
-
-                          <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground mb-3">
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                             <div className="flex items-center">
                               <MapPin className="h-3 w-3 mr-1" />
                               <span>{job.location.city}{job.location.remote && " (Remote)"}</span>
@@ -405,100 +482,38 @@ const CompanyProfile = () => {
                               <span>{job.jobType}</span>
                             </div>
                             {job.salary && (
-                              <div className="flex items-center">
-                                <span>{job.salary.min}-{job.salary.max} {job.salary.currency}</span>
-                              </div>
+                              <span className="font-medium">
+                                {job.salary.min}-{job.salary.max} {job.salary.currency}
+                              </span>
                             )}
                           </div>
-
-                          <div className="flex justify-between items-center">
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                              <div className="flex items-center">
-                                <Eye className="h-3 w-3 mr-1" />
-                                <span>{job.viewCount} shikime</span>
-                              </div>
-                              <div className="flex items-center">
-                                <Users className="h-3 w-3 mr-1" />
-                                <span>{job.applicationCount} aplikime</span>
-                              </div>
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {new Date(job.postedAt).toLocaleDateString('sq-AL')}
-                            </div>
-                          </div>
-                        </div>
+                        </Link>
                       ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Sidebar */}
-            <div className="space-y-6">
-              {/* Company Stats */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Statistika</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Punë të postuara:</span>
-                      <span className="font-semibold">{company.stats.totalJobs}</span>
-                    </div>
-                    <Separator />
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Punë aktive:</span>
-                      <span className="font-semibold text-green-600">{company.stats.activeJobs}</span>
-                    </div>
-                    <Separator />
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Shikime totale:</span>
-                      <span className="font-semibold">{company.stats.totalViews.toLocaleString()}</span>
-                    </div>
-                    <Separator />
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Aplikime totale:</span>
-                      <span className="font-semibold">{company.stats.totalApplications.toLocaleString()}</span>
+                      
+                      {company.jobs.length > 5 && (
+                        <Button variant="outline" className="w-full mt-4" asChild>
+                          <Link to={`/jobs?company=${company._id}`}>
+                            Shiko të gjitha punët ({company.stats.activeJobs})
+                          </Link>
+                        </Button>
+                      )}
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                )}
 
-              {/* Quick Actions */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Veprime të Shpejta</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <Button className="w-full" asChild>
-                    <Link to={`/jobs?company=${company._id}`}>
-                      <Briefcase className="mr-2 h-4 w-4" />
-                      Shiko Të Gjitha Punët
-                    </Link>
-                  </Button>
-                  {company.website && (
-                    <Button variant="outline" className="w-full" asChild>
-                      <a href={company.website} target="_blank" rel="noopener noreferrer">
-                        <Globe className="mr-2 h-4 w-4" />
-                        Vizito Website-in
-                        <ExternalLink className="ml-auto h-4 w-4" />
-                      </a>
-                    </Button>
-                  )}
-                  <Button variant="outline" className="w-full" asChild>
-                    <Link to="/companies">
-                      <ArrowLeft className="mr-2 h-4 w-4" />
-                      Kthehu te Kompanitë
-                    </Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
+                {company.jobs.length === 0 && (
+                  <div className="text-center py-8 border rounded-lg mt-8">
+                    <Briefcase className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-muted-foreground">Nuk ka punë aktive aktualisht</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
+      
+      <Footer />
     </div>
   );
 };

@@ -176,8 +176,8 @@ const QuickApplyModal: React.FC<QuickApplyModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-8 sm:p-10">
+        <DialogHeader className="space-y-4 mb-2">
           <DialogTitle className="flex items-center gap-2">
             <Send className="h-5 w-5 text-primary" />
             Apliko për: {job.title}
@@ -187,11 +187,11 @@ const QuickApplyModal: React.FC<QuickApplyModalProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
+        <div className="space-y-8 py-8">
           {/* Profile Completeness Warning */}
           {isProfileIncomplete && (
             <Card className="border-yellow-200 bg-yellow-50">
-              <CardContent className="p-4">
+              <CardContent className="p-6">
                 <div className="flex items-start gap-3">
                   <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
                   <div className="flex-1">
@@ -390,18 +390,19 @@ const QuickApplyModal: React.FC<QuickApplyModalProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex justify-between gap-3 pt-4 border-t">
+        <div className="flex flex-col sm:flex-row justify-between gap-3 pt-6 border-t mt-6">
           <Button
             variant="outline"
             onClick={onClose}
             disabled={isSubmitting}
+            className="w-full sm:w-auto h-11"
           >
             Anulo
           </Button>
           <Button
             onClick={handleSubmit}
             disabled={isSubmitting}
-            className="flex-1"
+            className="w-full sm:flex-1 h-11"
           >
             {isSubmitting ? (
               <>

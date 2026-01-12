@@ -116,7 +116,7 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false }: Jo
       <CardContent className="p-4 sm:p-6 md:p-8">
         {/* Tags positioned at top right corner */}
         <div className="absolute top-2 right-2 sm:top-4 sm:right-4 flex items-center gap-1">
-          <Badge variant="secondary" className="text-xs px-1.5 py-0.5 sm:px-2 sm:py-1">
+          <Badge variant="outline" className="text-xs px-2 py-1 bg-background/80 backdrop-blur-sm border-primary/20 text-foreground font-medium">
             {job.jobType}
           </Badge>
           {isRecommended && (

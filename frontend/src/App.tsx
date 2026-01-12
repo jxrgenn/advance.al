@@ -4,7 +4,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { MantineProvider } from '@mantine/core';
+import { Notifications } from '@mantine/notifications';
 import '@mantine/core/styles.css';
+import '@mantine/notifications/styles.css';
 import Index from "./pages/Index";
 import Jobs from "./pages/Jobs";
 import JobDetail from "./pages/JobDetail";
@@ -29,6 +31,7 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <MantineProvider>
+    <Notifications position="top-right" zIndex={10000} />
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <Toaster />

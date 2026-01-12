@@ -29,6 +29,7 @@ export interface ApiResponse<T> {
 }
 
 export interface User {
+  _id: string;
   id: string;
   email: string;
   userType: 'jobseeker' | 'employer' | 'admin';
@@ -44,6 +45,7 @@ export interface User {
     };
     jobSeekerProfile?: {
       title?: string;
+      resume?: string;
       bio?: string;
       experience?: string;
       skills?: string[];
@@ -123,7 +125,9 @@ export interface Job {
   slug: string;
   employerId: {
     _id: string;
+    email: string;
     profile: {
+      phone?: string;
       employerProfile: {
         companyName: string;
         logo?: string;
@@ -143,7 +147,7 @@ export interface Job {
 export interface Application {
   _id: string;
   jobId: Job;
-  jobSeekerId: string;
+  jobSeekerId: string | User;
   employerId: string;
   appliedAt: string;
   status: 'pending' | 'viewed' | 'shortlisted' | 'rejected' | 'hired';
@@ -249,7 +253,7 @@ const apiRequest = async <T>(
   const url = `${API_BASE_URL}${endpoint}`;
   console.log('🔍 API Debug:', { API_BASE_URL, endpoint, url, envVar: import.meta.env.VITE_API_URL });
   const token = getAuthToken();
-  
+
   const headers: Record<string, string> = {
     ...options.headers as Record<string, string>,
   };
@@ -409,7 +413,7 @@ export const jobsApi = {
     filters: any;
   }>> => {
     const queryParams = new URLSearchParams();
-    
+
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') {
         queryParams.append(key, value.toString());
@@ -503,7 +507,7 @@ export const jobsApi = {
     pagination: any;
   }>> => {
     const queryParams = new URLSearchParams();
-    
+
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') {
         queryParams.append(key, value.toString());
@@ -582,7 +586,7 @@ export const applicationsApi = {
     pagination: any;
   }>> => {
     const queryParams = new URLSearchParams();
-    
+
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') {
         queryParams.append(key, value.toString());
@@ -606,7 +610,7 @@ export const applicationsApi = {
     pagination: any;
   }>> => {
     const queryParams = new URLSearchParams();
-    
+
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') {
         queryParams.append(key, value.toString());
@@ -938,7 +942,7 @@ export const notificationsApi = {
     unreadCount: number;
   }>> => {
     const queryParams = new URLSearchParams();
-    
+
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') {
         queryParams.append(key, value.toString());

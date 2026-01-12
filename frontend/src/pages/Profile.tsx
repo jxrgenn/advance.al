@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { User, Mail, Phone, MapPin, Upload, FileText, Briefcase, Award, Loader2, RefreshCw } from "lucide-react";
+import { User, Mail, Phone, MapPin, Upload, FileText, Briefcase, Award, Loader2, RefreshCw, Lightbulb, X, Play } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { usersApi, applicationsApi } from "@/lib/api";
@@ -23,6 +23,18 @@ const Profile = () => {
   const [hasChanges, setHasChanges] = useState(false);
   const [applications, setApplications] = useState<any[]>([]);
   const [loadingApplications, setLoadingApplications] = useState(true);
+  const [currentTab, setCurrentTab] = useState("personal");
+
+  // Tutorial system state
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const [highlightedElement, setHighlightedElement] = useState<Element | null>(null);
+  const [elementPosition, setElementPosition] = useState<DOMRect | null>(null);
+  const [previousElementPosition, setPreviousElementPosition] = useState<DOMRect | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [isSpotlightAnimating, setIsSpotlightAnimating] = useState(false);
+  const [lastClickTime, setLastClickTime] = useState(0);
+  const [hasScrolledOnDesktop, setHasScrolledOnDesktop] = useState(false);
 
   // Modal states for broken buttons
   const [workExperienceModal, setWorkExperienceModal] = useState(false);
@@ -55,6 +67,123 @@ const Profile = () => {
 
   const [savingWorkExperience, setSavingWorkExperience] = useState(false);
   const [savingEducation, setSavingEducation] = useState(false);
+
+  // Unified tutorial steps with tab metadata
+  const allTutorialSteps = [
+    // Personal Information Tab (0-5)
+    {
+      selector: '[data-tutorial="tabs"]',
+      title: "Tabat e Profilit",
+      content: "Profili juaj ka 3 tab kryesore: Informacioni Personal (për të dhënat tuaja), Përvojë Pune (për historikun profesional), dhe Aplikimet (për të ndjekur progresin e aplikimeve).",
+      position: "bottom" as const,
+      tab: "personal",
+      requiresTab: "personal",
+      skipScroll: true
+    },
+    {
+      selector: '[data-tutorial="personal-info-section"]',
+      title: "Të Dhënat Personale",
+      content: "Këtu mund të ndryshoni emrin, telefonin, vendndodhjen, biografinë dhe informacione të tjera bazike. Shtypni çdo fushë për të bërë ndryshime.",
+      position: "right" as const,
+      tab: "personal",
+      requiresTab: "personal",
+      isLargeElement: true,
+      scrollOffset: -120  // Prevent scrolling too far up on desktop, leaving room for nav and title
+    },
+    {
+      selector: '[data-tutorial="professional-title"]',
+      title: "Titulli Profesional",
+      content: "Shto titullin tuaj profesional (p.sh. 'Frontend Developer', 'Accountant'). Kjo e bën profilin tuaj më tërheqës për punëdhënësit.",
+      position: "right" as const,
+      tab: "personal",
+      requiresTab: "personal"
+    },
+    {
+      selector: '[data-tutorial="experience-level"]',
+      title: "Niveli i Përvojës",
+      content: "Zgjidhni sa vite përvojë pune keni. Kjo ndihmon punëdhënësit të kuptojnë nivelin tuaj profesional.",
+      position: "right" as const,
+      tab: "personal",
+      requiresTab: "personal"
+    },
+    {
+      selector: '[data-tutorial="skills"]',
+      title: "Aftësitë",
+      content: "Listoni aftësitë tuaja (të ndara me presje). Për shembull: 'React, JavaScript, Communication'. Sa më shumë aftësi relevante, aq më mirë!",
+      position: "right" as const,
+      tab: "personal",
+      requiresTab: "personal"
+    },
+    {
+      selector: '[data-tutorial="cv-upload"]',
+      title: "Ngarkimi i CV-së",
+      content: "Ngarkoni CV-në tuaj në format PDF (max 5MB). Kjo është e rëndësishme për Quick Apply - pa CV nuk mund të aplikoni me 1-klik.",
+      position: "right" as const,
+      tab: "personal",
+      requiresTab: "personal",
+      isLargeElement: true,
+      scrollOffset: -60
+    },
+    // Work Experience Tab (6-9)
+    {
+      selector: '[data-tutorial="work-history"]',
+      title: "Historia e Punës",
+      content: "Këtu shfaqet lista e përvojave tuaja të punës. Sa më e plotë kjo listë, aq më profesional duket profili juaj.",
+      position: "right" as const,
+      tab: "experience",
+      requiresTab: "experience"
+    },
+    {
+      selector: '[data-tutorial="add-work"]',
+      title: "Shto Përvojë të Re",
+      content: "Shtypni këtu për të shtuar një përvojë të re pune. Mund të shtoni sa të doni - të gjitha do të shfaqen në profilin tuaj.",
+      position: "top" as const,
+      tab: "experience",
+      requiresTab: "experience"
+    },
+    {
+      selector: '[data-tutorial="education"]',
+      title: "Arsimimi",
+      content: "Shto informacion për arsimimin tënd - diploma, universitete, certifikata. Kjo rrit besueshmërinë e profilit.",
+      position: "right" as const,
+      tab: "experience",
+      requiresTab: "experience"
+    },
+    {
+      selector: '[data-tutorial="add-education"]',
+      title: "Shto Arsimim",
+      content: "Shtypni këtu për të shtuar një arsimim të ri. Mund të shtoni shkollën e mesme, universitetin, master, certifikata, etj.",
+      position: "top" as const,
+      tab: "experience",
+      requiresTab: "experience"
+    },
+    // Applications Tab (10-12)
+    {
+      selector: '[data-tutorial="applications-list"]',
+      title: "Aplikimet e Mia",
+      content: "Këtu shfaqen të gjitha aplikimet tuaja. Nëse keni aplikuar për një punë, do të shihni një timeline që tregon statusin e secilit aplikim.",
+      position: "right" as const,
+      tab: "applications",
+      requiresTab: "applications",
+      isLargeElement: true
+    },
+    {
+      selector: '[data-tutorial="refresh-button"]',
+      title: "Rifresko Aplikimet",
+      content: "Shtypni këtu për të rifreshuar listen e aplikimeve për të parë statusin e fundit.",
+      position: "left" as const,
+      tab: "applications",
+      requiresTab: "applications"
+    },
+    {
+      selector: '[data-tutorial="applications-summary"]',
+      title: "Përmbledhje e Aplikimeve",
+      content: "Kur keni aplikime, këtu shfaqet një përmbledhje e shpejtë: sa gjithsej, sa në pritje, sa aktive, dhe sa të pranuara.",
+      position: "bottom" as const,
+      tab: "applications",
+      requiresTab: "applications"
+    }
+  ];
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -181,9 +310,9 @@ const Profile = () => {
       console.log('Profile update response:', response);
       
       if (response.success && response.data?.user) {
-        updateUser(response.data.user);
+        await refreshUser();
         setHasChanges(false);
-        
+
         toast({
           title: "Profili u ruajt!",
           description: "Ndryshimet në profilin tuaj u ruajtën me sukses.",
@@ -377,14 +506,615 @@ const Profile = () => {
     }
   };
 
+  // Tutorial functions with proper fixes
+  const timersRef = useRef<number[]>([]);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      timersRef.current.forEach(timer => clearTimeout(timer));
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.top = '';
+    };
+  }, []);
+
+  // Auto-advance tutorial when user manually switches tabs (not during transitions)
+  useEffect(() => {
+    if (!showTutorial || isTransitioning) return;
+
+    const currentStep = allTutorialSteps[tutorialStep];
+    if (!currentStep) return;
+
+    // Check if we're on the right tab for the current step
+    if (currentStep.requiresTab === currentTab) {
+      // We're on the correct tab, highlight the element
+      highlightElement(tutorialStep);
+    } else {
+      // We're on the wrong tab (user manually switched), check if there's a matching step for this tab
+      const nextStepForCurrentTab = allTutorialSteps.findIndex(
+        (step, index) => index > tutorialStep && step.requiresTab === currentTab
+      );
+
+      if (nextStepForCurrentTab !== -1) {
+        // Found a step for this tab, jump to it
+        setTutorialStep(nextStepForCurrentTab);
+        setTimeout(() => highlightElement(nextStepForCurrentTab), 400);
+      }
+    }
+  }, [currentTab, showTutorial]);
+
+  // Wait for element to be visible in DOM
+  const waitForElement = (selector: string, maxAttempts = 15): Promise<Element | null> => {
+    return new Promise((resolve) => {
+      let attempts = 0;
+      const check = () => {
+        const element = document.querySelector(selector);
+        if (element && element.offsetParent !== null) {
+          resolve(element);
+        } else if (attempts < maxAttempts) {
+          attempts++;
+          requestAnimationFrame(check);
+        } else {
+          resolve(null);
+        }
+      };
+      requestAnimationFrame(check);
+    });
+  };
+
+  const startTutorial = () => {
+    // Find first step for current tab
+    const startIndex = allTutorialSteps.findIndex(s => s.requiresTab === currentTab);
+    const startStep = startIndex >= 0 ? startIndex : 0;
+
+    setTutorialStep(startStep);
+    setShowTutorial(true);
+
+    // Hide scrollbar without layout shift
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = 'hidden';
+    document.body.style.paddingRight = `${scrollbarWidth}px`;
+
+    setTimeout(() => highlightElement(startStep), 150);
+  };
+
+  const closeTutorial = () => {
+    console.log('=== closeTutorial CALLED ===');
+    console.log('Closing tutorial from step:', tutorialStep);
+    setShowTutorial(false);
+    setTutorialStep(0);
+    setHighlightedElement(null);
+    setElementPosition(null);
+    setPreviousElementPosition(null);
+    setIsAnimating(false);
+    setIsSpotlightAnimating(false);
+    setIsTransitioning(false);
+    document.body.style.overflow = '';
+    document.body.style.paddingRight = '';
+    timersRef.current.forEach(timer => clearTimeout(timer));
+    timersRef.current = [];
+    console.log('Tutorial closed successfully');
+  };
+
+  const nextTutorialStep = () => {
+    console.log('=== nextTutorialStep CALLED ===');
+    console.log('Current step:', tutorialStep);
+    console.log('Total steps:', allTutorialSteps.length);
+    console.log('Is transitioning:', isTransitioning);
+    console.log('Is last step:', tutorialStep === allTutorialSteps.length - 1);
+
+    if (isTransitioning) {
+      console.log('Blocked: already transitioning');
+      return;
+    }
+
+    // Normal step progression
+    if (tutorialStep < allTutorialSteps.length - 1) {
+      console.log('Going to next step...');
+      const nextStep = allTutorialSteps[tutorialStep + 1];
+
+      // Check if next step requires a different tab
+      if (nextStep && nextStep.requiresTab !== currentTab) {
+        console.log('Next step requires tab switch to:', nextStep.requiresTab);
+        // Automatically switch tabs
+        setIsTransitioning(true);
+        setCurrentTab(nextStep.requiresTab);
+        setTutorialStep(tutorialStep + 1);
+
+        // Wait for tab to render, then highlight the element
+        const timer = setTimeout(async () => {
+          await highlightElement(tutorialStep + 1);
+          setIsTransitioning(false);
+        }, 350);
+        timersRef.current.push(timer);
+        return;
+      }
+
+      console.log('Same tab, moving to step:', tutorialStep + 1);
+      setIsTransitioning(true);
+      setTutorialStep(tutorialStep + 1);
+      highlightElement(tutorialStep + 1);
+
+      const timer = setTimeout(() => setIsTransitioning(false), 350);
+      timersRef.current.push(timer);
+    } else {
+      console.log('Last step reached, closing tutorial');
+      closeTutorial();
+    }
+  };
+
+  const previousTutorialStep = () => {
+    console.log('=== previousTutorialStep CALLED ===');
+    console.log('Current step:', tutorialStep);
+    console.log('Is transitioning:', isTransitioning);
+    console.log('Is first step:', tutorialStep === 0);
+
+    if (isTransitioning || tutorialStep === 0) {
+      console.log('Blocked: transitioning or at first step');
+      return;
+    }
+
+    const prevStep = allTutorialSteps[tutorialStep - 1];
+    console.log('Going to previous step:', tutorialStep - 1, 'Tab:', prevStep.requiresTab);
+
+    // Check if previous step requires a different tab
+    if (prevStep && prevStep.requiresTab !== currentTab) {
+      console.log('Previous step requires tab switch from', currentTab, 'to', prevStep.requiresTab);
+      // Automatically switch tabs
+      setIsTransitioning(true);
+      setCurrentTab(prevStep.requiresTab);
+      setTutorialStep(tutorialStep - 1);
+
+      // Wait for tab to render, then highlight
+      const timer = setTimeout(async () => {
+        // Don't scroll to top - let highlightElement handle scrolling
+        console.log('Switched to', prevStep.requiresTab, 'tab, letting highlightElement handle scroll');
+        await highlightElement(tutorialStep - 1);
+        setIsTransitioning(false);
+      }, 350);
+      timersRef.current.push(timer);
+      return;
+    }
+
+    console.log('Same tab, moving to step:', tutorialStep - 1);
+    setIsTransitioning(true);
+    setTutorialStep(tutorialStep - 1);
+    highlightElement(tutorialStep - 1);
+
+    const timer = setTimeout(() => setIsTransitioning(false), 350);
+    timersRef.current.push(timer);
+  };
+
+  const highlightElement = async (stepIndex: number) => {
+    console.log('=== highlightElement CALLED ===');
+    console.log('Step index:', stepIndex);
+    const step = allTutorialSteps[stepIndex];
+    console.log('Step details:', step);
+
+    if (!step) {
+      console.error('No step found at index:', stepIndex);
+      return;
+    }
+
+    // Tab switch steps don't need highlighting
+    if (step.isTabSwitch) {
+      console.log('Tab switch step, skipping highlight');
+      return;
+    }
+
+    if (elementPosition) {
+      setPreviousElementPosition(elementPosition);
+    }
+
+    console.log('Waiting for element:', step.selector);
+    // Wait for element to be available and visible
+    const element = await waitForElement(step.selector);
+    if (!element) {
+      console.warn(`Tutorial element not found or hidden: ${step.selector}`);
+      // Skip this step if element doesn't exist
+      if (tutorialStep < allTutorialSteps.length - 1) {
+        console.log('Skipping to next step');
+        nextTutorialStep();
+      }
+      return;
+    }
+    console.log('Element found:', element);
+
+    const rect = element.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    const isMobile = viewportWidth < 768;
+
+    // Check if element is already sufficiently visible
+    const elementVisibleHeight = Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0);
+    const visibilityPercent = elementVisibleHeight / rect.height;
+
+    // For large elements or already visible, don't scroll
+    const isLargeElement = step.isLargeElement || rect.height > viewportHeight * 0.5;
+
+    // Mobile needs stricter requirements to account for tutorial card
+    const isReasonablyVisible = isMobile
+      ? false  // On mobile, ALWAYS scroll to position element+card optimally
+      : rect.top >= 50 &&
+        rect.bottom <= viewportHeight - 180 &&
+        visibilityPercent > 0.6;
+
+    // Skip scrolling if step has skipScroll flag
+    if (!step.skipScroll && !isReasonablyVisible) {
+      // Need to scroll - temporarily show scrollbar
+      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+      document.body.style.overflow = 'auto';
+      document.body.style.paddingRight = '0px';
+
+      if (isMobile) {
+        // Mobile: Calculate scroll to show BOTH element and card
+        const currentScroll = window.pageYOffset;
+        const elementTop = rect.top + currentScroll;
+
+        // Calculate estimated card position
+        const minCardHeight = 240;
+        const cardHeight = Math.min(450, Math.max(minCardHeight, viewportHeight * 0.45));
+        const gap = 8;
+
+        const elementBottom = rect.bottom;
+        const spaceBelow = viewportHeight - elementBottom;
+        const spaceAbove = rect.top;
+
+        // Determine if card will be above or below
+        const fitsBelow = spaceBelow >= cardHeight + gap + 16;
+
+        let targetScroll: number;
+        const scrollOffsetValue = step.scrollOffset || 0;
+
+        if (fitsBelow) {
+          // Card will be BELOW element
+          // Position element at 25% from top, card will be below it
+          const elementTargetPosition = viewportHeight * 0.25;
+          targetScroll = (rect.top + currentScroll) - elementTargetPosition + scrollOffsetValue;
+        } else {
+          // Card will be ABOVE element
+          // For large elements: calculate optimal position to show as much as possible
+          // For normal elements: position just below card to keep them visible
+          // ALL elements when card is ABOVE: position to show FULL element including bottom
+          const elementHeight = rect.height;
+          const bottomMargin = 16;
+
+          // Calculate constraints:
+          // 1. Element must be below the card
+          const minElementTop = cardHeight + gap + 8;
+
+          // 2. Element bottom must fit in viewport (accounting for scrollOffset)
+          // We want: (elementTop - scrollOffset) + elementHeight <= viewportHeight - bottomMargin
+          // So: elementTop <= viewportHeight - bottomMargin - elementHeight + scrollOffset
+          const maxElementTop = viewportHeight - bottomMargin - elementHeight + scrollOffsetValue;
+
+          // Use the minimum of maxElementTop and a centered position
+          // This ensures the element bottom is always visible
+          const centeredTop = cardHeight + gap + ((viewportHeight - cardHeight - gap - elementHeight) / 2);
+          const elementTopInViewport = Math.max(minElementTop, Math.min(centeredTop, maxElementTop));
+
+          targetScroll = (rect.top + currentScroll) - elementTopInViewport + scrollOffsetValue;
+        }
+
+        console.log('MOBILE SCROLL DEBUG:');
+        console.log('- Current scroll:', currentScroll);
+        console.log('- Element rect.top:', rect.top);
+        console.log('- Element top (absolute):', elementTop);
+        console.log('- Element height:', rect.height);
+        console.log('- Is large element:', isLargeElement);
+        console.log('- Card height:', cardHeight);
+        console.log('- Card position:', fitsBelow ? 'BELOW' : 'ABOVE');
+        if (fitsBelow) {
+          console.log('- Element target position (25%):', viewportHeight * 0.25);
+        } else {
+          const elementHeight = rect.height;
+          const bottomMargin = 16;
+          const minElementTop = cardHeight + gap + 8;
+          const maxElementTop = viewportHeight - bottomMargin - elementHeight + scrollOffsetValue;
+          const centeredTop = cardHeight + gap + ((viewportHeight - cardHeight - gap - elementHeight) / 2);
+          const finalElementTop = Math.max(minElementTop, Math.min(centeredTop, maxElementTop));
+
+          console.log('- Element height:', elementHeight);
+          console.log('- Min element top (below card):', minElementTop);
+          console.log('- Max element top (fit bottom):', maxElementTop);
+          console.log('- Centered element top:', centeredTop);
+          console.log('- Final element top position:', finalElementTop);
+          console.log('- Element bottom will be at:', finalElementTop + elementHeight - scrollOffsetValue, '(viewport height:', viewportHeight, ')');
+        }
+        console.log('- Scroll offset:', scrollOffsetValue);
+        console.log('- Target scroll:', targetScroll);
+        console.log('- Final scroll (max 0):', Math.max(0, targetScroll));
+        console.log('- Element selector:', step.selector);
+
+        window.scrollTo({
+          top: Math.max(0, targetScroll),
+          behavior: 'smooth'
+        });
+      } else {
+        // Desktop: use scrollIntoView then apply optional scrollOffset
+        const scrollBehavior = isLargeElement ? 'start' : 'nearest';
+        element.scrollIntoView({
+          behavior: 'smooth',
+          block: scrollBehavior,
+          inline: 'nearest'
+        });
+
+        // Apply scrollOffset if specified
+        if (step.scrollOffset) {
+          // Wait for scroll to complete, then apply offset
+          await new Promise(resolve => {
+            const timer = setTimeout(() => {
+              window.scrollBy({
+                top: step.scrollOffset,
+                behavior: 'smooth'
+              });
+              resolve(undefined);
+            }, 500);
+            timersRef.current.push(timer);
+          });
+        }
+      }
+
+      // Wait for scroll to complete
+      await new Promise(resolve => {
+        const timer = setTimeout(resolve, 350);
+        timersRef.current.push(timer);
+      });
+    }
+
+    // Get fresh rect after scroll
+    const newRect = element.getBoundingClientRect();
+    setHighlightedElement(element);
+    setElementPosition(newRect);
+
+    // Hide scrollbar again without layout shift
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = 'hidden';
+    document.body.style.paddingRight = `${scrollbarWidth}px`;
+
+    setIsAnimating(true);
+    setIsSpotlightAnimating(true);
+
+    const timer = setTimeout(() => {
+      setIsAnimating(false);
+      setIsSpotlightAnimating(false);
+    }, 300);
+    timersRef.current.push(timer);
+  };
+
+  // Tutorial Overlay Component with smart positioning
+  const TutorialOverlay = () => {
+    if (!showTutorial || !elementPosition) return null;
+
+    const step = allTutorialSteps[tutorialStep];
+    if (!step) return null;
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const isMobile = viewportWidth < 768;
+
+    const spotlightHeight = elementPosition.height;
+
+    const spotlightStyle: React.CSSProperties = {
+      position: 'fixed',
+      top: `${elementPosition.top}px`,
+      left: `${elementPosition.left}px`,
+      width: `${elementPosition.width}px`,
+      height: `${spotlightHeight}px`,
+      borderRadius: '8px',
+      boxShadow: `0 0 0 99999px rgba(0, 0, 0, 0.5)`,
+      pointerEvents: 'none',
+      zIndex: 9999,
+      transition: isSpotlightAnimating
+        ? 'all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1)'
+        : 'none'
+    };
+
+    const cardWidth = isMobile ? Math.min(340, viewportWidth - 32) : 340;
+    const baseCardHeight = Math.min(450, viewportHeight * 0.65);
+    const margin = 20;
+
+    let calculatedCardTop = elementPosition.top;
+    let calculatedCardLeft = elementPosition.left;
+    let calculatedCardHeight = baseCardHeight;
+
+    if (isMobile) {
+      // SMART MOBILE POSITIONING - Keep close to element while avoiding overlaps
+      const elementBottom = elementPosition.bottom;
+      const elementTop = elementPosition.top;
+
+      // Calculate space available above and below element
+      const spaceAbove = elementTop;
+      const spaceBelow = viewportHeight - elementBottom;
+
+      // Minimum card height - more flexible now
+      const minCardHeight = 240;
+      calculatedCardHeight = Math.min(baseCardHeight, Math.max(minCardHeight, viewportHeight * 0.45));
+
+      // Small gap between element and card
+      const gap = 8;
+
+      // Check if we have enough space for the card in either direction
+      const fitsBelow = spaceBelow >= calculatedCardHeight + gap + 16;
+      const fitsAbove = spaceAbove >= calculatedCardHeight + gap + 16;
+
+      if (fitsBelow) {
+        // Prefer below if it fits
+        calculatedCardTop = elementBottom + gap;
+      } else if (fitsAbove) {
+        // Try above if below doesn't fit
+        calculatedCardTop = elementTop - calculatedCardHeight - gap;
+      } else {
+        // Doesn't fit in either - use whichever has more space and adjust height
+        if (spaceBelow > spaceAbove) {
+          // More space below
+          const availableHeight = spaceBelow - gap - 16;
+          calculatedCardHeight = Math.max(minCardHeight, Math.min(calculatedCardHeight, availableHeight));
+          calculatedCardTop = elementBottom + gap;
+        } else {
+          // More space above
+          const availableHeight = spaceAbove - gap - 16;
+          calculatedCardHeight = Math.max(minCardHeight, Math.min(calculatedCardHeight, availableHeight));
+          calculatedCardTop = elementTop - calculatedCardHeight - gap;
+        }
+      }
+
+      // Final bounds check - keep within viewport with small margin
+      if (calculatedCardTop < 12) {
+        calculatedCardTop = 12;
+        calculatedCardHeight = Math.min(calculatedCardHeight, viewportHeight - 24);
+      }
+      if (calculatedCardTop + calculatedCardHeight > viewportHeight - 12) {
+        const overflow = (calculatedCardTop + calculatedCardHeight) - (viewportHeight - 12);
+        calculatedCardTop = Math.max(12, calculatedCardTop - overflow);
+        calculatedCardHeight = Math.max(minCardHeight, calculatedCardHeight - overflow);
+      }
+
+      calculatedCardLeft = (viewportWidth - cardWidth) / 2;
+
+    } else {
+      // Desktop positioning (unchanged)
+      if (step.position === 'right' || step.position === 'bottom' || step.position === 'top') {
+        calculatedCardTop = elementPosition.top + (spotlightHeight / 2) - (calculatedCardHeight / 2);
+        calculatedCardLeft = elementPosition.left + elementPosition.width + margin;
+
+        if (calculatedCardLeft + cardWidth > viewportWidth - margin) {
+          calculatedCardLeft = elementPosition.left - cardWidth - margin;
+        }
+      } else if (step.position === 'left') {
+        calculatedCardTop = elementPosition.top + (spotlightHeight / 2) - (calculatedCardHeight / 2);
+        calculatedCardLeft = elementPosition.left - cardWidth - margin;
+      }
+
+      if (calculatedCardTop < margin) {
+        calculatedCardTop = margin;
+      } else if (calculatedCardTop + calculatedCardHeight > viewportHeight - margin) {
+        calculatedCardTop = viewportHeight - calculatedCardHeight - margin;
+      }
+
+      if (calculatedCardLeft < margin) {
+        calculatedCardLeft = margin;
+      } else if (calculatedCardLeft + cardWidth > viewportWidth - margin) {
+        calculatedCardLeft = viewportWidth - cardWidth - margin;
+      }
+    }
+
+    return (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }}>
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.01)',
+            zIndex: 9998
+          }}
+          onClick={closeTutorial}
+        />
+
+        <div style={spotlightStyle} />
+
+        <div
+          className="bg-white rounded-lg shadow-2xl border border-gray-200 p-6"
+          style={{
+            position: 'fixed',
+            top: `${calculatedCardTop}px`,
+            left: `${calculatedCardLeft}px`,
+            width: `${cardWidth}px`,
+            maxHeight: `${calculatedCardHeight}px`,
+            height: 'auto',
+            zIndex: 10000,
+            transition: isAnimating
+              ? 'all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1)'
+              : 'none',
+            overflow: 'auto',
+            pointerEvents: 'auto'
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-start justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 pr-4">{step.title}</h3>
+            <button
+              onClick={closeTutorial}
+              className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <p className="text-sm text-gray-600 leading-relaxed mb-6">{step.content}</p>
+
+          <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+            <span className="text-xs text-gray-500">
+              {tutorialStep + 1} / {allTutorialSteps.length}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => {
+                  console.log('Prapa clicked, current step:', tutorialStep);
+                  previousTutorialStep();
+                }}
+                variant="outline"
+                size="sm"
+                disabled={tutorialStep === 0 || isTransitioning}
+              >
+                ‹ Prapa
+              </Button>
+              <Button
+                onClick={() => {
+                  console.log('Button clicked, current step:', tutorialStep, 'total steps:', allTutorialSteps.length);
+                  if (tutorialStep === allTutorialSteps.length - 1) {
+                    console.log('Closing tutorial');
+                    closeTutorial();
+                  } else {
+                    console.log('Going to next step');
+                    nextTutorialStep();
+                  }
+                }}
+                size="sm"
+                disabled={isTransitioning}
+              >
+                {tutorialStep === allTutorialSteps.length - 1 ? 'Mbyll' : 'Tjetër ›'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
-      
-      <div className="container py-8">
+
+      {/* Tutorial Overlay */}
+      <TutorialOverlay />
+
+      <div className="container py-8 pt-24">
+        {/* Tutorial Help Button */}
+        {!showTutorial && user && user.userType === 'jobseeker' && (
+          <Card className="border-blue-200 bg-blue-50/50 mb-6">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Lightbulb className="h-5 w-5 text-blue-600" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">Nuk e di si të plotësosh profilin?</p>
+                    <p className="text-xs text-gray-600">Fillo tutorialin për të mësuar më shumë</p>
+                  </div>
+                </div>
+                <Button onClick={startTutorial} size="sm" variant="outline">
+                  Fillo Tutorialin
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground">Profili Im</h1>
-          <p className="text-muted-foreground mt-1">Menaxho informacionin personal dhe aplikimit</p>
+          <p className="text-muted-foreground mt-1">Menaxho informacionin personal dhe aplikimet</p>
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
@@ -449,23 +1179,24 @@ const Profile = () => {
 
           {/* Main Content */}
           <div className="lg:col-span-2">
-            <Tabs defaultValue="personal" className="space-y-6">
-              <TabsList>
+            <Tabs defaultValue="personal" className="space-y-6" value={currentTab} onValueChange={setCurrentTab}>
+              <TabsList data-tutorial="tabs">
                 <TabsTrigger value="personal">Informacion Personal</TabsTrigger>
-                <TabsTrigger value="experience">Përvojë Pune</TabsTrigger>
-                <TabsTrigger value="applications">Aplikimit</TabsTrigger>
+                <TabsTrigger value="experience" data-tutorial="work-experience-tab">Përvojë Pune</TabsTrigger>
+                <TabsTrigger value="applications" data-tutorial="applications-tab">Aplikimet</TabsTrigger>
               </TabsList>
 
               <TabsContent value="personal" className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Të Dhënat Personale</CardTitle>
-                    <CardDescription>
-                      Përditëso informacionin tënd personal
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                <Card data-tutorial="personal-info">
+                  <div data-tutorial="personal-info-section" className="flex flex-col">
+                    <CardHeader>
+                      <CardTitle>Të Dhënat Personale</CardTitle>
+                      <CardDescription>
+                        Përditëso informacionin tënd personal
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="firstName">Emri</Label>
                         <Input 
@@ -533,28 +1264,31 @@ const Profile = () => {
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="bio">Biografia</Label>
-                      <Textarea
-                        id="bio"
-                        placeholder="Shkruaj diçka për veten..."
-                        value={formData.bio}
-                        onChange={(e) => handleInputChange('bio', e.target.value)}
-                        rows={4}
-                      />
-                    </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="bio">Biografia</Label>
+                        <Textarea
+                          id="bio"
+                          placeholder="Shkruaj diçka për veten..."
+                          value={formData.bio}
+                          onChange={(e) => handleInputChange('bio', e.target.value)}
+                          rows={4}
+                        />
+                      </div>
+                    </CardContent>
+                  </div>
 
-                    <div className="space-y-2">
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2" data-tutorial="professional-title">
                       <Label htmlFor="title">Titulli Profesional</Label>
-                      <Input 
-                        id="title" 
+                      <Input
+                        id="title"
                         value={formData.title}
                         onChange={(e) => handleInputChange('title', e.target.value)}
                         placeholder="Frontend Developer, Accountant, etc."
                       />
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-2" data-tutorial="experience-level">
                       <Label htmlFor="experience">Përvojë Pune</Label>
                       <Select value={formData.experience || 'none'} onValueChange={(value) => handleInputChange('experience', value)}>
                         <SelectTrigger>
@@ -571,10 +1305,10 @@ const Profile = () => {
                       </Select>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-2" data-tutorial="skills">
                       <Label htmlFor="skills">Aftësitë (të ndara me presje)</Label>
-                      <Input 
-                        id="skills" 
+                      <Input
+                        id="skills"
                         value={formData.skills.join(', ')}
                         onChange={(e) => handleSkillsChange(e.target.value)}
                         placeholder="React, JavaScript, Python, Marketing, etc."
@@ -598,7 +1332,7 @@ const Profile = () => {
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card data-tutorial="cv-upload">
                   <CardHeader>
                     <CardTitle>CV dhe Dokumente</CardTitle>
                     <CardDescription>
@@ -661,8 +1395,8 @@ const Profile = () => {
                     
                     {/* Save Button - Only show if there are changes */}
                     {hasChanges && (
-                      <div className="mt-6 pt-6 border-t">
-                        <Button 
+                      <div className="mt-6 pt-6 border-t" data-tutorial="save-button">
+                        <Button
                           className="w-full"
                           onClick={handleSave}
                           disabled={savingProfile}
@@ -683,7 +1417,7 @@ const Profile = () => {
               </TabsContent>
 
               <TabsContent value="experience" className="space-y-6">
-                <Card>
+                <Card data-tutorial="work-history">
                   <CardHeader>
                     <CardTitle>Përvojë Pune</CardTitle>
                     <CardDescription>
@@ -713,14 +1447,14 @@ const Profile = () => {
                       )}
                     </div>
 
-                    <Button variant="outline" className="w-full" onClick={handleAddWorkExperience}>
+                    <Button variant="outline" className="w-full" onClick={handleAddWorkExperience} data-tutorial="add-work">
                       <Briefcase className="mr-2 h-4 w-4" />
                       Shto Përvojë të Re
                     </Button>
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card data-tutorial="education">
                   <CardHeader>
                     <CardTitle>Arsimimi</CardTitle>
                     <CardDescription>
@@ -745,7 +1479,7 @@ const Profile = () => {
                       )}
                     </div>
 
-                    <Button variant="outline" className="w-full" onClick={handleAddEducation}>
+                    <Button variant="outline" className="w-full" onClick={handleAddEducation} data-tutorial="add-education">
                       <Award className="mr-2 h-4 w-4" />
                       Shto Arsimim
                     </Button>
@@ -754,11 +1488,11 @@ const Profile = () => {
               </TabsContent>
 
               <TabsContent value="applications" className="space-y-6">
-                <Card>
+                <Card data-tutorial="applications-list">
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div>
-                        <CardTitle>Aplikimit e Mia</CardTitle>
+                        <CardTitle>Aplikimet e Mia</CardTitle>
                         <CardDescription>
                           Ndjek progresin e aplikimeve që ke bërë
                         </CardDescription>
@@ -769,6 +1503,7 @@ const Profile = () => {
                         onClick={loadApplications}
                         disabled={loadingApplications}
                         className="flex items-center gap-2"
+                        data-tutorial="refresh-button"
                       >
                         <RefreshCw className={`h-4 w-4 ${loadingApplications ? 'animate-spin' : ''}`} />
                         Rifresko
@@ -800,7 +1535,7 @@ const Profile = () => {
                     ) : (
                       <div className="space-y-6">
                         {/* Applications Summary */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/30 rounded-lg">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/30 rounded-lg" data-tutorial="applications-summary">
                           <div className="text-center">
                             <div className="text-2xl font-bold text-primary">
                               {applications.length}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
+import Footer from "@/components/Footer";
 import {
   Container,
   Title,
@@ -22,10 +23,13 @@ import {
   Anchor,
   SimpleGrid,
   ThemeIcon,
+  Avatar,
+  Textarea,
+  TagsInput,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { Play, Users, Bell, HelpCircle, X, Lightbulb, CheckCircle, ArrowRight, Briefcase } from "lucide-react";
+import { Play, Users, Bell, HelpCircle, X, Lightbulb, CheckCircle, ArrowRight, Briefcase, Zap, UserPlus, FileText, Send } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi, quickUsersApi } from "@/lib/api";
 
@@ -45,6 +49,7 @@ const JobSeekersPage = () => {
   const [isSpotlightAnimating, setIsSpotlightAnimating] = useState(false);
   const [lastClickTime, setLastClickTime] = useState(0);
   const [isScrollLocked, setIsScrollLocked] = useState(false);
+  const [hasScrolledOnDesktop, setHasScrolledOnDesktop] = useState(false); // Track initial desktop scroll
 
   // Mantine form for full registration
   const fullForm = useForm({
@@ -149,8 +154,8 @@ const JobSeekersPage = () => {
     },
     {
       selector: '[data-tutorial="interests"]',
-      title: "Interesat Tuaja",
-      content: "Zgjidhni llojet e punës që ju interesojnë për njoftime të targetuara.",
+      title: "Llojet e Punës / Aftësitë",
+      content: "Shkruani llojet e punës ose aftësitë që ju interesojnë. Shtypni Enter ose përdorni presje (,) për të ndarë. Mund të zgjidhni edhe nga lista dropdown.",
       position: "bottom"
     }
   ];
@@ -240,15 +245,6 @@ const JobSeekersPage = () => {
     }
   };
 
-  const handleInterestToggle = (interest: string) => {
-    const currentInterests = quickForm.values.interests;
-    const newInterests = currentInterests.includes(interest)
-      ? currentInterests.filter(i => i !== interest)
-      : [...currentInterests, interest];
-
-    quickForm.setFieldValue('interests', newInterests);
-  };
-
   // Tutorial management functions
   const startTutorial = () => {
     setShowTutorial(true);
@@ -295,6 +291,7 @@ const JobSeekersPage = () => {
     setIsSpotlightAnimating(false);
     setLastClickTime(0);
     setIsScrollLocked(false);
+    setHasScrolledOnDesktop(false); // Reset on close
     // Restore scroll when tutorial ends
     document.body.style.overflow = 'auto';
   };
@@ -336,75 +333,149 @@ const JobSeekersPage = () => {
     const step = currentTutorialSteps[stepIndex];
     if (!step) return;
 
-    // Start animation states
-    setIsSpotlightAnimating(true);
-    setIsAnimating(true);
+    const element = document.querySelector(step.selector);
+    if (!element) {
+      console.warn(`Tutorial element not found: ${step.selector}`);
+      return;
+    }
 
-    // Store previous position for transition
+    // Store previous position for smooth transition
     if (elementPosition) {
       setPreviousElementPosition(elementPosition);
     }
 
-    // Find element and start seamless tracking
-    const findAndHighlightElement = () => {
-      const element = document.querySelector(step.selector);
-
-      if (element) {
-        const rect = element.getBoundingClientRect();
-        const viewportHeight = window.innerHeight;
-
-        // Define optimal viewing area with more generous margins for better detection
-        const topMargin = 100;
-        const bottomMargin = 300;
-
-        // More robust visibility check - element should be reasonably centered
-        const isElementFullyVisible = rect.top >= topMargin && rect.bottom <= viewportHeight - bottomMargin;
-        const isElementPartiallyVisible = rect.top < viewportHeight && rect.bottom > 0;
-
-        // Force scroll if element is not in optimal viewing area, even if partially visible
-        const shouldScroll = !isElementFullyVisible || rect.top < 50 || rect.bottom > viewportHeight - 100;
-
-        // IMMEDIATELY attach highlight to element - no waiting!
-        setHighlightedElement(element);
-        setElementPosition(rect);
-
-        if (shouldScroll) {
-          // Element needs scrolling - temporarily unlock, use instant scroll, then re-lock
-          document.body.style.overflow = 'auto';
-
-          // Use instant scroll to avoid conflicts with locked body
-          element.scrollIntoView({
-            behavior: 'instant', // Use instant to avoid conflicts
-            block: 'center',
-            inline: 'nearest'
-          });
-
-          // Wait a small moment for scroll to complete, then get new position
+    // Check if element is visible in viewport
+    const rect = element.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    
+    const isMobile = viewportWidth < 768;
+    const isFirstStep = stepIndex === 0;
+    
+    // DESKTOP STRATEGY: Scroll once at start, then never again
+    if (!isMobile) {
+      if (isFirstStep && !hasScrolledOnDesktop) {
+        // First step on desktop: scroll to center form, then mark as done
+        document.body.style.overflow = 'auto';
+        
+        element.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'center',
+          inline: 'center'
+        });
+        
+        setHasScrolledOnDesktop(true);
+        
+        setTimeout(() => {
+          const newRect = element.getBoundingClientRect();
+          setHighlightedElement(element);
+          setElementPosition(newRect);
+          document.body.style.overflow = 'hidden';
+          
+          setIsAnimating(true);
+          setIsSpotlightAnimating(true);
           setTimeout(() => {
-            const newRect = element.getBoundingClientRect();
-            setElementPosition(newRect);
-
-            // Re-lock scroll immediately
-            document.body.style.overflow = 'hidden';
-
             setIsAnimating(false);
             setIsSpotlightAnimating(false);
-          }, 10);
-        } else {
-          // Element already in optimal position - just finish
+          }, 400);
+        }, 400);
+        return;
+      } else {
+        // Desktop: After first scroll, NEVER scroll again - just highlight
+        setHighlightedElement(element);
+        setElementPosition(rect);
+        
+        setIsAnimating(true);
+        setIsSpotlightAnimating(true);
+        setTimeout(() => {
           setIsAnimating(false);
           setIsSpotlightAnimating(false);
-        }
-      } else {
-        console.warn(`Tutorial element not found: ${step.selector}`);
-        setHighlightedElement(null);
+        }, 400);
+        return;
+      }
+    }
+    
+    // MOBILE STRATEGY: Check for card coverage and scroll as needed
+    const tutorialCardWidth = Math.min(320, viewportWidth - 40);
+    const tutorialCardHeight = Math.min(400, viewportHeight * 0.6);
+    const tutorialCardRight = 24;
+    const tutorialCardBottom = 24;
+    const tutorialCardLeft = viewportWidth - tutorialCardWidth - tutorialCardRight;
+    const tutorialCardTop = viewportHeight - tutorialCardHeight - tutorialCardBottom;
+    
+    // Check if element's MIDDLE is covered by tutorial card
+    const elementMiddleY = rect.top + (rect.height / 2);
+    const isCoveredByCard = elementMiddleY > tutorialCardTop;
+    
+    // On mobile, ALWAYS scroll on first step to ensure name/lastname are visible
+    if (isFirstStep) {
+      document.body.style.overflow = 'auto';
+      
+      element.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'center',
+        inline: 'center'
+      });
+      
+      setTimeout(() => {
+        const newRect = element.getBoundingClientRect();
+        setHighlightedElement(element);
+        setElementPosition(newRect);
+        document.body.style.overflow = 'hidden';
+        
+        setIsAnimating(true);
+        setIsSpotlightAnimating(true);
+        setTimeout(() => {
+          setIsAnimating(false);
+          setIsSpotlightAnimating(false);
+        }, 400);
+      }, 400);
+      return;
+    }
+    
+    const checkMargin = 60;
+    const bottomMargin = 180;
+    const checkBottom = bottomMargin;
+    
+    const isVisible = !isCoveredByCard && 
+                     rect.top >= checkMargin && 
+                     rect.bottom <= viewportHeight - checkBottom;
+
+    // Mobile: Scroll if not visible or covered
+    if (!isVisible) {
+      document.body.style.overflow = 'auto';
+      
+      element.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'center',
+        inline: 'center'
+      });
+      
+      setTimeout(() => {
+        const newRect = element.getBoundingClientRect();
+        setHighlightedElement(element);
+        setElementPosition(newRect);
+        document.body.style.overflow = 'hidden';
+        
+        setIsAnimating(true);
+        setIsSpotlightAnimating(true);
+        setTimeout(() => {
+          setIsAnimating(false);
+          setIsSpotlightAnimating(false);
+        }, 400);
+      }, 400);
+    } else {
+      // Mobile: Element visible, highlight immediately
+      setHighlightedElement(element);
+      setElementPosition(rect);
+      
+      setIsAnimating(true);
+      setIsSpotlightAnimating(true);
+      setTimeout(() => {
         setIsAnimating(false);
         setIsSpotlightAnimating(false);
-      }
-    };
-
-    // Small delay for form step changes to render
-    setTimeout(findAndHighlightElement, 50);
+      }, 400);
+    }
   };
 
   // Calculate optimal position for instruction panel
@@ -470,60 +541,44 @@ const JobSeekersPage = () => {
 
     const currentStepData = currentTutorialSteps[tutorialStep];
 
-    // Calculate spotlight coordinates (still highlights the element)
-    const getSpotlightCoordinates = () => {
-      // Use current position if available, fallback to previous position during transitions
-      const position = elementPosition || previousElementPosition;
-      if (!position) return null;
-
-      const padding = 8;
-      return {
-        left: Math.round(Math.max(0, position.left - padding)),
-        top: Math.round(Math.max(0, position.top - padding)),
-        right: Math.round(Math.min(window.innerWidth, position.right + padding)),
-        bottom: Math.round(Math.min(window.innerHeight, position.bottom + padding))
-      };
-    };
-
-    const spotlightCoords = getSpotlightCoordinates();
+    // Use current position if available, fallback to previous position during transitions
+    const position = elementPosition || previousElementPosition;
+    if (!position) return null;
 
     return (
-      <div className="fixed inset-0 z-50 pointer-events-none">
-        {/* Overlay with spotlight effect - smoother transitions */}
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none">
+        {/* Dark Overlay */}
         <div
-          className="absolute inset-0 bg-black/70"
-          style={{
-            transition: 'clip-path 400ms cubic-bezier(0.4, 0, 0.2, 1)',
-            clipPath: spotlightCoords
-              ? `polygon(0% 0%, 0% 100%, ${spotlightCoords.left}px 100%, ${spotlightCoords.left}px ${spotlightCoords.top}px, ${spotlightCoords.right}px ${spotlightCoords.top}px, ${spotlightCoords.right}px ${spotlightCoords.bottom}px, ${spotlightCoords.left}px ${spotlightCoords.bottom}px, ${spotlightCoords.left}px 100%, 100% 100%, 100% 0%)`
-              : 'polygon(0% 0%, 0% 100%, 100% 100%, 100% 0%)' // Full overlay when no spotlight
-          }}
+          className="absolute inset-0 bg-black opacity-40 pointer-events-auto"
+          onClick={closeTutorial}
         />
 
-        {/* Highlighted element border - smoother animations with spring easing */}
+        {/* Highlighted Element Cutout with box-shadow spotlight */}
         <div
-          className="absolute border-3 border-yellow-400 rounded-lg shadow-lg shadow-yellow-400/50"
           style={{
-            transition: 'all 400ms cubic-bezier(0.175, 0.885, 0.32, 1.275)', // Spring easing
-            left: spotlightCoords?.left || 0,
-            top: spotlightCoords?.top || 0,
-            width: spotlightCoords ? spotlightCoords.right - spotlightCoords.left : 0,
-            height: spotlightCoords ? spotlightCoords.bottom - spotlightCoords.top : 0,
+            position: 'absolute',
+            top: Math.max(0, position.top - 8),
+            left: position.left - 8,
+            width: position.width + 16,
+            height: position.height + 16,
+            boxShadow: '0 0 0 99999px rgba(0, 0, 0, 0.4)',
+            borderRadius: '8px',
             pointerEvents: 'none',
-            boxShadow: spotlightCoords ? '0 0 30px rgba(251, 191, 36, 0.6), 0 0 60px rgba(251, 191, 36, 0.3)' : 'none',
-            opacity: spotlightCoords ? 1 : 0,
-            transform: spotlightCoords ? 'scale(1)' : 'scale(0.95)',
+            transition: 'all 450ms cubic-bezier(0.175, 0.885, 0.32, 1.2)',
+            border: '2px solid rgb(251, 191, 36)',
+            overflow: 'hidden'
           }}
         />
 
-        {/* Fixed position tutorial panel - smooth entrance animation */}
+        {/* Fixed position tutorial panel - bottom right */}
         <div
           className="fixed bottom-6 right-6 bg-white rounded-lg shadow-2xl border border-gray-200 pointer-events-auto max-w-sm w-80"
           style={{
             maxHeight: '60vh',
-            transition: 'all 300ms cubic-bezier(0.34, 1.56, 0.64, 1)', // Bouncy easing
+            transition: 'all 350ms cubic-bezier(0.34, 1.56, 0.64, 1)',
             transform: showTutorial ? 'scale(1) translateY(0)' : 'scale(0.95) translateY(10px)',
-            opacity: showTutorial ? 1 : 0
+            opacity: showTutorial ? 1 : 0,
+            zIndex: 10001
           }}
         >
           {/* Header with close button */}
@@ -612,7 +667,7 @@ const JobSeekersPage = () => {
       {/* Tutorial Overlay */}
       <TutorialOverlay />
 
-      <Container size="lg" py={40}>
+      <Container size="lg" py={40} pt={100}>
         {/* Header */}
         <Center mb={30}>
           <Stack align="center" gap="sm">
@@ -629,335 +684,400 @@ const JobSeekersPage = () => {
         </Center>
 
         {/* Two Column Layout */}
-        <Grid>
-          <Grid.Col span={{ base: 12, lg: 6 }}>
-            {/* Left: Video */}
-            <Stack gap="xl">
-              <Box>
-                <Title order={2} size="2rem" fw={600} mb="md">
-                  Si të Aplikoni për Punë
-                </Title>
-                <Text c="dimmed" size="lg">
-                  Mësoni si të përdorni platformën për të gjetur punë - vetëm 3 minuta
+        <Grid gutter={40}>
+          {/* Section Title - Full Width */}
+          <Grid.Col span={12} mb="md">
+            <Title order={4}>Zgjidhni mënyrën e aplikimit:</Title>
+          </Grid.Col>
+
+          {/* Left Side: Options & Context */}
+          <Grid.Col span={{ base: 12, md: 5 }}>
+            <Stack gap="lg" style={{ position: 'sticky', top: 100 }}>
+
+              {/* Option 1: Quick Profile */}
+              <Paper
+                shadow={showQuickForm ? "md" : "sm"}
+                p="xl"
+                radius="md"
+                withBorder
+                className={`flex flex-col cursor-pointer transition-all duration-200 ${showQuickForm ? 'border-blue-500 ring-2 ring-blue-500 ring-opacity-50 bg-blue-50/20' : 'hover:border-blue-300'}`}
+                onClick={() => { setShowQuickForm(true); }}
+              >
+                <Group justify="space-between" mb="md">
+                  <ThemeIcon size={50} radius="md" color="blue" variant="light">
+                    <Zap size={24} />
+                  </ThemeIcon>
+                  {showQuickForm && <Badge color="blue">E Zgjedhur</Badge>}
+                </Group>
+
+                {/* Title Inline */}
+                <Group mb="sm" align="center">
+                  <Title order={3} size="h4">Profil i Shpejtë</Title>
+                </Group>
+
+                <Text c="dimmed" mb="md" size="sm">
+                  Nuk keni kohë? Vendosni vetëm të dhënat kryesore dhe lërini punëdhënësit t'ju kontaktojnë.
                 </Text>
-              </Box>
-
-              <Card shadow="sm" padding="0" radius="md" withBorder>
-                <Box
-                  style={{
-                    position: 'relative',
-                    aspectRatio: '16/9',
-                    cursor: 'pointer',
-                    overflow: 'hidden'
-                  }}
-                  onClick={() => window.open('https://www.youtube.com/watch?v=dQw4w9WgXcQ', '_blank')}
+                <Stack gap="xs" mt="auto">
+                  <Group gap="xs"><CheckCircle size={16} className="text-blue-500" /><Text size="sm">Pa regjistrim</Text></Group>
+                  <Group gap="xs"><CheckCircle size={16} className="text-blue-500" /><Text size="sm">Njoftime për punë</Text></Group>
+                </Stack>
+                <Button
+                  variant={showQuickForm ? "filled" : "light"}
+                  color="blue"
+                  fullWidth
+                  mt="lg"
+                  onClick={(e) => { e.stopPropagation(); setShowQuickForm(true); }}
                 >
-                  {/* Video Thumbnail */}
-                  <img
-                    src="https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg"
-                    alt="Si të aplikoni për punë në advance.al"
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover'
-                    }}
-                  />
+                  Vazhdo si Vizitor
+                </Button>
+              </Paper>
 
-                  {/* Play Overlay */}
-                  <Box
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: 'rgba(0, 0, 0, 0.3)',
-                      transition: 'all 0.3s ease'
-                    }}
-                  >
-                    <ActionIcon
-                      size={60}
-                      radius="xl"
-                      color="white"
-                      variant="filled"
-                      style={{
-                        backgroundColor: 'white',
-                        color: 'black',
-                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
-                      }}
-                    >
-                      <Play size={24} style={{ marginLeft: '4px' }} />
-                    </ActionIcon>
-                  </Box>
+              {/* Option 2: Full Profile */}
+              <Paper
+                shadow={!showQuickForm ? "md" : "sm"}
+                p="xl"
+                radius="md"
+                withBorder
+                className={`flex flex-col cursor-pointer transition-all duration-200 ${!showQuickForm ? 'border-blue-500 ring-2 ring-blue-500 ring-opacity-50 bg-blue-50/20' : 'hover:border-blue-300'}`}
+                onClick={() => { setShowQuickForm(false); }}
+              >
+                <Group justify="space-between" mb="md">
+                  <ThemeIcon size={50} radius="md" color="blue" variant="filled">
+                    <UserPlus size={24} />
+                  </ThemeIcon>
+                  {!showQuickForm && <Badge color="blue" variant="filled">E Zgjedhur</Badge>}
+                </Group>
 
-                  {/* Duration Badge */}
-                  <Badge
-                    style={{
-                      position: 'absolute',
-                      bottom: 12,
-                      right: 12,
-                      backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                      color: 'white'
-                    }}
-                    size="sm"
-                  >
-                    3:15
-                  </Badge>
-                </Box>
-              </Card>
+                {/* Title Inline (Consistent) */}
+                <Group mb="sm" align="center">
+                  <Title order={3} size="h4">Profil i Plotë</Title>
+                </Group>
+
+                <Text c="dimmed" mb="md" size="sm">
+                  Krijoni një llogari për të aplikuar me 1 klikim dhe për të përdorur mjetet tona të AI.
+                </Text>
+                <Stack gap="xs" mt="auto">
+                  <Group gap="xs"><CheckCircle size={16} className="text-blue-600" /><Text size="sm">Aplikim me 1 klik</Text></Group>
+                  <Group gap="xs"><CheckCircle size={16} className="text-blue-600" /><Text size="sm">Gjenerim CV me AI</Text></Group>
+                </Stack>
+                <Button
+                  variant={!showQuickForm ? "filled" : "light"}
+                  fullWidth
+                  mt="lg"
+                  onClick={(e) => { e.stopPropagation(); setShowQuickForm(false); }}
+                >
+                  Krijo Llogari
+                </Button>
+              </Paper>
             </Stack>
           </Grid.Col>
 
-          <Grid.Col span={{ base: 12, lg: 6 }}>
-            {/* Right: Forms */}
-            <Stack gap="xl">
-              {/* Tutorial Help Link */}
-              {!showTutorial && (
-                <Center>
+          {/* Right Side: Active Form */}
+          <Grid.Col span={{ base: 12, md: 7 }}>
+
+            {/* Tutorial Help Button - Prominent CTA (Moved Above Form) */}
+            {!showTutorial && (
+              <Paper
+                withBorder
+                p="sm"
+                radius="md"
+                bg="gray.0"
+                mb="md"
+              >
+                <Group justify="space-between">
+                  <Group gap="xs">
+                    <ThemeIcon color="blue" variant="light" size="sm" radius="xl"><HelpCircle size={14} /></ThemeIcon>
+                    <Text size="sm" fw={500} c="dimmed">Keni nevojë për ndihmë?</Text>
+                  </Group>
                   <Button
-                    variant="light"
-                    color="gray"
-                    leftSection={<Lightbulb size={16} />}
+                    variant="subtle"
+                    color="blue"
+                    leftSection={<Play size={14} />}
                     onClick={startTutorial}
-                    size="sm"
+                    size="xs"
                   >
-                    Nuk e di si të fillosh? Kliko këtu për ndihmë
+                    Fillo Tutorialin
                   </Button>
-                </Center>
-              )}
+                </Group>
+              </Paper>
+            )}
 
-              {/* Form Selector */}
-              {!showQuickForm ? (
-                <Paper shadow="sm" p="xl" radius="md" withBorder>
-                  {/* Header */}
-                  <Group mb="xl">
-                    <ThemeIcon size={40} radius="md" color="blue" variant="light">
-                      <Users size={20} />
-                    </ThemeIcon>
-                    <Box>
-                      <Title order={3} fw={600}>Krijoni Llogari Punëkërkuesi</Title>
-                      <Text size="sm" c="dimmed">Plotësoni informacionet për të filluar kërkimin për punë</Text>
+            {/* Form Selector */}
+            {!showQuickForm ? (
+              <Paper shadow="sm" p="xl" radius="md" withBorder>
+                {/* Header - Fixed Alignment */}
+                <Group mb="xl" wrap="nowrap" align="start">
+                  <ThemeIcon size={40} radius="md" color="blue" variant="light" style={{ flexShrink: 0 }}>
+                    <Users size={20} />
+                  </ThemeIcon>
+                  <Box>
+                    <Title order={3} fw={600} lh={1.2}>Krijoni Llogari Punëkërkuesi</Title>
+                    <Text size="sm" c="dimmed" mt={4}>Plotësoni informacionet për të filluar kërkimin për punë</Text>
+                  </Box>
+                </Group>
+                <form onSubmit={fullForm.onSubmit(handleFullSubmit)}>
+                  <Stack gap="md">
+                    <SimpleGrid cols={2} spacing="md" data-tutorial="firstName">
+                      <TextInput
+                        label="Emri"
+                        placeholder="Emri juaj"
+                        {...fullForm.getInputProps('firstName')}
+                        required
+                      />
+                      <TextInput
+                        label="Mbiemri"
+                        placeholder="Mbiemri juaj"
+                        {...fullForm.getInputProps('lastName')}
+                        required
+                      />
+                    </SimpleGrid>
+
+                    <Box data-tutorial="email">
+                      <TextInput
+                        label="Email"
+                        placeholder="email@example.com"
+                        type="email"
+                        {...fullForm.getInputProps('email')}
+                        required
+                      />
                     </Box>
-                  </Group>
-                  <form onSubmit={fullForm.onSubmit(handleFullSubmit)}>
-                    <Stack gap="md">
-                      <SimpleGrid cols={2} spacing="md" data-tutorial="firstName">
-                        <TextInput
-                          label="Emri"
-                          placeholder="Emri juaj"
-                          {...fullForm.getInputProps('firstName')}
-                          required
-                        />
-                        <TextInput
-                          label="Mbiemri"
-                          placeholder="Mbiemri juaj"
-                          {...fullForm.getInputProps('lastName')}
-                          required
-                        />
-                      </SimpleGrid>
 
-                      <Box data-tutorial="email">
-                        <TextInput
-                          label="Email"
-                          placeholder="email@example.com"
-                          type="email"
-                          {...fullForm.getInputProps('email')}
-                          required
-                        />
-                      </Box>
+                    <Box data-tutorial="password">
+                      <TextInput
+                        label="Fjalëkalimi"
+                        placeholder="Të paktën 6 karaktere"
+                        type="password"
+                        {...fullForm.getInputProps('password')}
+                        required
+                      />
+                    </Box>
 
-                      <Box data-tutorial="password">
-                        <TextInput
-                          label="Fjalëkalimi"
-                          placeholder="Të paktën 6 karaktere"
-                          type="password"
-                          {...fullForm.getInputProps('password')}
-                          required
-                        />
-                      </Box>
+                    <Box data-tutorial="phone">
+                      <TextInput
+                        label="Telefoni"
+                        placeholder="+355 69 123 4567"
+                        {...fullForm.getInputProps('phone')}
+                      />
+                    </Box>
 
-                      <Box data-tutorial="phone">
-                        <TextInput
-                          label="Telefoni"
-                          placeholder="+355 69 123 4567"
-                          {...fullForm.getInputProps('phone')}
-                        />
-                      </Box>
+                    <Box data-tutorial="city">
+                      <Select
+                        label="Qyteti"
+                        placeholder="Zgjidhni qytetin"
+                        {...fullForm.getInputProps('city')}
+                        data={[
+                          'Tiranë',
+                          'Durrës',
+                          'Vlorë',
+                          'Shkodër',
+                          'Korçë',
+                          'Elbasan',
+                          'Fier',
+                          'Berat',
+                          'Tjetër'
+                        ]}
+                      />
+                    </Box>
 
-                      <Box data-tutorial="city">
-                        <Select
-                          label="Qyteti"
-                          placeholder="Zgjidhni qytetin"
-                          {...fullForm.getInputProps('city')}
-                          data={[
-                            'Tiranë',
-                            'Durrës',
-                            'Vlorë',
-                            'Shkodër',
-                            'Korçë',
-                            'Elbasan',
-                            'Fier',
-                            'Berat',
-                            'Tjetër'
-                          ]}
-                        />
-                      </Box>
+                    <Button
+                      type="submit"
+                      size="md"
+                      loading={loading}
+                      fullWidth
+                      mt="md"
+                    >
+                      {loading ? 'Duke krijuar...' : 'Krijo Llogari'}
+                    </Button>
 
-                      <Button
-                        type="submit"
-                        size="md"
-                        loading={loading}
-                        fullWidth
-                        mt="md"
-                      >
-                        {loading ? 'Duke krijuar...' : 'Krijo Llogari'}
-                      </Button>
+                    <Divider my="xl" />
 
-                      <Divider my="xl" />
-
-                      <Stack align="center" gap="md">
-                        <Text size="sm" c="dimmed">
-                          Nuk doni të krijoni llogari tani?
-                        </Text>
-                        <Button
-                          variant="light"
-                          leftSection={<Bell size={16} />}
-                          onClick={() => setShowQuickForm(true)}
-                        >
-                          Vetëm Njoftime Email për Punë
-                        </Button>
-                        <Text size="xs" c="dimmed" ta="center">
-                          Merrni njoftime për punë të reja pa u regjistruar
-                        </Text>
-                      </Stack>
-                    </Stack>
-                  </form>
-                </Paper>
-              ) : (
-                <Paper shadow="sm" p="xl" radius="md" withBorder>
-                  {/* Header */}
-                  <Group mb="xl">
-                    <ThemeIcon size={40} radius="md" color="blue" variant="light">
-                      <Bell size={20} />
-                    </ThemeIcon>
-                    <Box>
-                      <Title order={3} fw={600}>Njoftime Email për Punë të Reja</Title>
+                    <Stack align="center" gap="md">
                       <Text size="sm" c="dimmed">
-                        Merrni njoftime direkt në email për punë që përputhen me interesat tuaja pa u regjistruar në platformë.
+                        Nuk doni të krijoni llogari tani?
                       </Text>
-                    </Box>
-                  </Group>
-                  <form onSubmit={quickForm.onSubmit(handleQuickSubmit)}>
-                    <Stack gap="md">
-                      <SimpleGrid cols={2} spacing="md" data-tutorial="quick-name">
-                        <TextInput
-                          label="Emri"
-                          placeholder="Emri juaj"
-                          {...quickForm.getInputProps('firstName')}
-                          required
-                        />
-                        <TextInput
-                          label="Mbiemri"
-                          placeholder="Mbiemri juaj"
-                          {...quickForm.getInputProps('lastName')}
-                          required
-                        />
-                      </SimpleGrid>
-
-                      <Box data-tutorial="quick-email">
-                        <TextInput
-                          label="Email"
-                          placeholder="email@example.com"
-                          type="email"
-                          {...quickForm.getInputProps('email')}
-                          required
-                        />
-                      </Box>
-
-                      <Box data-tutorial="quick-phone">
-                        <TextInput
-                          label="Telefoni"
-                          placeholder="+355 69 123 4567"
-                          {...quickForm.getInputProps('phone')}
-                        />
-                      </Box>
-
-                      <Box data-tutorial="quick-city">
-                        <Select
-                          label="Qyteti"
-                          placeholder="Zgjidhni qytetin"
-                          {...quickForm.getInputProps('city')}
-                          data={[
-                            'Tiranë',
-                            'Durrës',
-                            'Vlorë',
-                            'Shkodër',
-                            'Korçë',
-                            'Elbasan',
-                            'Fier',
-                            'Berat',
-                            'Tjetër'
-                          ]}
-                        />
-                      </Box>
-
-                      <Box data-tutorial="interests">
-                        <Text size="sm" fw={500} mb="xs">
-                          Lloji i Punës (zgjidhni të paktën një)
-                        </Text>
-                        <Paper p="md" withBorder style={{ maxHeight: 200, overflowY: 'auto' }}>
-                          <SimpleGrid cols={2} spacing="xs">
-                            {jobCategories.map((category) => (
-                              <Checkbox
-                                key={category}
-                                label={category}
-                                checked={quickForm.values.interests.includes(category)}
-                                onChange={() => handleInterestToggle(category)}
-                                size="sm"
-                              />
-                            ))}
-                          </SimpleGrid>
-                        </Paper>
-                        {quickForm.errors.interests && (
-                          <Text size="xs" c="red" mt="xs">
-                            {quickForm.errors.interests}
-                          </Text>
-                        )}
-                      </Box>
-
                       <Button
-                        type="submit"
-                        size="md"
-                        loading={loading}
-                        fullWidth
-                        mt="md"
-                        color="blue"
+                        variant="light"
+                        leftSection={<Zap size={16} />}
+                        onClick={() => setShowQuickForm(true)}
                       >
-                        {loading ? 'Duke regjistruar...' : 'Aktivizo Njoftimet Email'}
+                        Kalo te Profili i Shpejtë
                       </Button>
-
-                      <Divider my="xl" />
-
-                      <Center>
-                        <Button
-                          variant="subtle"
-                          onClick={() => setShowQuickForm(false)}
-                          size="sm"
-                        >
-                          ← Kthehu te llogaria e plotë
-                        </Button>
-                      </Center>
                     </Stack>
-                  </form>
-                </Paper>
-              )}
-            </Stack>
+                  </Stack>
+                </form>
+              </Paper>
+            ) : (
+              <Paper shadow="sm" p="xl" radius="md" withBorder bg="gray.0" style={{ borderColor: 'var(--mantine-color-gray-3)' }}>
+                {/* Header - Fixed Alignment */}
+                <Group mb="xl" wrap="nowrap" align="start">
+                  <ThemeIcon size={40} radius="md" color="blue" variant="filled" style={{ flexShrink: 0 }}>
+                    <Bell size={20} />
+                  </ThemeIcon>
+                  <Box>
+                    <Title order={3} fw={600} lh={1.2}>Njoftime Email për Punë të Reja</Title>
+                    <Text size="sm" c="dimmed" mt={4}>
+                      Merrni njoftime direkt në email për punë që përputhen me interesat tuaja pa u regjistruar në platformë.
+                    </Text>
+                  </Box>
+                </Group>
+                <form onSubmit={quickForm.onSubmit(handleQuickSubmit)}>
+                  <Stack gap="md">
+                    <SimpleGrid cols={2} spacing="md" data-tutorial="quick-name">
+                      <TextInput
+                        label="Emri"
+                        placeholder="Emri juaj"
+                        {...quickForm.getInputProps('firstName')}
+                        required
+                      />
+                      <TextInput
+                        label="Mbiemri"
+                        placeholder="Mbiemri juaj"
+                        {...quickForm.getInputProps('lastName')}
+                        required
+                      />
+                    </SimpleGrid>
+
+                    <Box data-tutorial="quick-email">
+                      <TextInput
+                        label="Email"
+                        placeholder="email@example.com"
+                        type="email"
+                        {...quickForm.getInputProps('email')}
+                        required
+                      />
+                    </Box>
+
+                    <Box data-tutorial="quick-phone">
+                      <TextInput
+                        label="Telefoni"
+                        placeholder="+355 69 123 4567"
+                        {...quickForm.getInputProps('phone')}
+                      />
+                    </Box>
+
+                    <Box data-tutorial="quick-city">
+                      <Select
+                        label="Qyteti"
+                        placeholder="Zgjidhni qytetin"
+                        {...quickForm.getInputProps('city')}
+                        data={[
+                          'Tiranë',
+                          'Durrës',
+                          'Vlorë',
+                          'Shkodër',
+                          'Korçë',
+                          'Elbasan',
+                          'Fier',
+                          'Berat',
+                          'Tjetër'
+                        ]}
+                      />
+                    </Box>
+
+                    <Box data-tutorial="interests">
+                      <TagsInput
+                        label="Lloji i Punës / Aftësitë"
+                        placeholder="Shkruani dhe shtypni Enter ose zgjidhni nga lista"
+                        description="Shtoni llojet e punës ose aftësitë që ju interesojnë. Përdorni Enter ose presje për të ndarë."
+                        data={jobCategories}
+                        {...quickForm.getInputProps('interests')}
+                        maxTags={10}
+                        splitChars={[',', ';', 'Enter']}
+                        acceptValueOnBlur
+                        clearable
+                      />
+                      {quickForm.errors.interests && (
+                        <Text size="xs" c="red" mt="xs">
+                          {quickForm.errors.interests}
+                        </Text>
+                      )}
+                    </Box>
+
+                    <Button
+                      type="submit"
+                      size="md"
+                      loading={loading}
+                      fullWidth
+                      mt="md"
+                      color="blue"
+                    >
+                      {loading ? 'Duke regjistruar...' : 'Aktivizo Njoftimet Email'}
+                    </Button>
+
+                    <Divider my="xl" />
+
+                    <Center>
+                      <Button
+                        variant="subtle"
+                        onClick={() => setShowQuickForm(false)}
+                        size="sm"
+                      >
+                        ← Kthehu te llogaria e plotë
+                      </Button>
+                    </Center>
+                  </Stack>
+                </form>
+              </Paper>
+            )}
+
           </Grid.Col>
         </Grid>
+
+        {/* AI CV Generation */}
+        <Paper shadow="sm" radius="md" withBorder p="xl" mt={60} mb={40} id="ai-cv-section">
+          <Grid gutter="lg">
+            <Grid.Col span={12}>
+              <Group mb="lg">
+                <ThemeIcon size={48} radius="md" variant="light" color="blue">
+                  <Lightbulb size={26} />
+                </ThemeIcon>
+                <Box>
+                  <Title order={3}>Gjenero CV me AI</Title>
+                  <Text c="dimmed" size="sm">
+                    Shkruani informacionet tuaja në mënyrë të natyrshme dhe AI-ja krijon një CV profesionale
+                  </Text>
+                </Box>
+              </Group>
+            </Grid.Col>
+
+            <Grid.Col span={12}>
+              <Paper bg="blue.0" p="md" radius="sm" mb="md">
+                <Text size="sm" fw={500} mb="sm">Si të përdorni:</Text>
+                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
+                  <Text size="sm" c="dimmed">• Emri dhe të dhënat e kontaktit</Text>
+                  <Text size="sm" c="dimmed">• Eksperienca profesionale dhe vitet</Text>
+                  <Text size="sm" c="dimmed">• Edukimi dhe certifikatat</Text>
+                  <Text size="sm" c="dimmed">• Aftësitë dhe gjuhët që flisni</Text>
+                </SimpleGrid>
+                <Text size="xs" c="dimmed" mt="sm" fs="italic">
+                  Shkruani në mënyrë të lirë, në shqip ose çdo gjuhë tjetër. Sa më shumë detaje, aq më mirë.
+                </Text>
+              </Paper>
+            </Grid.Col>
+
+            <Grid.Col span={12}>
+              <Textarea
+                placeholder="Shembull: Emri: Alban Hoxha, Qyteti: Tiranë, Email: alban@email.com, Tel: +355 69 123 4567&#10;&#10;Kam punuar si zhvillues web për 5 vjet në XYZ ku kam zhvilluar aplikacione me React dhe Node.js. Para kësaj kam qenë asistent IT për 2 vjet.&#10;&#10;Diplomuar në Inxhinieri Kompjuterike nga Universiteti Politeknik i Tiranës në vitin 2018.&#10;&#10;Aftësi: JavaScript, React, Node.js, MongoDB, Anglisht C1, Italisht B2."
+                minRows={7}
+                maxRows={15}
+                autosize
+              />
+            </Grid.Col>
+
+            <Grid.Col span={12}>
+              <Group justify="space-between" align="center">
+                <Text size="xs" c="dimmed">💡 Cilësia e CV-së varet nga informacioni që jepni</Text>
+                <Button variant="filled" color="blue" rightSection={<FileText size={18} />}>
+                  Gjenero CV-në
+                </Button>
+              </Group>
+            </Grid.Col>
+          </Grid>
+        </Paper>
       </Container>
+
+      <Footer />
     </Box>
   );
 };

@@ -180,12 +180,12 @@ router.get('/', optionalAuth, async (req, res) => {
 
     // Pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    
+
     query = query.sort(sortOptions).skip(skip).limit(parseInt(limit));
 
     // Execute query
     const jobs = await query.exec();
-    
+
     // Get total count for pagination (temporarily remove restrictive filters)
     const countQuery = {
       isDeleted: false,
@@ -417,9 +417,9 @@ router.get('/recommendations', authenticate, async (req, res) => {
         expiresAt: { $gt: new Date() },
         _id: { $nin: excludeIds }
       })
-      .populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.location')
-      .sort({ tier: -1, viewCount: -1, postedAt: -1 }) // Popular jobs first
-      .limit(remainingLimit);
+        .populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.location')
+        .sort({ tier: -1, viewCount: -1, postedAt: -1 }) // Popular jobs first
+        .limit(remainingLimit);
 
       recommendations.push(...fallbackJobs);
     }
@@ -450,7 +450,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
     const job = await Job.findOne({
       _id: req.params.id,
       isDeleted: false
-    }).populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.location profile.employerProfile.description profile.employerProfile.website');
+    }).populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.location profile.employerProfile.description profile.employerProfile.website email profile.phone profile.firstName profile.lastName');
 
     if (!job) {
       return res.status(404).json({
@@ -979,7 +979,7 @@ router.patch('/:id/status', authenticate, requireEmployer, async (req, res) => {
 
     const statusMessages = {
       active: 'Puna u aktivizua me sukses',
-      paused: 'Puna u pezullua me sukses', 
+      paused: 'Puna u pezullua me sukses',
       closed: 'Puna u mbyll me sukses'
     };
 

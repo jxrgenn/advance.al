@@ -26,11 +26,14 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { Plus, X, Loader2, Play, CheckCircle, ArrowLeft, ArrowRight, Briefcase, HelpCircle, Lightbulb } from "lucide-react";
+import { Plus, X, Loader2, CheckCircle, ArrowLeft, ArrowRight, Briefcase, HelpCircle, Lightbulb, Target, Users, Zap, Play } from "lucide-react";
 import { locationsApi, Location, jobsApi, isAuthenticated, getUserType } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import Footer from "@/components/Footer";
 
 const PostJob = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [currentStep, setCurrentStep] = useState(0); // Changed to 0-based indexing to match tutorial system
   const [locations, setLocations] = useState<Location[]>([]);
@@ -50,6 +53,20 @@ const PostJob = () => {
   const [isSpotlightAnimating, setIsSpotlightAnimating] = useState(false);
   const [lastClickTime, setLastClickTime] = useState(0);
   const [isScrollLocked, setIsScrollLocked] = useState(false);
+  const [tutorialStepsByFormStep, setTutorialStepsByFormStep] = useState<{[key: number]: number}>({});
+  const [hasScrolledOnDesktop, setHasScrolledOnDesktop] = useState(false); // Track initial desktop scroll
+  const [lastScrolledFormStep, setLastScrolledFormStep] = useState<number | null>(null); // Track which form step we last scrolled for
+  
+  // Interaction tracking - these track if user has acknowledged sections
+  const [interactionAcknowledged, setInteractionAcknowledged] = useState<{
+    location: boolean;
+    salary: boolean;
+    requirements: boolean;
+  }>({
+    location: false,
+    salary: false,
+    requirements: false,
+  });
 
   // Mantine form for job posting
   const jobForm = useForm({
@@ -89,7 +106,6 @@ const PostJob = () => {
 
       // Step 3: Requirements validation
       if (currentStep === 3) {
-        if (!values.expiresAt) errors.expiresAt = 'Afati i aplikimit është i detyrueshëm';
         if (requirements.every(req => !req.trim())) {
           errors.requirements = 'Shto të paktën një kërkesë për punën';
         }
@@ -149,12 +165,27 @@ const PostJob = () => {
       title: "Paga (Opsionale)",
       content: "Mund të specifikoni një gamë page për pozicionin. Kjo është plotësisht opsionale dhe mund ta kaloni nëse nuk dëshironi ta shfaqni.",
       position: "bottom",
-      formStep: 2
+      formStep: 2,
+      highlightPadding: 12 // Larger padding to include all salary fields
     },
     {
       selector: '[data-tutorial="requirements"]',
-      title: "Kërkesat dhe Përfitimet",
-      content: "Listoni kërkesat për kandidatët dhe përfitimet që ofron kompania juaj. Jini të qartë dhe të saktë.",
+      title: "Kërkesat e Punës",
+      content: "Listoni kërkesat që duhet të plotësojnë kandidatët për këtë pozicion. Për shembull: eksperiencë, edukimi, aftësi teknike.",
+      position: "bottom",
+      formStep: 3
+    },
+    {
+      selector: '[data-tutorial="benefits"]',
+      title: "Përfitimet",
+      content: "Shtoni përfitimet që ofron kompania juaj për këtë pozicion. Për shembull: sigurimi shëndetësor, bonuse, pushime.",
+      position: "bottom",
+      formStep: 3
+    },
+    {
+      selector: '[data-tutorial="tags"]',
+      title: "Tags",
+      content: "Shtoni tags që përshkruajnë pozicionin. Këto ndihmojnë kandidatët të gjejnë punën tuaj më lehtë.",
       position: "bottom",
       formStep: 3
     }
@@ -177,7 +208,15 @@ const PostJob = () => {
     const expiryDate = new Date();
     expiryDate.setDate(expiryDate.getDate() + 30);
     jobForm.setFieldValue('expiresAt', expiryDate.toISOString().split('T')[0]);
-  }, [navigate]);
+    
+    // Auto-fill location from user profile if available
+    if (user?.profile?.location?.city) {
+      jobForm.setFieldValue('city', user.profile.location.city);
+    }
+    if (user?.profile?.location?.region) {
+      jobForm.setFieldValue('region', user.profile.location.region);
+    }
+  }, [navigate, user]);
 
   const loadLocations = async () => {
     try {
@@ -372,11 +411,18 @@ const PostJob = () => {
   // Tutorial management functions (copied from JobSeekersPage)
   const startTutorial = () => {
     setShowTutorial(true);
-    setTutorialStep(0);
     setIsScrollLocked(true);
     // Lock scroll on body
     document.body.style.overflow = 'hidden';
-    highlightElement(0);
+
+    // Find the first tutorial step for current form step
+    const firstStepForCurrentForm = tutorialSteps.findIndex(step => step.formStep === currentStep);
+    const startingStep = tutorialStepsByFormStep[currentStep] !== undefined
+      ? tutorialStepsByFormStep[currentStep]
+      : (firstStepForCurrentForm >= 0 ? firstStepForCurrentForm : 0);
+
+    setTutorialStep(startingStep);
+    highlightElement(startingStep);
   };
 
   const nextTutorialStep = () => {
@@ -386,8 +432,103 @@ const PostJob = () => {
 
     if (tutorialStep < tutorialSteps.length - 1) {
       const newStep = tutorialStep + 1;
-      setTutorialStep(newStep);
-      highlightElement(newStep);
+      const currentStepData = tutorialSteps[tutorialStep];
+      const nextStepData = tutorialSteps[newStep];
+
+      // Check if we're moving to a different form step
+      const isChangingFormStep = currentStepData.formStep !== nextStepData.formStep;
+
+      if (isChangingFormStep) {
+        // We're trying to leave the current form step
+        const formStepToValidate = currentStepData.formStep;
+        const values = jobForm.values;
+        
+        // Validation logic for each step
+        if (formStepToValidate === 0) {
+          // Step 0: Basic Info - MUST be filled
+          if (!values.title || values.title.trim() === '' || 
+              !values.description || values.description.trim() === '' ||
+              !values.category || !values.jobType) {
+            notifications.show({
+              title: 'Plotëso fushat e kërkuara',
+              message: 'Ju lutemi plotësoni të gjitha fushat e kërkuara para se të vazhdoni.',
+              color: 'red',
+              autoClose: 4000,
+            });
+            return; // Block advancement
+          }
+        } else if (formStepToValidate === 1) {
+          // Step 1: Location - Check acknowledgment
+          if (!values.city) {
+            notifications.show({
+              title: 'Plotëso vendndodhjen',
+              message: 'Qyteti është i detyrueshëm.',
+              color: 'red',
+              autoClose: 4000,
+            });
+            return;
+          }
+          if (!interactionAcknowledged.location) {
+            notifications.show({
+              title: 'Kontrollo vendndodhjen',
+              message: 'Ju lutemi kontrolloni dhe konfirmoni vendndodhjen e auto-plotësuar.',
+              color: 'orange',
+              autoClose: 5000,
+            });
+            setInteractionAcknowledged(prev => ({ ...prev, location: true }));
+            return; // Block first time only
+          }
+        } else if (formStepToValidate === 2) {
+          // Step 2: Salary - Encourage but allow empty
+          if (!interactionAcknowledged.salary) {
+            notifications.show({
+              title: 'Këshillojmë të shtoni pagën',
+              message: 'Punët me pagë të shfaqur marrin 3x më shumë aplikime! Mund ta lini bosh nëse nuk dëshironi.',
+              color: 'orange',
+              autoClose: 6000,
+            });
+            setInteractionAcknowledged(prev => ({ ...prev, salary: true }));
+            return; // Block first time only
+          }
+        } else if (formStepToValidate === 3) {
+          // Step 3: Requirements - Encourage but allow empty
+          if (!interactionAcknowledged.requirements) {
+            notifications.show({
+              title: 'Shto kërkesat dhe përfitimet',
+              message: 'Këshillojmë të shtoni të paktën një kërkesë dhe një përfitim. Kjo ndihmon kandidatët të kuptojnë punën më mirë.',
+              color: 'orange',
+              autoClose: 6000,
+            });
+            setInteractionAcknowledged(prev => ({ ...prev, requirements: true }));
+            return; // Block first time only
+          }
+        }
+        
+        // All validation passed! Now change the form step
+        const targetFormStep = nextStepData.formStep;
+        
+        // Step 1: Change form step
+        setCurrentStep(targetFormStep);
+        
+        // Step 2: Save progress
+        setTutorialStepsByFormStep(prev => ({
+          ...prev,
+          [currentStepData.formStep]: newStep
+        }));
+        
+        // Step 3: Wait for form to FULLY render (400ms breathing room)
+        setTimeout(() => {
+          setTutorialStep(newStep);
+          // useEffect will handle highlighting after tutorialStep updates
+        }, 400);
+      } else {
+        // Same form step - advance immediately
+        setTutorialStepsByFormStep(prev => ({
+          ...prev,
+          [currentStepData.formStep]: newStep
+        }));
+        setTutorialStep(newStep);
+      }
     } else {
       closeTutorial();
     }
@@ -400,12 +541,62 @@ const PostJob = () => {
 
     if (tutorialStep > 0) {
       const newStep = tutorialStep - 1;
-      setTutorialStep(newStep);
-      highlightElement(newStep);
+      const currentStepData = tutorialSteps[tutorialStep];
+      const prevStepData = tutorialSteps[newStep];
+
+      // Check if we need to go back to previous form step
+      const isChangingFormStep = currentStepData.formStep !== prevStepData.formStep;
+
+      if (isChangingFormStep) {
+        // Going back to previous form step - ALWAYS allowed
+        const targetFormStep = prevStepData.formStep;
+        
+        // Step 1: Change form step
+        setCurrentStep(targetFormStep);
+        
+        // Step 2: Save progress
+        setTutorialStepsByFormStep(prev => ({
+          ...prev,
+          [currentStepData.formStep]: newStep
+        }));
+        
+        // Step 3: Wait for form to FULLY render (350ms breathing room)
+        setTimeout(() => {
+          setTutorialStep(newStep);
+          // useEffect will handle highlighting after tutorialStep updates
+        }, 350);
+      } else {
+        // Same form step - go back immediately
+        setTutorialStepsByFormStep(prev => ({
+          ...prev,
+          [currentStepData.formStep]: newStep
+        }));
+        setTutorialStep(newStep);
+      }
     }
   };
 
+  // Highlight element whenever tutorial step changes
+  useEffect(() => {
+    if (showTutorial && tutorialStep < tutorialSteps.length) {
+      // Delay to ensure DOM is fully rendered, especially after form step changes
+      const timer = setTimeout(() => {
+        highlightElement(tutorialStep);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [tutorialStep]);
+
   const closeTutorial = () => {
+    // Save progress for the current form step before closing
+    const currentTutorialFormStep = tutorialSteps[tutorialStep]?.formStep;
+    if (currentTutorialFormStep !== undefined) {
+      setTutorialStepsByFormStep(prev => ({
+        ...prev,
+        [currentTutorialFormStep]: tutorialStep
+      }));
+    }
+
     setShowTutorial(false);
     setTutorialStep(0);
     setHighlightedElement(null);
@@ -415,6 +606,8 @@ const PostJob = () => {
     setIsSpotlightAnimating(false);
     setLastClickTime(0);
     setIsScrollLocked(false);
+    setHasScrolledOnDesktop(false); // Reset on close
+    setLastScrolledFormStep(null); // Reset on close
     // Unlock scroll on body
     document.body.style.overflow = 'auto';
   };
@@ -453,115 +646,181 @@ const PostJob = () => {
     const step = tutorialSteps[stepIndex];
     if (!step) return;
 
-    // Start animation states
-    setIsSpotlightAnimating(true);
-    setIsAnimating(true);
-
-    // Store previous position for transition
+    // Store previous position for smooth transition
     if (elementPosition) {
       setPreviousElementPosition(elementPosition);
     }
 
-    const findAndHighlightElement = () => {
-      // Auto-switch form step if needed BEFORE trying to find element
-      if (step.formStep !== undefined && step.formStep !== currentStep) {
-        // Check if we can legally move to the target step (validate current step first)
-        const errors = jobForm.validate();
-        const hasErrors = Object.keys(errors.errors).length > 0;
+    // IMPORTANT: Auto-switch form step if needed (KEEP THIS STATE MANAGEMENT!)
+    if (step.formStep !== undefined && step.formStep !== currentStep) {
+      // Check if we can legally move to the target step (validate current step first)
+      const errors = jobForm.validate();
+      const hasErrors = Object.keys(errors.errors).length > 0;
 
-        // If there are validation errors preventing step advance, skip the form step change
-        // and just highlight the element on the current step (if it exists)
-        if (hasErrors && step.formStep > currentStep) {
-          console.warn(`Cannot advance to step ${step.formStep} due to validation errors:`, errors.errors);
-          // Try to find element on current step instead
-        } else {
-          setCurrentStep(step.formStep);
-          // Wait for React to update DOM completely
-          setTimeout(() => findAndHighlightElement(), 200);
-          return;
-        }
+      // If there are validation errors preventing step advance, skip the form step change
+      if (hasErrors && step.formStep > currentStep) {
+        console.warn(`Cannot advance to step ${step.formStep} due to validation errors:`, errors.errors);
+        // Don't proceed with highlight
+        return;
+      } else {
+        setCurrentStep(step.formStep);
+        // Wait for React to update DOM completely, then highlight
+        setTimeout(() => highlightElement(stepIndex), 200);
+        return;
       }
+    }
 
-      const element = document.querySelector(step.selector);
+    // NOW proceed with NEW smooth highlighting logic (copied from JobSeekersPage)
+    const element = document.querySelector(step.selector);
+    if (!element) {
+      console.warn(`Tutorial element not found: ${step.selector}`);
+      return;
+    }
 
-      if (element) {
-        const rect = element.getBoundingClientRect();
-        const viewportHeight = window.innerHeight;
-
-        // Define optimal viewing area with more generous margins for better detection
-        const topMargin = 100;
-        const bottomMargin = 300;
-
-        // Tutorial panel positioned at bottom-6 (24px from bottom) with dynamic height
-        const tutorialPanelHeight = Math.min(400, viewportHeight * 0.6); // max-height: 60vh
-        const tutorialPanelBottom = 24; // bottom-6 = 24px
-        const panelTopY = viewportHeight - tutorialPanelHeight - tutorialPanelBottom;
-
-        // Simple vertical overlap check: Does any part of the element overlap with tutorial panel height?
-        const elementOverlapsTutorialPanel = rect.bottom > panelTopY;
-
-        // More robust visibility check - element should be reasonably centered
-        const isElementFullyVisible = rect.top >= topMargin && rect.bottom <= viewportHeight - bottomMargin;
-        const isElementPartiallyVisible = rect.top < viewportHeight && rect.bottom > 0;
-
-        // Force scroll if element is not in optimal viewing area, partially visible, or blocked by tutorial panel
-        const shouldScroll = !isElementFullyVisible || rect.top < 50 || rect.bottom > viewportHeight - 100 || elementOverlapsTutorialPanel;
-
-        // IMMEDIATELY attach highlight to element - no waiting!
-        setHighlightedElement(element);
-        setElementPosition(rect);
-
-        if (shouldScroll) {
-          // Element needs scrolling - temporarily unlock, use manual scroll calculation
-          document.body.style.overflow = 'auto';
-
-          // Manual scroll calculation - more reliable than scrollIntoView
-          const elementTop = rect.top + window.pageYOffset;
-          const windowHeight = window.innerHeight;
-          const tutorialPanelHeight = Math.min(400, windowHeight * 0.6);
-
-          // Scroll so element is centered, but account for tutorial panel
-          const targetScrollTop = elementTop - (windowHeight - tutorialPanelHeight) / 2;
-
-          console.log('PostJob Tutorial Scroll:', {
-            elementTop,
-            windowHeight,
-            targetScrollTop,
-            currentScroll: window.pageYOffset,
-            shouldScroll,
-            elementOverlapsTutorialPanel
-          });
-
-          // Use instant scroll
-          window.scrollTo(0, Math.max(0, targetScrollTop));
-
-          // Wait a small moment for scroll to complete, then get new position
+    // Get element and viewport dimensions
+    const rect = element.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    
+    const isMobile = viewportWidth < 768;
+    const currentFormStep = step.formStep ?? 0;
+    const isNewFormStep = lastScrolledFormStep !== currentFormStep;
+    
+    // DESKTOP STRATEGY: Scroll on form step changes, but not within same step
+    if (!isMobile) {
+      if (isNewFormStep) {
+        // New form step on desktop: scroll to show ENTIRE FORM, then mark this step as scrolled
+        document.body.style.overflow = 'auto';
+        
+        // Find the form container (the Paper/Card containing the form)
+        const formContainer = element.closest('form') || element.closest('[class*="mantine-Paper"]') || element.closest('[class*="mantine-Card"]');
+        const scrollTarget = formContainer || element;
+        
+        scrollTarget.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'start', // Scroll to top of form to show entire form
+          inline: 'center'
+        });
+        
+        setLastScrolledFormStep(currentFormStep);
+        
+        setTimeout(() => {
+          const newRect = element.getBoundingClientRect();
+          setHighlightedElement(element);
+          setElementPosition(newRect);
+          document.body.style.overflow = 'hidden';
+          
+          setIsAnimating(true);
+          setIsSpotlightAnimating(true);
           setTimeout(() => {
-            const newRect = element.getBoundingClientRect();
-            setElementPosition(newRect);
-
-            // Re-lock scroll immediately
-            document.body.style.overflow = 'hidden';
-
             setIsAnimating(false);
             setIsSpotlightAnimating(false);
-          }, 10);
-        } else {
-          // Element already in optimal position - just finish
-          console.log('PostJob Tutorial: No scroll needed', { shouldScroll, elementPosition: rect });
+          }, 400);
+        }, 400);
+        return;
+      } else {
+        // Desktop: Within same form step, NEVER scroll - just highlight (no jitter!)
+        setHighlightedElement(element);
+        setElementPosition(rect);
+        
+        setIsAnimating(true);
+        setIsSpotlightAnimating(true);
+        setTimeout(() => {
           setIsAnimating(false);
           setIsSpotlightAnimating(false);
-        }
-      } else {
-        console.warn(`Tutorial element not found: ${step.selector}`);
-        setHighlightedElement(null);
+        }, 400);
+        return;
+      }
+    }
+    
+    // MOBILE STRATEGY: Scroll on form step changes AND when covered by card
+    const tutorialCardWidth = Math.min(320, viewportWidth - 40);
+    const tutorialCardHeight = Math.min(400, viewportHeight * 0.6);
+    const tutorialCardRight = 24;
+    const tutorialCardBottom = 24;
+    const tutorialCardLeft = viewportWidth - tutorialCardWidth - tutorialCardRight;
+    const tutorialCardTop = viewportHeight - tutorialCardHeight - tutorialCardBottom;
+    
+    // Check if element's MIDDLE is covered by tutorial card
+    const elementMiddleY = rect.top + (rect.height / 2);
+    const isCoveredByCard = elementMiddleY > tutorialCardTop;
+    
+    // On mobile, ALWAYS scroll when form step changes
+    if (isNewFormStep) {
+      document.body.style.overflow = 'auto';
+      
+      // Find the form container (the Paper/Card containing the form)
+      const formContainer = element.closest('form') || element.closest('[class*="mantine-Paper"]') || element.closest('[class*="mantine-Card"]');
+      const scrollTarget = formContainer || element;
+      
+      scrollTarget.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'start', // Scroll to top of form to show entire form
+        inline: 'center'
+      });
+      
+      // Mark this form step as scrolled
+      setLastScrolledFormStep(currentFormStep);
+      
+      setTimeout(() => {
+        const newRect = element.getBoundingClientRect();
+        setHighlightedElement(element);
+        setElementPosition(newRect);
+        document.body.style.overflow = 'hidden';
+        
+        setIsAnimating(true);
+        setIsSpotlightAnimating(true);
+        setTimeout(() => {
+          setIsAnimating(false);
+          setIsSpotlightAnimating(false);
+        }, 400);
+      }, 400);
+      return;
+    }
+    
+    const checkMargin = 60;
+    const bottomMargin = 180;
+    const checkBottom = bottomMargin;
+    
+    const isVisible = !isCoveredByCard && 
+                     rect.top >= checkMargin && 
+                     rect.bottom <= viewportHeight - checkBottom;
+
+    // Mobile: Scroll if not visible or covered (within same form step)
+    if (!isVisible) {
+      document.body.style.overflow = 'auto';
+      
+      element.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'center',
+        inline: 'center'
+      });
+      
+      setTimeout(() => {
+        const newRect = element.getBoundingClientRect();
+        setHighlightedElement(element);
+        setElementPosition(newRect);
+        document.body.style.overflow = 'hidden';
+        
+        setIsAnimating(true);
+        setIsSpotlightAnimating(true);
+        setTimeout(() => {
+          setIsAnimating(false);
+          setIsSpotlightAnimating(false);
+        }, 400);
+      }, 400);
+    } else {
+      // Mobile: Element visible, highlight immediately
+      setHighlightedElement(element);
+      setElementPosition(rect);
+      
+      setIsAnimating(true);
+      setIsSpotlightAnimating(true);
+      setTimeout(() => {
         setIsAnimating(false);
         setIsSpotlightAnimating(false);
-      }
-    };
-
-    // Start the highlighting process immediately
-    findAndHighlightElement();
+      }, 400);
+    }
   };
 
   // Render step content for the form
@@ -772,7 +1031,7 @@ const PostJob = () => {
               </Button>
             </Box>
 
-            <Box>
+            <Box data-tutorial="benefits">
               <Text fw={500} mb="xs">Përfitimet e Punës</Text>
               <Text size="sm" c="dimmed" mb="md">Çfarë përfitimesh ofron kompania (sigurim, trajnime, etj.)</Text>
               {benefits.map((benefit, index) => (
@@ -802,7 +1061,7 @@ const PostJob = () => {
               </Button>
             </Box>
 
-            <Box>
+            <Box data-tutorial="tags">
               <Text fw={500} mb="xs">Tags (Opsionale)</Text>
               <Text size="sm" c="dimmed" mb="md">Fjalë kyçe për t'u ndihmuar kandidatëve të gjejnë punën</Text>
               {tags.map((tag, index) => (
@@ -831,14 +1090,6 @@ const PostJob = () => {
                 Shto Tag
               </Button>
             </Box>
-
-            <TextInput
-              label="Afati i Aplikimit"
-              type="date"
-              {...jobForm.getInputProps('expiresAt')}
-              description="Zgjidhni datën kur të mbyllet aplikimi për këtë pozicion"
-              required
-            />
           </Stack>
         );
       default:
@@ -852,47 +1103,35 @@ const PostJob = () => {
 
     const currentStepData = tutorialSteps[tutorialStep];
 
-    const getSpotlightCoordinates = () => {
-      const position = elementPosition || previousElementPosition;
-      if (!position) return null;
+    // Use current position if available, fallback to previous position during transitions
+    const position = elementPosition || previousElementPosition;
+    if (!position) return null;
 
-      const padding = 8;
-      return {
-        left: Math.round(Math.max(0, position.left - padding)),
-        top: Math.round(Math.max(0, position.top - padding)),
-        right: Math.round(Math.min(window.innerWidth, position.right + padding)),
-        bottom: Math.round(Math.min(window.innerHeight, position.bottom + padding))
-      };
-    };
-
-    const spotlightCoords = getSpotlightCoordinates();
+    // Use custom padding if specified, otherwise default to 8
+    const padding = (currentStepData as any).highlightPadding || 8;
 
     return (
-      <div className="fixed inset-0 z-50 pointer-events-none">
-        {/* Overlay with spotlight effect - smoother transitions */}
+      <div className="fixed inset-0 z-[9999] pointer-events-none">
+        {/* Dark Overlay */}
         <div
-          className="absolute inset-0 bg-black/70"
-          style={{
-            transition: 'clip-path 400ms cubic-bezier(0.4, 0, 0.2, 1)',
-            clipPath: spotlightCoords
-              ? `polygon(0% 0%, 0% 100%, ${spotlightCoords.left}px 100%, ${spotlightCoords.left}px ${spotlightCoords.top}px, ${spotlightCoords.right}px ${spotlightCoords.top}px, ${spotlightCoords.right}px ${spotlightCoords.bottom}px, ${spotlightCoords.left}px ${spotlightCoords.bottom}px, ${spotlightCoords.left}px 100%, 100% 100%, 100% 0%)`
-              : 'polygon(0% 0%, 0% 100%, 100% 100%, 100% 0%)'
-          }}
+          className="absolute inset-0 bg-black opacity-40 pointer-events-auto"
+          onClick={closeTutorial}
         />
 
-        {/* Highlighted element border - smoother animations with spring easing */}
+        {/* Highlighted Element Cutout with box-shadow spotlight */}
         <div
-          className="absolute border-3 border-yellow-400 rounded-lg shadow-lg shadow-yellow-400/50"
           style={{
-            transition: 'all 400ms cubic-bezier(0.175, 0.885, 0.32, 1.275)', // Spring easing
-            left: spotlightCoords?.left || 0,
-            top: spotlightCoords?.top || 0,
-            width: spotlightCoords ? spotlightCoords.right - spotlightCoords.left : 0,
-            height: spotlightCoords ? spotlightCoords.bottom - spotlightCoords.top : 0,
+            position: 'absolute',
+            top: Math.max(0, position.top - padding),
+            left: position.left - padding,
+            width: position.width + (padding * 2),
+            height: position.height + (padding * 2),
+            boxShadow: '0 0 0 99999px rgba(0, 0, 0, 0.4)',
+            borderRadius: '8px',
             pointerEvents: 'none',
-            boxShadow: spotlightCoords ? '0 0 30px rgba(251, 191, 36, 0.6), 0 0 60px rgba(251, 191, 36, 0.3)' : 'none',
-            opacity: spotlightCoords ? 1 : 0,
-            transform: spotlightCoords ? 'scale(1)' : 'scale(0.95)',
+            transition: 'all 450ms cubic-bezier(0.175, 0.885, 0.32, 1.2)',
+            border: '2px solid rgb(251, 191, 36)',
+            overflow: 'hidden'
           }}
         />
 
@@ -901,9 +1140,10 @@ const PostJob = () => {
           className="fixed bottom-6 right-6 bg-white rounded-lg shadow-2xl border border-gray-200 pointer-events-auto max-w-sm w-80"
           style={{
             maxHeight: '60vh',
-            transition: 'all 300ms cubic-bezier(0.34, 1.56, 0.64, 1)', // Bouncy easing
+            transition: 'all 350ms cubic-bezier(0.34, 1.56, 0.64, 1)',
             transform: showTutorial ? 'scale(1) translateY(0)' : 'scale(0.95) translateY(10px)',
-            opacity: showTutorial ? 1 : 0
+            opacity: showTutorial ? 1 : 0,
+            zIndex: 10001
           }}
         >
           <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-yellow-50 to-orange-50">
@@ -988,7 +1228,7 @@ const PostJob = () => {
       {/* Tutorial Overlay */}
       <TutorialOverlay />
 
-      <Container size="lg" py={40}>
+      <Container size="lg" py={40} pt={100}>
         {/* Header */}
         <Center mb={30}>
           <Stack align="center" gap="sm">
@@ -1004,86 +1244,65 @@ const PostJob = () => {
           </Stack>
         </Center>
 
-        {/* Two Column Layout - matches JobSeekersPage/EmployersPage */}
+        {/* Two Column Layout */}
         <Grid>
           <Grid.Col span={{ base: 12, lg: 6 }}>
-            {/* Left: Video Tutorial */}
-            <Stack gap="xl">
-              <Box>
-                <Title order={2} size="2rem" fw={600} mb="md">
-                  Si të Postosh Punë
+            {/* Left: Benefits of Posting */}
+            <Stack gap="lg">
+              <Paper p="xl" radius="md" withBorder>
+                <Title order={3} mb="lg" c="dark">
+                  Pse advance.al?
                 </Title>
-                <Text c="dimmed" size="lg">
-                  Mësoni procesin e postimit të punës në advance.al - vetëm 3 minuta
-                </Text>
-              </Box>
+                
+                <Stack gap="lg">
+                  <Group wrap="nowrap" align="flex-start">
+                    <ThemeIcon size={40} radius="md" color="blue" variant="light">
+                      <Zap size={20} />
+                    </ThemeIcon>
+                    <Box style={{ flex: 1 }}>
+                      <Text fw={600} mb={4}>Publikim i Shpejtë</Text>
+                      <Text size="sm" c="dimmed">
+                        Posto punën tënde në vetëm 3 minuta
+                      </Text>
+                    </Box>
+                  </Group>
 
-              <Card shadow="sm" padding="0" radius="md" withBorder>
-                <Box
-                  style={{
-                    position: 'relative',
-                    aspectRatio: '16/9',
-                    cursor: 'pointer',
-                    overflow: 'hidden'
-                  }}
-                  onClick={() => window.open('https://www.youtube.com/watch?v=dQw4w9WgXcQ', '_blank')}
-                >
-                  {/* Video Thumbnail */}
-                  <img
-                    src="https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg"
-                    alt="Si të postoni punë në advance.al"
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover'
-                    }}
-                  />
+                  <Group wrap="nowrap" align="flex-start">
+                    <ThemeIcon size={40} radius="md" color="green" variant="light">
+                      <Target size={20} />
+                    </ThemeIcon>
+                    <Box style={{ flex: 1 }}>
+                      <Text fw={600} mb={4}>Kandidatë të Kualifikuar</Text>
+                      <Text size="sm" c="dimmed">
+                        Algoritëm inteligjent që gjen kandidatët më të përshtatshëm
+                      </Text>
+                    </Box>
+                  </Group>
 
-                  {/* Play Overlay */}
-                  <Box
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: 'rgba(0, 0, 0, 0.3)',
-                      transition: 'all 0.3s ease'
-                    }}
-                  >
-                    <ActionIcon
-                      size={60}
-                      radius="xl"
-                      color="white"
-                      variant="filled"
-                      style={{
-                        backgroundColor: 'white',
-                        color: 'black',
-                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
-                      }}
-                    >
-                      <Play size={24} style={{ marginLeft: '4px' }} />
-                    </ActionIcon>
-                  </Box>
+                  <Group wrap="nowrap" align="flex-start">
+                    <ThemeIcon size={40} radius="md" color="orange" variant="light">
+                      <Users size={20} />
+                    </ThemeIcon>
+                    <Box style={{ flex: 1 }}>
+                      <Text fw={600} mb={4}>Menaxhim i Thjeshtë</Text>
+                      <Text size="sm" c="dimmed">
+                        Dashboard intuitiv për menaxhimin e aplikimeve
+                      </Text>
+                    </Box>
+                  </Group>
+                </Stack>
+              </Paper>
 
-                  {/* Duration Badge */}
-                  <Badge
-                    style={{
-                      position: 'absolute',
-                      bottom: 12,
-                      right: 12,
-                      backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                      color: 'white'
-                    }}
-                    size="sm"
-                  >
-                    3:20
-                  </Badge>
-                </Box>
-              </Card>
+              <SimpleGrid cols={2} spacing="md">
+                <Paper p="md" radius="md" withBorder style={{ textAlign: 'center' }}>
+                  <Text size="2xl" fw={700} c="blue" mb={4}>5,000+</Text>
+                  <Text size="sm" c="dimmed">Kandidatë Aktivë</Text>
+                </Paper>
+                <Paper p="md" radius="md" withBorder style={{ textAlign: 'center' }}>
+                  <Text size="2xl" fw={700} c="blue" mb={4}>300+</Text>
+                  <Text size="sm" c="dimmed">Kompani</Text>
+                </Paper>
+              </SimpleGrid>
             </Stack>
           </Grid.Col>
 
@@ -1092,17 +1311,28 @@ const PostJob = () => {
             <Stack gap="xl">
               {/* Tutorial Help Link */}
               {!showTutorial && (
-                <Center>
-                  <Button
-                    variant="light"
-                    color="gray"
-                    leftSection={<Lightbulb size={16} />}
-                    onClick={startTutorial}
-                    size="sm"
-                  >
-                    Nuk e di si të fillosh? Kliko këtu për ndihmë
-                  </Button>
-                </Center>
+                <Paper shadow="xs" p="md" radius="md" withBorder style={{ backgroundColor: '#f8f9fa' }}>
+                  <Group justify="space-between" wrap="nowrap">
+                    <Group gap="sm">
+                      <ThemeIcon size={30} radius="md" color="blue" variant="light">
+                        <Lightbulb size={16} />
+                      </ThemeIcon>
+                      <Box>
+                        <Text size="sm" fw={500}>Nuk e di si të fillosh?</Text>
+                        <Text size="xs" c="dimmed">Fillo tutorialin për ndihmë hap pas hapi</Text>
+                      </Box>
+                    </Group>
+                    <Button
+                      variant="subtle"
+                      color="blue"
+                      leftSection={<Play size={14} />}
+                      onClick={startTutorial}
+                      size="xs"
+                    >
+                      Fillo Tutorialin
+                    </Button>
+                  </Group>
+                </Paper>
               )}
 
               <Paper shadow="sm" p="xl" radius="md" withBorder>
@@ -1117,17 +1347,43 @@ const PostJob = () => {
                   </Box>
                 </Group>
 
-                {/* Step Indicator */}
-                <Stepper active={currentStep} onStepClick={setCurrentStep} mb="xl" size="sm">
-                  {steps.map((step, index) => (
-                    <Stepper.Step
-                      key={index}
-                      label={step.label}
-                      icon={<step.icon size={16} />}
-                      allowStepSelect={currentStep > index}
-                    />
-                  ))}
-                </Stepper>
+                {/* Step Indicator - Horizontal Compact */}
+                <Box mb="lg">
+                  <div className="flex items-center justify-between gap-2 p-3 bg-slate-50 rounded-lg border">
+                    {steps.map((step, index) => (
+                      <div
+                        key={index}
+                        className={`flex items-center gap-2 flex-1 ${
+                          index < steps.length - 1 ? 'border-r border-slate-200 pr-2' : ''
+                        }`}
+                      >
+                        <div
+                          className={`flex items-center justify-center w-8 h-8 rounded-full border-2 transition-colors ${
+                            currentStep === index
+                              ? 'bg-blue-500 border-blue-500 text-white'
+                              : currentStep > index
+                              ? 'bg-green-500 border-green-500 text-white'
+                              : 'bg-white border-slate-300 text-slate-400'
+                          }`}
+                        >
+                          {currentStep > index ? (
+                            <CheckCircle size={16} />
+                          ) : (
+                            <step.icon size={14} />
+                          )}
+                        </div>
+                        <Text
+                          size="xs"
+                          fw={currentStep === index ? 600 : 400}
+                          c={currentStep === index ? 'blue' : currentStep > index ? 'green' : 'dimmed'}
+                          className="hidden sm:block"
+                        >
+                          {step.label}
+                        </Text>
+                      </div>
+                    ))}
+                  </div>
+                </Box>
 
                 {/* Step Content */}
                 {renderStepContent()}
@@ -1168,6 +1424,8 @@ const PostJob = () => {
           </Grid.Col>
         </Grid>
       </Container>
+
+      <Footer />
     </Box>
   );
 };

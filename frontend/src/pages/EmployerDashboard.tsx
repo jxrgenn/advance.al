@@ -12,10 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin, Play, Lightbulb, HelpCircle } from "lucide-react";
 import ReportUserModal from "@/components/ReportUserModal";
 import { useToast } from "@/hooks/use-toast";
-import { jobsApi, applicationsApi, usersApi, locationsApi, matchingApi, Job, Application, Location, CandidateMatch } from "@/lib/api";
+import { jobsApi, applicationsApi, usersApi, locationsApi, matchingApi, Job, Application, Location, CandidateMatch, User } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 
 const EmployerDashboard = () => {
@@ -28,7 +28,7 @@ const EmployerDashboard = () => {
     monthlyViews: 0,
     growth: 0
   });
-  
+
   // Profile editing state
   const [savingProfile, setSavingProfile] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
@@ -57,6 +57,24 @@ const EmployerDashboard = () => {
   const [selectedCandidate, setSelectedCandidate] = useState<any>(null);
   const [contactMessage, setContactMessage] = useState('');
 
+  // Tutorial system state
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const [highlightedElement, setHighlightedElement] = useState<Element | null>(null);
+  const [elementPosition, setElementPosition] = useState<DOMRect | null>(null);
+  const [previousElementPosition, setPreviousElementPosition] = useState<DOMRect | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [isSpotlightAnimating, setIsSpotlightAnimating] = useState(false);
+  const [lastClickTime, setLastClickTime] = useState(0);
+  const [isScrollLocked, setIsScrollLocked] = useState(false);
+  const [currentTab, setCurrentTab] = useState<'jobs' | 'applicants' | 'settings'>('jobs');
+  
+  // Pagination state
+  const [visibleJobsCount, setVisibleJobsCount] = useState(5);
+  const [visibleApplicationsCount, setVisibleApplicationsCount] = useState(5);
+  const JOBS_PER_PAGE = 5;
+  const APPLICATIONS_PER_PAGE = 5;
+
   const [profileData, setProfileData] = useState({
     companyName: '',
     description: '',
@@ -70,6 +88,126 @@ const EmployerDashboard = () => {
   const { toast } = useToast();
   const { user, updateUser } = useAuth();
   const navigate = useNavigate();
+
+  // Tutorial steps for Jobs tab
+  const jobsTutorialSteps = [
+    {
+      selector: '[data-tutorial="jobs-list-card"]',
+      title: "Punët e Postuara",
+      content: "Këtu shfaqen të gjitha punët që keni postuar me të gjitha detajet e tyre.",
+      position: "bottom" as const,
+      maxHeight: 500
+    },
+    {
+      selector: '[data-tutorial="job-card"]',
+      title: "Informacioni i Punës",
+      content: "Çdo kartë pune tregon titullin, vendndodhjen, numrin e aplikuesve dhe statusin e postimit.",
+      position: "top" as const
+    },
+    {
+      selector: '[data-tutorial="view-applications"]',
+      title: "Shiko Aplikuesit",
+      content: "Kliko butonin 'Kandidatë' për të parë të gjithë aplikantët për këtë punë.",
+      position: "top" as const
+    },
+    {
+      selector: '[data-tutorial="job-actions"]',
+      title: "Veprimet e Punës",
+      content: "Përdor këto butona për të parë detajet, edituar, ose fshirë punën.",
+      position: "top" as const
+    }
+  ];
+
+  // Tutorial steps for Applicants tab
+  const applicantsTutorialSteps = [
+    {
+      selector: '[data-tutorial="applicants-card"]',
+      title: "Aplikuesit e Fundit",
+      content: "Këtu shfaqen të gjithë aplikantët që kanë aplikuar për punët tuaja, të renditur sipas datës.",
+      position: "bottom" as const,
+      maxHeight: 500
+    },
+    {
+      selector: '[data-tutorial="applicant-card"]',
+      title: "Informacioni i Aplikantit",
+      content: "Shihni emrin, punën për të cilën ka aplikuar, dhe statusin e aplikimit.",
+      position: "top" as const
+    },
+    {
+      selector: '[data-tutorial="applicant-status"]',
+      title: "Statusi i Aplikimit",
+      content: "Ndryshoni statusin e aplikimit: Në Pritje, Pranuar, Refuzuar. Aplikanti do të njoftohet automatikisht.",
+      position: "top" as const
+    },
+    {
+      selector: '[data-tutorial="applicant-actions"]',
+      title: "Veprimet për Aplikantin",
+      content: "Shikoni CV-në, kontaktoni aplikantin përmes email/telefon/WhatsApp, ose raportoni përdoruesin.",
+      position: "top" as const
+    }
+  ];
+
+  // Tutorial steps for Settings tab
+  const settingsTutorialSteps = [
+    {
+      selector: '[data-tutorial="company-name"]',
+      title: "Emri i Kompanisë",
+      content: "Emri zyrtar i kompanisë suaj. Ky emër do të shfaqet në të gjitha postimet tuaja të punës.",
+      position: "top" as const,
+      shouldScroll: false
+    },
+    {
+      selector: '[data-tutorial="company-website"]',
+      title: "Faqja e Internetit",
+      content: "Shtoni linkun e faqes zyrtare të kompanisë. Kandidatët mund ta vizitojnë për më shumë informacion.",
+      position: "top" as const,
+      shouldScroll: false
+    },
+    {
+      selector: '[data-tutorial="company-description"]',
+      title: "Përshkrimi i Kompanisë",
+      content: "Shkruani një përshkrim të shkurtër që tregon misionin, vlerat dhe veprimtarinë e kompanisë suaj.",
+      position: "top" as const,
+      shouldScroll: false
+    },
+    {
+      selector: '[data-tutorial="industry"]',
+      title: "Industria",
+      content: "Zgjidhni industrinë kryesore ku operon kompania juaj. Kjo ndihmon kandidatët ta gjejnë më lehtë.",
+      position: "top" as const,
+      shouldScroll: false
+    },
+    {
+      selector: '[data-tutorial="company-size"]',
+      title: "Madhësia e Kompanisë",
+      content: "Zgjidhni numrin e punonjësve që ka kompania juaj aktualisht.",
+      position: "top" as const,
+      shouldScroll: false
+    },
+    {
+      selector: '[data-tutorial="location"]',
+      title: "Vendndodhja",
+      content: "Zgjidhni qytetin ku ndodhet zyra kryesore e kompanisë. Qarku do të zgjidhet automatikisht.",
+      position: "top" as const,
+      shouldScroll: false
+    },
+    {
+      selector: '[data-tutorial="save-profile"]',
+      title: "Ruaj Ndryshimet",
+      content: "Pasi të keni përditësuar informacionet, mos harroni të klikoni këtu për të ruajtur ndryshimet.",
+      position: "top" as const,
+      shouldScroll: false
+    }
+  ];
+
+  // Get current tutorial steps based on active tab
+  const getCurrentTutorialSteps = () => {
+    if (currentTab === 'jobs') return jobsTutorialSteps;
+    if (currentTab === 'applicants') return applicantsTutorialSteps;
+    return settingsTutorialSteps;
+  };
+
+  const currentTutorialSteps = getCurrentTutorialSteps();
 
   useEffect(() => {
     if (user?.userType === 'employer') {
@@ -96,16 +234,16 @@ const EmployerDashboard = () => {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      
+
       // Load both jobs and applications in parallel
       const [jobsResponse, applicationsResponse] = await Promise.all([
         jobsApi.getEmployerJobs({}),
         applicationsApi.getEmployerApplications({})
       ]);
-      
+
       let employerJobs: Job[] = [];
       let employerApplications: Application[] = [];
-      
+
       if (jobsResponse.success && jobsResponse.data) {
         employerJobs = jobsResponse.data.jobs || [];
         setJobs(employerJobs);
@@ -121,12 +259,12 @@ const EmployerDashboard = () => {
       } else {
         console.error('Failed to load applications:', applicationsResponse);
       }
-      
+
       // Calculate stats from real data
       const activeJobs = employerJobs.filter(job => job.status === 'active').length;
       const totalViews = employerJobs.reduce((sum, job) => sum + (job.viewCount || 0), 0);
       const totalApplications = employerApplications.length; // Use actual applications count
-      
+
       console.log('Stats calculation:', {
         totalJobs: employerJobs.length,
         activeJobs,
@@ -134,14 +272,14 @@ const EmployerDashboard = () => {
         totalApplications,
         jobStatuses: employerJobs.map(job => ({ id: job._id, status: job.status, views: job.viewCount }))
       });
-      
+
       setStats({
         activeJobs,
         totalApplicants: totalApplications,
         monthlyViews: totalViews,
         growth: 0 // Will implement growth calculation later
       });
-      
+
     } catch (error) {
       console.error('Error loading dashboard data:', error);
       toast({
@@ -165,11 +303,219 @@ const EmployerDashboard = () => {
     }
   };
 
+  // Tutorial management functions
+  const startTutorial = () => {
+    setShowTutorial(true);
+    setTutorialStep(0);
+    setIsScrollLocked(true);
+    document.body.style.overflow = 'hidden';
+    // Small delay to ensure DOM is ready
+    setTimeout(() => {
+      highlightElement(0);
+    }, 100);
+  };
+
+  const nextTutorialStep = () => {
+    const now = Date.now();
+    if (now - lastClickTime < 150) return;
+    setLastClickTime(now);
+
+    const steps = getCurrentTutorialSteps();
+    if (tutorialStep < steps.length - 1) {
+      const newStep = tutorialStep + 1;
+      setTutorialStep(newStep);
+    } else {
+      closeTutorial();
+    }
+  };
+
+  const previousTutorialStep = () => {
+    const now = Date.now();
+    if (now - lastClickTime < 150) return;
+    setLastClickTime(now);
+
+    if (tutorialStep > 0) {
+      const newStep = tutorialStep - 1;
+      setTutorialStep(newStep);
+    }
+  };
+
+  const closeTutorial = () => {
+    setShowTutorial(false);
+    setTutorialStep(0);
+    setHighlightedElement(null);
+    setElementPosition(null);
+    setPreviousElementPosition(null);
+    setIsAnimating(false);
+    setIsSpotlightAnimating(false);
+    setLastClickTime(0);
+    setIsScrollLocked(false);
+    document.body.style.overflow = 'auto';
+  };
+
+  // Close tutorial when switching tabs
+  useEffect(() => {
+    if (showTutorial) {
+      closeTutorial();
+    }
+  }, [currentTab]);
+
+  // Highlight element whenever tutorial step changes
+  useEffect(() => {
+    if (showTutorial) {
+      const steps = getCurrentTutorialSteps();
+      if (tutorialStep < steps.length) {
+        const timer = setTimeout(() => {
+          highlightElement(tutorialStep);
+        }, 100);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [tutorialStep, showTutorial]);
+
+  // Track element position changes
+  useEffect(() => {
+    if (!highlightedElement || !showTutorial) return;
+
+    const updateElementPosition = () => {
+      if (highlightedElement) {
+        const rect = highlightedElement.getBoundingClientRect();
+        setElementPosition(rect);
+      }
+    };
+
+    updateElementPosition();
+
+    const handleResize = () => {
+      updateElementPosition();
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [highlightedElement, showTutorial]);
+
+  // Cleanup scroll lock on unmount
+  useEffect(() => {
+    return () => {
+      document.body.style.overflow = 'auto';
+    };
+  }, []);
+
+  const highlightElement = (stepIndex: number) => {
+    const steps = getCurrentTutorialSteps();
+    const step = steps[stepIndex];
+    if (!step) return;
+
+    const element = document.querySelector(step.selector);
+    if (!element) {
+      console.warn(`Tutorial element not found: ${step.selector}`);
+      return;
+    }
+
+    // Store previous position for smooth transition
+    if (elementPosition) {
+      setPreviousElementPosition(elementPosition);
+    }
+
+    // Check if element is visible in viewport
+    const rect = element.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    
+    const isMobile = viewportWidth < 768;
+    
+    // Relaxed margins
+    const topMargin = isMobile ? 60 : 80;
+    const bottomMargin = isMobile ? 180 : 200;
+    
+    // Detect if this is the first step (container/list overview)
+    const isFirstStep = stepIndex === 0;
+    
+    let isVisible;
+    if (isFirstStep && isMobile) {
+      // On mobile, for lists: very lenient - only scroll if REALLY not enough is showing
+      // Check if just 50px of list is visible (super lenient = less scroll)
+      isVisible = rect.top >= 0 && rect.top + 50 <= viewportHeight - bottomMargin;
+    } else if (isFirstStep) {
+      // Desktop: For first step (list containers), check if ANY part is visible
+      isVisible = rect.top < viewportHeight - bottomMargin && rect.bottom > topMargin;
+    } else {
+      // For individual items: very lenient check on desktop to avoid scrolling
+      const checkMargin = isMobile ? topMargin : 20; // Desktop: VERY lenient (just 20px from top)
+      const checkBottom = isMobile ? bottomMargin : 100; // Desktop: VERY lenient
+      isVisible = rect.top >= checkMargin && 
+                 rect.bottom <= viewportHeight - checkBottom;
+    }
+
+    // Only scroll if element is REALLY not visible or explicitly required
+    if (!isVisible || step.shouldScroll) {
+      // Temporarily unlock scroll
+      document.body.style.overflow = 'auto';
+      
+      // Special handling for mobile first step - minimal manual scroll
+      if (isMobile && isFirstStep) {
+        // Manual scroll - just scroll down by 250px
+        const currentScroll = window.pageYOffset;
+        window.scrollTo({
+          top: currentScroll + 250,
+          behavior: 'smooth'
+        });
+      } else {
+        // Normal scrollIntoView for everything else
+        let scrollBlock: ScrollLogicalPosition;
+        if (isMobile) {
+          scrollBlock = 'center';
+        } else {
+          scrollBlock = 'nearest';
+        }
+        
+        element.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: scrollBlock,
+          inline: 'center'
+        });
+      }
+      
+      // Shorter wait for scroll
+      setTimeout(() => {
+        const newRect = element.getBoundingClientRect();
+        setHighlightedElement(element);
+        setElementPosition(newRect);
+        
+        // Re-lock scroll
+        document.body.style.overflow = 'hidden';
+        
+        // Start animations immediately
+        setIsAnimating(true);
+        setIsSpotlightAnimating(true);
+        
+        setTimeout(() => {
+          setIsAnimating(false);
+          setIsSpotlightAnimating(false);
+        }, 400);
+      }, 400);
+    } else {
+      // Element visible, highlight immediately
+      setHighlightedElement(element);
+      setElementPosition(rect);
+      
+      setIsAnimating(true);
+      setIsSpotlightAnimating(true);
+      
+      setTimeout(() => {
+        setIsAnimating(false);
+        setIsSpotlightAnimating(false);
+      }, 400);
+    }
+  };
+
 
   const handleProfileSave = async () => {
     try {
       setSavingProfile(true);
-      
+
       const updateData = {
         employerProfile: {
           companyName: profileData.companyName,
@@ -185,7 +531,7 @@ const EmployerDashboard = () => {
       };
 
       const response = await usersApi.updateProfile(updateData);
-      
+
       if (response.success && response.data) {
         updateUser(response.data.user);
         toast({
@@ -236,14 +582,14 @@ const EmployerDashboard = () => {
 
   const handleApplicationStatusChange = async (applicationId: string, newStatus: string) => {
     console.log(`🔄 Changing application ${applicationId} status to: ${newStatus}`);
-    
+
     try {
       // Add to updating set
       setUpdatingApplications(prev => new Set(prev).add(applicationId));
 
       const response = await applicationsApi.updateApplicationStatus(
-        applicationId, 
-        newStatus, 
+        applicationId,
+        newStatus,
         `Status changed to ${newStatus} by employer`
       );
 
@@ -251,9 +597,9 @@ const EmployerDashboard = () => {
 
       if (response.success) {
         // Update the application in the local state
-        setApplications(prev => prev.map(app => 
-          app._id === applicationId 
-            ? { ...app, status: newStatus }
+        setApplications(prev => prev.map(app =>
+          app._id === applicationId
+            ? { ...app, status: newStatus as Application['status'] }
             : app
         ));
 
@@ -291,10 +637,10 @@ const EmployerDashboard = () => {
 
   const handleViewApplicationDetails = async (applicationId: string) => {
     console.log(`👁️ Opening application details for: ${applicationId}`);
-    
+
     try {
       setLoadingApplicationDetails(true);
-      
+
       // Find the application in current list first (for immediate display)
       const currentApp = applications.find(app => app._id === applicationId);
       if (currentApp) {
@@ -536,8 +882,8 @@ const EmployerDashboard = () => {
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
-      
-      <div className="container py-8">
+
+      <div className="container py-8 pt-24">
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
@@ -568,7 +914,7 @@ const EmployerDashboard = () => {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -584,7 +930,7 @@ const EmployerDashboard = () => {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -600,7 +946,7 @@ const EmployerDashboard = () => {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -618,15 +964,101 @@ const EmployerDashboard = () => {
           </Card>
         </div>
 
-        <Tabs defaultValue="jobs" className="space-y-6">
+        <Tabs defaultValue="jobs" className="space-y-6" onValueChange={(value) => setCurrentTab(value as 'jobs' | 'applicants' | 'settings')}>
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="jobs" className="text-xs sm:text-sm">Punët e Mia</TabsTrigger>
             <TabsTrigger value="applicants" className="text-xs sm:text-sm">Aplikuesit</TabsTrigger>
             <TabsTrigger value="settings" className="text-xs sm:text-sm">Cilësimet</TabsTrigger>
           </TabsList>
 
+          {/* Tutorial Button - Show based on tab and data availability */}
+          {!showTutorial && (
+            <>
+              {currentTab === 'jobs' && jobs.length > 0 && (
+                <Card className="border-primary/20 bg-primary/5">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between flex-wrap gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                          <Lightbulb className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">Nuk e di si të menaxhosh punët?</p>
+                          <p className="text-xs text-muted-foreground">Fillo tutorialin për ndihmë hap pas hapi</p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={startTutorial}
+                        className="gap-1"
+                      >
+                        <Play className="h-3 w-3" />
+                        Fillo Tutorialin
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {currentTab === 'applicants' && applications.length > 0 && (
+                <Card className="border-primary/20 bg-primary/5">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between flex-wrap gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                          <Lightbulb className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">Nuk e di si të menaxhosh aplikuesit?</p>
+                          <p className="text-xs text-muted-foreground">Fillo tutorialin për ndihmë hap pas hapi</p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={startTutorial}
+                        className="gap-1"
+                      >
+                        <Play className="h-3 w-3" />
+                        Fillo Tutorialin
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {currentTab === 'settings' && (
+                <Card className="border-primary/20 bg-primary/5">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between flex-wrap gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                          <Lightbulb className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">Nuk e di si të përditësosh profilin?</p>
+                          <p className="text-xs text-muted-foreground">Fillo tutorialin për ndihmë hap pas hapi</p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={startTutorial}
+                        className="gap-1"
+                      >
+                        <Play className="h-3 w-3" />
+                        Fillo Tutorialin
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
+
           <TabsContent value="jobs" className="space-y-6">
-            <Card>
+            <Card data-tutorial="jobs-list-card">
               <CardHeader>
                 <CardTitle>Punët e Postuara</CardTitle>
                 <CardDescription>
@@ -650,16 +1082,21 @@ const EmployerDashboard = () => {
                     </Button>
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    {jobs.map((job) => (
-                      <div key={job._id} className="flex items-center justify-between p-3 sm:p-4 border rounded-lg">
+                  <>
+                    <div className="space-y-4" data-tutorial="jobs-list">
+                      {jobs.slice(0, visibleJobsCount).map((job, index) => (
+                      <div 
+                        key={job._id} 
+                        className="flex items-center justify-between p-3 sm:p-4 border rounded-lg"
+                        data-tutorial={index === 0 ? "job-card" : undefined}
+                      >
                         <div className="flex-1 min-w-0 space-y-1">
                           <div className="flex items-start flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
                             <h3 className="font-medium text-foreground text-sm sm:text-base truncate pr-2">{job.title}</h3>
                             <Badge variant={job.status === 'active' ? 'default' : 'secondary'} className="text-xs flex-shrink-0">
                               {job.status === 'active' ? 'Aktive' :
-                               job.status === 'paused' ? 'Pezulluar' :
-                               job.status === 'closed' ? 'Mbyllur' : 'Draft'}
+                                job.status === 'paused' ? 'Pezulluar' :
+                                  job.status === 'closed' ? 'Mbyllur' : 'Draft'}
                             </Badge>
                           </div>
                           <div className="text-xs sm:text-sm text-muted-foreground truncate">
@@ -672,8 +1109,17 @@ const EmployerDashboard = () => {
                             Postuar: {new Date(job.postedAt).toLocaleDateString('sq-AL')}
                           </div>
                         </div>
-                        <div className="flex items-center gap-1 sm:gap-2 ml-2 flex-shrink-0">
-                          <Button size="sm" variant="default" onClick={() => handleViewCandidates(job)} className="h-8 w-8 sm:h-9 sm:w-auto sm:px-3 bg-primary text-primary-foreground hover:bg-primary/90">
+                        <div 
+                          className="flex items-center gap-1 sm:gap-2 ml-2 flex-shrink-0"
+                          data-tutorial={index === 0 ? "job-actions" : undefined}
+                        >
+                          <Button 
+                            size="sm" 
+                            variant="default" 
+                            onClick={() => handleViewCandidates(job)} 
+                            className="h-8 w-8 sm:h-9 sm:w-auto sm:px-3 bg-primary text-primary-foreground hover:bg-primary/90"
+                            data-tutorial={index === 0 ? "view-applications" : undefined}
+                          >
                             <Users className="h-3 w-3 sm:h-4 sm:w-4" />
                             <span className="sr-only sm:not-sr-only sm:ml-1 hidden sm:inline">Kandidatë</span>
                           </Button>
@@ -685,21 +1131,42 @@ const EmployerDashboard = () => {
                             <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
                             <span className="sr-only sm:not-sr-only sm:ml-1 hidden sm:inline">Edito</span>
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => handleJobAction('fshirë', job._id)} className="h-8 w-8 sm:h-9 sm:w-auto sm:px-3">
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => handleJobAction('fshirë', job._id)} 
+                            className="h-8 w-8 sm:h-9 sm:w-auto sm:px-3"
+                            data-tutorial={index === 0 ? "candidate-matching" : undefined}
+                          >
                             <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
                             <span className="sr-only sm:not-sr-only sm:ml-1 hidden sm:inline">Fshi</span>
                           </Button>
                         </div>
                       </div>
                     ))}
-                  </div>
+                    </div>
+                    
+                    {/* Load More Button */}
+                    {jobs.length > visibleJobsCount && (
+                      <div className="flex justify-center pt-4">
+                        <Button
+                          variant="outline"
+                          onClick={() => setVisibleJobsCount(prev => prev + JOBS_PER_PAGE)}
+                          className="gap-2"
+                        >
+                          <TrendingUp className="h-4 w-4" />
+                          Shfaq më shumë punë ({jobs.length - visibleJobsCount} të tjera)
+                        </Button>
+                      </div>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="applicants" className="space-y-6">
-            <Card>
+            <Card data-tutorial="applicants-card">
               <CardHeader>
                 <CardTitle>Aplikuesit e Fundit</CardTitle>
                 <CardDescription>
@@ -719,15 +1186,24 @@ const EmployerDashboard = () => {
                     <p className="text-muted-foreground">Aplikuesit do të shfaqen këtu kur të aplikojnë për punët tuaja</p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    {applications.map((application) => (
-                      <div key={application._id} className="flex items-center justify-between p-3 sm:p-4 border rounded-lg">
+                  <>
+                    <div className="space-y-4">
+                      {applications.slice(0, visibleApplicationsCount).map((application, index) => (
+                      <div 
+                        key={application._id} 
+                        className="flex items-center justify-between p-3 sm:p-4 border rounded-lg"
+                        data-tutorial={index === 0 ? "applicant-card" : undefined}
+                      >
                         <div className="flex-1 min-w-0 space-y-1">
                           <h3 className="font-medium text-foreground text-sm sm:text-base truncate pr-2">
-                            {typeof application.jobSeekerId === 'string' ? 'Aplikues' : application.jobSeekerId?.profile?.firstName + ' ' + application.jobSeekerId?.profile?.lastName}
+                            {(typeof application.jobSeekerId !== 'string' && application.jobSeekerId?.profile)
+                              ? `${application.jobSeekerId.profile.firstName} ${application.jobSeekerId.profile.lastName}`
+                              : 'Aplikues'}
                           </h3>
                           <div className="text-xs sm:text-sm text-muted-foreground truncate">
-                            {typeof application.jobSeekerId === 'string' ? 'Email i fshehur' : application.jobSeekerId?.email}
+                            {(typeof application.jobSeekerId !== 'string' && application.jobSeekerId?.email)
+                              ? application.jobSeekerId.email
+                              : 'Email i fshehur'}
                           </div>
                           <div className="text-xs sm:text-sm text-muted-foreground truncate">
                             {typeof application.jobId === 'string' ? 'Pozicion i fshirë' : application.jobId?.title}
@@ -737,20 +1213,27 @@ const EmployerDashboard = () => {
                           </div>
                         </div>
                         <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 ml-2 flex-shrink-0">
-                          <Badge variant={
-                            application.status === 'pending' ? 'secondary' :
-                            application.status === 'viewed' ? 'default' :
-                            application.status === 'shortlisted' ? 'default' :
-                            application.status === 'rejected' ? 'destructive' : 'default'
-                          } className="text-xs">
+                          <Badge 
+                            variant={
+                              application.status === 'pending' ? 'secondary' :
+                                application.status === 'viewed' ? 'default' :
+                                  application.status === 'shortlisted' ? 'default' :
+                                    application.status === 'rejected' ? 'destructive' : 'default'
+                            } 
+                            className="text-xs"
+                            data-tutorial={index === 0 ? "applicant-status" : undefined}
+                          >
                             {application.status === 'pending' ? 'Në pritje' :
-                             application.status === 'viewed' ? 'Shikuar' :
-                             application.status === 'shortlisted' ? 'Në listë' :
-                             application.status === 'rejected' ? 'Refuzuar' :
-                             application.status === 'hired' ? 'Punësuar' : application.status}
+                              application.status === 'viewed' ? 'Shikuar' :
+                                application.status === 'shortlisted' ? 'Në listë' :
+                                  application.status === 'rejected' ? 'Refuzuar' :
+                                    application.status === 'hired' ? 'Punësuar' : application.status}
                           </Badge>
 
-                          <div className="flex items-center gap-1">
+                          <div 
+                            className="flex items-center gap-1"
+                            data-tutorial={index === 0 ? "applicant-actions" : undefined}
+                          >
                             {updatingApplications.has(application._id) ? (
                               <Loader2 className="h-4 w-4 animate-spin text-primary" />
                             ) : (
@@ -802,14 +1285,29 @@ const EmployerDashboard = () => {
                         </div>
                       </div>
                     ))}
-                  </div>
+                    </div>
+                    
+                    {/* Load More Button */}
+                    {applications.length > visibleApplicationsCount && (
+                      <div className="flex justify-center pt-4">
+                        <Button
+                          variant="outline"
+                          onClick={() => setVisibleApplicationsCount(prev => prev + APPLICATIONS_PER_PAGE)}
+                          className="gap-2"
+                        >
+                          <Users className="h-4 w-4" />
+                          Shfaq më shumë aplikantë ({applications.length - visibleApplicationsCount} të tjerë)
+                        </Button>
+                      </div>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="settings" className="space-y-6">
-            <Card>
+            <Card data-tutorial="settings-card">
               <CardHeader>
                 <CardTitle>Informacioni i Kompanisë</CardTitle>
                 <CardDescription>
@@ -819,7 +1317,7 @@ const EmployerDashboard = () => {
               <CardContent>
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
+                    <div data-tutorial="company-name">
                       <Label htmlFor="companyName">Emri i Kompanisë *</Label>
                       <Input
                         id="companyName"
@@ -828,7 +1326,7 @@ const EmployerDashboard = () => {
                         placeholder="Emri i kompanisë"
                       />
                     </div>
-                    <div>
+                    <div data-tutorial="company-website">
                       <Label htmlFor="website">Faqja e Internetit</Label>
                       <Input
                         id="website"
@@ -839,7 +1337,7 @@ const EmployerDashboard = () => {
                     </div>
                   </div>
 
-                  <div>
+                  <div data-tutorial="company-description">
                     <Label htmlFor="description">Përshkrimi i Kompanisë</Label>
                     <Textarea
                       id="description"
@@ -851,7 +1349,7 @@ const EmployerDashboard = () => {
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
+                    <div data-tutorial="industry">
                       <Label htmlFor="industry">Industria</Label>
                       <Select value={profileData.industry} onValueChange={(value) => setProfileData(prev => ({ ...prev, industry: value }))}>
                         <SelectTrigger>
@@ -869,7 +1367,7 @@ const EmployerDashboard = () => {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div>
+                    <div data-tutorial="company-size">
                       <Label htmlFor="companySize">Madhësia e Kompanisë</Label>
                       <Select value={profileData.companySize} onValueChange={(value) => setProfileData(prev => ({ ...prev, companySize: value }))}>
                         <SelectTrigger>
@@ -886,7 +1384,7 @@ const EmployerDashboard = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" data-tutorial="location">
                     <div>
                       <Label htmlFor="city">Qyteti</Label>
                       <Select value={profileData.city} onValueChange={(value) => {
@@ -955,29 +1453,30 @@ const EmployerDashboard = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 sm:p-4 bg-muted/50 rounded-lg">
                 <div>
                   <h3 className="font-semibold text-base sm:text-lg mb-2">
-                    {typeof selectedApplication.jobSeekerId === 'string' ? 'Aplikues' :
-                     `${selectedApplication.jobSeekerId?.profile?.firstName || ''} ${selectedApplication.jobSeekerId?.profile?.lastName || ''}`}
+                    {(typeof selectedApplication.jobSeekerId !== 'string' && selectedApplication.jobSeekerId?.profile)
+                      ? `${selectedApplication.jobSeekerId.profile.firstName || ''} ${selectedApplication.jobSeekerId.profile.lastName || ''}`
+                      : 'Aplikues'}
                   </h3>
                   <p className="text-xs sm:text-sm text-muted-foreground">
-                    {typeof selectedApplication.jobSeekerId !== 'string' && selectedApplication.jobSeekerId?.email}
+                    {(typeof selectedApplication.jobSeekerId !== 'string' && selectedApplication.jobSeekerId?.email) ? selectedApplication.jobSeekerId.email : ''}
                   </p>
                   <p className="text-xs sm:text-sm text-muted-foreground">
-                    {typeof selectedApplication.jobSeekerId !== 'string' && selectedApplication.jobSeekerId?.profile?.phone}
+                    {(typeof selectedApplication.jobSeekerId !== 'string' && selectedApplication.jobSeekerId?.profile?.phone) ? selectedApplication.jobSeekerId.profile.phone : ''}
                   </p>
                 </div>
                 <div className="text-left md:text-right">
                   <div className="flex items-center justify-start md:justify-end gap-2 mb-2">
                     <Badge variant={
                       selectedApplication.status === 'pending' ? 'secondary' :
-                      selectedApplication.status === 'viewed' ? 'default' :
-                      selectedApplication.status === 'shortlisted' ? 'default' :
-                      selectedApplication.status === 'rejected' ? 'destructive' : 'default'
+                        selectedApplication.status === 'viewed' ? 'default' :
+                          selectedApplication.status === 'shortlisted' ? 'default' :
+                            selectedApplication.status === 'rejected' ? 'destructive' : 'default'
                     } className="text-xs">
                       {selectedApplication.status === 'pending' ? 'Në pritje' :
-                       selectedApplication.status === 'viewed' ? 'Shikuar' :
-                       selectedApplication.status === 'shortlisted' ? 'Në listë' :
-                       selectedApplication.status === 'rejected' ? 'Refuzuar' :
-                       selectedApplication.status === 'hired' ? 'Punësuar' : selectedApplication.status}
+                        selectedApplication.status === 'viewed' ? 'Shikuar' :
+                          selectedApplication.status === 'shortlisted' ? 'Në listë' :
+                            selectedApplication.status === 'rejected' ? 'Refuzuar' :
+                              selectedApplication.status === 'hired' ? 'Punësuar' : selectedApplication.status}
                     </Badge>
                   </div>
                   <p className="text-xs sm:text-sm text-muted-foreground">
@@ -994,12 +1493,12 @@ const EmployerDashboard = () => {
                 <div className="space-y-4">
                   <Separator />
                   <h3 className="text-lg font-semibold">Profili i Aplikuesit</h3>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                     {/* Basic Info */}
                     <div className="space-y-3">
                       <h4 className="font-medium text-sm sm:text-base">Informacion Bazë</h4>
-                      
+
                       {selectedApplication.jobSeekerId.profile.jobSeekerProfile.title && (
                         <div>
                           <Label className="text-xs sm:text-sm font-medium">Pozicioni i Dëshiruar</Label>
@@ -1019,10 +1518,10 @@ const EmployerDashboard = () => {
                           <Label className="text-xs sm:text-sm font-medium">Disponueshmëria</Label>
                           <p className="text-xs sm:text-sm">
                             {selectedApplication.jobSeekerId.profile.jobSeekerProfile.availability === 'immediately' ? 'Menjëherë' :
-                             selectedApplication.jobSeekerId.profile.jobSeekerProfile.availability === '2weeks' ? 'Brenda 2 javëve' :
-                             selectedApplication.jobSeekerId.profile.jobSeekerProfile.availability === '1month' ? 'Brenda 1 muaji' :
-                             selectedApplication.jobSeekerId.profile.jobSeekerProfile.availability === '3months' ? 'Brenda 3 muajve' :
-                             selectedApplication.jobSeekerId.profile.jobSeekerProfile.availability}
+                              selectedApplication.jobSeekerId.profile.jobSeekerProfile.availability === '2weeks' ? 'Brenda 2 javëve' :
+                                selectedApplication.jobSeekerId.profile.jobSeekerProfile.availability === '1month' ? 'Brenda 1 muaji' :
+                                  selectedApplication.jobSeekerId.profile.jobSeekerProfile.availability === '3months' ? 'Brenda 3 muajve' :
+                                    selectedApplication.jobSeekerId.profile.jobSeekerProfile.availability}
                           </p>
                         </div>
                       )}
@@ -1067,10 +1566,13 @@ const EmployerDashboard = () => {
                               variant="outline"
                               size="sm"
                               disabled={downloadingCV}
-                              onClick={() => handleDownloadCV(
-                                selectedApplication.jobSeekerId.profile.jobSeekerProfile.resume,
-                                `${selectedApplication.jobSeekerId.profile?.firstName || ''} ${selectedApplication.jobSeekerId.profile?.lastName || ''}`.trim() || 'Aplikues'
-                              )}
+                              onClick={() => {
+                                const jobSeeker = selectedApplication.jobSeekerId as User;
+                                handleDownloadCV(
+                                  jobSeeker.profile.jobSeekerProfile?.resume || '',
+                                  `${jobSeeker.profile.firstName} ${jobSeeker.profile.lastName}`.trim() || 'Aplikues'
+                                );
+                              }}
                               className="text-xs"
                             >
                               {downloadingCV ? (
@@ -1086,9 +1588,11 @@ const EmployerDashboard = () => {
                               disabled={downloadingCV}
                               onClick={() => {
                                 console.log(`👁️ Opening CV in browser for viewing`);
-                                const fullUrl = selectedApplication.jobSeekerId.profile.jobSeekerProfile.resume.startsWith('http')
-                                  ? selectedApplication.jobSeekerId.profile.jobSeekerProfile.resume
-                                  : `http://localhost:3001${selectedApplication.jobSeekerId.profile.jobSeekerProfile.resume}`;
+                                const jobSeeker = selectedApplication.jobSeekerId as User;
+                                const resumeUrl = jobSeeker.profile.jobSeekerProfile?.resume || '';
+                                const fullUrl = resumeUrl.startsWith('http')
+                                  ? resumeUrl
+                                  : `http://localhost:3001${resumeUrl}`;
                                 window.open(fullUrl, '_blank');
                               }}
                               className="text-xs"
@@ -1101,7 +1605,7 @@ const EmployerDashboard = () => {
                               size="sm"
                               onClick={() => {
                                 if (typeof selectedApplication.jobSeekerId === 'string') return;
-                                const jobSeeker = selectedApplication.jobSeekerId as any;
+                                const jobSeeker = selectedApplication.jobSeekerId as User;
                                 const userName = `${jobSeeker.profile?.firstName || ''} ${jobSeeker.profile?.lastName || ''}`.trim() || 'Aplikues';
                                 setReportUserId(jobSeeker._id);
                                 setReportUserName(userName);
@@ -1279,7 +1783,7 @@ const EmployerDashboard = () => {
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
                             <h4 className="font-semibold text-sm sm:text-base truncate">
-                              {match.candidateId.profile.firstName} {match.candidateId.profile.lastName}
+                              {(match.candidateId as any).profile.firstName} {(match.candidateId as any).profile.lastName}
                             </h4>
                             <p className="text-xs sm:text-sm text-muted-foreground truncate">
                               {match.candidateId.profile.jobSeekerProfile?.title || 'Kërkues pune'}
@@ -1354,10 +1858,10 @@ const EmployerDashboard = () => {
                                 <span className="font-medium">Disponueshmëri: </span>
                                 <span className="text-muted-foreground">
                                   {match.candidateId.profile.jobSeekerProfile.availability === 'immediately' ? 'Menjëherë' :
-                                   match.candidateId.profile.jobSeekerProfile.availability === '2weeks' ? 'Brenda 2 javëve' :
-                                   match.candidateId.profile.jobSeekerProfile.availability === '1month' ? 'Brenda 1 muaji' :
-                                   match.candidateId.profile.jobSeekerProfile.availability === '3months' ? 'Brenda 3 muajve' :
-                                   match.candidateId.profile.jobSeekerProfile.availability}
+                                    match.candidateId.profile.jobSeekerProfile.availability === '2weeks' ? 'Brenda 2 javëve' :
+                                      match.candidateId.profile.jobSeekerProfile.availability === '1month' ? 'Brenda 1 muaji' :
+                                        match.candidateId.profile.jobSeekerProfile.availability === '3months' ? 'Brenda 3 muajve' :
+                                          match.candidateId.profile.jobSeekerProfile.availability}
                                 </span>
                               </div>
                             )}
@@ -1438,7 +1942,7 @@ const EmployerDashboard = () => {
 
       {/* Contact Candidate Modal */}
       <Dialog open={contactModalOpen} onOpenChange={setContactModalOpen}>
-        <DialogContent className="max-w-2xl w-[95vw] sm:w-auto">
+        <DialogContent className="max-w-5xl w-[98vw]">
           <DialogHeader>
             <DialogTitle className="text-base sm:text-lg">
               {contactType === 'email' && '📧 Dërgo Email'}
@@ -1527,6 +2031,167 @@ const EmployerDashboard = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Tutorial Overlay */}
+      {showTutorial && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 9999,
+            pointerEvents: showTutorial ? 'auto' : 'none'
+          }}
+        >
+          {/* Dark Overlay with Spotlight */}
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.4)',
+              transition: 'opacity 0.3s ease'
+            }}
+            onClick={closeTutorial}
+          />
+
+          {/* Highlighted Element Cutout */}
+          {elementPosition && (
+            <div
+              style={{
+                position: 'absolute',
+                top: Math.max(0, elementPosition.top - 8),
+                left: elementPosition.left - 8,
+                width: elementPosition.width + 16,
+                height: (() => {
+                  const steps = getCurrentTutorialSteps();
+                  const step = steps[tutorialStep];
+                  const maxHeight = step?.maxHeight || 99999;
+                  const viewportBottom = window.innerHeight;
+                  const elementBottom = elementPosition.top + elementPosition.height + 8;
+                  const availableHeight = viewportBottom - Math.max(0, elementPosition.top - 8);
+                  
+                  return Math.min(
+                    elementPosition.height + 16,
+                    maxHeight,
+                    availableHeight - 50 // Leave space for tutorial card
+                  );
+                })(),
+                boxShadow: '0 0 0 99999px rgba(0, 0, 0, 0.4)',
+                borderRadius: '8px',
+                pointerEvents: 'none',
+                transition: isSpotlightAnimating ? 'all 450ms cubic-bezier(0.175, 0.885, 0.32, 1.2)' : 'all 450ms cubic-bezier(0.175, 0.885, 0.32, 1.2)',
+                border: '2px solid rgb(59, 130, 246)',
+                overflow: 'hidden'
+              }}
+            />
+          )}
+
+          {/* Tutorial Content Card */}
+          {elementPosition && (
+            <div
+              style={{
+                position: 'absolute',
+                top: (() => {
+                  const steps = getCurrentTutorialSteps();
+                  const step = steps[tutorialStep];
+                  const cardHeight = 220; // Approximate card height
+                  
+                  if (step.position === 'bottom') {
+                    // Position below the highlighted element
+                    const preferredTop = elementPosition.bottom + 20;
+                    const maxTop = window.innerHeight - cardHeight - 20;
+                    return Math.min(preferredTop, maxTop);
+                  } else if (step.position === 'top') {
+                    // Position above the highlighted element
+                    const preferredTop = elementPosition.top - cardHeight - 20;
+                    // If there's not enough space above, position below instead
+                    if (preferredTop < 20) {
+                      const belowTop = elementPosition.bottom + 20;
+                      return Math.min(belowTop, window.innerHeight - cardHeight - 20);
+                    }
+                    return Math.max(20, preferredTop);
+                  } else {
+                    // Position to the left
+                    return Math.max(20, Math.min(elementPosition.top, window.innerHeight - cardHeight - 20));
+                  }
+                })(),
+                left: (() => {
+                  const steps = getCurrentTutorialSteps();
+                  const step = steps[tutorialStep];
+                  const cardWidth = 300;
+                  
+                  if (step.position === 'left') {
+                    const preferredLeft = elementPosition.left - cardWidth - 20;
+                    // If not enough space on left, position on right
+                    if (preferredLeft < 20) {
+                      return Math.min(elementPosition.right + 20, window.innerWidth - cardWidth - 20);
+                    }
+                    return Math.max(20, preferredLeft);
+                  } else {
+                    // Center the card horizontally relative to element
+                    const preferredLeft = elementPosition.left + (elementPosition.width / 2) - (cardWidth / 2);
+                    return Math.max(20, Math.min(preferredLeft, window.innerWidth - cardWidth - 20));
+                  }
+                })(),
+                backgroundColor: 'white',
+                borderRadius: '12px',
+                padding: '20px',
+                width: '300px',
+                maxWidth: 'calc(100vw - 40px)',
+                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2)',
+                zIndex: 10001,
+                transition: 'all 350ms cubic-bezier(0.34, 1.56, 0.64, 1)'
+              }}
+            >
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-lg text-foreground">
+                    {getCurrentTutorialSteps()[tutorialStep]?.title || ''}
+                  </h3>
+                  <button
+                    onClick={closeTutorial}
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    type="button"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {getCurrentTutorialSteps()[tutorialStep]?.content || ''}
+                </p>
+                <div className="flex items-center justify-between pt-3 border-t">
+                  <span className="text-xs text-muted-foreground font-medium">
+                    {tutorialStep + 1} / {getCurrentTutorialSteps().length}
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={previousTutorialStep}
+                      disabled={tutorialStep === 0}
+                      type="button"
+                    >
+                      ‹ Prapa
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={nextTutorialStep}
+                      type="button"
+                    >
+                      {tutorialStep === getCurrentTutorialSteps().length - 1 ? 'Përfundo ✓' : 'Tjetër ›'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

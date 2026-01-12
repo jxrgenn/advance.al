@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import Navigation from "@/components/Navigation";
+import Footer from "@/components/Footer";
 import JobCard from "@/components/JobCard";
 import SearchInput from "@/components/SearchInput";
 import CoreFilters from "@/components/CoreFilters";
@@ -15,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
-import { Search, MapPin, Filter, Briefcase, Loader2, Calendar, DollarSign, Clock, Building, Bookmark } from "lucide-react";
+import { Search, MapPin, Filter, Briefcase, Loader2, Calendar, DollarSign, Clock, Building, Bookmark, GraduationCap, Users, Award } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { jobsApi, locationsApi, applicationsApi, Job, Location } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -411,7 +412,7 @@ const Index = () => {
     <div className="min-h-screen bg-background">
       <Navigation />
 
-      <div className="container py-8">
+      <div className="container py-8 pt-24">
         {/* Premium Jobs Carousel - Full width, above heading */}
         {!loading && !searchQuery && !selectedLocation && !selectedType && (
           <div className="mb-8">
@@ -476,9 +477,10 @@ const Index = () => {
           </CardContent>
         </Card>
 
-        {/* Core Platform Filters */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
-          <div className="lg:col-span-1">
+        {/* 3-Column Layout: Filters (20%) - Jobs (60%) - Announcements (20%) */}
+        <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 mb-8">
+          {/* Left Sidebar - Core Filters (20%) */}
+          <div className="lg:col-span-2">
             <CoreFilters
               filters={coreFilters}
               onFilterChange={handleCoreFilterChange}
@@ -486,7 +488,8 @@ const Index = () => {
             />
           </div>
 
-          <div className="lg:col-span-3">
+          {/* Main Content - Job Listings (60%) */}
+          <div className="lg:col-span-6">
             {/* Recently Viewed Jobs - Show when not searching and user is authenticated */}
             {!loading && !searchQuery && !selectedLocation && !selectedType && isAuthenticated && (
               <RecentlyViewedJobs className="mb-6" limit={4} />
@@ -619,6 +622,99 @@ const Index = () => {
                 )}
               </>
             )}
+          </div>
+
+          {/* Right Sidebar - Educational Announcements (20%) */}
+          <div className="hidden lg:block lg:col-span-2">
+            <div className="sticky top-4 space-y-3">
+              {/* University Partnership Announcement */}
+              <Card className="hover:shadow-md transition-shadow duration-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <GraduationCap className="h-4 w-4 text-muted-foreground" />
+                    <h3 className="font-semibold text-sm text-foreground">Partneritet Universitar</h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+                    Advance.al bashkëpunon me universitetet kryesore për mundësi pune ekskluzive.
+                  </p>
+                  <div className="space-y-1.5 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px]">•</span>
+                      <span>Universiteti i Tiranës</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px]">•</span>
+                      <span>Universiteti Politeknik</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px]">•</span>
+                      <span>EPOKA University</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Student Career Resources */}
+              <Card className="hover:shadow-md transition-shadow duration-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <h3 className="font-semibold text-sm text-foreground">Burime për Studentë</h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+                    Kurse falas, workshop dhe mentorë për zhvillimin e karrierës.
+                  </p>
+                  <div className="space-y-1.5 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px]">•</span>
+                      <span>CV Workshop</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px]">•</span>
+                      <span>Interview Preparation</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px]">•</span>
+                      <span>Career Mentorship</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Internship Opportunities */}
+              <Card className="hover:shadow-md transition-shadow duration-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Briefcase className="h-4 w-4 text-muted-foreground" />
+                    <h3 className="font-semibold text-sm text-foreground">Praktika Profesionale</h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+                    Gjej praktika të paguara në kompani të njohura. Përvojë reale pune.
+                  </p>
+                  <div className="border-t pt-2">
+                    <p className="text-lg font-bold text-foreground">150+</p>
+                    <p className="text-xs text-muted-foreground">Praktika aktive</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Student Discount Program */}
+              <Card className="hover:shadow-md transition-shadow duration-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Award className="h-4 w-4 text-muted-foreground" />
+                    <h3 className="font-semibold text-sm text-foreground">Zbritje për Studentë</h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+                    20% zbritje në shërbime premium me kartën e studentit.
+                  </p>
+                  <div className="border-t pt-2">
+                    <p className="text-lg font-bold text-foreground">20% OFF</p>
+                    <p className="text-xs text-muted-foreground">Premium Features</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
       </div>
@@ -861,6 +957,8 @@ const Index = () => {
           </div>
         </DialogContent>
       </Dialog>
+      
+      <Footer />
     </div>
   );
 };

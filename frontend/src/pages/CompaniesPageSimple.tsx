@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Navigation from "@/components/Navigation";
+import Footer from "@/components/Footer";
 import { Link } from "react-router-dom";
 import {
   Building,
@@ -279,6 +280,8 @@ const CompaniesPageSimple = () => {
           )}
         </div>
       </section>
+      
+      <Footer />
     </div>
   );
 };

@@ -86,7 +86,7 @@ router.get('/', optionalAuth, async (req, res) => {
 
     // Build search filters
     const filters = {};
-    
+
     if (city) filters.city = city;
     if (category) filters.category = category;
     if (jobType) filters.jobType = jobType;
@@ -109,12 +109,12 @@ router.get('/', optionalAuth, async (req, res) => {
 
     // Pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    
+
     query = query.sort(sortOptions).skip(skip).limit(parseInt(limit));
 
     // Execute query
     const jobs = await query.exec();
-    
+
     // Get total count for pagination
     const totalJobs = await Job.countDocuments({
       isDeleted: false,
@@ -167,7 +167,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
     const job = await Job.findOne({
       _id: req.params.id,
       isDeleted: false
-    }).populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.location profile.employerProfile.description profile.employerProfile.website');
+    }).populate('employerId', 'email profile.phone profile.employerProfile.companyName profile.employerProfile.logo profile.location profile.employerProfile.description profile.employerProfile.website');
 
     if (!job) {
       return res.status(404).json({
@@ -682,7 +682,7 @@ router.patch('/:id/status', authenticate, requireEmployer, async (req, res) => {
 
     const statusMessages = {
       active: 'Puna u aktivizua me sukses',
-      paused: 'Puna u pezullua me sukses', 
+      paused: 'Puna u pezullua me sukses',
       closed: 'Puna u mbyll me sukses'
     };
 

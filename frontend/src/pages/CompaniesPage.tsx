@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import Navigation from "@/components/Navigation";
+import Footer from "@/components/Footer";
 import { Link } from "react-router-dom";
 import {
   Building,
@@ -554,6 +555,8 @@ const CompaniesPage = () => {
           )}
         </div>
       </section>
+      
+      <Footer />
     </div>
   );
 };

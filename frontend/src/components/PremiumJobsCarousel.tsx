@@ -58,71 +58,72 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
       </div>
 
       {/* Carousel Container */}
-      <div className="relative">
-        <div className="overflow-hidden" ref={emblaRef}>
-          <div className="flex">
+      <div className="relative px-4">
+        <div className="overflow-hidden py-2" ref={emblaRef}>
+          <div className="flex -ml-3 md:-ml-4">
             {premiumJobs.map((job) => (
               <div
                 key={job._id}
-                className="flex-[0_0_50%] min-w-0 pl-4 lg:flex-[0_0_33.333%]"
+                className="flex-[0_0_50%] min-w-0 pl-3 md:pl-4 lg:flex-[0_0_33.333%]"
               >
                 <Card
-                  className="group hover:shadow-md transition-all duration-300 cursor-pointer border-0 ring-1 ring-primary/30 hover:ring-primary/60 hover:shadow-blue-100/50 bg-gradient-to-br from-blue-50/40 via-card to-blue-50/20 h-full"
+                  className="group hover:shadow-lg transition-all duration-300 cursor-pointer border-0 shadow-sm hover:shadow-xl bg-gradient-to-br from-blue-50/40 via-card to-blue-50/20 h-full"
                   onClick={() => navigate(`/jobs/${job._id}`)}
                 >
-                  <CardContent className="p-2.5 sm:p-3">
-                    {/* Desktop Layout: Content Left, Logo Right */}
-                    <div className="hidden sm:flex items-start gap-2">
+                  <CardContent className="p-3 md:p-4">
+                    {/* Main Layout: Content Left, Logo Right */}
+                    <div className="flex items-start gap-3">
                       {/* Left Side: Job Information */}
-                      <div className="flex-1 min-w-0 space-y-0.5">
+                      <div className="flex-1 min-w-0 space-y-2">
                         {/* Job Title */}
-                        <h3 className="text-xs font-bold text-foreground group-hover:text-primary transition-colors line-clamp-1">
+                        <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors line-clamp-2 leading-snug">
                           {job.title}
                         </h3>
 
-                        {/* Company Name + Badge */}
-                        <div className="flex items-center gap-1 flex-wrap">
-                          <Badge variant="secondary" className="text-[9px] py-0 px-1.5 h-4 bg-blue-100 text-blue-700 border-blue-200 font-medium">
-                            {job.jobType}
-                          </Badge>
-                          <span className="text-[10px] text-muted-foreground truncate">
+                        {/* Job Type Badge */}
+                        <Badge variant="secondary" className="text-xs py-0.5 px-2 bg-blue-100 text-blue-700 border-0 font-medium">
+                          {job.jobType}
+                        </Badge>
+
+                        {/* Company Name */}
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Building className="h-3.5 w-3.5 flex-shrink-0" />
+                          <span className="font-medium truncate">
                             {job.employerId?.profile?.employerProfile?.companyName || 'Kompani e panjohur'}
                           </span>
                           {job.employerId?.profile?.employerProfile?.verified && (
-                            <CheckCircle className="h-2.5 w-2.5 text-green-600 flex-shrink-0" />
+                            <CheckCircle className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
                           )}
                         </div>
 
-                        {/* Location & Salary in one line */}
-                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                          <div className="flex items-center gap-0.5">
-                            <MapPin className="h-2.5 w-2.5 flex-shrink-0" />
-                            <span className="truncate">
-                              {job.location?.city || 'N/A'}
+                        {/* Location */}
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
+                          <span className="truncate">
+                            {job.location?.city || 'Vendndodhje e panjohur'}
+                            {job.location?.region ? `, ${job.location.region}` : ''}
+                          </span>
+                        </div>
+
+                        {/* Salary */}
+                        {job.salary?.showPublic && job.formattedSalary && (
+                          <div className="flex items-center gap-1.5">
+                            <Euro className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
+                            <span className="font-semibold text-green-700 text-sm">
+                              {job.formattedSalary}
                             </span>
                           </div>
-                          {job.salary?.showPublic && job.formattedSalary && (
-                            <>
-                              <span>•</span>
-                              <div className="flex items-center gap-0.5">
-                                <Euro className="h-2.5 w-2.5 text-green-600 flex-shrink-0" />
-                                <span className="font-semibold text-green-700 text-[10px]">
-                                  {job.formattedSalary}
-                                </span>
-                              </div>
-                            </>
-                          )}
-                        </div>
+                        )}
                       </div>
 
                       {/* Right Side: Logo */}
-                      <div className="relative w-10 h-10 flex-shrink-0">
-                        <div className="w-10 h-10 bg-white ring-1 ring-blue-200 rounded flex items-center justify-center">
+                      <div className="relative w-16 h-16 flex-shrink-0">
+                        <div className="w-16 h-16 bg-white shadow-sm rounded-lg flex items-center justify-center">
                           {job.employerId?.profile?.employerProfile?.logo ? (
                             <img
                               src={job.employerId.profile.employerProfile.logo}
                               alt={`${job.employerId.profile.employerProfile.companyName} logo`}
-                              className="max-w-full max-h-full object-contain rounded p-1"
+                              className="max-w-full max-h-full object-contain rounded p-2"
                               onError={(e) => {
                                 const target = e.target as HTMLImageElement;
                                 target.style.display = 'none';
@@ -134,83 +135,15 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
                             />
                           ) : null}
                           <Building
-                            className={`h-6 w-6 text-primary ${job.employerId?.profile?.employerProfile?.logo ? 'hidden' : ''}`}
+                            className={`h-8 w-8 text-primary ${job.employerId?.profile?.employerProfile?.logo ? 'hidden' : ''}`}
                           />
                         </div>
                       </div>
                     </div>
 
-                    {/* Mobile Layout: Stacked for better readability */}
-                    <div className="flex sm:hidden flex-col space-y-1.5">
-                      {/* Top: Logo and Title */}
-                      <div className="flex items-start gap-2">
-                        <div className="relative w-12 h-12 flex-shrink-0">
-                          <div className="w-12 h-12 bg-white ring-1 ring-blue-200 rounded flex items-center justify-center">
-                            {job.employerId?.profile?.employerProfile?.logo ? (
-                              <img
-                                src={job.employerId.profile.employerProfile.logo}
-                                alt={`${job.employerId.profile.employerProfile.companyName} logo`}
-                                className="max-w-full max-h-full object-contain rounded p-1.5"
-                                onError={(e) => {
-                                  const target = e.target as HTMLImageElement;
-                                  target.style.display = 'none';
-                                  const fallback = target.nextElementSibling;
-                                  if (fallback) {
-                                    (fallback as HTMLElement).style.display = 'block';
-                                  }
-                                }}
-                              />
-                            ) : null}
-                            <Building
-                              className={`h-7 w-7 text-primary ${job.employerId?.profile?.employerProfile?.logo ? 'hidden' : ''}`}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex-1 min-w-0 space-y-1">
-                          <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors line-clamp-2 leading-tight">
-                            {job.title}
-                          </h3>
-                          <Badge variant="secondary" className="text-[9px] py-0 px-1.5 h-4 bg-blue-100 text-blue-700 border-blue-200 font-medium inline-block">
-                            {job.jobType}
-                          </Badge>
-                        </div>
-                      </div>
-
-                      {/* Bottom: Company, Location, Salary */}
-                      <div className="space-y-0.5 pl-14">
-                        <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                          <Building className="h-3 w-3 flex-shrink-0" />
-                          <span className="font-medium truncate">
-                            {job.employerId?.profile?.employerProfile?.companyName || 'Kompani e panjohur'}
-                          </span>
-                          {job.employerId?.profile?.employerProfile?.verified && (
-                            <CheckCircle className="h-3 w-3 text-green-600 flex-shrink-0" />
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                          <MapPin className="h-3 w-3 flex-shrink-0" />
-                          <span className="truncate">
-                            {job.location?.city || 'Vendndodhje e panjohur'}
-                            {job.location?.region ? `, ${job.location.region}` : ''}
-                          </span>
-                        </div>
-
-                        {job.salary?.showPublic && job.formattedSalary && (
-                          <div className="flex items-center gap-1">
-                            <Euro className="h-3 w-3 text-green-600 flex-shrink-0" />
-                            <span className="font-semibold text-green-700 text-[11px]">
-                              {job.formattedSalary}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Stats (Desktop & Mobile) */}
+                    {/* Stats */}
                     {(job.viewCount > 0 || job.applicationCount > 0) && (
-                      <div className="mt-1.5 pt-1.5 border-t border-blue-100 flex items-center gap-2 text-[9px] text-muted-foreground">
+                      <div className="mt-3 pt-3 border-t border-blue-100/50 flex items-center gap-3 text-xs text-muted-foreground">
                         {job.viewCount > 0 && (
                           <span>{job.viewCount} shikime</span>
                         )}
