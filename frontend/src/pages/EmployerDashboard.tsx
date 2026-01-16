@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
@@ -66,7 +66,8 @@ const EmployerDashboard = () => {
   const [isAnimating, setIsAnimating] = useState(false);
   const [isSpotlightAnimating, setIsSpotlightAnimating] = useState(false);
   const [lastClickTime, setLastClickTime] = useState(0);
-  const [isScrollLocked, setIsScrollLocked] = useState(false);
+  // Use ref to track scroll lock state - refs can be read synchronously by event listeners
+  const isScrollLockedRef = useRef(false);
   const [currentTab, setCurrentTab] = useState<'jobs' | 'applicants' | 'settings'>('jobs');
   
   // Pagination state
@@ -307,7 +308,7 @@ const EmployerDashboard = () => {
   const startTutorial = () => {
     setShowTutorial(true);
     setTutorialStep(0);
-    setIsScrollLocked(true);
+    isScrollLockedRef.current = true; // Lock scrolling using ref
     document.body.style.overflow = 'hidden';
     // Small delay to ensure DOM is ready
     setTimeout(() => {
@@ -349,7 +350,7 @@ const EmployerDashboard = () => {
     setIsAnimating(false);
     setIsSpotlightAnimating(false);
     setLastClickTime(0);
-    setIsScrollLocked(false);
+    isScrollLockedRef.current = false; // Unlock scrolling using ref
     document.body.style.overflow = 'auto';
   };
 
@@ -395,6 +396,42 @@ const EmployerDashboard = () => {
       window.removeEventListener('resize', handleResize);
     };
   }, [highlightedElement, showTutorial]);
+
+  // Proper scroll lock with event prevention (both desktop and mobile)
+  useEffect(() => {
+    if (!showTutorial) return;
+
+    // Prevent ALL user-initiated scrolling ONLY when scroll is locked
+    const preventScroll = (e: Event) => {
+      // Check the ref - if scrolling is allowed for tutorial animation, don't prevent
+      if (!isScrollLockedRef.current) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    };
+
+    const preventKeyScroll = (e: KeyboardEvent) => {
+      // Check the ref - if scrolling is allowed for tutorial animation, don't prevent
+      if (!isScrollLockedRef.current) return;
+
+      // Prevent arrow keys, page up/down, space, home, end from scrolling
+      if ([32, 33, 34, 35, 36, 37, 38, 39, 40].includes(e.keyCode)) {
+        e.preventDefault();
+      }
+    };
+
+    // Add listeners with { passive: false } to allow preventDefault
+    document.addEventListener('wheel', preventScroll, { passive: false });
+    document.addEventListener('touchmove', preventScroll, { passive: false });
+    document.addEventListener('keydown', preventKeyScroll, { passive: false });
+
+    return () => {
+      document.removeEventListener('wheel', preventScroll);
+      document.removeEventListener('touchmove', preventScroll);
+      document.removeEventListener('keydown', preventKeyScroll);
+    };
+  }, [showTutorial]);
 
   // Cleanup scroll lock on unmount
   useEffect(() => {
@@ -451,9 +488,10 @@ const EmployerDashboard = () => {
 
     // Only scroll if element is REALLY not visible or explicitly required
     if (!isVisible || step.shouldScroll) {
-      // Temporarily unlock scroll
+      // Unlock for tutorial scroll
+      isScrollLockedRef.current = false;
       document.body.style.overflow = 'auto';
-      
+
       // Special handling for mobile first step - minimal manual scroll
       if (isMobile && isFirstStep) {
         // Manual scroll - just scroll down by 250px
@@ -470,27 +508,28 @@ const EmployerDashboard = () => {
         } else {
           scrollBlock = 'nearest';
         }
-        
-        element.scrollIntoView({ 
-          behavior: 'smooth', 
+
+        element.scrollIntoView({
+          behavior: 'smooth',
           block: scrollBlock,
           inline: 'center'
         });
       }
-      
+
       // Shorter wait for scroll
       setTimeout(() => {
         const newRect = element.getBoundingClientRect();
         setHighlightedElement(element);
         setElementPosition(newRect);
-        
-        // Re-lock scroll
+
+        // Re-lock scroll after tutorial scroll completes
         document.body.style.overflow = 'hidden';
-        
+        isScrollLockedRef.current = true;
+
         // Start animations immediately
         setIsAnimating(true);
         setIsSpotlightAnimating(true);
-        
+
         setTimeout(() => {
           setIsAnimating(false);
           setIsSpotlightAnimating(false);
