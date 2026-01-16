@@ -130,7 +130,7 @@ const jobSchema = new Schema({
   // Posting Details
   status: {
     type: String,
-    enum: ['active', 'paused', 'closed', 'draft', 'expired'],
+    enum: ['active', 'paused', 'closed', 'draft', 'expired', 'pending_payment'],
     default: 'active'
   },
   tier: {
@@ -390,14 +390,14 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
     query.$text = { $search: searchQuery };
   }
 
-  // Location filter
+  // Location filter (OR logic for multiple cities)
   if (filters.city) {
-    query['location.city'] = filters.city;
+    query['location.city'] = Array.isArray(filters.city) ? { $in: filters.city } : filters.city;
   }
 
-  // Job type filter
+  // Job type filter (OR logic - match ANY of the selected job types)
   if (filters.jobType) {
-    query.jobType = filters.jobType;
+    query.jobType = Array.isArray(filters.jobType) ? { $in: filters.jobType } : filters.jobType;
   }
 
   // Category filter

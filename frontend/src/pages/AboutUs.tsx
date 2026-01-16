@@ -193,7 +193,8 @@ const AboutUs = () => {
 
           <div className="grid md:grid-cols-3 gap-8 mb-12">
             {/* Full Account */}
-            <Card className="p-6 bg-background border-2 hover:border-primary/60 transition-all duration-300 hover:shadow-lg">
+            <Link to="/login?tab=register&type=jobseeker">
+            <Card className="p-6 bg-background border-2 hover:border-primary/60 transition-all duration-300 hover:shadow-lg cursor-pointer">
               <CardContent className="space-y-4 p-0">
                 <div className="bg-primary/10 p-4 rounded-full w-16 h-16 mx-auto flex items-center justify-center">
                   <UserCheck className="h-8 w-8 text-primary" />
@@ -222,9 +223,11 @@ const AboutUs = () => {
                 </div>
               </CardContent>
             </Card>
+            </Link>
 
             {/* Flexible Application */}
-            <Card className="p-6 bg-background border-2 hover:border-primary/60 transition-all duration-300 hover:shadow-lg">
+            <Link to="/login?tab=register&type=jobseeker">
+            <Card className="p-6 bg-background border-2 hover:border-primary/60 transition-all duration-300 hover:shadow-lg cursor-pointer">
               <CardContent className="space-y-4 p-0">
                 <div className="bg-orange-500/10 p-4 rounded-full w-16 h-16 mx-auto flex items-center justify-center">
                   <Zap className="h-8 w-8 text-orange-600" />
@@ -253,9 +256,11 @@ const AboutUs = () => {
                 </div>
               </CardContent>
             </Card>
+            </Link>
 
             {/* Quick Profile */}
-            <Card className="p-6 bg-background border-2 hover:border-primary/60 transition-all duration-300 hover:shadow-lg">
+            <Link to="/jobseekers">
+            <Card className="p-6 bg-background border-2 hover:border-primary/60 transition-all duration-300 hover:shadow-lg cursor-pointer">
               <CardContent className="space-y-4 p-0">
                 <div className="bg-green-500/10 p-4 rounded-full w-16 h-16 mx-auto flex items-center justify-center">
                   <Bell className="h-8 w-8 text-green-600" />
@@ -284,6 +289,7 @@ const AboutUs = () => {
                 </div>
               </CardContent>
             </Card>
+            </Link>
           </div>
 
           {/* AI CV Generation CTA */}

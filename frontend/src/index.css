@@ -113,4 +113,8 @@ All colors MUST be HSL.
   body {
     @apply bg-background text-foreground;
   }
+
+  html {
+    overflow-y: scroll; /* Prevent layout shift from scrollbar appearing/disappearing */
+  }
 }

@@ -112,9 +112,24 @@ router.get('/', optionalAuth, async (req, res) => {
     // Build search filters
     const filters = {};
 
-    if (city) filters.city = city;
+    // City filter with OR logic (comma-separated)
+    if (city) {
+      const cities = city.split(',').map(c => c.trim()).filter(Boolean);
+      if (cities.length > 0) {
+        filters.city = cities; // Pass array for OR logic
+      }
+    }
+
     if (category) filters.category = category;
-    if (jobType) filters.jobType = jobType;
+
+    // JobType filter (comma-separated - OR logic via $in)
+    if (jobType) {
+      const jobTypes = jobType.split(',').map(t => t.trim()).filter(Boolean);
+      if (jobTypes.length > 0) {
+        filters.jobType = jobTypes; // Pass array for OR logic ($in)
+      }
+    }
+
     if (minSalary) filters.minSalary = parseInt(minSalary);
     if (maxSalary) filters.maxSalary = parseInt(maxSalary);
     // Only add company filter if it's a valid ObjectId
@@ -192,12 +207,12 @@ router.get('/', optionalAuth, async (req, res) => {
       // status: 'active',  // Temporarily disabled
       // expiresAt: { $gt: new Date() },  // Temporarily disabled
       ...(search && { $text: { $search: search } }),
-      ...(city && { 'location.city': city }),
+      ...(city && { 'location.city': Array.isArray(filters.city) ? { $in: filters.city } : city }),
       ...(category && { category }),
-      ...(jobType && { jobType }),
+      ...(jobType && { jobType: Array.isArray(filters.jobType) ? { $in: filters.jobType } : jobType }),
       ...(company && mongoose.Types.ObjectId.isValid(company) && { employerId: company }),
       ...(diaspora === 'true' && { 'platformCategories.diaspora': true }),
-      ...(ngaShtepia === 'true' && { 'platformCategories.ngaShtepία': true }),
+      ...(ngaShtepia === 'true' && { 'platformCategories.ngaShtepia': true }),
       ...(partTime === 'true' && { 'platformCategories.partTime': true }),
       ...(administrata === 'true' && { 'platformCategories.administrata': true }),
       ...(sezonale === 'true' && { 'platformCategories.sezonale': true })

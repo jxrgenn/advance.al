@@ -8,7 +8,6 @@ import { Notifications } from '@mantine/notifications';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
 import Index from "./pages/Index";
-import Jobs from "./pages/Jobs";
 import JobDetail from "./pages/JobDetail";
 import Login from "./pages/Login";
 import EmployerDashboard from "./pages/EmployerDashboard";
@@ -39,7 +38,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
-            <Route path="/jobs" element={<Jobs />} />
+            <Route path="/jobs" element={<Index />} />
             <Route path="/jobs/:id" element={<JobDetail />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Login />} />

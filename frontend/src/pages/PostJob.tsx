@@ -613,15 +613,6 @@ const PostJob = () => {
   }, [tutorialStep]);
 
   const closeTutorial = () => {
-    // Save progress for the current form step before closing
-    const currentTutorialFormStep = tutorialSteps[tutorialStep]?.formStep;
-    if (currentTutorialFormStep !== undefined) {
-      setTutorialStepsByFormStep(prev => ({
-        ...prev,
-        [currentTutorialFormStep]: tutorialStep
-      }));
-    }
-
     setShowTutorial(false);
     setTutorialStep(0);
     setHighlightedElement(null);
@@ -631,8 +622,9 @@ const PostJob = () => {
     setIsSpotlightAnimating(false);
     setLastClickTime(0);
     setIsScrollLocked(false);
-    setHasScrolledOnDesktop(false); // Reset on close
-    setLastScrolledFormStep(null); // Reset on close
+    setHasScrolledOnDesktop(false);
+    setLastScrolledFormStep(null);
+    setTutorialStepsByFormStep({}); // Clear progress so tutorial restarts from beginning
     // Unlock scroll on body
     document.body.style.overflow = 'auto';
   };
@@ -744,10 +736,39 @@ const PostJob = () => {
         }, 400);
         return;
       } else {
-        // Desktop: Within same form step, NEVER scroll - just highlight (no jitter!)
+        // Desktop: Within same form step, check if element is visible
+        const isVisible = rect.top >= 60 && rect.bottom <= viewportHeight - 60;
+
+        if (!isVisible) {
+          // Element not visible, scroll to it first
+          document.body.style.overflow = 'auto';
+
+          element.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+            inline: 'center'
+          });
+
+          setTimeout(() => {
+            const newRect = element.getBoundingClientRect();
+            setHighlightedElement(element);
+            setElementPosition(newRect);
+            document.body.style.overflow = 'hidden';
+
+            setIsAnimating(true);
+            setIsSpotlightAnimating(true);
+            setTimeout(() => {
+              setIsAnimating(false);
+              setIsSpotlightAnimating(false);
+            }, 400);
+          }, 400);
+          return;
+        }
+
+        // Element visible, highlight immediately
         setHighlightedElement(element);
         setElementPosition(rect);
-        
+
         setIsAnimating(true);
         setIsSpotlightAnimating(true);
         setTimeout(() => {

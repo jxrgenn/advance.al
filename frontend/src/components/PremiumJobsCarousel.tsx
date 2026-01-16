@@ -58,25 +58,25 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
       </div>
 
       {/* Carousel Container */}
-      <div className="relative px-4">
+      <div className="relative px-2 md:px-4">
         <div className="overflow-hidden py-2" ref={emblaRef}>
-          <div className="flex -ml-3 md:-ml-4">
+          <div className="flex -ml-2 md:-ml-4">
             {premiumJobs.map((job) => (
               <div
                 key={job._id}
-                className="flex-[0_0_50%] min-w-0 pl-3 md:pl-4 lg:flex-[0_0_33.333%]"
+                className="flex-[0_0_100%] min-w-0 pl-2 md:flex-[0_0_50%] md:pl-4 lg:flex-[0_0_33.333%]"
               >
                 <Card
-                  className="group hover:shadow-lg transition-all duration-300 cursor-pointer border-0 shadow-sm hover:shadow-xl bg-gradient-to-br from-blue-50/40 via-card to-blue-50/20 h-full"
+                  className="group hover:shadow-lg transition-all duration-300 cursor-pointer border-0 shadow-sm hover:shadow-xl bg-gradient-to-br from-blue-50/40 via-white to-blue-50/20 h-full"
                   onClick={() => navigate(`/jobs/${job._id}`)}
                 >
                   <CardContent className="p-3 md:p-4">
                     {/* Main Layout: Content Left, Logo Right */}
                     <div className="flex items-start gap-3">
                       {/* Left Side: Job Information */}
-                      <div className="flex-1 min-w-0 space-y-2">
+                      <div className="flex-1 min-w-0 space-y-1.5 md:space-y-2">
                         {/* Job Title */}
-                        <h3 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors line-clamp-2 leading-snug">
+                        <h3 className="text-base md:text-sm font-bold text-foreground group-hover:text-primary transition-colors line-clamp-2 leading-tight">
                           {job.title}
                         </h3>
 
@@ -89,7 +89,7 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                           <Building className="h-3.5 w-3.5 flex-shrink-0" />
                           <span className="font-medium truncate">
-                            {job.employerId?.profile?.employerProfile?.companyName || 'Kompani e panjohur'}
+                            {job.employerId?.profile?.employerProfile?.companyName || 'Kompani'}
                           </span>
                           {job.employerId?.profile?.employerProfile?.verified && (
                             <CheckCircle className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
@@ -100,8 +100,7 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
                         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                           <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
                           <span className="truncate">
-                            {job.location?.city || 'Vendndodhje e panjohur'}
-                            {job.location?.region ? `, ${job.location.region}` : ''}
+                            {job.location?.city || 'Vendndodhje'}
                           </span>
                         </div>
 
@@ -117,8 +116,8 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
                       </div>
 
                       {/* Right Side: Logo */}
-                      <div className="relative w-16 h-16 flex-shrink-0">
-                        <div className="w-16 h-16 bg-white shadow-sm rounded-lg flex items-center justify-center">
+                      <div className="relative w-14 h-14 md:w-16 md:h-16 flex-shrink-0">
+                        <div className="w-14 h-14 md:w-16 md:h-16 bg-white shadow-sm rounded-lg flex items-center justify-center">
                           {job.employerId?.profile?.employerProfile?.logo ? (
                             <img
                               src={job.employerId.profile.employerProfile.logo}
@@ -135,15 +134,15 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
                             />
                           ) : null}
                           <Building
-                            className={`h-8 w-8 text-primary ${job.employerId?.profile?.employerProfile?.logo ? 'hidden' : ''}`}
+                            className={`h-6 w-6 md:h-8 md:w-8 text-primary ${job.employerId?.profile?.employerProfile?.logo ? 'hidden' : ''}`}
                           />
                         </div>
                       </div>
                     </div>
 
-                    {/* Stats */}
+                    {/* Stats - Hidden on mobile */}
                     {(job.viewCount > 0 || job.applicationCount > 0) && (
-                      <div className="mt-3 pt-3 border-t border-blue-100/50 flex items-center gap-3 text-xs text-muted-foreground">
+                      <div className="hidden md:flex mt-3 pt-3 border-t border-blue-100/50 items-center gap-3 text-xs text-muted-foreground">
                         {job.viewCount > 0 && (
                           <span>{job.viewCount} shikime</span>
                         )}

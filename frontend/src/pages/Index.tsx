@@ -29,7 +29,7 @@ const Index = () => {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
-  const [selectedRemoteType, setSelectedRemoteType] = useState("");
+  const [selectedJobTypes, setSelectedJobTypes] = useState<string[]>([]);
   const [selectedType, setSelectedType] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
@@ -103,7 +103,7 @@ const Index = () => {
     }, searchQuery.length >= 2 ? 300 : 0); // Faster debounce for better UX
 
     return () => clearTimeout(debounceTimeout);
-  }, [searchQuery, selectedLocations, selectedRemoteType, selectedType, advancedFilters, coreFilters]);
+  }, [searchQuery, selectedLocations, selectedJobTypes, selectedType, advancedFilters, coreFilters]);
 
   const loadJobs = async (page = 1, isSearch = false) => {
     try {
@@ -118,8 +118,7 @@ const Index = () => {
       const queryParams: any = {
         search: searchQuery || undefined,
         city: selectedLocations.length > 0 ? selectedLocations.join(',') : undefined,
-        remoteType: selectedRemoteType || undefined,
-        jobType: selectedType || undefined,
+        jobType: selectedJobTypes.length > 0 ? selectedJobTypes.join(',') : undefined,
         page,
         limit: 10
       };
@@ -315,7 +314,7 @@ const Index = () => {
   const clearFilters = () => {
     setSearchQuery("");
     setSelectedLocations([]);
-    setSelectedRemoteType("");
+    setSelectedJobTypes([]);
     setSelectedType("");
     setCoreFilters({
       diaspora: false,
@@ -360,7 +359,7 @@ const Index = () => {
       sezonale: false
     });
     setSelectedLocations([]);
-    setSelectedRemoteType('');
+    setSelectedJobTypes([]);
     setSelectedType('');
     setSearchQuery('');
 
@@ -385,7 +384,7 @@ const Index = () => {
   // Merge recommendations with regular jobs intelligently
   const getMergedJobs = () => {
     const recommendationIds = new Set(recommendations.map(job => job._id));
-    const hasActiveFilters = searchQuery || selectedLocations.length > 0 || selectedRemoteType || selectedType ||
+    const hasActiveFilters = searchQuery || selectedLocations.length > 0 || selectedJobTypes.length > 0 || selectedType ||
       Object.values(coreFilters).some(Boolean) ||
       advancedFilters.company ||
       advancedFilters.experience ||
@@ -418,7 +417,7 @@ const Index = () => {
 
       <div className="container py-8 pt-24">
         {/* Premium Jobs Carousel - Full width, above heading */}
-        {!loading && !searchQuery && selectedLocations.length === 0 && !selectedRemoteType && !selectedType && (
+        {!loading && !searchQuery && selectedLocations.length === 0 && selectedJobTypes.length === 0 && !selectedType && (
           <div className="mb-8">
             <PremiumJobsCarousel jobs={jobs} />
           </div>
@@ -482,17 +481,30 @@ const Index = () => {
                   </SelectContent>
                 </Select>
 
-                {/* Remote Type Dropdown */}
-                <Select value={selectedRemoteType || ""} onValueChange={(value) => setSelectedRemoteType(value === "_none_" ? "" : value)}>
+                {/* Job Type Multi-Select Dropdown */}
+                <Select
+                  value={selectedJobTypes.length === 1 ? selectedJobTypes[0] : selectedJobTypes.length > 1 ? "_multiple_" : ""}
+                  onValueChange={(value) => {
+                    if (value === "_all_") {
+                      setSelectedJobTypes([]);
+                    } else if (value) {
+                      setSelectedJobTypes(selectedJobTypes.includes(value)
+                        ? selectedJobTypes.filter(t => t !== value)
+                        : [...selectedJobTypes, value]
+                      );
+                    }
+                  }}
+                >
                   <SelectTrigger className="w-[180px]">
                     <Briefcase className="mr-2 h-4 w-4" />
-                    <SelectValue placeholder="Lloji i punës" />
+                    <SelectValue placeholder={selectedJobTypes.length > 0 ? `${selectedJobTypes.length} lloje` : "Lloji i punës"} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="_none_">Të gjitha llojet</SelectItem>
-                    <SelectItem value="full">Plotësisht nga shtëpia</SelectItem>
-                    <SelectItem value="hybrid">Hibride</SelectItem>
-                    <SelectItem value="none">Në zyrë</SelectItem>
+                    <SelectItem value="_all_">Të gjitha llojet</SelectItem>
+                    <SelectItem value="full-time">Full-time</SelectItem>
+                    <SelectItem value="part-time">Part-time</SelectItem>
+                    <SelectItem value="contract">Kontratë</SelectItem>
+                    <SelectItem value="internship">Praktikë</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -520,57 +532,61 @@ const Index = () => {
           {/* Main Content - Job Listings (60%) */}
           <div className="lg:col-span-6">
             {/* Recently Viewed Jobs - Show when not filtering and user is authenticated */}
-            {!loading && !searchQuery && selectedLocations.length === 0 && !selectedRemoteType && !selectedType && !Object.values(coreFilters).some(Boolean) && isAuthenticated && (
+            {!loading && !searchQuery && selectedLocations.length === 0 && selectedJobTypes.length === 0 && !selectedType && !Object.values(coreFilters).some(Boolean) && isAuthenticated && (
               <RecentlyViewedJobs className="mb-6" limit={4} />
             )}
 
             {/* Active Filters */}
-            {(selectedLocations.length > 0 || selectedRemoteType || selectedType || Object.values(coreFilters).some(Boolean)) && (
-          <div className="flex items-center gap-2 mb-6">
+            {(selectedLocations.length > 0 || selectedJobTypes.length > 0 || selectedType || Object.values(coreFilters).some(Boolean)) && (
+          <div className="flex items-center gap-2 mb-6 flex-wrap">
             <span className="text-sm text-muted-foreground">Filtrat aktive:</span>
             {selectedLocations.map((city) => (
               <Badge
                 key={city}
-                variant="secondary"
-                className="cursor-pointer"
+                className="cursor-pointer bg-blue-100 text-blue-800 hover:bg-blue-200"
                 onClick={() => setSelectedLocations(selectedLocations.filter(c => c !== city))}
               >
                 {city} ×
               </Badge>
             ))}
-            {selectedRemoteType && (
-              <Badge variant="secondary" className="cursor-pointer" onClick={() => setSelectedRemoteType("")}>
-                {selectedRemoteType === 'full' ? 'Plotësisht nga shtëpia' :
-                 selectedRemoteType === 'hybrid' ? 'Hibride' : 'Në zyrë'} ×
+            {selectedJobTypes.map((jobType) => (
+              <Badge
+                key={jobType}
+                className="cursor-pointer bg-green-100 text-green-800 hover:bg-green-200"
+                onClick={() => setSelectedJobTypes(selectedJobTypes.filter(t => t !== jobType))}
+              >
+                {jobType === 'full-time' ? 'Full-time' :
+                 jobType === 'part-time' ? 'Part-time' :
+                 jobType === 'contract' ? 'Kontratë' : 'Praktikë'} ×
               </Badge>
-            )}
+            ))}
             {selectedType && (
-              <Badge variant="secondary" className="cursor-pointer" onClick={() => setSelectedType("")}>
+              <Badge className="cursor-pointer bg-purple-100 text-purple-800 hover:bg-purple-200" onClick={() => setSelectedType("")}>
                 {selectedType} ×
               </Badge>
             )}
             {coreFilters.diaspora && (
-              <Badge variant="secondary" className="cursor-pointer" onClick={() => handleCoreFilterChange('diaspora', false)}>
+              <Badge className="cursor-pointer bg-orange-100 text-orange-800 hover:bg-orange-200" onClick={() => handleCoreFilterChange('diaspora', false)}>
                 Diaspora ×
               </Badge>
             )}
             {coreFilters.ngaShtepia && (
-              <Badge variant="secondary" className="cursor-pointer" onClick={() => handleCoreFilterChange('ngaShtepia', false)}>
+              <Badge className="cursor-pointer bg-indigo-100 text-indigo-800 hover:bg-indigo-200" onClick={() => handleCoreFilterChange('ngaShtepia', false)}>
                 Nga shtëpia ×
               </Badge>
             )}
             {coreFilters.partTime && (
-              <Badge variant="secondary" className="cursor-pointer" onClick={() => handleCoreFilterChange('partTime', false)}>
+              <Badge className="cursor-pointer bg-pink-100 text-pink-800 hover:bg-pink-200" onClick={() => handleCoreFilterChange('partTime', false)}>
                 Part Time ×
               </Badge>
             )}
             {coreFilters.administrata && (
-              <Badge variant="secondary" className="cursor-pointer" onClick={() => handleCoreFilterChange('administrata', false)}>
+              <Badge className="cursor-pointer bg-yellow-100 text-yellow-800 hover:bg-yellow-200" onClick={() => handleCoreFilterChange('administrata', false)}>
                 Administrata ×
               </Badge>
             )}
             {coreFilters.sezonale && (
-              <Badge variant="secondary" className="cursor-pointer" onClick={() => handleCoreFilterChange('sezonale', false)}>
+              <Badge className="cursor-pointer bg-teal-100 text-teal-800 hover:bg-teal-200" onClick={() => handleCoreFilterChange('sezonale', false)}>
                 Sezonale ×
               </Badge>
             )}
@@ -614,7 +630,7 @@ const Index = () => {
                     <p className="text-muted-foreground mb-4">
                       Provo të ndryshosh kriteret e kërkimit
                     </p>
-                    {(selectedLocations.length > 0 || selectedRemoteType || selectedType || searchQuery || Object.values(coreFilters).some(Boolean)) && (
+                    {(selectedLocations.length > 0 || selectedJobTypes.length > 0 || selectedType || searchQuery || Object.values(coreFilters).some(Boolean)) && (
                       <Button onClick={clearFilters} variant="outline">
                         Pastro filtrat
                       </Button>
