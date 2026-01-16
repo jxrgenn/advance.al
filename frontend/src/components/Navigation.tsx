@@ -159,7 +159,7 @@ const Navigation = () => {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-[9998] w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center justify-between">
+      <div className="container relative flex h-16 items-center justify-between">
         <Link to="/" className="flex items-center">
           <img
             src={logo}
@@ -167,8 +167,8 @@ const Navigation = () => {
             className="h-12 w-12 object-contain"
           />
         </Link>
-        
-        <div className="hidden md:flex items-center space-x-6">
+
+        <div className="hidden md:flex items-center space-x-6 absolute left-1/2 -translate-x-1/2">
           <Link
             to="/about"
             className={`text-sm font-medium transition-colors hover:text-primary ${
