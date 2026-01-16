@@ -123,9 +123,9 @@ All colors MUST be HSL.
     @apply px-4 sm:px-6 lg:px-8;
   }
 
-  /* Consistent page top padding to account for fixed navigation */
+  /* Minimal page top padding - individual pages handle their own spacing */
   main {
-    @apply pt-20;
+    @apply pt-4;
   }
 
   /* Consistent card spacing */

@@ -321,25 +321,25 @@ const CompaniesPage = () => {
 
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {companies.map((company) => (
-                  <Card key={company._id} className="p-6 hover:border-primary/50 transition-all duration-300 cursor-pointer">
-                    <CardContent className="space-y-4 p-0">
+                  <Card key={company._id} className="p-4 md:p-6 hover:border-primary/50 transition-all duration-300 cursor-pointer">
+                    <CardContent className="space-y-3 md:space-y-4 p-0">
                       {/* Company Header */}
-                      <div className="flex items-start space-x-4">
-                        <div className="bg-primary/10 p-3 rounded-lg w-16 h-16 flex items-center justify-center">
-                          <Building className="h-8 w-8 text-primary" />
+                      <div className="flex items-start space-x-3">
+                        <div className="bg-primary/10 p-2 rounded-lg w-12 h-12 md:w-16 md:h-16 flex items-center justify-center flex-shrink-0">
+                          <Building className="h-6 w-6 md:h-8 md:w-8 text-primary" />
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center space-x-2 mb-1">
-                            <h3 className="text-lg font-semibold">
+                            <h3 className="text-base md:text-lg font-semibold truncate">
                               {company.name}
                             </h3>
                             {company.verified && (
-                              <CheckCircle className="h-5 w-5 text-green-600" />
+                              <CheckCircle className="h-4 w-4 md:h-5 md:w-5 text-green-600 flex-shrink-0" />
                             )}
                           </div>
-                          <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                            <MapPin className="h-4 w-4" />
-                            <span>{company.city}</span>
+                          <div className="flex items-center space-x-2 text-xs md:text-sm text-muted-foreground">
+                            <MapPin className="h-3 w-3 md:h-4 md:w-4 flex-shrink-0" />
+                            <span className="truncate">{company.city}</span>
                           </div>
                         </div>
                       </div>
@@ -380,19 +380,19 @@ const CompaniesPage = () => {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex space-x-2 pt-4">
+                      <div className="flex space-x-2 pt-3 md:pt-4">
                         <Dialog>
                           <DialogTrigger asChild>
                             <Button
                               variant="outline"
                               size="sm"
-                              className="flex-1"
+                              className="flex-1 text-xs md:text-sm h-8 md:h-9"
                               onClick={() => {
                                 setSelectedCompany(company);
                                 loadCompanyJobs(company._id);
                               }}
                             >
-                              Shiko Profilin
+                              Shiko Profilit
                             </Button>
                           </DialogTrigger>
                           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">

@@ -278,12 +278,20 @@ const JobDetail = () => {
 
   // Tutorial functions
   const startTutorial = () => {
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+    document.body.style.height = '100%';
     setShowTutorial(true);
     setTutorialStep(0);
     setTimeout(() => highlightElement(0), 100);
   };
 
   const closeTutorial = () => {
+    document.body.style.overflow = '';
+    document.body.style.position = '';
+    document.body.style.width = '';
+    document.body.style.height = '';
     setShowTutorial(false);
     setTutorialStep(0);
     setHighlightedElement(null);

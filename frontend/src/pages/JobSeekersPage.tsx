@@ -701,7 +701,18 @@ const JobSeekersPage = () => {
                 radius="md"
                 withBorder
                 className={`flex flex-col cursor-pointer transition-all duration-200 ${showQuickForm ? 'border-blue-500 ring-2 ring-blue-500 ring-opacity-50 bg-blue-50/20' : 'hover:border-blue-300'}`}
-                onClick={() => { setShowQuickForm(true); }}
+                onClick={() => {
+                  setShowQuickForm(true);
+                  // Scroll to form on mobile
+                  if (window.innerWidth < 768) {
+                    setTimeout(() => {
+                      const formElement = document.querySelector('[data-tutorial="quick-name"]');
+                      if (formElement) {
+                        formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }, 100);
+                  }
+                }}
               >
                 <Group justify="space-between" mb="md">
                   <ThemeIcon size={50} radius="md" color="blue" variant="light">
@@ -740,7 +751,18 @@ const JobSeekersPage = () => {
                 radius="md"
                 withBorder
                 className={`flex flex-col cursor-pointer transition-all duration-200 ${!showQuickForm ? 'border-blue-500 ring-2 ring-blue-500 ring-opacity-50 bg-blue-50/20' : 'hover:border-blue-300'}`}
-                onClick={() => { setShowQuickForm(false); }}
+                onClick={() => {
+                  setShowQuickForm(false);
+                  // Scroll to form on mobile
+                  if (window.innerWidth < 768) {
+                    setTimeout(() => {
+                      const formElement = document.querySelector('[data-tutorial="firstName"]');
+                      if (formElement) {
+                        formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }, 100);
+                  }
+                }}
               >
                 <Group justify="space-between" mb="md">
                   <ThemeIcon size={50} radius="md" color="blue" variant="filled">
