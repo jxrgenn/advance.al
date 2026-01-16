@@ -205,7 +205,7 @@ const JobDetail = () => {
   const handleSendContact = () => {
     if (!job || !contactType) return;
 
-    const phoneNumber = job.employerId?.profile?.employerProfile?.phone || job.employerId?.profile?.phone;
+    const phoneNumber = job.employerId?.profile?.employerProfile?.phone || job.employerId?.profile?.employerProfile?.whatsapp;
     const employerEmail = job.employerId?.email;
 
     if (contactType === 'email' && employerEmail) {
@@ -773,13 +773,6 @@ const JobDetail = () => {
             <Card className="border-border/50" data-tutorial="contact-options">
               <CardContent className="p-6">
                 <h2 className="text-xl font-semibold text-foreground mb-4">Ose kontakto direkt:</h2>
-                {/* DEBUG LOGGING */}
-                {console.log('DEBUG JOB CONTACT:', {
-                  employerId: job.employerId,
-                  email: job.employerId?.email,
-                  profile: job.employerId?.profile,
-                  phone: job.employerId?.profile?.phone
-                })}
                 <div className="grid md:grid-cols-3 gap-4">
                   {/* Email Button */}
                   {job.employerId?.email && (
@@ -795,13 +788,13 @@ const JobDetail = () => {
                   )}
 
                   {/* WhatsApp Button */}
-                  {job.employerId?.profile?.phone && (
+                  {(job.employerId?.profile?.employerProfile?.phone || job.employerId?.profile?.employerProfile?.whatsapp) && (
                     <Button
                       variant="outline"
                       size="lg"
                       className="text-base py-6 hover:bg-green-50 hover:border-green-300 border-2"
                       onClick={() => {
-                        const phoneNumber = job.employerId?.profile?.phone;
+                        const phoneNumber = job.employerId?.profile?.employerProfile?.phone || job.employerId?.profile?.employerProfile?.whatsapp;
                         if (phoneNumber) {
                           openContactModal('whatsapp', phoneNumber);
                         }
@@ -813,13 +806,13 @@ const JobDetail = () => {
                   )}
 
                   {/* Phone Button */}
-                  {job.employerId?.profile?.phone && (
+                  {job.employerId?.profile?.employerProfile?.phone && (
                     <Button
                       variant="outline"
                       size="lg"
                       className="text-base py-6 hover:bg-blue-50 hover:border-blue-300 border-2"
                       onClick={() => {
-                        const phoneNumber = job.employerId?.profile?.phone;
+                        const phoneNumber = job.employerId?.profile?.employerProfile?.phone;
                         if (phoneNumber) {
                           openContactModal('phone', phoneNumber);
                         }

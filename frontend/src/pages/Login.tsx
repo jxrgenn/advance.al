@@ -175,13 +175,19 @@ const Login = () => {
                       {(isSubmitting || isLoading) ? "Duke u kyçur..." : "Kyçu"}
                     </Button>
                   </form>
-                  <div className="mt-4 text-center text-sm">
-                    <span className="text-muted-foreground">Nuk ke llogari? </span>
-                    <Link to="/register" className="text-primary hover:underline">
-                      Regjistrohu
-                    </Link>
+                  <div className="mt-4 text-center text-sm space-y-2">
+                    <p className="text-muted-foreground">Nuk ke llogari? Regjistrohu si:</p>
+                    <div className="flex items-center justify-center gap-4">
+                      <Link to="/jobseekers" className="text-primary hover:underline font-medium">
+                        Punëkërkues
+                      </Link>
+                      <span className="text-muted-foreground">|</span>
+                      <Link to="/employers" className="text-primary hover:underline font-medium">
+                        Punëdhënës
+                      </Link>
+                    </div>
                   </div>
-                  <div className="mt-2 text-center">
+                  <div className="mt-3 text-center">
                     <Link to="/forgot-password" className="text-sm text-muted-foreground hover:text-primary">
                       Ke harruar fjalëkalimin?
                     </Link>
@@ -238,7 +244,19 @@ const Login = () => {
                       {(isSubmitting || isLoading) ? "Duke u kyçur..." : "Kyçu"}
                     </Button>
                   </form>
-                  <div className="mt-4 text-center">
+                  <div className="mt-4 text-center text-sm space-y-2">
+                    <p className="text-muted-foreground">Nuk ke llogari? Regjistrohu si:</p>
+                    <div className="flex items-center justify-center gap-4">
+                      <Link to="/jobseekers" className="text-primary hover:underline font-medium">
+                        Punëkërkues
+                      </Link>
+                      <span className="text-muted-foreground">|</span>
+                      <Link to="/employers" className="text-primary hover:underline font-medium">
+                        Punëdhënës
+                      </Link>
+                    </div>
+                  </div>
+                  <div className="mt-3 text-center">
                     <Link to="/forgot-password" className="text-sm text-muted-foreground hover:text-primary">
                       Ke harruar fjalëkalimin?
                     </Link>
