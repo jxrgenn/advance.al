@@ -119,12 +119,6 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false }: Jo
           <Badge variant="outline" className="text-xs px-2 py-1 bg-background/80 backdrop-blur-sm border-primary/20 text-foreground font-medium">
             {job.jobType}
           </Badge>
-          {isRecommended && (
-            <Badge variant="default" className="bg-yellow-500 hover:bg-yellow-600 text-white border-yellow-500 text-xs px-1.5 py-0.5 sm:px-2 sm:py-1">
-              <Sparkles className="h-3 w-3 mr-1" />
-              <span className="hidden sm:inline">Rekomanduar</span>
-            </Badge>
-          )}
         </div>
 
         {/* Main Layout: Content Left, Logo Right */}
