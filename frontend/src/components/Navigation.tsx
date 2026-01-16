@@ -178,7 +178,7 @@ const Navigation = () => {
             Kompanite
           </Link>
           <Button size="sm" variant="default" asChild>
-            <Link to="/post-job">
+            <Link to="/employers">
               <Building className="mr-1 h-4 w-4" />
               Publiko Njoftimin
             </Link>
@@ -431,7 +431,7 @@ loadNotifications();
             </Link>
             <div className="pt-2">
               <Button size="sm" variant="default" className="w-full" asChild>
-                <Link to="/post-job" onClick={() => setMobileMenuOpen(false)}>
+                <Link to="/employers" onClick={() => setMobileMenuOpen(false)}>
                   <Building className="mr-2 h-4 w-4" />
                   Publiko Njoftimin
                 </Link>

@@ -604,7 +604,7 @@ const JobDetail = () => {
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
             {/* Tutorial Help Button */}
-            {!showTutorial && user && user.userType === 'jobseeker' && (
+            {!showTutorial && (
               <Card className="border-blue-200 bg-blue-50/50">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">

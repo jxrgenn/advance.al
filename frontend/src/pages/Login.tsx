@@ -238,13 +238,7 @@ const Login = () => {
                       {(isSubmitting || isLoading) ? "Duke u kyçur..." : "Kyçu"}
                     </Button>
                   </form>
-                  <div className="mt-4 text-center text-sm">
-                    <span className="text-muted-foreground">Kompani e re? </span>
-                    <Link to="/employer-register" className="text-primary hover:underline">
-                      Regjistro kompaniën
-                    </Link>
-                  </div>
-                  <div className="mt-2 text-center">
+                  <div className="mt-4 text-center">
                     <Link to="/forgot-password" className="text-sm text-muted-foreground hover:text-primary">
                       Ke harruar fjalëkalimin?
                     </Link>
