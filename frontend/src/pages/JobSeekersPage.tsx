@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
@@ -48,8 +48,10 @@ const JobSeekersPage = () => {
   const [isAnimating, setIsAnimating] = useState(false);
   const [isSpotlightAnimating, setIsSpotlightAnimating] = useState(false);
   const [lastClickTime, setLastClickTime] = useState(0);
-  const [isScrollLocked, setIsScrollLocked] = useState(false);
   const [hasScrolledOnDesktop, setHasScrolledOnDesktop] = useState(false); // Track initial desktop scroll
+
+  // Use ref to track scroll lock state - refs can be read synchronously by event listeners
+  const isScrollLockedRef = useRef(false);
 
   // Mantine form for full registration
   const fullForm = useForm({
@@ -249,7 +251,7 @@ const JobSeekersPage = () => {
   const startTutorial = () => {
     setShowTutorial(true);
     setTutorialStep(0);
-    setIsScrollLocked(true);
+    isScrollLockedRef.current = true; // Lock scrolling using ref
     // Lock scroll on body - essential to prevent user scrolling during tutorial
     document.body.style.overflow = 'hidden';
     highlightElement(0);
@@ -290,7 +292,7 @@ const JobSeekersPage = () => {
     setIsAnimating(false);
     setIsSpotlightAnimating(false);
     setLastClickTime(0);
-    setIsScrollLocked(false);
+    isScrollLockedRef.current = false; // Unlock scrolling using ref
     setHasScrolledOnDesktop(false); // Reset on close
     // Restore scroll when tutorial ends
     document.body.style.overflow = 'auto';
@@ -320,6 +322,42 @@ const JobSeekersPage = () => {
       window.removeEventListener('resize', handleResize);
     };
   }, [highlightedElement, showTutorial]);
+
+  // Proper scroll lock with event prevention (both desktop and mobile)
+  useEffect(() => {
+    if (!showTutorial) return;
+
+    // Prevent ALL user-initiated scrolling ONLY when scroll is locked
+    const preventScroll = (e: Event) => {
+      // Check the ref - if scrolling is allowed for tutorial animation, don't prevent
+      if (!isScrollLockedRef.current) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    };
+
+    const preventKeyScroll = (e: KeyboardEvent) => {
+      // Check the ref - if scrolling is allowed for tutorial animation, don't prevent
+      if (!isScrollLockedRef.current) return;
+
+      // Prevent arrow keys, page up/down, space, home, end from scrolling
+      if ([32, 33, 34, 35, 36, 37, 38, 39, 40].includes(e.keyCode)) {
+        e.preventDefault();
+      }
+    };
+
+    // Add listeners with { passive: false } to allow preventDefault
+    document.addEventListener('wheel', preventScroll, { passive: false });
+    document.addEventListener('touchmove', preventScroll, { passive: false });
+    document.addEventListener('keydown', preventKeyScroll, { passive: false });
+
+    return () => {
+      document.removeEventListener('wheel', preventScroll);
+      document.removeEventListener('touchmove', preventScroll);
+      document.removeEventListener('keydown', preventKeyScroll);
+    };
+  }, [showTutorial]);
 
   // Cleanup scroll lock on component unmount
   useEffect(() => {
@@ -356,22 +394,25 @@ const JobSeekersPage = () => {
     if (!isMobile) {
       if (isFirstStep && !hasScrolledOnDesktop) {
         // First step on desktop: scroll to center form, then mark as done
+        // Temporarily allow scrolling by unlocking the ref
+        isScrollLockedRef.current = false;
         document.body.style.overflow = 'auto';
-        
-        element.scrollIntoView({ 
-          behavior: 'smooth', 
+
+        element.scrollIntoView({
+          behavior: 'smooth',
           block: 'center',
           inline: 'center'
         });
-        
+
         setHasScrolledOnDesktop(true);
-        
+
         setTimeout(() => {
           const newRect = element.getBoundingClientRect();
           setHighlightedElement(element);
           setElementPosition(newRect);
           document.body.style.overflow = 'hidden';
-          
+          isScrollLockedRef.current = true; // Re-lock scrolling
+
           setIsAnimating(true);
           setIsSpotlightAnimating(true);
           setTimeout(() => {
@@ -384,7 +425,7 @@ const JobSeekersPage = () => {
         // Desktop: After first scroll, NEVER scroll again - just highlight
         setHighlightedElement(element);
         setElementPosition(rect);
-        
+
         setIsAnimating(true);
         setIsSpotlightAnimating(true);
         setTimeout(() => {
@@ -409,20 +450,22 @@ const JobSeekersPage = () => {
     
     // On mobile, ALWAYS scroll on first step to ensure name/lastname are visible
     if (isFirstStep) {
+      isScrollLockedRef.current = false; // Unlock for tutorial scroll
       document.body.style.overflow = 'auto';
-      
-      element.scrollIntoView({ 
-        behavior: 'smooth', 
+
+      element.scrollIntoView({
+        behavior: 'smooth',
         block: 'center',
         inline: 'center'
       });
-      
+
       setTimeout(() => {
         const newRect = element.getBoundingClientRect();
         setHighlightedElement(element);
         setElementPosition(newRect);
         document.body.style.overflow = 'hidden';
-        
+        isScrollLockedRef.current = true; // Re-lock after scroll
+
         setIsAnimating(true);
         setIsSpotlightAnimating(true);
         setTimeout(() => {
@@ -443,20 +486,22 @@ const JobSeekersPage = () => {
 
     // Mobile: Scroll if not visible or covered
     if (!isVisible) {
+      isScrollLockedRef.current = false; // Unlock for tutorial scroll
       document.body.style.overflow = 'auto';
-      
-      element.scrollIntoView({ 
-        behavior: 'smooth', 
+
+      element.scrollIntoView({
+        behavior: 'smooth',
         block: 'center',
         inline: 'center'
       });
-      
+
       setTimeout(() => {
         const newRect = element.getBoundingClientRect();
         setHighlightedElement(element);
         setElementPosition(newRect);
         document.body.style.overflow = 'hidden';
-        
+        isScrollLockedRef.current = true; // Re-lock after scroll
+
         setIsAnimating(true);
         setIsSpotlightAnimating(true);
         setTimeout(() => {
@@ -468,7 +513,7 @@ const JobSeekersPage = () => {
       // Mobile: Element visible, highlight immediately
       setHighlightedElement(element);
       setElementPosition(rect);
-      
+
       setIsAnimating(true);
       setIsSpotlightAnimating(true);
       setTimeout(() => {

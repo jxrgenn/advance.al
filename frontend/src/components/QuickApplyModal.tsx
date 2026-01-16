@@ -176,8 +176,8 @@ const QuickApplyModal: React.FC<QuickApplyModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-8 sm:p-10">
-        <DialogHeader className="space-y-4 mb-2">
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto p-4 sm:p-6 m-4">
+        <DialogHeader className="space-y-3 mb-1">
           <DialogTitle className="flex items-center gap-2">
             <Send className="h-5 w-5 text-primary" />
             Apliko për: {job.title}
@@ -187,11 +187,11 @@ const QuickApplyModal: React.FC<QuickApplyModalProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-8 py-8">
+        <div className="space-y-4 py-4">
           {/* Profile Completeness Warning */}
           {isProfileIncomplete && (
             <Card className="border-yellow-200 bg-yellow-50">
-              <CardContent className="p-6">
+              <CardContent className="p-4">
                 <div className="flex items-start gap-3">
                   <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
                   <div className="flex-1">
@@ -390,7 +390,7 @@ const QuickApplyModal: React.FC<QuickApplyModalProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row justify-between gap-3 pt-6 border-t mt-6">
+        <div className="flex flex-col sm:flex-row justify-between gap-3 pt-4 border-t mt-4">
           <Button
             variant="outline"
             onClick={onClose}
