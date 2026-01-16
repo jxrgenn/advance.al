@@ -279,9 +279,6 @@ const JobDetail = () => {
   // Tutorial functions
   const startTutorial = () => {
     document.body.style.overflow = 'hidden';
-    document.body.style.position = 'fixed';
-    document.body.style.width = '100%';
-    document.body.style.height = '100%';
     setShowTutorial(true);
     setTutorialStep(0);
     setTimeout(() => highlightElement(0), 100);
@@ -289,9 +286,6 @@ const JobDetail = () => {
 
   const closeTutorial = () => {
     document.body.style.overflow = '';
-    document.body.style.position = '';
-    document.body.style.width = '';
-    document.body.style.height = '';
     setShowTutorial(false);
     setTutorialStep(0);
     setHighlightedElement(null);
@@ -355,6 +349,9 @@ const JobDetail = () => {
     const shouldScroll = !isVisible || (isMobile && isActionStep);
 
     if (shouldScroll) {
+      // Temporarily allow scrolling for programmatic scroll
+      document.body.style.overflow = 'auto';
+
       // Mobile: scroll a bit higher by using manual scroll calculation
       if (isMobile) {
         const currentScroll = window.pageYOffset;
@@ -380,6 +377,9 @@ const JobDetail = () => {
         const newRect = element.getBoundingClientRect();
         setHighlightedElement(element);
         setElementPosition(newRect);
+
+        // Re-lock scrolling after programmatic scroll completes
+        document.body.style.overflow = 'hidden';
 
         setIsAnimating(true);
         setIsSpotlightAnimating(true);

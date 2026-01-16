@@ -283,29 +283,29 @@ const CompanyProfile = () => {
       <div className="container mx-auto px-4 py-8 pt-24 max-w-6xl">
         {/* Header Section - Company Name and Logo */}
         <Card className="mb-6 border-2">
-          <CardContent className="p-8">
-            <div className="flex items-center gap-8">
-              {/* Company Logo - Bigger */}
-              <div className="bg-white p-6 rounded-2xl shadow-sm border-2 w-36 h-36 flex items-center justify-center flex-shrink-0">
+          <CardContent className="p-4 md:p-8">
+            <div className="flex flex-col md:flex-row items-center md:items-start gap-4 md:gap-8">
+              {/* Company Logo - Responsive */}
+              <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border-2 w-24 h-24 md:w-36 md:h-36 flex items-center justify-center flex-shrink-0">
                 {company.logo ? (
                   <img src={company.logo} alt={company.name} className="max-w-full max-h-full object-contain" />
                 ) : (
-                  <Building className="h-20 w-20 text-primary" />
+                  <Building className="h-12 w-12 md:h-20 md:w-20 text-primary" />
                 )}
               </div>
 
               {/* Company Name and Basic Info */}
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-3">
-                  <h1 className="text-4xl font-bold">{company.name}</h1>
+              <div className="flex-1 text-center md:text-left">
+                <div className="flex flex-col md:flex-row items-center md:items-start gap-2 md:gap-3 mb-2 md:mb-3">
+                  <h1 className="text-2xl md:text-4xl font-bold">{company.name}</h1>
                   {company.verified && (
-                    <CheckCircle className="h-7 w-7 text-green-600" />
+                    <CheckCircle className="h-5 w-5 md:h-7 md:w-7 text-green-600 flex-shrink-0" />
                   )}
                 </div>
-                <p className="text-xl text-muted-foreground mb-4">
+                <p className="text-base md:text-xl text-muted-foreground mb-3 md:mb-4">
                   {company.industry} | {company.companySize}
                 </p>
-                <Button size="lg">
+                <Button size="lg" className="w-full md:w-auto">
                   Shiko pozicionet e lira
                 </Button>
               </div>

@@ -667,7 +667,7 @@ const JobSeekersPage = () => {
       {/* Tutorial Overlay */}
       <TutorialOverlay />
 
-      <Container size="lg" py={40} pt={100}>
+      <Container size="lg" py={40} pt={20}>
         {/* Header */}
         <Center mb={30}>
           <Stack align="center" gap="sm">
@@ -708,7 +708,7 @@ const JobSeekersPage = () => {
                     setTimeout(() => {
                       const formElement = document.querySelector('[data-tutorial="quick-name"]');
                       if (formElement) {
-                        formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
                       }
                     }, 100);
                   }
@@ -758,7 +758,7 @@ const JobSeekersPage = () => {
                     setTimeout(() => {
                       const formElement = document.querySelector('[data-tutorial="firstName"]');
                       if (formElement) {
-                        formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
                       }
                     }, 100);
                   }
