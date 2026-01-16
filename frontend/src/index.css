@@ -117,4 +117,24 @@ All colors MUST be HSL.
   html {
     overflow-y: scroll; /* Prevent layout shift from scrollbar appearing/disappearing */
   }
+
+  /* Consistent container spacing */
+  .container {
+    @apply px-4 sm:px-6 lg:px-8;
+  }
+
+  /* Consistent page top padding to account for fixed navigation */
+  main {
+    @apply pt-20;
+  }
+
+  /* Consistent card spacing */
+  .card {
+    @apply mb-6;
+  }
+
+  /* Consistent section spacing */
+  section {
+    @apply py-12 sm:py-16 lg:py-20;
+  }
 }
