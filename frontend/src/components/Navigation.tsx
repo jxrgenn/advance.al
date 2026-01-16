@@ -133,6 +133,30 @@ const Navigation = () => {
     return "/profile";
   };
 
+  const handlePostJobClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+
+    // If not authenticated, redirect to employers page
+    if (!isAuthenticated || !user) {
+      navigate("/employers");
+      return;
+    }
+
+    // If authenticated but not an employer, show error and redirect to employers page
+    if (user.userType !== "employer") {
+      toast({
+        title: "Qasje e refuzuar",
+        description: "Vetëm punëdhënësit mund të postojnë punë. Regjistrohuni si punëdhënës për të vazhduar.",
+        variant: "destructive"
+      });
+      navigate("/employers");
+      return;
+    }
+
+    // If employer, redirect to post-job page
+    navigate("/post-job");
+  };
+
   return (
     <nav className="fixed top-0 left-0 right-0 z-[9998] w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between">
@@ -177,12 +201,6 @@ const Navigation = () => {
           >
             Kompanite
           </Link>
-          <Button size="sm" variant="default" asChild>
-            <Link to="/employers">
-              <Building className="mr-1 h-4 w-4" />
-              Publiko Njoftimin
-            </Link>
-          </Button>
         </div>
 
         <div className="flex items-center space-x-2">
@@ -378,11 +396,9 @@ loadNotifications();
                   Hyrje
                 </Link>
               </Button>
-              <Button size="sm" asChild>
-                <Link to="/employer-register">
-                  <Building className="mr-2 h-4 w-4" />
-                  Posto Punë
-                </Link>
+              <Button size="sm" onClick={handlePostJobClick}>
+                <Building className="mr-2 h-4 w-4" />
+                Posto Punë
               </Button>
             </>
           )}
@@ -429,14 +445,6 @@ loadNotifications();
             >
               Kompanite
             </Link>
-            <div className="pt-2">
-              <Button size="sm" variant="default" className="w-full" asChild>
-                <Link to="/employers" onClick={() => setMobileMenuOpen(false)}>
-                  <Building className="mr-2 h-4 w-4" />
-                  Publiko Njoftimin
-                </Link>
-              </Button>
-            </div>
           </div>
         </div>
       )}
