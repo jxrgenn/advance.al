@@ -593,7 +593,7 @@ const JobDetail = () => {
       {/* Tutorial Overlay */}
       <TutorialOverlay />
 
-      <div className="container py-8 pt-24">
+      <div className="container py-8 pt-2">
         <Button
           variant="ghost"
           onClick={() => navigate("/jobs")}

@@ -1301,7 +1301,7 @@ const PostJob = () => {
       {/* Tutorial Overlay */}
       <TutorialOverlay />
 
-      <Container size="lg" py={40} pt={20}>
+      <Container size="lg" py={40} pt={2}>
         {/* Header */}
         <Center mb={30}>
           <Stack align="center" gap="sm">

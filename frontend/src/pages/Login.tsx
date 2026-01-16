@@ -91,7 +91,7 @@ const Login = () => {
     <div className="min-h-screen bg-background">
       <Navigation />
 
-      <div className="container flex items-center justify-center min-h-[calc(100vh-4rem)] py-12">
+      <div className="container flex items-center justify-center min-h-[calc(100vh-4rem)] py-12 pt-12">
         <div className="w-full max-w-md">
           {error && (
             <Alert variant="destructive" className="mb-6">

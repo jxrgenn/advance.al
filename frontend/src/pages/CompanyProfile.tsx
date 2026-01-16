@@ -280,7 +280,7 @@ const CompanyProfile = () => {
     <div className="min-h-screen bg-gray-50">
       <Navigation />
 
-      <div className="container mx-auto px-4 py-8 pt-24 max-w-6xl">
+      <div className="container mx-auto px-4 py-8 pt-2 max-w-6xl">
         {/* Header Section - Company Name and Logo */}
         <Card className="mb-6 border-2">
           <CardContent className="p-4 md:p-8">

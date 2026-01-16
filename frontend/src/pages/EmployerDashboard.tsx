@@ -883,7 +883,7 @@ const EmployerDashboard = () => {
     <div className="min-h-screen bg-background">
       <Navigation />
 
-      <div className="container py-8 pt-24">
+      <div className="container py-8 pt-2">
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
