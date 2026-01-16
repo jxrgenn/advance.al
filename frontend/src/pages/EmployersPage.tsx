@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
@@ -44,10 +44,12 @@ const EmployersPage = () => {
   const [isAnimating, setIsAnimating] = useState(false);
   const [isSpotlightAnimating, setIsSpotlightAnimating] = useState(false);
   const [lastClickTime, setLastClickTime] = useState(0);
-  const [isScrollLocked, setIsScrollLocked] = useState(false);
   const [tutorialStepsByFormStep, setTutorialStepsByFormStep] = useState<{[key: number]: number}>({});
   const [hasScrolledOnDesktop, setHasScrolledOnDesktop] = useState(false); // Track initial desktop scroll
   const [lastScrolledFormStep, setLastScrolledFormStep] = useState<number | null>(null); // Track which form step we last scrolled for
+
+  // Use ref to track scroll lock state - refs can be read synchronously by event listeners
+  const isScrollLockedRef = useRef(false);
 
   // Multi-step form based on database fields
   const employerForm = useForm({
@@ -207,7 +209,7 @@ const EmployersPage = () => {
   // Tutorial management functions (copied from JobSeekersPage)
   const startTutorial = () => {
     setShowTutorial(true);
-    setIsScrollLocked(true);
+    isScrollLockedRef.current = true; // Lock scrolling using ref
     // Lock scroll on body
     document.body.style.overflow = 'hidden';
 
@@ -415,7 +417,7 @@ const EmployersPage = () => {
     setIsAnimating(false);
     setIsSpotlightAnimating(false);
     setLastClickTime(0);
-    setIsScrollLocked(false);
+    isScrollLockedRef.current = false; // Unlock scrolling using ref
     setHasScrolledOnDesktop(false); // Reset on close
     setLastScrolledFormStep(null); // Reset on close
     // Unlock scroll on body
@@ -444,6 +446,42 @@ const EmployersPage = () => {
       window.removeEventListener('resize', handleResize);
     };
   }, [highlightedElement, showTutorial]);
+
+  // Proper scroll lock with event prevention (both desktop and mobile)
+  useEffect(() => {
+    if (!showTutorial) return;
+
+    // Prevent ALL user-initiated scrolling ONLY when scroll is locked
+    const preventScroll = (e: Event) => {
+      // Check the ref - if scrolling is allowed for tutorial animation, don't prevent
+      if (!isScrollLockedRef.current) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    };
+
+    const preventKeyScroll = (e: KeyboardEvent) => {
+      // Check the ref - if scrolling is allowed for tutorial animation, don't prevent
+      if (!isScrollLockedRef.current) return;
+
+      // Prevent arrow keys, page up/down, space, home, end from scrolling
+      if ([32, 33, 34, 35, 36, 37, 38, 39, 40].includes(e.keyCode)) {
+        e.preventDefault();
+      }
+    };
+
+    // Add listeners with { passive: false } to allow preventDefault
+    document.addEventListener('wheel', preventScroll, { passive: false });
+    document.addEventListener('touchmove', preventScroll, { passive: false });
+    document.addEventListener('keydown', preventKeyScroll, { passive: false });
+
+    return () => {
+      document.removeEventListener('wheel', preventScroll);
+      document.removeEventListener('touchmove', preventScroll);
+      document.removeEventListener('keydown', preventKeyScroll);
+    };
+  }, [showTutorial]);
 
   // Cleanup scroll lock on component unmount
   useEffect(() => {
@@ -511,26 +549,28 @@ const EmployersPage = () => {
     if (!isMobile) {
       if (isNewFormStep) {
         // New form step on desktop: scroll to show ENTIRE FORM, then mark this step as scrolled
+        isScrollLockedRef.current = false; // Unlock for tutorial scroll
         document.body.style.overflow = 'auto';
-        
+
         // Find the form container (the Paper/Card containing the form)
         const formContainer = element.closest('form') || element.closest('[class*="mantine-Paper"]') || element.closest('[class*="mantine-Card"]');
         const scrollTarget = formContainer || element;
-        
-        scrollTarget.scrollIntoView({ 
-          behavior: 'smooth', 
+
+        scrollTarget.scrollIntoView({
+          behavior: 'smooth',
           block: 'start', // Scroll to top of form to show entire form
           inline: 'center'
         });
-        
+
         setLastScrolledFormStep(currentFormStep);
-        
+
         setTimeout(() => {
           const newRect = element.getBoundingClientRect();
           setHighlightedElement(element);
           setElementPosition(newRect);
           document.body.style.overflow = 'hidden';
-          
+          isScrollLockedRef.current = true; // Re-lock after scroll
+
           setIsAnimating(true);
           setIsSpotlightAnimating(true);
           setTimeout(() => {
@@ -568,27 +608,29 @@ const EmployersPage = () => {
     
     // On mobile, ALWAYS scroll when form step changes
     if (isNewFormStep) {
+      isScrollLockedRef.current = false; // Unlock for tutorial scroll
       document.body.style.overflow = 'auto';
-      
+
       // Find the form container (the Paper/Card containing the form)
       const formContainer = element.closest('form') || element.closest('[class*="mantine-Paper"]') || element.closest('[class*="mantine-Card"]');
       const scrollTarget = formContainer || element;
-      
-      scrollTarget.scrollIntoView({ 
-        behavior: 'smooth', 
+
+      scrollTarget.scrollIntoView({
+        behavior: 'smooth',
         block: 'start', // Scroll to top of form to show entire form
         inline: 'center'
       });
-      
+
       // Mark this form step as scrolled
       setLastScrolledFormStep(currentFormStep);
-      
+
       setTimeout(() => {
         const newRect = element.getBoundingClientRect();
         setHighlightedElement(element);
         setElementPosition(newRect);
         document.body.style.overflow = 'hidden';
-        
+        isScrollLockedRef.current = true; // Re-lock after scroll
+
         setIsAnimating(true);
         setIsSpotlightAnimating(true);
         setTimeout(() => {
@@ -609,20 +651,22 @@ const EmployersPage = () => {
 
     // Mobile: Scroll if not visible or covered (within same form step)
     if (!isVisible) {
+      isScrollLockedRef.current = false; // Unlock for tutorial scroll
       document.body.style.overflow = 'auto';
-      
-      element.scrollIntoView({ 
-        behavior: 'smooth', 
+
+      element.scrollIntoView({
+        behavior: 'smooth',
         block: 'center',
         inline: 'center'
       });
-      
+
       setTimeout(() => {
         const newRect = element.getBoundingClientRect();
         setHighlightedElement(element);
         setElementPosition(newRect);
         document.body.style.overflow = 'hidden';
-        
+        isScrollLockedRef.current = true; // Re-lock after scroll
+
         setIsAnimating(true);
         setIsSpotlightAnimating(true);
         setTimeout(() => {
