@@ -164,7 +164,8 @@ const Login = () => {
                       Ke harruar fjalëkalimin?
                     </Link>
                   </div>
-          </Card>
+                </CardContent>
+              </Card>
 
           {/* Demo Account Info */}
           <div className="mt-6 p-4 bg-muted/50 rounded-lg">

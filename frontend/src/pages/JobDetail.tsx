@@ -280,7 +280,6 @@ const JobDetail = () => {
   const startTutorial = () => {
     setShowTutorial(true);
     setTutorialStep(0);
-    document.body.style.overflow = 'hidden';
     setTimeout(() => highlightElement(0), 100);
   };
 
@@ -292,7 +291,6 @@ const JobDetail = () => {
     setPreviousElementPosition(null);
     setIsAnimating(false);
     setIsSpotlightAnimating(false);
-    document.body.style.overflow = 'auto';
   };
 
   const nextTutorialStep = () => {
@@ -349,8 +347,6 @@ const JobDetail = () => {
     const shouldScroll = !isVisible || (isMobile && isActionStep);
 
     if (shouldScroll) {
-      document.body.style.overflow = 'auto';
-      
       // Mobile: scroll a bit higher by using manual scroll calculation
       if (isMobile) {
         const currentScroll = window.pageYOffset;
@@ -358,26 +354,25 @@ const JobDetail = () => {
         // For action steps, scroll so element is much higher (more visible above card)
         const topOffset = isActionStep ? 100 : 60;
         const targetScroll = elementTop - topOffset;
-        
+
         window.scrollTo({
           top: Math.max(0, targetScroll),
           behavior: 'smooth'
         });
       } else {
         // Desktop: use center positioning
-        element.scrollIntoView({ 
-          behavior: 'smooth', 
+        element.scrollIntoView({
+          behavior: 'smooth',
           block: 'center',
           inline: 'center'
         });
       }
-      
+
       setTimeout(() => {
         const newRect = element.getBoundingClientRect();
         setHighlightedElement(element);
         setElementPosition(newRect);
-        document.body.style.overflow = 'hidden';
-        
+
         setIsAnimating(true);
         setIsSpotlightAnimating(true);
         setTimeout(() => {
@@ -388,7 +383,7 @@ const JobDetail = () => {
     } else {
       setHighlightedElement(element);
       setElementPosition(rect);
-      
+
       setIsAnimating(true);
       setIsSpotlightAnimating(true);
       setTimeout(() => {
