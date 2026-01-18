@@ -35,6 +35,8 @@ const Profile = () => {
   const [isSpotlightAnimating, setIsSpotlightAnimating] = useState(false);
   const [lastClickTime, setLastClickTime] = useState(0);
   const [hasScrolledOnDesktop, setHasScrolledOnDesktop] = useState(false);
+  // Use ref to track scroll lock state - refs can be read synchronously by event listeners
+  const isScrollLockedRef = useRef(false);
 
   // Modal states for broken buttons
   const [workExperienceModal, setWorkExperienceModal] = useState(false);
@@ -564,6 +566,35 @@ const Profile = () => {
     });
   };
 
+  // Proper scroll lock with event prevention (both desktop and mobile)
+  useEffect(() => {
+    if (!showTutorial) return;
+
+    const preventScroll = (e: Event) => {
+      if (!isScrollLockedRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    };
+
+    const preventKeyScroll = (e: KeyboardEvent) => {
+      if (!isScrollLockedRef.current) return;
+      if ([32, 33, 34, 35, 36, 37, 38, 39, 40].includes(e.keyCode)) {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener('wheel', preventScroll, { passive: false });
+    document.addEventListener('touchmove', preventScroll, { passive: false });
+    document.addEventListener('keydown', preventKeyScroll, { passive: false });
+
+    return () => {
+      document.removeEventListener('wheel', preventScroll);
+      document.removeEventListener('touchmove', preventScroll);
+      document.removeEventListener('keydown', preventKeyScroll);
+    };
+  }, [showTutorial]);
+
   const startTutorial = () => {
     // Find first step for current tab
     const startIndex = allTutorialSteps.findIndex(s => s.requiresTab === currentTab);
@@ -577,12 +608,19 @@ const Profile = () => {
     document.body.style.overflow = 'hidden';
     document.body.style.paddingRight = `${scrollbarWidth}px`;
 
+    // Enable scroll lock
+    isScrollLockedRef.current = true;
+
     setTimeout(() => highlightElement(startStep), 150);
   };
 
   const closeTutorial = () => {
     console.log('=== closeTutorial CALLED ===');
     console.log('Closing tutorial from step:', tutorialStep);
+
+    // Disable scroll lock
+    isScrollLockedRef.current = false;
+
     setShowTutorial(false);
     setTutorialStep(0);
     setHighlightedElement(null);
@@ -828,13 +866,26 @@ const Profile = () => {
         console.log('- Final scroll (max 0):', Math.max(0, targetScroll));
         console.log('- Element selector:', step.selector);
 
+        // Temporarily unlock scroll for tutorial animation
+        isScrollLockedRef.current = false;
+
         window.scrollTo({
           top: Math.max(0, targetScroll),
           behavior: 'smooth'
         });
+
+        // Re-lock after scroll completes
+        const lockTimer = setTimeout(() => {
+          isScrollLockedRef.current = true;
+        }, 400);
+        timersRef.current.push(lockTimer);
       } else {
         // Desktop: use scrollIntoView then apply optional scrollOffset
         const scrollBehavior = isLargeElement ? 'start' : 'nearest';
+
+        // Temporarily unlock scroll for tutorial animation
+        isScrollLockedRef.current = false;
+
         element.scrollIntoView({
           behavior: 'smooth',
           block: scrollBehavior,
@@ -855,6 +906,12 @@ const Profile = () => {
             timersRef.current.push(timer);
           });
         }
+
+        // Re-lock after scroll completes
+        const lockTimer = setTimeout(() => {
+          isScrollLockedRef.current = true;
+        }, 400);
+        timersRef.current.push(lockTimer);
       }
 
       // Wait for scroll to complete
@@ -1091,7 +1148,7 @@ const Profile = () => {
       {/* Tutorial Overlay */}
       <TutorialOverlay />
 
-      <div className="container py-8 pt-2">
+      <div className="container py-8 pt-20">
         {/* Tutorial Help Button */}
         {!showTutorial && user && user.userType === 'jobseeker' && (
           <Card className="border-blue-200 bg-blue-50/50 mb-6">

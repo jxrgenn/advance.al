@@ -416,7 +416,7 @@ const Jobs = () => {
     <div className="min-h-screen bg-background">
       <Navigation />
 
-      <div className="container py-8 pt-2">
+      <div className="container py-8 pt-20">
         {/* Premium Jobs Carousel - Full width, above heading */}
         {!loading && !searchQuery && !selectedLocation && !selectedType && (
           <div className="mb-8">

@@ -124,7 +124,7 @@ const employerProfileValidation = [
     .withMessage('Industria nuk mund të ketë më shumë se 50 karaktere'),
   body('employerProfile.companySize')
     .optional()
-    .isIn(['1-10', '11-50', '51-200', '200+'])
+    .isIn(['1-10', '11-50', '51-200', '201-1000', '1000+'])
     .withMessage('Madhësia e kompanisë e zgjedhur nuk është e vlefshme'),
   body('employerProfile.description')
     .optional()
@@ -237,12 +237,15 @@ router.put('/profile', authenticate, async (req, res) => {
     if (user.userType === 'employer' && employerProfile) {
       if (user.profile.employerProfile.verified) {
         // Only allow certain fields to be updated for verified employers
-        const allowedFields = ['description', 'website'];
+        // companyName and industry are restricted to prevent fraud
+        const allowedFields = ['description', 'website', 'companySize'];
         Object.keys(employerProfile).forEach(key => {
           if (allowedFields.includes(key)) {
             user.profile.employerProfile[key] = employerProfile[key];
           }
         });
+        console.log('Verified employer: Only allowed fields updated:', allowedFields);
+        console.log('Attempted to update:', Object.keys(employerProfile));
       } else {
         // Unverified employers can update most fields
         user.profile.employerProfile = {

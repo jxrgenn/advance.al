@@ -110,22 +110,41 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
-  body {
-    @apply bg-background text-foreground;
-  }
-
   html {
     overflow-y: scroll; /* Prevent layout shift from scrollbar appearing/disappearing */
+    overflow-x: hidden; /* Prevent horizontal scroll on mobile */
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    overflow-x: hidden; /* Prevent horizontal scroll on mobile */
+    max-width: 100vw; /* Ensure body doesn't exceed viewport width */
+    position: relative; /* Create stacking context for fixed elements */
+  }
+
+  /* Prevent images and media from causing horizontal scroll */
+  img, video, iframe {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Force word breaking for long strings without spaces */
+  p, div, span, h1, h2, h3, h4, h5, h6 {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    hyphens: auto;
   }
 
   /* Consistent container spacing */
   .container {
     @apply px-4 sm:px-6 lg:px-8;
+    max-width: 100vw; /* Ensure container doesn't exceed viewport */
   }
 
-  /* Minimal page top padding - individual pages handle their own spacing */
+  /* Add spacing between navbar and content - navbar is h-16 (64px) */
   main {
-    @apply pt-4;
+    @apply pt-20;
   }
 
   /* Consistent card spacing */
@@ -133,8 +152,27 @@ All colors MUST be HSL.
     @apply mb-6;
   }
 
-  /* Consistent section spacing */
-  section {
+  /* Consistent section spacing - but exclude Mantine Notifications */
+  section:not([aria-label*="Notifications"]) {
     @apply py-12 sm:py-16 lg:py-20;
+  }
+
+  /* Fix Mantine Notifications container spacing - force zero padding */
+  .mantine-Notifications-root,
+  section[aria-label*="Notifications"] {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Fix mobile notifications hidden behind navbar - navbar is h-16 (64px) */
+  @media (max-width: 768px) {
+    .mantine-Notifications-root {
+      top: 80px !important; /* navbar height + 16px spacing */
+    }
+  }
+
+  /* Force SelectValue text to be visible when parent has bg-muted */
+  .bg-muted [data-radix-select-value] {
+    color: hsl(var(--foreground)) !important;
   }
 }

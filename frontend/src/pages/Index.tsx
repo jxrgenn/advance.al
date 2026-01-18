@@ -415,7 +415,7 @@ const Index = () => {
     <div className="min-h-screen bg-background">
       <Navigation />
 
-      <div className="container py-8 pt-2">
+      <div className="container py-8 pt-20">
         {/* Premium Jobs Carousel - Full width, above heading */}
         {!loading && !searchQuery && selectedLocations.length === 0 && selectedJobTypes.length === 0 && !selectedType && (
           <div className="mb-8">
@@ -507,12 +507,6 @@ const Index = () => {
                     <SelectItem value="internship">Praktikë</SelectItem>
                   </SelectContent>
                 </Select>
-
-                {/* Advanced Filters Button */}
-                <Button variant="outline" size="sm" onClick={handleShowFilters} className="flex-shrink-0">
-                  <Filter className="mr-2 h-4 w-4" />
-                  Filtro
-                </Button>
               </div>
             </div>
           </CardContent>

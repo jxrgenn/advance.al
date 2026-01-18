@@ -17,6 +17,8 @@ import ReportUserModal from "@/components/ReportUserModal";
 import { useToast } from "@/hooks/use-toast";
 import { jobsApi, applicationsApi, usersApi, locationsApi, matchingApi, Job, Application, Location, CandidateMatch, User } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { validateForm, employerDashboardSettingsRules, formatValidationErrors } from "@/lib/formValidation";
+import { TextAreaWithCounter } from "@/components/CharacterCounter";
 
 const EmployerDashboard = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -555,6 +557,19 @@ const EmployerDashboard = () => {
     try {
       setSavingProfile(true);
 
+      // Validate form data
+      const validationResult = validateForm(profileData, employerDashboardSettingsRules);
+
+      if (!validationResult.isValid) {
+        toast({
+          title: "Fushat e detyrueshme nuk janë plotësuar",
+          description: formatValidationErrors(validationResult.errors),
+          variant: "destructive"
+        });
+        setSavingProfile(false);
+        return;
+      }
+
       const updateData = {
         employerProfile: {
           companyName: profileData.companyName,
@@ -922,7 +937,7 @@ const EmployerDashboard = () => {
     <div className="min-h-screen bg-background">
       <Navigation />
 
-      <div className="container py-8 pt-2">
+      <div className="container py-8 pt-20">
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
@@ -1363,7 +1378,14 @@ const EmployerDashboard = () => {
                         value={profileData.companyName}
                         onChange={(e) => setProfileData(prev => ({ ...prev, companyName: e.target.value }))}
                         placeholder="Emri i kompanisë"
+                        disabled={user?.profile?.employerProfile?.verified}
+                        className={user?.profile?.employerProfile?.verified ? "bg-muted cursor-not-allowed" : ""}
                       />
+                      {user?.profile?.employerProfile?.verified && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Emri i kompanisë nuk mund të ndryshohet për kompani të verifikuara
+                        </p>
+                      )}
                     </div>
                     <div data-tutorial="company-website">
                       <Label htmlFor="website">Faqja e Internetit</Label>
@@ -1377,22 +1399,36 @@ const EmployerDashboard = () => {
                   </div>
 
                   <div data-tutorial="company-description">
-                    <Label htmlFor="description">Përshkrimi i Kompanisë</Label>
-                    <Textarea
+                    <TextAreaWithCounter
                       id="description"
+                      label="Përshkrimi i Kompanisë"
                       value={profileData.description}
                       onChange={(e) => setProfileData(prev => ({ ...prev, description: e.target.value }))}
                       placeholder="Shkruani një përshkrim të shkurtër për kompanin..."
                       rows={3}
+                      maxLength={500}
+                      minLength={50}
+                      showMinLength={true}
                     />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div data-tutorial="industry">
                       <Label htmlFor="industry">Industria</Label>
-                      <Select value={profileData.industry} onValueChange={(value) => setProfileData(prev => ({ ...prev, industry: value }))}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Zgjidhni industrinë" />
+                      <Select
+                        value={profileData.industry}
+                        onValueChange={(value) => setProfileData(prev => ({ ...prev, industry: value }))}
+                        disabled={user?.profile?.employerProfile?.verified && profileData.industry !== ''}
+                      >
+                        <SelectTrigger
+                          className={(user?.profile?.employerProfile?.verified && profileData.industry !== '') ? "bg-muted cursor-not-allowed" : ""}
+                          style={(user?.profile?.employerProfile?.verified && profileData.industry !== '') ? { color: 'hsl(var(--foreground))' } : undefined}
+                        >
+                          <SelectValue
+                            placeholder="Zgjidhni industrinë"
+                            className="text-foreground"
+                            style={{ color: 'hsl(var(--foreground)) !important' } as React.CSSProperties}
+                          />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="teknologji">Teknologji</SelectItem>
@@ -1405,6 +1441,16 @@ const EmployerDashboard = () => {
                           <SelectItem value="tjeter">Tjetër</SelectItem>
                         </SelectContent>
                       </Select>
+                      {user?.profile?.employerProfile?.verified && profileData.industry !== '' && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Industria nuk mund të ndryshohet për kompani të verifikuara
+                        </p>
+                      )}
+                      {user?.profile?.employerProfile?.verified && profileData.industry === '' && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Ju lutem zgjidhni industrinë tuaj
+                        </p>
+                      )}
                     </div>
                     <div data-tutorial="company-size">
                       <Label htmlFor="companySize">Madhësia e Kompanisë</Label>
@@ -2122,7 +2168,7 @@ const EmployerDashboard = () => {
                 })(),
                 boxShadow: '0 0 0 99999px rgba(0, 0, 0, 0.4)',
                 borderRadius: '8px',
-                pointerEvents: 'none',
+                pointerEvents: 'auto',
                 transition: isSpotlightAnimating ? 'all 450ms cubic-bezier(0.175, 0.885, 0.32, 1.2)' : 'all 450ms cubic-bezier(0.175, 0.885, 0.32, 1.2)',
                 border: '2px solid rgb(59, 130, 246)',
                 overflow: 'hidden'

@@ -250,20 +250,50 @@ const RecentlyViewedJobs = ({
               return (
                 <div
                   key={job._id}
-                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted cursor-pointer transition-colors group"
+                  className="border rounded-lg p-3 hover:bg-muted cursor-pointer transition-colors group relative"
                   onClick={() => handleJobClick(job._id)}
                 >
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate">{job.title}</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {job.employerId?.profile?.employerProfile?.companyName}
+                  {/* Mini JobCard Layout */}
+                  <div className="space-y-2">
+                    {/* Title */}
+                    <div className="font-medium text-sm line-clamp-1">
+                      {job.title}
+                    </div>
+
+                    {/* Company, Location, Wage - Responsive Layout */}
+                    {/* Mobile: 3 rows vertical, Desktop: 1 row horizontal */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 space-y-1 sm:space-y-0 text-xs text-muted-foreground">
+                      {/* Company Name */}
+                      <div className="flex items-center gap-1">
+                        <Building className="h-3 w-3 flex-shrink-0" />
+                        <span className="truncate">{job.employerId?.profile?.employerProfile?.companyName || 'Kompani e panjohur'}</span>
+                      </div>
+
+                      {/* Location */}
+                      <div className="flex items-center gap-1">
+                        <MapPin className="h-3 w-3 flex-shrink-0" />
+                        <span className="truncate">{job.location?.city}</span>
+                      </div>
+
+                      {/* Wage - Right aligned on mobile, inline on desktop */}
+                      <div className="flex items-center gap-1 sm:ml-auto">
+                        {job.salary?.showPublic && job.formattedSalary ? (
+                          <>
+                            <Euro className="h-3 w-3 flex-shrink-0 text-green-600" />
+                            <span className="font-semibold text-green-700 whitespace-nowrap">{job.formattedSalary}</span>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground whitespace-nowrap">Pagë për t'u negociuar</span>
+                        )}
+                      </div>
                     </div>
                   </div>
+
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={(e) => handleRemoveJob(e, job._id)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0"
+                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0"
                   >
                     <X className="h-3 w-3" />
                   </Button>
@@ -316,67 +346,54 @@ const RecentlyViewedJobs = ({
               return (
                 <div
                   key={job._id}
-                  className="group border rounded-lg p-4 hover:shadow-md transition-all cursor-pointer"
+                  className="group border rounded-lg p-4 hover:shadow-md transition-all cursor-pointer relative"
                   onClick={() => handleJobClick(job._id)}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-start justify-between mb-2">
-                        <h4 className="font-medium text-foreground group-hover:text-primary transition-colors">
-                          {job.title}
-                        </h4>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => handleRemoveJob(e, job._id)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 p-0"
-                          title="Hiq nga historiku"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
+                  {/* Mini JobCard Layout */}
+                  <div className="space-y-2">
+                    {/* Title */}
+                    <div className="font-medium text-sm sm:text-base line-clamp-2 pr-8">
+                      {job.title}
+                    </div>
+
+                    {/* Company, Location, Wage - Responsive Layout */}
+                    {/* Mobile: 3 rows vertical, Desktop: 1 row horizontal */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 space-y-1 sm:space-y-0 text-xs sm:text-sm text-muted-foreground">
+                      {/* Company Name */}
+                      <div className="flex items-center gap-1">
+                        <Building className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                        <span className="truncate">{job.employerId?.profile?.employerProfile?.companyName || 'Kompani e panjohur'}</span>
                       </div>
 
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground mb-2">
-                        <div className="flex items-center gap-1">
-                          <Building className="h-4 w-4" />
-                          {job.employerId?.profile?.employerProfile?.companyName || 'Kompani e panjohur'}
-                        </div>
+                      {/* Location */}
+                      <div className="flex items-center gap-1">
+                        <MapPin className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                        <span className="truncate">{job.location?.city}</span>
+                      </div>
 
-                        <div className="flex items-center gap-1">
-                          <MapPin className="h-4 w-4" />
-                          {job.location?.city}
-                        </div>
-
-                        {job.salary?.showPublic && job.formattedSalary && (
-                          <div className="flex items-center gap-1">
-                            <Euro className="h-4 w-4" />
-                            {job.formattedSalary}
-                          </div>
+                      {/* Wage - Right aligned on mobile, inline on desktop */}
+                      <div className="flex items-center gap-1 sm:ml-auto">
+                        {job.salary?.showPublic && job.formattedSalary ? (
+                          <>
+                            <Euro className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0 text-green-600" />
+                            <span className="font-semibold text-green-700 whitespace-nowrap">{job.formattedSalary}</span>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground whitespace-nowrap">Pagë për t'u negociuar</span>
                         )}
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary" className="text-xs">
-                            {job.jobType}
-                          </Badge>
-                        </div>
-
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleJobClick(job._id);
-                          }}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          Shiko përsëri
-                          <ArrowRight className="ml-1 h-3 w-3" />
-                        </Button>
                       </div>
                     </div>
                   </div>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => handleRemoveJob(e, job._id)}
+                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 sm:h-8 sm:w-8 p-0"
+                    title="Hiq nga historiku"
+                  >
+                    <X className="h-3 w-3 sm:h-4 sm:w-4" />
+                  </Button>
                 </div>
               );
             })}

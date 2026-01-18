@@ -28,7 +28,7 @@ const AboutUs = () => {
       <Navigation />
 
       {/* Hero Section */}
-      <section className="bg-gradient-to-br from-primary/10 via-primary/5 to-background py-12 md:py-20 pt-2 md:pt-2">
+      <section className="bg-gradient-to-br from-primary/10 via-primary/5 to-background py-12 md:py-20 pt-20 md:pt-20">
         <div className="container mx-auto px-4">
           <div className="text-center space-y-6">
             <Badge variant="secondary" className="text-lg px-6 py-2 mb-4">

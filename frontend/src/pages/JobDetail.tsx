@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
@@ -43,6 +43,8 @@ const JobDetail = () => {
   const [previousElementPosition, setPreviousElementPosition] = useState<DOMRect | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
   const [isSpotlightAnimating, setIsSpotlightAnimating] = useState(false);
+  // Use ref to track scroll lock state - refs can be read synchronously by event listeners
+  const isScrollLockedRef = useRef(false);
 
   useEffect(() => {
     if (id) {
@@ -276,9 +278,39 @@ const JobDetail = () => {
     }
   ];
 
+  // Proper scroll lock with event prevention (both desktop and mobile)
+  useEffect(() => {
+    if (!showTutorial) return;
+
+    const preventScroll = (e: Event) => {
+      if (!isScrollLockedRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    };
+
+    const preventKeyScroll = (e: KeyboardEvent) => {
+      if (!isScrollLockedRef.current) return;
+      if ([32, 33, 34, 35, 36, 37, 38, 39, 40].includes(e.keyCode)) {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener('wheel', preventScroll, { passive: false });
+    document.addEventListener('touchmove', preventScroll, { passive: false });
+    document.addEventListener('keydown', preventKeyScroll, { passive: false });
+
+    return () => {
+      document.removeEventListener('wheel', preventScroll);
+      document.removeEventListener('touchmove', preventScroll);
+      document.removeEventListener('keydown', preventKeyScroll);
+    };
+  }, [showTutorial]);
+
   // Tutorial functions
   const startTutorial = () => {
     document.body.style.overflow = 'hidden';
+    isScrollLockedRef.current = true; // Enable scroll lock
     setShowTutorial(true);
     setTutorialStep(0);
     setTimeout(() => highlightElement(0), 100);
@@ -286,6 +318,7 @@ const JobDetail = () => {
 
   const closeTutorial = () => {
     document.body.style.overflow = '';
+    isScrollLockedRef.current = false; // Disable scroll lock
     setShowTutorial(false);
     setTutorialStep(0);
     setHighlightedElement(null);
@@ -349,7 +382,8 @@ const JobDetail = () => {
     const shouldScroll = !isVisible || (isMobile && isActionStep);
 
     if (shouldScroll) {
-      // Temporarily allow scrolling for programmatic scroll
+      // Temporarily unlock scroll for tutorial animation
+      isScrollLockedRef.current = false;
       document.body.style.overflow = 'auto';
 
       // Mobile: scroll a bit higher by using manual scroll calculation
@@ -380,6 +414,7 @@ const JobDetail = () => {
 
         // Re-lock scrolling after programmatic scroll completes
         document.body.style.overflow = 'hidden';
+        isScrollLockedRef.current = true; // Re-enable scroll lock
 
         setIsAnimating(true);
         setIsSpotlightAnimating(true);
@@ -593,7 +628,7 @@ const JobDetail = () => {
       {/* Tutorial Overlay */}
       <TutorialOverlay />
 
-      <div className="container py-8 pt-2">
+      <div className="container py-8 pt-20">
         <Button
           variant="ghost"
           onClick={() => navigate("/jobs")}

@@ -168,8 +168,8 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false }: Jo
 
           {/* Right Side: Logo positioned absolutely in center */}
           <div className="relative w-16 h-20 sm:w-24 sm:h-28 md:w-32 md:h-[140px] flex-shrink-0">
-            {/* Logo centered both horizontally and vertically */}
-            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+            {/* Logo centered both horizontally and vertically - moved down slightly on mobile to avoid badge overlap */}
+            <div className="absolute top-[60%] sm:top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
               <div className="w-12 h-12 sm:w-16 sm:h-16 md:w-24 md:h-24 bg-white border border-border sm:border-2 rounded-md sm:rounded-lg flex items-center justify-center shadow-sm">
                 {job.employerId?.profile?.employerProfile?.logo ? (
                   <img
