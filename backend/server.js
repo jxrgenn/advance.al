@@ -24,6 +24,7 @@ import bulkNotificationRoutes from './src/routes/bulk-notifications.js';
 import configurationRoutes from './src/routes/configuration.js';
 import businessControlRoutes from './src/routes/business-control.js';
 import matchingRoutes from './src/routes/matching.js';
+import cvRoutes from './src/routes/cv.js';
 
 // Load environment variables
 dotenv.config();
@@ -143,6 +144,7 @@ app.use('/api/quickusers', quickUserRoutes);
 app.use('/api/companies', companiesRoutes);
 app.use('/api/send-verification', sendVerificationRoutes);
 app.use('/api/matching', matchingRoutes);
+app.use('/api/cv', cvRoutes);
 
 // Welcome Route
 app.get('/', (req, res) => {

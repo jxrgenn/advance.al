@@ -181,6 +181,79 @@ export const profileValidationRules = {
       message: "Përvoja duhet të jetë një nga opsionet e vlefshme"
     }
   },
+  workExperience: {
+    position: {
+      required: true,
+      minLength: 2,
+      maxLength: 100,
+      message: "Pozicioni duhet të jetë midis 2 dhe 100 karakteresh"
+    },
+    company: {
+      required: true,
+      minLength: 2,
+      maxLength: 100,
+      message: "Kompania duhet të jetë midis 2 dhe 100 karakteresh"
+    },
+    location: {
+      required: false,
+      maxLength: 100,
+      message: "Vendndodhja nuk mund të kalojë 100 karaktere"
+    },
+    startDate: {
+      required: true,
+      message: "Data e fillimit është e detyrueshme"
+    },
+    endDate: {
+      required: false,
+      message: "Data e mbarimit është e detyrueshme"
+    },
+    description: {
+      required: false,
+      maxLength: 500,
+      message: "Përshkrimi nuk mund të kalojë 500 karaktere"
+    },
+    achievements: {
+      required: false,
+      maxLength: 300,
+      message: "Arritjet nuk mund të kalojnë 300 karaktere"
+    }
+  },
+  education: {
+    degree: {
+      required: true,
+      message: "Diploma/Grada është e detyrueshme"
+    },
+    fieldOfStudy: {
+      required: true,
+      minLength: 2,
+      maxLength: 100,
+      message: "Fusha e studimit duhet të jetë midis 2 dhe 100 karakteresh"
+    },
+    institution: {
+      required: true,
+      minLength: 2,
+      maxLength: 150,
+      message: "Institucioni duhet të jetë midis 2 dhe 150 karakteresh"
+    },
+    location: {
+      required: false,
+      maxLength: 100,
+      message: "Vendndodhja nuk mund të kalojë 100 karaktere"
+    },
+    startDate: {
+      required: true,
+      message: "Data e fillimit është e detyrueshme"
+    },
+    endDate: {
+      required: false,
+      message: "Data e mbarimit është e detyrueshme"
+    },
+    description: {
+      required: false,
+      maxLength: 500,
+      message: "Përshkrimi nuk mund të kalojë 500 karaktere"
+    }
+  },
   settings: {
     email: {
       required: true,
@@ -271,10 +344,6 @@ export const employerSignupRules = {
     phone: profileValidationRules.personal.phone
   },
   step2: {
-    industry: {
-      required: true,
-      message: "Industria është e detyrueshme"
-    },
     companySize: {
       required: true,
       message: "Madhësia e kompanisë është e detyrueshme"
@@ -284,7 +353,7 @@ export const employerSignupRules = {
       message: "Qyteti është i detyrueshëm"
     },
     description: {
-      required: true,
+      required: false,
       minLength: 50,
       maxLength: 500,
       message: "Përshkrimi duhet të jetë midis 50 dhe 500 karakteresh"
@@ -424,6 +493,72 @@ export const getCharacterCountInfo = (
 };
 
 /**
+ * Field name translation map - English to Albanian
+ */
+export const fieldNameTranslations: { [key: string]: string } = {
+  // Common fields
+  firstName: 'Emri',
+  lastName: 'Mbiemri',
+  email: 'Email',
+  password: 'Fjalëkalimi',
+  confirmPassword: 'Konfirmimi i fjalëkalimit',
+  phone: 'Telefoni',
+  city: 'Qyteti',
+  location: 'Vendndodhja',
+
+  // Job seeker fields
+  education: 'Arsimi',
+  bio: 'Biografia',
+
+  // Employer fields
+  companyName: 'Emri i kompanisë',
+  companySize: 'Madhësia e kompanisë',
+  industry: 'Industria',
+  description: 'Përshkrimi',
+  website: 'Uebsajti',
+
+  // Job posting fields
+  title: 'Titulli i punës',
+  category: 'Kategoria',
+  jobType: 'Lloji i punës',
+  experienceLevel: 'Niveli i përvojës',
+  salaryMin: 'Paga minimale',
+  salaryMax: 'Paga maksimale',
+  applicationMethod: 'Mënyra e aplikimit',
+  applicationEmail: 'Email-i i aplikimit',
+
+  // Profile fields
+  headline: 'Titulli profesional',
+  currentPosition: 'Pozicioni aktual',
+  currentCompany: 'Kompania aktuale',
+  skills: 'Aftësitë',
+  experience: 'Përvoja',
+  currentPassword: 'Fjalëkalimi aktual',
+  newPassword: 'Fjalëkalimi i ri',
+
+  // Work experience fields
+  position: 'Pozicioni',
+  company: 'Kompania',
+  achievements: 'Arritjet',
+
+  // Education fields
+  degree: 'Diploma/Grada',
+  fieldOfStudy: 'Fusha e studimit',
+  institution: 'Institucioni',
+
+  // Date fields
+  startDate: 'Data e fillimit',
+  endDate: 'Data e mbarimit'
+};
+
+/**
+ * Helper function to translate field name to Albanian
+ */
+export const translateFieldName = (fieldName: string): string => {
+  return fieldNameTranslations[fieldName] || fieldName;
+};
+
+/**
  * Helper function to format validation errors for toast display
  */
 export const formatValidationErrors = (errors: ValidationError[]): string => {
@@ -443,7 +578,7 @@ export const formatValidationErrors = (errors: ValidationError[]): string => {
   let message = '';
 
   if (requiredErrors.length > 0) {
-    const fields = requiredErrors.map(e => e.field).join(', ');
+    const fields = requiredErrors.map(e => translateFieldName(e.field)).join(', ');
     message += `Fushat e detyrueshme: ${fields}. `;
   }
 

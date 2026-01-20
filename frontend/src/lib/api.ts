@@ -1765,3 +1765,126 @@ export const matchingApi = {
     return apiRequest(`/matching/jobs/${jobId}/access`);
   }
 };
+
+// CV AI Generation API
+export const cvApi = {
+  /**
+   * Generate CV from natural language input
+   */
+  generate: async (naturalLanguageInput: string, targetLanguage: 'sq' | 'en' = 'sq'): Promise<ApiResponse<{
+    cvData: any;
+    fileId: string;
+    fileName: string;
+    fileSize: number;
+    language: string;
+    downloadUrl: string;
+    previewUrl: string;
+  }>> => {
+    console.log('🤖 Generating CV... Input length:', naturalLanguageInput.length, 'Target language:', targetLanguage);
+    const response = await apiRequest('/cv/generate', {
+      method: 'POST',
+      body: JSON.stringify({ naturalLanguageInput, targetLanguage })
+    });
+    console.log('✅ CV Generated:', response);
+    return response;
+  },
+
+  /**
+   * Download CV file with authentication
+   */
+  downloadFile: async (fileId: string, fileName: string): Promise<void> => {
+    console.log('⬇️ Downloading CV file...', fileId);
+    const token = getAuthToken();
+    if (!token) {
+      console.error('❌ No auth token found!');
+      throw new Error('Not authenticated');
+    }
+
+    console.log('🔑 Using auth token:', token.substring(0, 20) + '...');
+
+    const response = await fetch(`${API_BASE_URL}/cv/download/${fileId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    console.log('📡 Download response status:', response.status);
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error('❌ Download failed:', text);
+      throw new Error('Failed to download CV');
+    }
+
+    const blob = await response.blob();
+    console.log('✅ Blob created, size:', blob.size, 'bytes');
+
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    console.log('✅ Download initiated!');
+  },
+
+  /**
+   * Preview CV file in new tab with authentication
+   */
+  previewFile: async (fileId: string): Promise<void> => {
+    console.log('👁️ Previewing CV file...', fileId);
+    const token = getAuthToken();
+    if (!token) {
+      console.error('❌ No auth token found!');
+      throw new Error('Not authenticated');
+    }
+
+    console.log('🔑 Using auth token:', token.substring(0, 20) + '...');
+
+    const response = await fetch(`${API_BASE_URL}/cv/preview/${fileId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    console.log('📡 Preview response status:', response.status);
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error('❌ Preview failed:', text);
+      throw new Error('Failed to preview CV');
+    }
+
+    const blob = await response.blob();
+    console.log('✅ Blob created, size:', blob.size, 'bytes');
+
+    // Create blob URL and open in new tab
+    const url = window.URL.createObjectURL(blob);
+    const newWindow = window.open(url, '_blank');
+
+    // Revoke URL after window loads (keep it alive long enough for browser to load)
+    if (newWindow) {
+      // Wait 10 seconds before revoking to ensure document is fully loaded
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        console.log('🧹 Blob URL revoked after window load');
+      }, 10000);
+    }
+
+    console.log('✅ Preview opened in new tab!');
+  },
+
+  /**
+   * Get current user's CV data
+   */
+  getMyCv: async (): Promise<ApiResponse<{
+    cvData: any;
+    cvFile: any;
+    generatedAt: string;
+    lastUpdatedAt: string;
+  }>> => {
+    return apiRequest('/cv/my-cv');
+  }
+};

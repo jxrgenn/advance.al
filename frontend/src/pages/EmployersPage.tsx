@@ -28,6 +28,8 @@ import { notifications } from '@mantine/notifications';
 import { Play, Building, ArrowRight, ArrowLeft, User, FileText, CheckCircle, HelpCircle, X, Lightbulb, Euro, TrendingUp, Star } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi } from "@/lib/api";
+import { validateForm, employerSignupRules, formatValidationErrors } from "@/lib/formValidation";
+import { TextAreaWithCounter, InputWithCounter } from "@/components/CharacterCounter";
 
 const EmployersPage = () => {
   const navigate = useNavigate();
@@ -85,8 +87,8 @@ const EmployersPage = () => {
         
         if (!values.password) {
           errors.password = 'Fjalëkalimi është i detyrueshëm';
-        } else if (values.password.length < 6) {
-          errors.password = 'Fjalëkalimi duhet të ketë të paktën 6 karaktere';
+        } else if (values.password.length < 8) {
+          errors.password = 'Fjalëkalimi duhet të ketë të paktën 8 karaktere';
         }
         // Phone is optional for step 0
       }
@@ -194,8 +196,53 @@ const EmployersPage = () => {
 
   // Step navigation functions
   const handleNextStep = () => {
-    const errors = employerForm.validate();
-    if (Object.keys(errors.errors).length === 0 && currentStep < steps.length - 1) {
+    const values = employerForm.values;
+
+    // Validate current step before advancing
+    if (currentStep === 0) {
+      // Step 0: Personal Info - Validate using validation system
+      const step1Validation = validateForm(values, employerSignupRules.step1);
+      const step0Validation = validateForm(
+        { email: values.email, password: values.password, confirmPassword: values.password, companyName: '' },
+        employerSignupRules.step0
+      );
+
+      if (!step1Validation.isValid) {
+        notifications.show({
+          title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
+          message: formatValidationErrors(step1Validation.errors),
+          color: 'red',
+          autoClose: 6000,
+        });
+        return;
+      }
+
+      if (!step0Validation.isValid) {
+        notifications.show({
+          title: 'Gabim në email ose fjalëkalim',
+          message: formatValidationErrors(step0Validation.errors),
+          color: 'red',
+          autoClose: 6000,
+        });
+        return;
+      }
+    } else if (currentStep === 1) {
+      // Step 1: Company Info - Validate using validation system
+      const validationResult = validateForm(values, employerSignupRules.step2);
+
+      if (!validationResult.isValid) {
+        notifications.show({
+          title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
+          message: formatValidationErrors(validationResult.errors),
+          color: 'red',
+          autoClose: 6000,
+        });
+        return;
+      }
+    }
+
+    // All validation passed, advance to next step
+    if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
     }
   };
@@ -241,87 +288,46 @@ const EmployersPage = () => {
         const formStepToValidate = currentStepData.formStep;
         const values = employerForm.values;
         
-        // Validation logic for each step
+        // Validation logic for each step using validation system
         if (formStepToValidate === 0) {
-          // Step 0: Personal Info - MUST be filled
-          if (!values.firstName || values.firstName.trim() === '') {
+          // Step 0: Personal Info - Use validation system
+          const validationResult = validateForm(values, employerSignupRules.step1);
+
+          if (!validationResult.isValid) {
             notifications.show({
-              title: 'Plotëso fushat e kërkuara',
-              message: 'Ju lutemi plotësoni të gjitha fushat e kërkuara para se të vazhdoni.',
+              title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
+              message: formatValidationErrors(validationResult.errors),
               color: 'red',
-              autoClose: 4000,
+              autoClose: 6000,
             });
             return;
           }
-          if (!values.lastName || values.lastName.trim() === '') {
+
+          // Additional password validation
+          const passwordValidation = validateForm(
+            { email: values.email, password: values.password, confirmPassword: values.password },
+            employerSignupRules.step0
+          );
+
+          if (!passwordValidation.isValid) {
             notifications.show({
-              title: 'Plotëso fushat e kërkuara',
-              message: 'Ju lutemi plotësoni të gjitha fushat e kërkuara para se të vazhdoni.',
+              title: 'Gabim në fjalëkalim ose email',
+              message: formatValidationErrors(passwordValidation.errors),
               color: 'red',
-              autoClose: 4000,
-            });
-            return;
-          }
-          if (!values.email || values.email.trim() === '') {
-            notifications.show({
-              title: 'Plotëso fushat e kërkuara',
-              message: 'Email është i detyrueshëm.',
-              color: 'red',
-              autoClose: 4000,
-            });
-            return;
-          } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
-            notifications.show({
-              title: 'Email i pavlefshëm',
-              message: 'Ju lutemi shkruani një email të vlefshëm.',
-              color: 'red',
-              autoClose: 4000,
-            });
-            return;
-          }
-          if (!values.password || values.password === '') {
-            notifications.show({
-              title: 'Plotëso fjalëkalimin',
-              message: 'Fjalëkalimi është i detyrueshëm.',
-              color: 'red',
-              autoClose: 4000,
-            });
-            return;
-          } else if (values.password.length < 6) {
-            notifications.show({
-              title: 'Fjalëkalim shumë i shkurtër',
-              message: 'Fjalëkalimi duhet të ketë të paktën 6 karaktere.',
-              color: 'red',
-              autoClose: 4000,
+              autoClose: 6000,
             });
             return;
           }
         } else if (formStepToValidate === 1) {
-          // Step 1: Company Info - MUST be filled
-          if (!values.companyName || values.companyName.trim() === '') {
+          // Step 1: Company Info - Use validation system
+          const validationResult = validateForm(values, employerSignupRules.step2);
+
+          if (!validationResult.isValid) {
             notifications.show({
-              title: 'Plotëso emrin e kompanisë',
-              message: 'Emri i kompanisë është i detyrueshëm.',
+              title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
+              message: formatValidationErrors(validationResult.errors),
               color: 'red',
-              autoClose: 4000,
-            });
-            return;
-          }
-          if (!values.companySize) {
-            notifications.show({
-              title: 'Zgjidh madhësinë e kompanisë',
-              message: 'Madhësia e kompanisë është e detyrueshme.',
-              color: 'red',
-              autoClose: 4000,
-            });
-            return;
-          }
-          if (!values.city) {
-            notifications.show({
-              title: 'Zgjidh qytetin',
-              message: 'Qyteti është i detyrueshëm.',
-              color: 'red',
-              autoClose: 4000,
+              autoClose: 6000,
             });
             return;
           }
@@ -691,12 +697,54 @@ const EmployersPage = () => {
   const handleEmployerSubmit = async () => {
     if (currentStep !== 2) return;
 
-    // Final validation before submit
-    const validationResult = employerForm.validate();
-    if (Object.keys(validationResult.errors).length > 0) {
+    try {
+      const values = employerForm.values;
+
+      // Comprehensive validation before submit
+      const step0Validation = validateForm(
+        { email: values.email, password: values.password, confirmPassword: values.password, companyName: values.companyName },
+        employerSignupRules.step0
+      );
+      const step1Validation = validateForm(values, employerSignupRules.step1);
+      const step2Validation = validateForm(values, employerSignupRules.step2);
+
+      if (!step0Validation.isValid) {
+        notifications.show({
+          title: 'Gabim në të dhënat e llogarisë',
+          message: formatValidationErrors(step0Validation.errors),
+          color: 'red',
+          autoClose: 6000,
+        });
+        setCurrentStep(0);
+        return;
+      }
+
+      if (!step1Validation.isValid) {
+        notifications.show({
+          title: 'Gabim në informacionin personal',
+          message: formatValidationErrors(step1Validation.errors),
+          color: 'red',
+          autoClose: 6000,
+        });
+        setCurrentStep(0);
+        return;
+      }
+
+      if (!step2Validation.isValid) {
+        notifications.show({
+          title: 'Gabim në informacionin e kompanisë',
+          message: formatValidationErrors(step2Validation.errors),
+          color: 'red',
+          autoClose: 6000,
+        });
+        setCurrentStep(1);
+        return;
+      }
+    } catch (validationError) {
+      console.error('Validation error:', validationError);
       notifications.show({
-        title: 'Plotëso fushat e kërkuara',
-        message: 'Ju lutemi plotësoni të gjitha fushat e kërkuara para se të krijoni llogarinë.',
+        title: 'Gabim në validim',
+        message: 'Ju lutemi kontrolloni të gjitha fushat.',
         color: 'red',
         autoClose: 4000,
       });
@@ -895,16 +943,24 @@ const EmployersPage = () => {
             </Box>
 
             <SimpleGrid cols={2} spacing="md" data-tutorial="firstName">
-              <TextInput
+              <InputWithCounter
                 label="Emri"
                 placeholder="Emri juaj"
-                {...employerForm.getInputProps('firstName')}
+                value={employerForm.values.firstName}
+                onChange={(e) => employerForm.setFieldValue('firstName', e.target.value)}
+                maxLength={50}
+                minLength={2}
+                error={employerForm.errors.firstName}
                 required
               />
-              <TextInput
+              <InputWithCounter
                 label="Mbiemri"
                 placeholder="Mbiemri juaj"
-                {...employerForm.getInputProps('lastName')}
+                value={employerForm.values.lastName}
+                onChange={(e) => employerForm.setFieldValue('lastName', e.target.value)}
+                maxLength={50}
+                minLength={2}
+                error={employerForm.errors.lastName}
                 required
               />
             </SimpleGrid>
@@ -922,9 +978,10 @@ const EmployersPage = () => {
             <Box data-tutorial="password">
               <TextInput
                 label="Fjalëkalimi"
-                placeholder="Të paktën 6 karaktere"
+                placeholder="Të paktën 8 karaktere"
                 type="password"
                 {...employerForm.getInputProps('password')}
+                description="Fjalëkalimi duhet të ketë të paktën 8 karaktere"
                 required
               />
             </Box>
@@ -948,10 +1005,14 @@ const EmployersPage = () => {
             </Box>
 
             <Box data-tutorial="companyName">
-              <TextInput
+              <InputWithCounter
                 label="Emri i Kompanisë"
                 placeholder="Kompania juaj"
-                {...employerForm.getInputProps('companyName')}
+                value={employerForm.values.companyName}
+                onChange={(e) => employerForm.setFieldValue('companyName', e.target.value)}
+                maxLength={100}
+                minLength={2}
+                error={employerForm.errors.companyName}
                 required
               />
             </Box>
@@ -989,11 +1050,16 @@ const EmployersPage = () => {
             </SimpleGrid>
 
             <Box data-tutorial="description">
-              <Textarea
+              <TextAreaWithCounter
                 label="Përshkrimi i Kompanisë (Opsional)"
                 placeholder="Shkruani një përshkrim të shkurtër të kompanisë suaj..."
-                {...employerForm.getInputProps('description')}
+                value={employerForm.values.description}
+                onChange={(e) => employerForm.setFieldValue('description', e.target.value)}
+                maxLength={500}
+                minLength={50}
+                showMinLength={true}
                 rows={3}
+                error={employerForm.errors.description}
               />
             </Box>
           </Stack>
@@ -1063,7 +1129,7 @@ const EmployersPage = () => {
       {/* Tutorial Overlay */}
       <TutorialOverlay />
 
-      <Container size="lg" py={40} pt={2}>
+      <Container size="lg" py={40} pt={80}>
         {/* Header */}
         <Center mb={30}>
           <Stack align="center" gap="sm">

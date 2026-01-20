@@ -26,18 +26,28 @@ import {
   Avatar,
   Textarea,
   TagsInput,
+  SegmentedControl,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { Play, Users, Bell, HelpCircle, X, Lightbulb, CheckCircle, ArrowRight, Briefcase, Zap, UserPlus, FileText, Send } from "lucide-react";
+import { Play, Users, Bell, HelpCircle, X, Lightbulb, CheckCircle, ArrowRight, Briefcase, Zap, UserPlus, FileText, Send, Download, Eye } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { authApi, quickUsersApi } from "@/lib/api";
+import { authApi, quickUsersApi, cvApi } from "@/lib/api";
+import { validateForm, jobSeekerSignupRules, formatValidationErrors } from "@/lib/formValidation";
+import { InputWithCounter } from "@/components/CharacterCounter";
 
 const JobSeekersPage = () => {
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
   const [showQuickForm, setShowQuickForm] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // CV Generation State
+  const [cvInput, setCvInput] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [generatedCV, setGeneratedCV] = useState<any>(null);
+  const [useTemplate, setUseTemplate] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState<'sq' | 'en'>('sq');
 
   // Tutorial system state - simplified with scroll lock
   const [showTutorial, setShowTutorial] = useState(false);
@@ -67,7 +77,7 @@ const JobSeekersPage = () => {
       firstName: (value) => (!value ? 'Emri është i detyrueshëm' : null),
       lastName: (value) => (!value ? 'Mbiemri është i detyrueshëm' : null),
       email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Email i pavlefshëm'),
-      password: (value) => (value.length < 6 ? 'Fjalëkalimi duhet të ketë të paktën 6 karaktere' : null),
+      password: (value) => (value.length < 8 ? 'Fjalëkalimi duhet të ketë të paktën 8 karaktere' : null),
     },
   });
 
@@ -93,6 +103,82 @@ const JobSeekersPage = () => {
     'Teknologji', 'Marketing', 'Shitje', 'Financë', 'Burime Njerëzore',
     'Inxhinieri', 'Dizajn', 'Menaxhim', 'Shëndetësi', 'Arsim', 'Tjetër'
   ];
+
+  // CV Template Text
+  const cvTemplateText = `INFORMACIONI PERSONAL
+Emri i plotë: _______________
+Email: _______________
+Telefoni: _______________
+Adresa: _______________
+Data e lindjes: _______________
+Nacionaliteti: _______________
+LinkedIn (opsionale): _______________
+
+PËRMBLEDHJE PROFESIONALE
+Shkruani një përmbledhje të shkurtër rreth jush dhe qëllimeve tuaja profesionale (2-3 fjali):
+_______________________________________________________________________________
+_______________________________________________________________________________
+
+EKSPERIENCA E PUNËS
+Kompania 1: _______________
+Pozicioni: _______________
+Periudha: _______________ deri _______________
+Lokacioni: _______________
+Përgjegjësitë dhe arritjet:
+- _______________
+- _______________
+- _______________
+
+Kompania 2: _______________
+Pozicioni: _______________
+Periudha: _______________ deri _______________
+Lokacioni: _______________
+Përgjegjësitë dhe arritjet:
+- _______________
+- _______________
+
+EDUKIMI
+Universiteti/Shkolla: _______________
+Diploma: _______________
+Fusha e studimit: _______________
+Periudha: _______________ deri _______________
+Nota mesatare (GPA): _______________
+Nderime (opsionale): _______________
+
+AFTËSITË
+Aftësi teknike: _______________, _______________, _______________
+Aftësi të buta: _______________, _______________, _______________
+Mjete/Programe: _______________, _______________, _______________
+
+GJUHËT
+Gjuha 1: _______________ - Niveli: _______________
+Gjuha 2: _______________ - Niveli: _______________
+Gjuha 3: _______________ - Niveli: _______________
+
+CERTIFIKATAT (Opsionale)
+Certifikata 1: _______________
+Lëshuar nga: _______________
+Data: _______________
+
+REFERENCA (Opsionale)
+Emri: _______________
+Pozicioni: _______________
+Kompania: _______________
+Email: _______________
+Telefoni: _______________`;
+
+  // Toggle template handler
+  const handleToggleTemplate = () => {
+    if (!useTemplate) {
+      // Switching to template mode - load template
+      setCvInput(cvTemplateText);
+      setUseTemplate(true);
+    } else {
+      // Switching off template mode - clear input
+      setCvInput('');
+      setUseTemplate(false);
+    }
+  };
 
   // Tutorial steps configuration for full registration form
   const fullFormTutorialSteps = [
@@ -165,16 +251,37 @@ const JobSeekersPage = () => {
   // Get current tutorial steps based on form type
   const currentTutorialSteps = showQuickForm ? quickFormTutorialSteps : fullFormTutorialSteps;
 
-  useEffect(() => {
-    // If already authenticated, redirect to jobs page
-    if (isAuthenticated && user?.userType === 'jobseeker') {
-      navigate('/jobs');
-    }
-  }, [isAuthenticated, user, navigate]);
+  // Removed redirect - allow jobseekers to view this page regardless of auth status
+  // Users should be able to visit /jobseekers even when logged in
 
   const handleFullSubmit = async (values: typeof fullForm.values) => {
     try {
       setLoading(true);
+
+      // Validate using validation system
+      const validationData = {
+        firstName: values.firstName,
+        lastName: values.lastName,
+        email: values.email,
+        password: values.password,
+        confirmPassword: values.password,
+        phone: values.phone,
+        city: values.city,
+        education: '' // Not collected in this form
+      };
+
+      const validationResult = validateForm(validationData, jobSeekerSignupRules.quickForm);
+
+      if (!validationResult.isValid) {
+        notifications.show({
+          title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
+          message: formatValidationErrors(validationResult.errors),
+          color: 'red',
+          autoClose: 6000,
+        });
+        setLoading(false);
+        return;
+      }
 
       // Format phone
       const cleanPhone = values.phone.replace(/[\s\-\(\)]/g, '');
@@ -213,6 +320,39 @@ const JobSeekersPage = () => {
     try {
       setLoading(true);
 
+      // Validate using validation system
+      const validationData = {
+        firstName: values.firstName,
+        lastName: values.lastName,
+        email: values.email,
+        phone: values.phone
+      };
+
+      const validationResult = validateForm(validationData, jobSeekerSignupRules.quickForm);
+
+      if (!validationResult.isValid) {
+        notifications.show({
+          title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
+          message: formatValidationErrors(validationResult.errors),
+          color: 'red',
+          autoClose: 6000,
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Additional validation for interests (required for quick form)
+      if (!values.interests || values.interests.length === 0) {
+        notifications.show({
+          title: 'Zgjidhni interesat tuaja',
+          message: 'Ju lutemi zgjidhni të paktën një kategori pune ose aftësi',
+          color: 'red',
+          autoClose: 6000,
+        });
+        setLoading(false);
+        return;
+      }
+
       // Format phone
       const cleanPhone = values.phone.replace(/[\s\-\(\)]/g, '');
       const formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : '+355' + cleanPhone.replace(/^0/, '');
@@ -244,6 +384,60 @@ const JobSeekersPage = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGenerateCV = async () => {
+    // Check authentication and user type
+    if (!isAuthenticated || user?.userType !== 'jobseeker') {
+      notifications.show({
+        title: "Duhet të jeni të regjistruar",
+        message: "Vetëm përdoruesit e regjistruar si punëkërkues mund të gjenerojnë CV.",
+        color: "red"
+      });
+      return;
+    }
+
+    // Validate input length
+    if (cvInput.trim().length < 50) {
+      notifications.show({
+        title: "Input i pamjaftueshëm",
+        message: "Ju lutemi shkruani të paktën 50 karaktere për të gjeneruar një CV të mirë",
+        color: "red"
+      });
+      return;
+    }
+
+    try {
+      setGenerating(true);
+
+      // Call CV generation API with selected language
+      const response = await cvApi.generate(cvInput, selectedLanguage);
+
+      if (response.success && response.data) {
+        setGeneratedCV(response.data);
+        notifications.show({
+          title: "CV u gjenerua me sukses!",
+          message: `CV-ja juaj është gati për shkarkim (${response.data.language === 'sq' ? 'Shqip' : 'Anglisht'})`,
+          color: "green"
+        });
+
+        // Scroll to the success card
+        setTimeout(() => {
+          const successCard = document.querySelector('[data-cv-success]');
+          if (successCard) {
+            successCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 100);
+      }
+    } catch (error: any) {
+      notifications.show({
+        title: "Gabim",
+        message: error.message || "Nuk mund të gjenerojë CV. Ju lutemi provoni përsëri.",
+        color: "red"
+      });
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -712,7 +906,7 @@ const JobSeekersPage = () => {
       {/* Tutorial Overlay */}
       <TutorialOverlay />
 
-      <Container size="lg" py={40} pt={2}>
+      <Container size="lg" py={40} pt={80}>
         {/* Header */}
         <Center mb={30}>
           <Stack align="center" gap="sm">
@@ -886,16 +1080,24 @@ const JobSeekersPage = () => {
                 <form onSubmit={fullForm.onSubmit(handleFullSubmit)}>
                   <Stack gap="md">
                     <SimpleGrid cols={2} spacing="md" data-tutorial="firstName">
-                      <TextInput
+                      <InputWithCounter
                         label="Emri"
                         placeholder="Emri juaj"
-                        {...fullForm.getInputProps('firstName')}
+                        value={fullForm.values.firstName}
+                        onChange={(e) => fullForm.setFieldValue('firstName', e.target.value)}
+                        maxLength={50}
+                        minLength={2}
+                        error={fullForm.errors.firstName}
                         required
                       />
-                      <TextInput
+                      <InputWithCounter
                         label="Mbiemri"
                         placeholder="Mbiemri juaj"
-                        {...fullForm.getInputProps('lastName')}
+                        value={fullForm.values.lastName}
+                        onChange={(e) => fullForm.setFieldValue('lastName', e.target.value)}
+                        maxLength={50}
+                        minLength={2}
+                        error={fullForm.errors.lastName}
                         required
                       />
                     </SimpleGrid>
@@ -913,9 +1115,10 @@ const JobSeekersPage = () => {
                     <Box data-tutorial="password">
                       <TextInput
                         label="Fjalëkalimi"
-                        placeholder="Të paktën 6 karaktere"
+                        placeholder="Të paktën 8 karaktere"
                         type="password"
                         {...fullForm.getInputProps('password')}
+                        description="Fjalëkalimi duhet të ketë të paktën 8 karaktere"
                         required
                       />
                     </Box>
@@ -991,16 +1194,24 @@ const JobSeekersPage = () => {
                 <form onSubmit={quickForm.onSubmit(handleQuickSubmit)}>
                   <Stack gap="md">
                     <SimpleGrid cols={2} spacing="md" data-tutorial="quick-name">
-                      <TextInput
+                      <InputWithCounter
                         label="Emri"
                         placeholder="Emri juaj"
-                        {...quickForm.getInputProps('firstName')}
+                        value={quickForm.values.firstName}
+                        onChange={(e) => quickForm.setFieldValue('firstName', e.target.value)}
+                        maxLength={50}
+                        minLength={2}
+                        error={quickForm.errors.firstName}
                         required
                       />
-                      <TextInput
+                      <InputWithCounter
                         label="Mbiemri"
                         placeholder="Mbiemri juaj"
-                        {...quickForm.getInputProps('lastName')}
+                        value={quickForm.values.lastName}
+                        onChange={(e) => quickForm.setFieldValue('lastName', e.target.value)}
+                        maxLength={50}
+                        minLength={2}
+                        error={quickForm.errors.lastName}
                         required
                       />
                     </SimpleGrid>
@@ -1109,6 +1320,25 @@ const JobSeekersPage = () => {
             </Grid.Col>
 
             <Grid.Col span={12}>
+              <Paper withBorder p="md" radius="sm" mb="md" bg="gray.0">
+                <Group justify="space-between" align="center">
+                  <Box>
+                    <Text size="sm" fw={500} mb={4}>Zgjidhni gjuhën e CV-së:</Text>
+                    <Text size="xs" c="dimmed">CV-ja do të gjenerojhet në gjuhën që zgjidhni këtu</Text>
+                  </Box>
+                  <SegmentedControl
+                    value={selectedLanguage}
+                    onChange={(value) => setSelectedLanguage(value as 'sq' | 'en')}
+                    disabled={generating}
+                    data={[
+                      { label: '🇦🇱 Shqip', value: 'sq' },
+                      { label: '🇬🇧 English', value: 'en' }
+                    ]}
+                    size="sm"
+                  />
+                </Group>
+              </Paper>
+
               <Paper bg="blue.0" p="md" radius="sm" mb="md">
                 <Text size="sm" fw={500} mb="sm">Si të përdorni:</Text>
                 <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
@@ -1125,21 +1355,103 @@ const JobSeekersPage = () => {
 
             <Grid.Col span={12}>
               <Textarea
-                placeholder="Shembull: Emri: Alban Hoxha, Qyteti: Tiranë, Email: alban@email.com, Tel: +355 69 123 4567&#10;&#10;Kam punuar si zhvillues web për 5 vjet në XYZ ku kam zhvilluar aplikacione me React dhe Node.js. Para kësaj kam qenë asistent IT për 2 vjet.&#10;&#10;Diplomuar në Inxhinieri Kompjuterike nga Universiteti Politeknik i Tiranës në vitin 2018.&#10;&#10;Aftësi: JavaScript, React, Node.js, MongoDB, Anglisht C1, Italisht B2."
-                minRows={7}
-                maxRows={15}
+                placeholder={useTemplate ? "" : "Shembull: Emri: Alban Hoxha, Qyteti: Tiranë, Email: alban@email.com, Tel: +355 69 123 4567&#10;&#10;Kam punuar si zhvillues web për 5 vjet në XYZ ku kam zhvilluar aplikacione me React dhe Node.js. Para kësaj kam qenë asistent IT për 2 vjet.&#10;&#10;Diplomuar në Inxhinieri Kompjuterike nga Universiteti Politeknik i Tiranës në vitin 2018.&#10;&#10;Aftësi: JavaScript, React, Node.js, MongoDB, Anglisht C1, Italisht B2."}
+                minRows={useTemplate ? 20 : 7}
+                maxRows={useTemplate ? 30 : 15}
                 autosize
+                value={cvInput}
+                onChange={(e) => setCvInput(e.currentTarget.value)}
+                disabled={generating}
+                styles={{
+                  input: {
+                    fontFamily: useTemplate ? 'monospace' : 'inherit',
+                  }
+                }}
               />
+              <Group mt="xs">
+                <Checkbox
+                  label="Përdor shabllonin me hapësira"
+                  checked={useTemplate}
+                  onChange={handleToggleTemplate}
+                  size="sm"
+                  disabled={generating}
+                />
+                <Text size="xs" c="dimmed">
+                  {useTemplate ? '✓ Shablloni aktivizuar - plotësoni hapësirat' : 'Shkruani në mënyrë të lirë ose aktivizoni shabllonin'}
+                </Text>
+              </Group>
             </Grid.Col>
 
             <Grid.Col span={12}>
               <Group justify="space-between" align="center">
                 <Text size="xs" c="dimmed">💡 Cilësia e CV-së varet nga informacioni që jepni</Text>
-                <Button variant="filled" color="blue" rightSection={<FileText size={18} />}>
-                  Gjenero CV-në
+                <Button
+                  variant="filled"
+                  color="blue"
+                  rightSection={<FileText size={18} />}
+                  onClick={handleGenerateCV}
+                  loading={generating}
+                  disabled={!isAuthenticated || user?.userType !== 'jobseeker' || cvInput.trim().length < 50}
+                >
+                  {generating ? 'Duke gjeneruar...' : 'Gjenero CV-në'}
                 </Button>
               </Group>
             </Grid.Col>
+
+            {/* Generated CV Success Card */}
+            {generatedCV && (
+              <Grid.Col span={12}>
+                <Card shadow="md" padding="lg" radius="md" withBorder style={{ backgroundColor: 'var(--mantine-color-green-0)' }} data-cv-success>
+                  <Group justify="space-between" mb="md">
+                    <Box>
+                      <Title order={4} c="green.8">CV-ja juaj është gati!</Title>
+                      <Text size="sm" c="dimmed" mt={4}>
+                        Gjuha: {generatedCV.language === 'sq' ? 'Shqip' : 'English'} | Madhësia: {(generatedCV.fileSize / 1024).toFixed(1)} KB
+                      </Text>
+                    </Box>
+                    <CheckCircle size={32} className="text-green-600" />
+                  </Group>
+                  <Group>
+                    <Button
+                      onClick={async () => {
+                        try {
+                          await cvApi.previewFile(generatedCV.fileId);
+                        } catch (error: any) {
+                          notifications.show({
+                            title: "Gabim",
+                            message: error.message || "Nuk mund të shfaq CV-në",
+                            color: "red"
+                          });
+                        }
+                      }}
+                      variant="light"
+                      color="blue"
+                      leftSection={<Eye size={18} />}
+                    >
+                      Shiko CV-në
+                    </Button>
+                    <Button
+                      onClick={async () => {
+                        try {
+                          await cvApi.downloadFile(generatedCV.fileId, generatedCV.fileName);
+                        } catch (error: any) {
+                          notifications.show({
+                            title: "Gabim",
+                            message: error.message || "Nuk mund të shkarkojë CV-në",
+                            color: "red"
+                          });
+                        }
+                      }}
+                      variant="filled"
+                      color="green"
+                      leftSection={<Download size={18} />}
+                    >
+                      Shkarko si Word
+                    </Button>
+                  </Group>
+                </Card>
+              </Grid.Col>
+            )}
           </Grid>
         </Paper>
       </Container>

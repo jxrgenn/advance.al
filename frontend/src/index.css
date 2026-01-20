@@ -111,7 +111,8 @@ All colors MUST be HSL.
   }
 
   html {
-    overflow-y: scroll; /* Prevent layout shift from scrollbar appearing/disappearing */
+    scrollbar-gutter: stable; /* Reserve space for scrollbar to prevent layout shift */
+    overflow-y: auto; /* Show scrollbar only when needed, but space is always reserved */
     overflow-x: hidden; /* Prevent horizontal scroll on mobile */
   }
 
@@ -174,5 +175,14 @@ All colors MUST be HSL.
   /* Force SelectValue text to be visible when parent has bg-muted */
   .bg-muted [data-radix-select-value] {
     color: hsl(var(--foreground)) !important;
+  }
+
+  /* Prevent Radix UI from adding padding-right when dropdowns open - this causes the page shift */
+  body[style*="padding-right"] {
+    padding-right: 0 !important;
+  }
+
+  html[style*="padding-right"] {
+    padding-right: 0 !important;
   }
 }

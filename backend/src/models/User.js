@@ -87,7 +87,79 @@ const jobSeekerProfileSchema = new Schema({
     type: String,
     enum: ['immediately', '2weeks', '1month', '3months'],
     default: 'immediately'
-  }
+  },
+
+  // AI-Generated CV Data
+  aiGeneratedCV: {
+    language: {
+      type: String,
+      enum: ['sq', 'en'], // sq = Albanian, en = English
+      default: 'sq'
+    },
+    personalInfo: {
+      fullName: String,
+      email: String,
+      phone: String,
+      address: String,
+      dateOfBirth: String,
+      nationality: String,
+      linkedIn: String,
+      portfolio: String
+    },
+    professionalSummary: {
+      type: String,
+      maxlength: 1000
+    },
+    workExperience: [{
+      company: String,
+      position: String,
+      startDate: String,
+      endDate: String,
+      current: Boolean,
+      location: String,
+      responsibilities: [String],
+      achievements: [String]
+    }],
+    education: [{
+      institution: String,
+      degree: String,
+      fieldOfStudy: String,
+      startDate: String,
+      endDate: String,
+      current: Boolean,
+      gpa: String,
+      honors: String
+    }],
+    skills: {
+      technical: [String],
+      soft: [String],
+      tools: [String]
+    },
+    languages: [{
+      name: String,
+      proficiency: {
+        type: String,
+        enum: ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'Native']
+      }
+    }],
+    certifications: [{
+      name: String,
+      issuer: String,
+      dateObtained: String,
+      expiryDate: String,
+      credentialId: String
+    }],
+    references: [{
+      name: String,
+      position: String,
+      company: String,
+      email: String,
+      phone: String,
+      relationship: String
+    }]
+  },
+  cvGeneratedAt: Date,
+  cvLastUpdatedAt: Date
 });
 
 // Employer Profile Schema

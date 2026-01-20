@@ -150,7 +150,7 @@ const SavedJobs = () => {
     <div className="min-h-screen bg-background">
       <Navigation />
 
-      <div className="container py-8">
+      <div className="container py-8 pt-20">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
           <Button
@@ -216,27 +216,12 @@ const SavedJobs = () => {
           <>
             <div className="grid gap-6">
               {savedJobs.map((job) => (
-                <div key={job._id} className="relative">
-                  <JobCard
-                    job={job}
-                    onApply={handleApply}
-                    hasApplied={appliedJobIds.includes(job._id)}
-                  />
-
-                  {/* Unsave Button */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleUnsaveJob(job._id);
-                    }}
-                    className="absolute top-4 right-4 text-muted-foreground hover:text-destructive"
-                    title="Hiq nga të ruajturat"
-                  >
-                    <Bookmark className="h-4 w-4 fill-current" />
-                  </Button>
-                </div>
+                <JobCard
+                  key={job._id}
+                  job={job}
+                  onApply={handleApply}
+                  hasApplied={appliedJobIds.includes(job._id)}
+                />
               ))}
             </div>
 

@@ -15,6 +15,8 @@ import { User, Mail, Phone, MapPin, Upload, FileText, Briefcase, Award, Loader2,
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { usersApi, applicationsApi } from "@/lib/api";
+import { validateForm, profileValidationRules, formatValidationErrors } from "@/lib/formValidation";
+import { InputWithCounter, TextAreaWithCounter } from "@/components/CharacterCounter";
 
 const Profile = () => {
   const [uploadingCV, setUploadingCV] = useState(false);
@@ -280,10 +282,52 @@ const Profile = () => {
 
   const handleSave = async () => {
     if (!hasChanges) return;
-    
+
     try {
       setSavingProfile(true);
-      
+
+      // Validate personal information
+      const personalValidation = validateForm(
+        {
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          phone: formData.phone,
+          bio: formData.bio
+        },
+        profileValidationRules.personal
+      );
+
+      if (!personalValidation.isValid) {
+        toast({
+          title: "Fushat e detyrueshme nuk janë plotësuar korrekt",
+          description: formatValidationErrors(personalValidation.errors),
+          variant: "destructive"
+        });
+        setSavingProfile(false);
+        return;
+      }
+
+      // Validate professional information if job seeker
+      if (user?.userType === 'jobseeker') {
+        const professionalValidation = validateForm(
+          {
+            headline: formData.title,
+            skills: formData.skills
+          },
+          profileValidationRules.professional
+        );
+
+        if (!professionalValidation.isValid) {
+          toast({
+            title: "Fushat e detyrueshme nuk janë plotësuar korrekt",
+            description: formatValidationErrors(professionalValidation.errors),
+            variant: "destructive"
+          });
+          setSavingProfile(false);
+          return;
+        }
+      }
+
       // Prepare update data
       const updateData = {
         firstName: formData.firstName,
@@ -294,7 +338,7 @@ const Profile = () => {
           region: formData.location.split(',')[1]?.trim() || formData.location.split(',')[0]?.trim() || ''
         }
       };
-      
+
       // Add job seeker specific data
       if (user?.userType === 'jobseeker') {
         updateData.jobSeekerProfile = {
@@ -305,12 +349,12 @@ const Profile = () => {
           availability: formData.availability
         };
       }
-      
+
       // Update profile via API
       console.log('Sending profile update:', updateData);
       const response = await usersApi.updateProfile(updateData);
       console.log('Profile update response:', response);
-      
+
       if (response.success && response.data?.user) {
         await refreshUser();
         setHasChanges(false);
@@ -410,17 +454,44 @@ const Profile = () => {
   };
 
   const handleSaveWorkExperience = async () => {
-    if (!workExperienceForm.position || !workExperienceForm.company) {
-      toast({
-        title: "Gabim",
-        description: "Ju lutem plotësoni fushat e kërkuara",
-        variant: "destructive"
-      });
-      return;
-    }
-
     setSavingWorkExperience(true);
+
     try {
+      // Create validation rules with conditional endDate requirement
+      const workExpRules = { ...profileValidationRules.workExperience };
+
+      // If not current job, endDate is required
+      if (!workExperienceForm.isCurrentJob) {
+        workExpRules.endDate = {
+          required: true,
+          message: "Data e mbarimit është e detyrueshme"
+        };
+      }
+
+      // Validate work experience form
+      const validationResult = validateForm(
+        {
+          position: workExperienceForm.position,
+          company: workExperienceForm.company,
+          location: workExperienceForm.location,
+          startDate: workExperienceForm.startDate,
+          endDate: workExperienceForm.endDate,
+          description: workExperienceForm.description,
+          achievements: workExperienceForm.achievements
+        },
+        workExpRules
+      );
+
+      if (!validationResult.isValid) {
+        toast({
+          title: "Fushat e detyrueshme nuk janë plotësuar korrekt",
+          description: formatValidationErrors(validationResult.errors),
+          variant: "destructive"
+        });
+        setSavingWorkExperience(false);
+        return;
+      }
+
       const response = await usersApi.addWorkExperience(workExperienceForm);
 
       if (response.success) {
@@ -459,17 +530,44 @@ const Profile = () => {
   };
 
   const handleSaveEducation = async () => {
-    if (!educationForm.degree || !educationForm.institution) {
-      toast({
-        title: "Gabim",
-        description: "Ju lutem plotësoni fushat e kërkuara",
-        variant: "destructive"
-      });
-      return;
-    }
-
     setSavingEducation(true);
+
     try {
+      // Create validation rules with conditional endDate requirement
+      const educationRules = { ...profileValidationRules.education };
+
+      // If not currently studying, endDate is required
+      if (!educationForm.isCurrentStudy) {
+        educationRules.endDate = {
+          required: true,
+          message: "Data e mbarimit është e detyrueshme"
+        };
+      }
+
+      // Validate education form
+      const validationResult = validateForm(
+        {
+          degree: educationForm.degree,
+          fieldOfStudy: educationForm.fieldOfStudy,
+          institution: educationForm.institution,
+          location: educationForm.location,
+          startDate: educationForm.startDate,
+          endDate: educationForm.endDate,
+          description: educationForm.description
+        },
+        educationRules
+      );
+
+      if (!validationResult.isValid) {
+        toast({
+          title: "Fushat e detyrueshme nuk janë plotësuar korrekt",
+          description: formatValidationErrors(validationResult.errors),
+          variant: "destructive"
+        });
+        setSavingEducation(false);
+        return;
+      }
+
       const response = await usersApi.addEducation(educationForm);
 
       if (response.success) {
@@ -1255,19 +1353,23 @@ const Profile = () => {
                     <CardContent className="space-y-4">
                       <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="firstName">Emri</Label>
-                        <Input 
-                          id="firstName" 
+                        <InputWithCounter
+                          label="Emri"
+                          id="firstName"
                           value={formData.firstName}
                           onChange={(e) => handleInputChange('firstName', e.target.value)}
+                          maxLength={50}
+                          minLength={2}
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="lastName">Mbiemri</Label>
-                        <Input 
-                          id="lastName" 
+                        <InputWithCounter
+                          label="Mbiemri"
+                          id="lastName"
                           value={formData.lastName}
                           onChange={(e) => handleInputChange('lastName', e.target.value)}
+                          maxLength={50}
+                          minLength={2}
                         />
                       </div>
                     </div>
@@ -1322,12 +1424,13 @@ const Profile = () => {
                     </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="bio">Biografia</Label>
-                        <Textarea
+                        <TextAreaWithCounter
+                          label="Biografia"
                           id="bio"
                           placeholder="Shkruaj diçka për veten..."
                           value={formData.bio}
                           onChange={(e) => handleInputChange('bio', e.target.value)}
+                          maxLength={500}
                           rows={4}
                         />
                       </div>
@@ -1336,12 +1439,13 @@ const Profile = () => {
 
                   <CardContent className="space-y-4">
                     <div className="space-y-2" data-tutorial="professional-title">
-                      <Label htmlFor="title">Titulli Profesional</Label>
-                      <Input
+                      <InputWithCounter
+                        label="Titulli Profesional"
                         id="title"
                         value={formData.title}
                         onChange={(e) => handleInputChange('title', e.target.value)}
                         placeholder="Frontend Developer, Accountant, etc."
+                        maxLength={100}
                       />
                     </div>
 
@@ -1684,17 +1788,18 @@ const Profile = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="start-date">Data e fillimit</Label>
+                <Label htmlFor="start-date">Data e fillimit *</Label>
                 <Input
                   id="start-date"
                   type="month"
                   value={workExperienceForm.startDate}
                   onChange={(e) => setWorkExperienceForm(prev => ({ ...prev, startDate: e.target.value }))}
                   className="w-full"
+                  required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="end-date">Data e mbarimit</Label>
+                <Label htmlFor="end-date">Data e mbarimit{!workExperienceForm.isCurrentJob && ' *'}</Label>
                 <Input
                   id="end-date"
                   type="month"
@@ -1702,6 +1807,7 @@ const Profile = () => {
                   onChange={(e) => setWorkExperienceForm(prev => ({ ...prev, endDate: e.target.value }))}
                   className="w-full"
                   disabled={workExperienceForm.isCurrentJob}
+                  required={!workExperienceForm.isCurrentJob}
                 />
               </div>
             </div>
@@ -1850,13 +1956,14 @@ const Profile = () => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="field">Fusha e studimit</Label>
+                <Label htmlFor="field">Fusha e studimit *</Label>
                 <Input
                   id="field"
                   value={educationForm.fieldOfStudy}
                   onChange={(e) => setEducationForm(prev => ({ ...prev, fieldOfStudy: e.target.value }))}
                   placeholder="p.sh. Shkenca Kompjuterike, Inxhinieri, Biznes"
                   className="w-full"
+                  required
                 />
               </div>
             </div>
@@ -1885,17 +1992,18 @@ const Profile = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edu-start-date">Data e fillimit</Label>
+                <Label htmlFor="edu-start-date">Data e fillimit *</Label>
                 <Input
                   id="edu-start-date"
                   type="month"
                   value={educationForm.startDate}
                   onChange={(e) => setEducationForm(prev => ({ ...prev, startDate: e.target.value }))}
                   className="w-full"
+                  required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edu-end-date">Data e mbarimit</Label>
+                <Label htmlFor="edu-end-date">Data e mbarimit{!educationForm.isCurrentStudy && ' *'}</Label>
                 <Input
                   id="edu-end-date"
                   type="month"
@@ -1903,6 +2011,7 @@ const Profile = () => {
                   onChange={(e) => setEducationForm(prev => ({ ...prev, endDate: e.target.value }))}
                   className="w-full"
                   disabled={educationForm.isCurrentStudy}
+                  required={!educationForm.isCurrentStudy}
                 />
               </div>
             </div>

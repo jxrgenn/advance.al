@@ -108,8 +108,12 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false }: Jo
   
   return (
     <Card
-      className={`group hover:shadow-lg transition-all duration-200 cursor-pointer border-border/50 relative ${
-        isViewed ? 'border-l-4 border-l-blue-300 bg-blue-50/20' : 'bg-white'
+      className={`group hover:shadow-lg transition-all duration-200 cursor-pointer relative ${
+        hasApplied
+          ? 'border-l-4 border-l-green-400 bg-green-50/30'
+          : isViewed
+            ? 'border-l-4 border-l-blue-300 bg-blue-50/20'
+            : 'bg-white border-border/50'
       }`}
       onClick={handleCardClick}
     >
@@ -206,14 +210,10 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false }: Jo
               </div>
             )}
 
-            {/* Applied Status Indicator at top */}
+            {/* Subtle applied status - small green checkmark icon */}
             {hasApplied && (
-              <div className="absolute top-0 left-1/2 transform -translate-x-1/2">
-                <Badge className="bg-green-100 text-green-800 border-green-200 px-1 py-0.5 sm:px-2 sm:py-1 text-xs whitespace-nowrap">
-                  <CheckCircle className="mr-0.5 sm:mr-1 h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                  <span className="hidden sm:inline">Aplikuar</span>
-                  <span className="sm:hidden">✓</span>
-                </Badge>
+              <div className="absolute -top-1 -right-1 bg-green-500 rounded-full p-0.5 shadow-sm" title="Keni aplikuar për këtë punë">
+                <CheckCircle className="h-3 w-3 text-white fill-current" />
               </div>
             )}
           </div>

@@ -31,6 +31,8 @@ import { Plus, X, Loader2, CheckCircle, ArrowLeft, ArrowRight, Briefcase, HelpCi
 import { locationsApi, Location, jobsApi, isAuthenticated, getUserType } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import Footer from "@/components/Footer";
+import { validateForm, postJobRules, formatValidationErrors } from "@/lib/formValidation";
+import { TextAreaWithCounter, InputWithCounter } from "@/components/CharacterCounter";
 
 const PostJob = () => {
   const navigate = useNavigate();
@@ -251,6 +253,35 @@ const PostJob = () => {
     try {
       setLoading(true);
       const values = jobForm.values;
+
+      // Final validation before submission - validate all required steps
+      const step0Validation = validateForm(values, postJobRules.step0);
+      const step1Validation = validateForm(values, postJobRules.step1);
+
+      if (!step0Validation.isValid) {
+        notifications.show({
+          title: 'Gabim në Informacionin Bazë',
+          message: formatValidationErrors(step0Validation.errors),
+          color: 'red',
+          autoClose: 6000,
+        });
+        setLoading(false);
+        setCurrentStep(0);
+        return;
+      }
+
+      if (!step1Validation.isValid) {
+        notifications.show({
+          title: 'Gabim në Lokacion',
+          message: formatValidationErrors(step1Validation.errors),
+          color: 'red',
+          autoClose: 6000,
+        });
+        setLoading(false);
+        setCurrentStep(1);
+        return;
+      }
+
       console.log('🚀 PostJob form submitted to jobs API!', values);
 
       // Map form values to backend enum values
@@ -422,8 +453,39 @@ const PostJob = () => {
 
   // Step navigation functions (updated for 0-based indexing)
   const handleNextStep = () => {
-    const errors = jobForm.validate();
-    if (Object.keys(errors.errors).length === 0 && currentStep < steps.length - 1) {
+    const values = jobForm.values;
+
+    // Validate current step before advancing
+    if (currentStep === 0) {
+      // Step 0: Basic Info - Validate using validation system
+      const validationResult = validateForm(values, postJobRules.step0);
+
+      if (!validationResult.isValid) {
+        notifications.show({
+          title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
+          message: formatValidationErrors(validationResult.errors),
+          color: 'red',
+          autoClose: 6000,
+        });
+        return;
+      }
+    } else if (currentStep === 1) {
+      // Step 1: Location - Validate using validation system
+      const validationResult = validateForm(values, postJobRules.step1);
+
+      if (!validationResult.isValid) {
+        notifications.show({
+          title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
+          message: formatValidationErrors(validationResult.errors),
+          color: 'red',
+          autoClose: 6000,
+        });
+        return;
+      }
+    }
+
+    // All validation passed, advance to next step
+    if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
     }
   };
@@ -471,15 +533,15 @@ const PostJob = () => {
         
         // Validation logic for each step
         if (formStepToValidate === 0) {
-          // Step 0: Basic Info - MUST be filled
-          if (!values.title || values.title.trim() === '' || 
-              !values.description || values.description.trim() === '' ||
-              !values.category || !values.jobType) {
+          // Step 0: Basic Info - Use validation system
+          const validationResult = validateForm(values, postJobRules.step0);
+
+          if (!validationResult.isValid) {
             notifications.show({
-              title: 'Plotëso fushat e kërkuara',
-              message: 'Ju lutemi plotësoni të gjitha fushat e kërkuara para se të vazhdoni.',
+              title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
+              message: formatValidationErrors(validationResult.errors),
               color: 'red',
-              autoClose: 4000,
+              autoClose: 6000,
             });
             return; // Block advancement
           }
@@ -926,22 +988,29 @@ const PostJob = () => {
             </Box>
 
             <Box data-tutorial="title">
-              <TextInput
+              <InputWithCounter
                 label="Titulli i Punës"
                 placeholder="p.sh. Zhvillues Full Stack"
-                {...jobForm.getInputProps('title')}
-                description="Shkruani një titull të qartë që përshkruan pozicionin"
+                value={jobForm.values.title}
+                onChange={(e) => jobForm.setFieldValue('title', e.target.value)}
+                maxLength={100}
+                minLength={5}
+                error={jobForm.errors.title}
                 required
               />
             </Box>
 
             <Box data-tutorial="description">
-              <Textarea
+              <TextAreaWithCounter
                 label="Përshkrimi i Punës"
                 placeholder="Shkruaj një përshkrim të detajuar të punës, përgjegjësive dhe mjedisit të punës..."
-                {...jobForm.getInputProps('description')}
+                value={jobForm.values.description}
+                onChange={(e) => jobForm.setFieldValue('description', e.target.value)}
+                maxLength={5000}
+                minLength={50}
+                showMinLength={true}
                 rows={6}
-                description="Përshkruani qartësisht përgjegjësitë, kërkesat dhe benefitet e pozicionit"
+                error={jobForm.errors.description}
                 required
               />
             </Box>

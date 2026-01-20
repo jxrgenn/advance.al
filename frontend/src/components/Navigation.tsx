@@ -11,6 +11,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { notificationsApi, Notification } from "@/lib/api";
@@ -28,6 +35,28 @@ const Navigation = () => {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [expandedNotificationId, setExpandedNotificationId] = useState<string | null>(null);
+
+  // Prevent page shift when dropdowns open
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      // Remove any padding-right that gets added to body
+      if (document.body.style.paddingRight) {
+        document.body.style.paddingRight = '';
+      }
+      // Remove overflow hidden that might be added
+      if (document.body.style.overflow === 'hidden') {
+        document.body.style.overflow = '';
+      }
+    });
+
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['style']
+    });
+
+    return () => observer.disconnect();
+  }, []);
 
   // Load notifications when user is authenticated
   useEffect(() => {
@@ -217,25 +246,26 @@ const Navigation = () => {
           {isAuthenticated && user ? (
             <div className="flex items-center space-x-2">
               {/* Notifications Bell */}
-              <DropdownMenu 
-                open={notificationsOpen} 
+              <DropdownMenu
+                open={notificationsOpen}
                 onOpenChange={(open) => {
 setNotificationsOpen(open);
                   if (open) {
 loadNotifications();
                   }
                 }}
+                modal={false}
               >
                 <DropdownMenuTrigger asChild>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     className="relative"
                   >
                     <Bell className="h-4 w-4" />
                     {unreadCount > 0 && (
-                      <Badge 
-                        variant="destructive" 
+                      <Badge
+                        variant="destructive"
                         className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
                       >
                         {unreadCount > 9 ? '9+' : unreadCount}
@@ -243,7 +273,7 @@ loadNotifications();
                     )}
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-80 max-h-96 overflow-y-auto" align="end">
+                <DropdownMenuContent className="w-80 max-h-96 overflow-y-auto mt-2" align="end">
                   <div className="flex items-center justify-between p-2">
                     <DropdownMenuLabel>Njoftimet</DropdownMenuLabel>
                     {notifications.length > 0 && unreadCount > 0 && (
@@ -268,34 +298,39 @@ loadNotifications();
                       Nuk keni njoftime të reja
                     </div>
                   ) : (
-                    notifications.map((notification) => (
-                      <DropdownMenuItem 
-                        key={notification._id}
-                        className={`p-3 cursor-pointer ${!notification.read ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}
-                        onClick={() => {
-                          if (!notification.read) {
-                            handleMarkAsRead(notification._id);
-                          }
-                        }}
-                      >
-                        <div className="flex flex-col space-y-1">
-                          <div className="flex items-center justify-between">
-                            <p className="text-sm font-medium leading-none">
-                              {notification.title}
+                    notifications.map((notification) => {
+                      const isExpanded = expandedNotificationId === notification._id;
+                      return (
+                        <DropdownMenuItem
+                          key={notification._id}
+                          className={`p-3 cursor-pointer ${!notification.read ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}
+                          onClick={() => {
+                            if (!notification.read) {
+                              handleMarkAsRead(notification._id);
+                            }
+                            setExpandedNotificationId(isExpanded ? null : notification._id);
+                          }}
+                          onSelect={(e) => e.preventDefault()}
+                        >
+                          <div className="flex flex-col space-y-1 w-full">
+                            <div className="flex items-center justify-between">
+                              <p className="text-sm font-medium leading-none">
+                                {notification.title}
+                              </p>
+                              {!notification.read && (
+                                <div className="w-2 h-2 bg-blue-600 rounded-full flex-shrink-0"></div>
+                              )}
+                            </div>
+                            <p className={`text-xs text-muted-foreground whitespace-pre-wrap ${isExpanded ? '' : 'line-clamp-2'}`}>
+                              {notification.message}
                             </p>
-                            {!notification.read && (
-                              <div className="w-2 h-2 bg-blue-600 rounded-full flex-shrink-0"></div>
-                            )}
+                            <p className="text-xs text-muted-foreground">
+                              {notification.timeAgo}
+                            </p>
                           </div>
-                          <p className="text-xs text-muted-foreground line-clamp-2">
-                            {notification.message}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {notification.timeAgo}
-                          </p>
-                        </div>
-                      </DropdownMenuItem>
-                    ))
+                        </DropdownMenuItem>
+                      );
+                    })
                   )}
                   
                   {notifications.length > 0 && (
@@ -314,7 +349,7 @@ loadNotifications();
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <DropdownMenu>
+              <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                     <Avatar className="h-8 w-8">
@@ -324,7 +359,7 @@ loadNotifications();
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56" align="end" forceMount>
+                <DropdownMenuContent className="w-56 mt-2" align="end" forceMount>
                   <DropdownMenuLabel className="font-normal">
                     <div className="flex flex-col space-y-1">
                       <p className="text-sm font-medium leading-none">
