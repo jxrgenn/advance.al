@@ -1,10 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import RotatingContact from "@/components/RotatingContact";
+import { useEffect, useState } from "react";
 import {
   Users,
   Building,
@@ -24,39 +24,127 @@ import {
 } from "lucide-react";
 
 const AboutUs = () => {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
 
       {/* Hero Section */}
-      <section className="bg-gradient-to-br from-primary/10 via-primary/5 to-background py-12 md:py-20 pt-20 md:pt-20">
-        <div className="container mx-auto px-4">
-          <div className="text-center space-y-6">
-            <Badge variant="secondary" className="text-lg px-6 py-2 mb-4">
-              advance.al
-            </Badge>
-            <h1 className="text-4xl md:text-6xl font-bold text-foreground leading-tight">
-              Platforma #1 e Punës
-              <br />
-              <span className="text-primary">në Shqipëri</span>
-            </h1>
-            <p className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-              Ne lidhim punëkërkuesit me punëdhënësit më të mirë në Shqipëri.
-              Teknologji moderne, procedeura të thjeshta, rezultate të shkëlqyera.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center pt-6">
-              <Button size="lg" className="text-lg px-8 py-6" asChild>
-                <Link to="/jobseekers">
-                  <Users className="mr-3 h-5 w-5" />
-                  Gjej Punë
-                </Link>
-              </Button>
-              <Button size="lg" variant="outline" className="text-lg px-8 py-6" asChild>
-                <Link to="/employers">
-                  <Building className="mr-3 h-5 w-5" />
-                  Posto Punë
-                </Link>
-              </Button>
+      <section 
+        className="relative py-12 md:py-20 pt-20 md:pt-32 min-h-screen bg-cover bg-center bg-no-repeat overflow-hidden"
+        style={{
+          backgroundImage: 'url(/backgrounds/Gemini_Generated_Image_kumaagkumaagkuma.png)'
+        }}
+      >
+        {/* Overlay for better text readability - 10% opacity (90% visible) */}
+        <div className="absolute inset-0 bg-gradient-to-br from-background/10 via-background/10 to-background/10"></div>
+        
+        <div className="relative z-10 min-h-[600px] md:min-h-[700px] flex items-center">
+          <div className="w-full h-full relative">
+            {/* Mobile Layout - Stacked */}
+            <div className="md:hidden container mx-auto px-4 space-y-8 text-center">
+              <div className={`space-y-6 transition-all duration-1000 ease-out ${
+                mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'
+              }`}>
+                <h1 className="text-4xl font-extrabold text-foreground leading-[1.1] tracking-tight">
+                  Platforma #1 e Punës
+                  <br />
+                  <span className="text-primary bg-gradient-to-r from-primary via-primary/90 to-primary/70 bg-clip-text text-transparent">
+                    në Shqipëri
+                  </span>
+                </h1>
+                <p className="text-base text-muted-foreground leading-relaxed font-medium">
+                  Ne lidhim punëkërkuesit me punëdhënësit më të mirë në Shqipëri.
+                  <span className="block mt-2 text-sm opacity-90">
+                    Teknologji moderne, procedeura të thjeshta, rezultate të shkëlqyera.
+                  </span>
+                </p>
+                <div className="flex flex-col gap-3 pt-8 pb-4">
+                  <Button size="lg" className="text-base px-8 py-6 shadow-2xl hover:shadow-primary/20 hover:shadow-2xl transition-all duration-300 hover:scale-[1.02] bg-primary hover:bg-primary/90 group font-semibold" asChild>
+                    <Link to="/jobseekers" className="flex items-center justify-center">
+                      <Users className="mr-3 h-5 w-5 group-hover:scale-110 transition-transform duration-300" />
+                      Gjej Punë
+                    </Link>
+                  </Button>
+                  <Button size="lg" variant="outline" className="text-base px-8 py-6 shadow-xl hover:shadow-2xl border-2 backdrop-blur-md bg-background/90 hover:bg-background transition-all duration-300 hover:scale-[1.02] group font-semibold" asChild>
+                    <Link to="/employers" className="flex items-center justify-center">
+                      <Building className="mr-3 h-5 w-5 group-hover:scale-110 transition-transform duration-300" />
+                      Posto Punë
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Desktop Layout - Side by Side */}
+            <div className="hidden md:block w-full h-full relative">
+              {/* Left Side - Title (20% width, absolutely positioned) */}
+              <div 
+                className={`absolute left-0 top-1/2 -translate-y-1/2 w-[20%] px-4 md:px-6 lg:px-8 transition-all duration-1000 ease-out ${
+                  mounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-10'
+                }`}
+              >
+                <h1 className={`text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-extrabold text-foreground leading-[1.2] tracking-tight transition-all duration-1000 delay-300 ${
+                  mounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-8'
+                }`}>
+                  <span className="block">
+                    Platforma #1 e Punës
+                  </span>
+                  <span className="block text-primary bg-gradient-to-r from-primary via-primary/90 to-primary/70 bg-clip-text text-transparent mt-1">
+                    në Shqipëri
+                  </span>
+                </h1>
+              </div>
+              
+              {/* Middle - Empty space for globe (60% width) */}
+              <div className="absolute left-[20%] w-[60%] h-full"></div>
+              
+              {/* Right Side - Description and Buttons (20% width, absolutely positioned) */}
+              <div 
+                className={`absolute right-0 top-1/2 -translate-y-1/2 w-[20%] px-4 md:px-6 lg:px-8 space-y-8 transition-all duration-1000 ease-out ${
+                  mounted ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-10'
+                }`}
+              >
+                <div className="space-y-6">
+                  <p className={`text-base md:text-lg lg:text-xl text-muted-foreground leading-relaxed font-medium transition-all duration-1000 delay-300 ${
+                    mounted ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-8'
+                  }`}>
+                    Ne lidhim punëkërkuesit me punëdhënësit më të mirë në Shqipëri.
+                    <span className="block mt-3 text-sm md:text-base opacity-90">
+                      Teknologji moderne, procedeura të thjeshta, rezultate të shkëlqyera.
+                    </span>
+                  </p>
+                  <div className={`flex flex-col gap-3 md:gap-4 pt-4 transition-all duration-1000 delay-500 ${
+                    mounted ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-8'
+                  }`}>
+                    <Button 
+                      size="lg" 
+                      className="text-base md:text-lg px-6 md:px-8 py-5 md:py-6 shadow-2xl hover:shadow-primary/20 hover:shadow-2xl transition-all duration-300 hover:scale-[1.02] bg-primary hover:bg-primary/90 group font-semibold" 
+                      asChild
+                    >
+                      <Link to="/jobseekers" className="flex items-center justify-center">
+                        <Users className="mr-2 md:mr-3 h-4 w-4 md:h-5 md:w-5 group-hover:scale-110 transition-transform duration-300" />
+                        Gjej Punë
+                      </Link>
+                    </Button>
+                    <Button 
+                      size="lg" 
+                      variant="outline" 
+                      className="text-base md:text-lg px-6 md:px-8 py-5 md:py-6 shadow-xl hover:shadow-2xl border-2 backdrop-blur-md bg-background/90 hover:bg-background transition-all duration-300 hover:scale-[1.02] group font-semibold" 
+                      asChild
+                    >
+                      <Link to="/employers" className="flex items-center justify-center">
+                        <Building className="mr-2 md:mr-3 h-4 w-4 md:h-5 md:w-5 group-hover:scale-110 transition-transform duration-300" />
+                        Posto Punë
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
