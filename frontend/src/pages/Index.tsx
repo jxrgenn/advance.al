@@ -423,18 +423,31 @@ const Index = () => {
           </div>
         )}
 
-        {/* Search Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">
-            Gjej punën e përshtatshme për ty
-          </h1>
-          <p className="text-muted-foreground">
-            {loading ? "Duke ngarkuar..." :
-              searchQuery.length >= 2 ?
-                `${pagination.totalJobs} rezultate për "${searchQuery}"` :
-                `${pagination.totalJobs} vende pune të disponueshme në Shqipëri`
-            }
-          </p>
+        {/* Hero Section with 3D Asset */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center mb-12">
+          {/* Left: Text Content */}
+          <div className="text-center md:text-left">
+            <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-4 leading-tight">
+              Gjej punën e përshtatshme për ty
+            </h1>
+            <p className="text-lg text-muted-foreground mb-6">
+              {loading ? "Duke ngarkuar..." :
+                searchQuery.length >= 2 ?
+                  `${pagination.totalJobs} rezultate për "${searchQuery}"` :
+                  `${pagination.totalJobs} vende pune të disponueshme në Shqipëri`
+              }
+            </p>
+          </div>
+
+          {/* Right: 3D Asset */}
+          <div className="hidden md:flex justify-center items-center">
+            <img
+              src="/3d_assets/man_climbing.png"
+              alt="Career Growth - Reach your professional goals"
+              className="w-full max-w-md object-contain"
+              loading="eager"
+            />
+          </div>
         </div>
 
         {/* Search and Filters */}
