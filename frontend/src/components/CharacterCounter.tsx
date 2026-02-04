@@ -14,6 +14,7 @@ interface CharacterCounterProps {
   minLength?: number;
   className?: string;
   showMinLength?: boolean;
+  hideMinLengthWarning?: boolean; // Hide the red "duhen edhe X karaktere" message
 }
 
 export const CharacterCounter = ({
@@ -21,7 +22,8 @@ export const CharacterCounter = ({
   maxLength,
   minLength,
   className,
-  showMinLength = false
+  showMinLength = false,
+  hideMinLengthWarning = false
 }: CharacterCounterProps) => {
   const { count, remaining, isOverLimit, percentage } = getCharacterCountInfo(value || '', maxLength);
 
@@ -30,7 +32,8 @@ export const CharacterCounter = ({
     if (isOverLimit) return 'text-red-600 dark:text-red-400';
     if (percentage >= 90) return 'text-orange-600 dark:text-orange-400';
     if (percentage >= 75) return 'text-yellow-600 dark:text-yellow-400';
-    if (minLength && count < minLength) return 'text-red-600 dark:text-red-400';
+    // Don't show red for minLength if hideMinLengthWarning is true
+    if (!hideMinLengthWarning && minLength && count < minLength) return 'text-red-600 dark:text-red-400';
     return 'text-muted-foreground';
   };
 
@@ -39,7 +42,8 @@ export const CharacterCounter = ({
       return `${Math.abs(remaining)} karaktere mbi limitin`;
     }
 
-    if (minLength && count < minLength) {
+    // Don't show minLength warning message if hideMinLengthWarning is true
+    if (!hideMinLengthWarning && minLength && count < minLength) {
       const needed = minLength - count;
       return `${count}/${maxLength} (duhen edhe ${needed} karaktere)`;
     }
@@ -89,6 +93,8 @@ export const TextAreaWithCounter = ({
           />
         </div>
       )}
+      {/* Error message below label */}
+      {error && <p className="text-xs text-red-600 dark:text-red-400 -mt-1">{error}</p>}
       <textarea
         value={value}
         maxLength={maxLength}
@@ -101,7 +107,6 @@ export const TextAreaWithCounter = ({
         )}
         {...props}
       />
-      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
     </div>
   );
 };
@@ -111,6 +116,7 @@ interface InputWithCounterProps extends React.InputHTMLAttributes<HTMLInputEleme
   minLength?: number;
   label?: string;
   error?: string;
+  hideMinLengthWarning?: boolean;
 }
 
 export const InputWithCounter = ({
@@ -119,6 +125,7 @@ export const InputWithCounter = ({
   minLength,
   label,
   error,
+  hideMinLengthWarning,
   className,
   ...props
 }: InputWithCounterProps) => {
@@ -127,7 +134,12 @@ export const InputWithCounter = ({
       {label && (
         <div className="flex items-center justify-between">
           <label className="text-sm font-medium text-foreground">{label}</label>
-          <CharacterCounter value={value as string} maxLength={maxLength} minLength={minLength} />
+          <CharacterCounter
+            value={value as string}
+            maxLength={maxLength}
+            minLength={minLength}
+            hideMinLengthWarning={hideMinLengthWarning}
+          />
         </div>
       )}
       <input

@@ -951,6 +951,7 @@ const EmployersPage = () => {
                 maxLength={50}
                 minLength={2}
                 error={employerForm.errors.firstName}
+                hideMinLengthWarning={true}
                 required
               />
               <InputWithCounter
@@ -961,6 +962,7 @@ const EmployersPage = () => {
                 maxLength={50}
                 minLength={2}
                 error={employerForm.errors.lastName}
+                hideMinLengthWarning={true}
                 required
               />
             </SimpleGrid>
