@@ -1315,17 +1315,27 @@ Telefoni: _______________`;
         <Paper shadow="sm" radius="md" withBorder p="xl" mt={60} mb={40} id="ai-cv-section">
           <Grid gutter="lg">
             <Grid.Col span={12}>
-              <Group mb="lg">
-                <ThemeIcon size={48} radius="md" variant="light" color="blue">
-                  <Lightbulb size={26} />
-                </ThemeIcon>
-                <Box>
-                  <Title order={3}>Gjenero CV me AI</Title>
-                  <Text c="dimmed" size="sm">
-                    Shkruani informacionet tuaja në mënyrë të natyrshme dhe AI-ja krijon një CV profesionale
-                  </Text>
-                </Box>
-              </Group>
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_200px] gap-6 items-center mb-4">
+                <Group>
+                  <ThemeIcon size={48} radius="md" variant="light" color="blue">
+                    <Lightbulb size={26} />
+                  </ThemeIcon>
+                  <Box>
+                    <Title order={3}>Gjenero CV me AI</Title>
+                    <Text c="dimmed" size="sm">
+                      Shkruani informacionet tuaja në mënyrë të natyrshme dhe AI-ja krijon një CV profesionale
+                    </Text>
+                  </Box>
+                </Group>
+                <div className="hidden md:flex justify-center items-center">
+                  <img
+                    src="/3d_assets/tech.png"
+                    alt="Technology - Modern AI-powered CV generation"
+                    className="w-full max-w-[180px] object-contain"
+                    loading="lazy"
+                  />
+                </div>
+              </div>
             </Grid.Col>
 
             <Grid.Col span={12}>

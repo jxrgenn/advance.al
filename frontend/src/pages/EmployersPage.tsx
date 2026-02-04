@@ -1160,17 +1160,29 @@ const EmployersPage = () => {
             {/* Left: Simple Stats & Benefits */}
             <Stack gap="lg">
               <Paper p="xl" radius="md" withBorder>
-                <Title order={3} mb="lg" c="dark">
-                  Si Funksionon?
-                </Title>
-                
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-6 items-start mb-6">
+                  <div>
+                    <Title order={3} c="dark">
+                      Si Funksionon?
+                    </Title>
+                  </div>
+                  <div className="hidden md:flex justify-center items-start">
+                    <img
+                      src="/3d_assets/success.png"
+                      alt="Success - Your recruitment success starts here"
+                      className="w-full max-w-[160px] object-contain"
+                      loading="lazy"
+                    />
+                  </div>
+                </div>
+
                 <Stack gap="lg">
                   <Group wrap="nowrap" align="flex-start">
-                    <Center style={{ 
-                      minWidth: 36, 
-                      height: 36, 
-                      borderRadius: '50%', 
-                      background: '#228be6', 
+                    <Center style={{
+                      minWidth: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      background: '#228be6',
                       color: 'white',
                       fontWeight: 700,
                       fontSize: '1.1rem'
@@ -1186,11 +1198,11 @@ const EmployersPage = () => {
                   </Group>
 
                   <Group wrap="nowrap" align="flex-start">
-                    <Center style={{ 
-                      minWidth: 36, 
-                      height: 36, 
-                      borderRadius: '50%', 
-                      background: '#228be6', 
+                    <Center style={{
+                      minWidth: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      background: '#228be6',
                       color: 'white',
                       fontWeight: 700,
                       fontSize: '1.1rem'
@@ -1206,11 +1218,11 @@ const EmployersPage = () => {
                   </Group>
 
                   <Group wrap="nowrap" align="flex-start">
-                    <Center style={{ 
-                      minWidth: 36, 
-                      height: 36, 
-                      borderRadius: '50%', 
-                      background: '#228be6', 
+                    <Center style={{
+                      minWidth: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      background: '#228be6',
                       color: 'white',
                       fontWeight: 700,
                       fontSize: '1.1rem'
