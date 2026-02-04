@@ -9,18 +9,18 @@ All colors MUST be HSL.
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 220 15% 20%;
+    --foreground: 220 15% 15%; /* Darker for better readability (was 20%) */
 
     --card: 0 0% 100%;
-    --card-foreground: 220 15% 20%;
+    --card-foreground: 220 15% 15%; /* Darker for better readability */
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 15% 20%;
+    --popover-foreground: 220 15% 15%;
 
     /* Albanian Job Market Brand Colors */
     --primary: 220 85% 25%;
     --primary-foreground: 0 0% 100%;
-    
+
     --secondary: 214 100% 96%;
     --secondary-foreground: 220 85% 25%;
 
@@ -28,7 +28,7 @@ All colors MUST be HSL.
     --light-blue-foreground: 220 85% 25%;
 
     --muted: 220 15% 96%;
-    --muted-foreground: 220 15% 45%;
+    --muted-foreground: 220 15% 40%; /* Darker for better readability (was 45%) */
 
     --accent: 214 100% 96%;
     --accent-foreground: 220 85% 25%;
@@ -36,15 +36,15 @@ All colors MUST be HSL.
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 15% 92%;
-    --input: 220 15% 96%;
+    --border: 220 15% 88%; /* More visible borders (was 92%) */
+    --input: 220 15% 94%; /* Slightly more contrast (was 96%) */
     --ring: 220 85% 25%;
 
     /* Custom design tokens */
     --hero-gradient: linear-gradient(135deg, hsl(214 100% 98%), hsl(214 100% 96%));
-    --card-shadow: 0 1px 3px 0 hsl(220 15% 20% / 0.1), 0 1px 2px -1px hsl(220 15% 20% / 0.1);
-    --card-shadow-hover: 0 4px 6px -1px hsl(220 15% 20% / 0.1), 0 2px 4px -2px hsl(220 15% 20% / 0.1);
-    --button-shadow: 0 1px 2px 0 hsl(220 85% 25% / 0.05);
+    --card-shadow: 0 1px 3px 0 hsl(220 15% 15% / 0.12), 0 1px 2px -1px hsl(220 15% 15% / 0.08); /* Slightly stronger shadows */
+    --card-shadow-hover: 0 4px 6px -1px hsl(220 15% 15% / 0.15), 0 2px 4px -2px hsl(220 15% 15% / 0.12); /* More pronounced hover */
+    --button-shadow: 0 1px 2px 0 hsl(220 85% 25% / 0.08); /* Slightly stronger */
     --transition-smooth: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 
     --radius: 0.5rem;
