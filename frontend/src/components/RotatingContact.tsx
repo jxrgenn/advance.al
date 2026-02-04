@@ -80,17 +80,17 @@ const RotatingContact: React.FC<RotatingContactProps> = ({
     <section className={`w-full py-16 px-6 ${className}`}>
       <div className="max-w-6xl mx-auto">
         <div className="bg-gradient-to-br from-[#1e3a8a] to-[#1e40af] rounded-3xl p-8 md:p-12 shadow-lg">
-        {/* Fixed height container to ensure all cards have same dimensions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center min-h-[280px] md:min-h-[260px]">
-          {/* Left side - 3D Asset */}
-          <div className="flex justify-center md:justify-start">
+        {/* STRICTLY Fixed height container - NEVER changes */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center h-[420px] md:h-[320px]">
+          {/* Left side - 3D Asset - 2x LARGER */}
+          <div className="flex justify-center md:justify-start items-center h-full">
             <div className={`transition-all duration-500 ${
               isTransitioning ? 'opacity-0 scale-90' : 'opacity-100 scale-100'
             }`}>
               <img
                 src="/3d_assets/chat.png"
                 alt="Support - We're here to help"
-                className="w-full max-w-[180px] md:max-w-[200px] object-contain"
+                className="w-full max-w-[360px] md:max-w-[400px] object-contain"
                 loading="lazy"
               />
             </div>

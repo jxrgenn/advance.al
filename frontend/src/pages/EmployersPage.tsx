@@ -25,7 +25,7 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { Play, Building, ArrowRight, ArrowLeft, User, FileText, CheckCircle, HelpCircle, X, Lightbulb, Euro, TrendingUp, Star } from "lucide-react";
+import { Play, Building, ArrowRight, ArrowLeft, User, FileText, CheckCircle, HelpCircle, X, Lightbulb, Euro, TrendingUp, Star, Users } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi } from "@/lib/api";
 import { validateForm, employerSignupRules, formatValidationErrors } from "@/lib/formValidation";
@@ -1260,8 +1260,8 @@ const EmployersPage = () => {
                   </Box>
                 </Group>
 
-                {/* Step Indicator - Inline on Desktop */}
-                <div className="flex flex-col md:flex-row md:justify-center gap-2 md:gap-4 mb-8">
+                {/* Step Indicator - Inline on Desktop - NO TEXT WRAPPING EVER */}
+                <div className="flex flex-col md:flex-row md:justify-center gap-2 md:gap-2 lg:gap-3 mb-8">
                   {steps.map((step, index) => {
                     const Icon = step.icon;
                     const isActive = index === currentStep;
@@ -1271,7 +1271,7 @@ const EmployersPage = () => {
                       <div
                         key={index}
                         onClick={() => currentStep > index && setCurrentStep(index)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all cursor-pointer ${
+                        className={`flex items-center gap-1.5 md:gap-2 px-2 md:px-3 py-2 rounded-lg transition-all cursor-pointer flex-shrink-0 ${
                           isActive
                             ? 'bg-blue-50 border-2 border-blue-500'
                             : isCompleted
@@ -1279,7 +1279,7 @@ const EmployersPage = () => {
                             : 'bg-gray-50 border-2 border-gray-200'
                         } ${currentStep > index ? 'hover:bg-blue-100' : 'cursor-default'}`}
                       >
-                        <div className={`flex items-center justify-center w-6 h-6 rounded-full ${
+                        <div className={`flex items-center justify-center w-5 h-5 md:w-6 md:h-6 rounded-full flex-shrink-0 ${
                           isActive
                             ? 'bg-blue-500'
                             : isCompleted
@@ -1287,12 +1287,12 @@ const EmployersPage = () => {
                             : 'bg-gray-300'
                         }`}>
                           {isCompleted ? (
-                            <CheckCircle className="w-4 h-4 text-white" />
+                            <CheckCircle className="w-3 h-3 md:w-4 md:h-4 text-white" />
                           ) : (
-                            <Icon className="w-4 h-4 text-white" />
+                            <Icon className="w-3 h-3 md:w-4 md:h-4 text-white" />
                           )}
                         </div>
-                        <span className={`text-sm font-medium ${
+                        <span className={`text-xs md:text-sm font-medium whitespace-nowrap ${
                           isActive ? 'text-blue-700' : isCompleted ? 'text-green-700' : 'text-gray-500'
                         }`}>
                           {step.label}

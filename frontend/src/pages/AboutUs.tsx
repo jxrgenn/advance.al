@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
+import RotatingContact from "@/components/RotatingContact";
 import {
   Users,
   Building,
@@ -441,54 +442,8 @@ const AboutUs = () => {
         </div>
       </section>
 
-      {/* Contact Information */}
-      <section className="py-16 bg-muted/30">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              Na Kontaktoni
-            </h2>
-            <p className="text-lg text-muted-foreground">
-              Jemi këtu për t'ju ndihmuar në çdo hap të udhëtimit tuaj profesional
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            <Card className="p-6 text-center bg-background">
-              <CardContent className="space-y-4 p-0">
-                <div className="bg-primary/10 p-3 rounded-full w-12 h-12 mx-auto flex items-center justify-center">
-                  <Mail className="h-6 w-6 text-primary" />
-                </div>
-                <h3 className="font-semibold">Email</h3>
-                <p className="text-muted-foreground">info@advance.al</p>
-                <p className="text-muted-foreground">support@advance.al</p>
-              </CardContent>
-            </Card>
-
-            <Card className="p-6 text-center bg-background">
-              <CardContent className="space-y-4 p-0">
-                <div className="bg-primary/10 p-3 rounded-full w-12 h-12 mx-auto flex items-center justify-center">
-                  <Phone className="h-6 w-6 text-primary" />
-                </div>
-                <h3 className="font-semibold">Telefon</h3>
-                <p className="text-muted-foreground">+355 69 123 4567</p>
-                <p className="text-muted-foreground">+355 67 890 1234</p>
-              </CardContent>
-            </Card>
-
-            <Card className="p-6 text-center bg-background">
-              <CardContent className="space-y-4 p-0">
-                <div className="bg-primary/10 p-3 rounded-full w-12 h-12 mx-auto flex items-center justify-center">
-                  <MapPin className="h-6 w-6 text-primary" />
-                </div>
-                <h3 className="font-semibold">Adresa</h3>
-                <p className="text-muted-foreground">Tiranë, Shqipëri</p>
-                <p className="text-muted-foreground">Rruga e Punës, Nr. 1</p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
+      {/* Contact Information - New Component */}
+      <RotatingContact />
 
       {/* Call to Action */}
       <section className="py-16 bg-primary text-primary-foreground">
