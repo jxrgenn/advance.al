@@ -1345,14 +1345,26 @@ const EmployersPage = () => {
           </Grid.Col>
         </Grid>
 
-        {/* Pricing Section - Below Form */}
+        {/* Pricing Section - Below Form with 3D Asset */}
         <Box mt={60}>
-          <Title order={2} size="h2" fw={600} ta="center" mb="md">
-            Çmimet
-          </Title>
-          <Text c="dimmed" size="lg" ta="center" mb={40}>
-            Zgjidhni opsionin që ju përshtatet më mirë
-          </Text>
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_300px] gap-8 items-center mb-8">
+            <div>
+              <Title order={2} size="h2" fw={600} ta={{ base: 'center', md: 'left' }} mb="md">
+                Çmimet
+              </Title>
+              <Text c="dimmed" size="lg" ta={{ base: 'center', md: 'left' }} mb={0}>
+                Zgjidhni opsionin që ju përshtatet më mirë
+              </Text>
+            </div>
+            <div className="hidden md:flex justify-center items-center">
+              <img
+                src="/3d_assets/trophy.png"
+                alt="Success - Achieve your recruitment goals"
+                className="w-full max-w-[250px] object-contain"
+                loading="lazy"
+              />
+            </div>
+          </div>
 
           <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="lg">
             <Paper shadow="sm" p="xl" radius="md" withBorder>
