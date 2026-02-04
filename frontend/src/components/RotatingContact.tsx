@@ -46,6 +46,7 @@ const RotatingContact: React.FC<RotatingContactProps> = ({
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [lastInteractionTime, setLastInteractionTime] = useState(Date.now());
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -60,7 +61,7 @@ const RotatingContact: React.FC<RotatingContactProps> = ({
     }, rotationInterval);
 
     return () => clearInterval(interval);
-  }, [contacts.length, rotationInterval]);
+  }, [contacts.length, rotationInterval, lastInteractionTime]); // Adding lastInteractionTime restarts the interval
 
   const currentContact = contacts[currentIndex];
 
@@ -71,13 +72,14 @@ const RotatingContact: React.FC<RotatingContactProps> = ({
     setTimeout(() => {
       setCurrentIndex(idx);
       setIsTransitioning(false);
+      setLastInteractionTime(Date.now()); // This will restart the auto-rotation timer
     }, 300);
   };
 
   return (
     <section className={`w-full py-16 px-6 ${className}`}>
       <div className="max-w-6xl mx-auto">
-        <div className="max-w-5xl mx-auto bg-gradient-to-br from-[#2d6a6a] to-[#1f4d4d] rounded-3xl p-8 md:p-12 shadow-lg">
+        <div className="bg-gradient-to-br from-[#2d6a6a] to-[#1f4d4d] rounded-3xl p-8 md:p-12 shadow-lg">
         {/* Fixed height container to ensure all cards have same dimensions */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center min-h-[280px] md:min-h-[260px]">
           {/* Left side - Profile images */}

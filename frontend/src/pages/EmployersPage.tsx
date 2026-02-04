@@ -1155,8 +1155,8 @@ const EmployersPage = () => {
         </div>
 
         {/* Two Column Layout */}
-        <Grid>
-          <Grid.Col span={{ base: 12, lg: 6 }}>
+        <Grid gutter={40}>
+          <Grid.Col span={{ base: 12, md: 5 }}>
             {/* Left: Simple Stats & Benefits */}
             <Stack gap="lg">
               <Paper p="xl" radius="md" withBorder>
@@ -1170,7 +1170,7 @@ const EmployersPage = () => {
                     <img
                       src="/3d_assets/success.png"
                       alt="Success - Your recruitment success starts here"
-                      className="w-full max-w-[120px] object-contain"
+                      className="w-full max-w-[70px] object-contain"
                       loading="lazy"
                     />
                   </div>
@@ -1252,7 +1252,7 @@ const EmployersPage = () => {
             </Stack>
           </Grid.Col>
 
-          <Grid.Col span={{ base: 12, lg: 6 }}>
+          <Grid.Col span={{ base: 12, md: 7 }}>
             {/* Right: Multi-step Registration Form */}
             <Stack gap="xl">
               {/* Tutorial Help Link */}
@@ -1373,7 +1373,7 @@ const EmployersPage = () => {
               <img
                 src="/3d_assets/trophy.png"
                 alt="Success - Achieve your recruitment goals"
-                className="w-full max-w-[180px] object-contain"
+                className="w-full max-w-[140px] object-contain"
                 loading="lazy"
               />
             </div>

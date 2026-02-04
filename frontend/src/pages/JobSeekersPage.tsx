@@ -933,11 +933,6 @@ Telefoni: _______________`;
 
         {/* Two Column Layout */}
         <Grid gutter={40}>
-          {/* Section Title - Full Width */}
-          <Grid.Col span={12} mb="md">
-            <Title order={4}>Zgjidhni mënyrën e aplikimit:</Title>
-          </Grid.Col>
-
           {/* Left Side: Options & Context */}
           <Grid.Col span={{ base: 12, md: 5 }}>
             <Stack gap="lg" style={{ position: 'sticky', top: 100 }}>
@@ -1331,7 +1326,7 @@ Telefoni: _______________`;
                   <img
                     src="/3d_assets/tech.png"
                     alt="Technology - Modern AI-powered CV generation"
-                    className="w-full max-w-[140px] object-contain"
+                    className="w-full max-w-[100px] object-contain"
                     loading="lazy"
                   />
                 </div>
