@@ -907,20 +907,28 @@ Telefoni: _______________`;
       <TutorialOverlay />
 
       <Container size="lg" py={40} pt={80}>
-        {/* Header */}
-        <Center mb={30}>
-          <Stack align="center" gap="sm">
-            <ThemeIcon size={40} radius="md" color="blue" variant="light">
+        {/* Hero Section with 3D Asset */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center mb-8">
+          <div className="text-center md:text-left">
+            <ThemeIcon size={40} radius="md" color="blue" variant="light" mb={12}>
               <Briefcase size={20} />
             </ThemeIcon>
-            <Title ta="center" size="2.2rem" fw={700} lh={1.1} maw={600} c="dark">
+            <Title ta={{ base: 'center', md: 'left' }} size="2.2rem" fw={700} lh={1.1} c="dark" mb={12}>
               Gjeni karrierën idealë që u përshtatet aftësive tuaja
             </Title>
-            <Text ta="center" size="sm" c="dimmed" maw={400} lh={1.4}>
+            <Text ta={{ base: 'center', md: 'left' }} size="sm" c="dimmed" lh={1.4}>
               advance.al ju lidh me punëdhënës të shkëlqyer dhe ju ofron mundësi të reja për të rritur në fushën tuaj profesionale.
             </Text>
-          </Stack>
-        </Center>
+          </div>
+          <div className="hidden md:flex justify-center items-center">
+            <img
+              src="/3d_assets/sitting2.png"
+              alt="Career Planning - Your professional journey starts here"
+              className="w-full max-w-md object-contain"
+              loading="eager"
+            />
+          </div>
+        </div>
 
         {/* Two Column Layout */}
         <Grid gutter={40}>
