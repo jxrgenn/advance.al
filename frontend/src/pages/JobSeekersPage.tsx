@@ -925,7 +925,7 @@ Telefoni: _______________`;
             <img
               src="/3d_assets/sitting2.png"
               alt="Career Planning - Your professional journey starts here"
-              className="w-full max-w-md object-contain"
+              className="w-full max-w-[220px] object-contain"
               loading="eager"
             />
           </div>
@@ -1331,7 +1331,7 @@ Telefoni: _______________`;
                   <img
                     src="/3d_assets/tech.png"
                     alt="Technology - Modern AI-powered CV generation"
-                    className="w-full max-w-[180px] object-contain"
+                    className="w-full max-w-[140px] object-contain"
                     loading="lazy"
                   />
                 </div>

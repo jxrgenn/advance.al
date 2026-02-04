@@ -444,7 +444,7 @@ const Index = () => {
             <img
               src="/3d_assets/man_climbing.png"
               alt="Career Growth - Reach your professional goals"
-              className="w-full max-w-md object-contain"
+              className="w-full max-w-[220px] object-contain"
               loading="eager"
             />
           </div>

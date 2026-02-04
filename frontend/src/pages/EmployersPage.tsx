@@ -1148,7 +1148,7 @@ const EmployersPage = () => {
             <img
               src="/3d_assets/handshake.png"
               alt="Partnership - Build strong teams with trusted talent"
-              className="w-full max-w-md object-contain"
+              className="w-full max-w-[220px] object-contain"
               loading="eager"
             />
           </div>
@@ -1170,7 +1170,7 @@ const EmployersPage = () => {
                     <img
                       src="/3d_assets/success.png"
                       alt="Success - Your recruitment success starts here"
-                      className="w-full max-w-[160px] object-contain"
+                      className="w-full max-w-[120px] object-contain"
                       loading="lazy"
                     />
                   </div>
@@ -1373,7 +1373,7 @@ const EmployersPage = () => {
               <img
                 src="/3d_assets/trophy.png"
                 alt="Success - Achieve your recruitment goals"
-                className="w-full max-w-[250px] object-contain"
+                className="w-full max-w-[180px] object-contain"
                 loading="lazy"
               />
             </div>
