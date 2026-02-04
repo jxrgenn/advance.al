@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
+import RotatingContact from "@/components/RotatingContact";
 import {
   Container,
   Title,
@@ -1463,6 +1464,9 @@ Telefoni: _______________`;
           </Grid>
         </Paper>
       </Container>
+
+      {/* Contact Section */}
+      <RotatingContact />
 
       <Footer />
     </Box>
