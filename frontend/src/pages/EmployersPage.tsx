@@ -22,7 +22,6 @@ import {
   SimpleGrid,
   ThemeIcon,
   Textarea,
-  Stepper,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -1158,97 +1157,65 @@ const EmployersPage = () => {
         <Grid gutter={40}>
           <Grid.Col span={{ base: 12, md: 5 }}>
             {/* Left: Simple Stats & Benefits */}
-            <Stack gap="lg">
-              <Paper p="xl" radius="md" withBorder>
-                <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-6 items-start mb-6">
-                  <div>
-                    <Title order={3} c="dark">
-                      Si Funksionon?
-                    </Title>
-                  </div>
-                  <div className="hidden md:flex justify-center items-start">
-                    <img
-                      src="/3d_assets/success.png"
-                      alt="Success - Your recruitment success starts here"
-                      className="w-full max-w-[70px] object-contain"
-                      loading="lazy"
-                    />
-                  </div>
-                </div>
-
-                <Stack gap="lg">
-                  <Group wrap="nowrap" align="flex-start">
-                    <Center style={{
-                      minWidth: 36,
-                      height: 36,
-                      borderRadius: '50%',
-                      background: '#228be6',
-                      color: 'white',
-                      fontWeight: 700,
-                      fontSize: '1.1rem'
-                    }}>
-                      1
-                    </Center>
+            <Stack gap="lg" style={{ position: 'sticky', top: 100 }}>
+              {/* Benefits Cards */}
+              <Stack gap="md">
+                <Paper p="lg" radius="md" withBorder className="hover:shadow-md transition-shadow">
+                  <Group gap="md" wrap="nowrap">
+                    <ThemeIcon size={48} radius="md" color="blue" variant="light">
+                      <CheckCircle size={24} />
+                    </ThemeIcon>
                     <Box style={{ flex: 1 }}>
-                      <Text fw={600} mb={4}>Krijoni Llogarinë</Text>
+                      <Text fw={600} size="md" mb={4}>Postim i Shpejtë</Text>
                       <Text size="sm" c="dimmed">
-                        Plotësoni formularin në vetëm 2 minuta
+                        Krijoni një llogari dhe postoni punën tuaj në vetëm 2 minuta
                       </Text>
                     </Box>
                   </Group>
-
-                  <Group wrap="nowrap" align="flex-start">
-                    <Center style={{
-                      minWidth: 36,
-                      height: 36,
-                      borderRadius: '50%',
-                      background: '#228be6',
-                      color: 'white',
-                      fontWeight: 700,
-                      fontSize: '1.1rem'
-                    }}>
-                      2
-                    </Center>
-                    <Box style={{ flex: 1 }}>
-                      <Text fw={600} mb={4}>Postoni Punën</Text>
-                      <Text size="sm" c="dimmed">
-                        28€ për postim standard, 50€ për të promovuar
-                      </Text>
-                    </Box>
-                  </Group>
-
-                  <Group wrap="nowrap" align="flex-start">
-                    <Center style={{
-                      minWidth: 36,
-                      height: 36,
-                      borderRadius: '50%',
-                      background: '#228be6',
-                      color: 'white',
-                      fontWeight: 700,
-                      fontSize: '1.1rem'
-                    }}>
-                      3
-                    </Center>
-                    <Box style={{ flex: 1 }}>
-                      <Text fw={600} mb={4}>Merrni Aplikime</Text>
-                      <Text size="sm" c="dimmed">
-                        Ose zgjidhni Top 10 kandidatët për 10€
-                      </Text>
-                    </Box>
-                  </Group>
-                </Stack>
-              </Paper>
-
-              <SimpleGrid cols={2} spacing="md">
-                <Paper p="md" radius="md" withBorder style={{ textAlign: 'center' }}>
-                  <Text size="2xl" fw={700} c="blue" mb={4}>1,000+</Text>
-                  <Text size="sm" c="dimmed">Kandidatë Aktivë</Text>
                 </Paper>
-                <Paper p="md" radius="md" withBorder style={{ textAlign: 'center' }}>
-                  <Text size="2xl" fw={700} c="blue" mb={4}>95%</Text>
-                  <Text size="sm" c="dimmed">Kënaqësi</Text>
+
+                <Paper p="lg" radius="md" withBorder className="hover:shadow-md transition-shadow">
+                  <Group gap="md" wrap="nowrap">
+                    <ThemeIcon size={48} radius="md" color="blue" variant="light">
+                      <Users size={24} />
+                    </ThemeIcon>
+                    <Box style={{ flex: 1 }}>
+                      <Text fw={600} size="md" mb={4}>1,000+ Kandidatë</Text>
+                      <Text size="sm" c="dimmed">
+                        Qasje në një bazë të gjerë kandidatësh të kualifikuar
+                      </Text>
+                    </Box>
+                  </Group>
                 </Paper>
-              </SimpleGrid>
+
+                <Paper p="lg" radius="md" withBorder className="hover:shadow-md transition-shadow">
+                  <Group gap="md" wrap="nowrap">
+                    <ThemeIcon size={48} radius="md" color="blue" variant="light">
+                      <Euro size={24} />
+                    </ThemeIcon>
+                    <Box style={{ flex: 1 }}>
+                      <Text fw={600} size="md" mb={4}>Çmime Fleksibël</Text>
+                      <Text size="sm" c="dimmed">
+                        28€ standard ose 50€ për promovim - zgjidhni sipas nevojave
+                      </Text>
+                    </Box>
+                  </Group>
+                </Paper>
+
+                <Paper p="lg" radius="md" withBorder className="hover:shadow-md transition-shadow">
+                  <Group gap="md" wrap="nowrap">
+                    <ThemeIcon size={48} radius="md" color="blue" variant="light">
+                      <TrendingUp size={24} />
+                    </ThemeIcon>
+                    <Box style={{ flex: 1 }}>
+                      <Text fw={600} size="md" mb={4}>Top 10 Kandidatë</Text>
+                      <Text size="sm" c="dimmed">
+                        Filtrim inteligjent për të gjetur kandidatët më të mirë (+10€)
+                      </Text>
+                    </Box>
+                  </Group>
+                </Paper>
+              </Stack>
             </Stack>
           </Grid.Col>
 
@@ -1293,17 +1260,47 @@ const EmployersPage = () => {
                   </Box>
                 </Group>
 
-                {/* Step Indicator */}
-                <Stepper active={currentStep} onStepClick={setCurrentStep} mb="xl" size="sm">
-                  {steps.map((step, index) => (
-                    <Stepper.Step
-                      key={index}
-                      label={step.label}
-                      icon={<step.icon size={16} />}
-                      allowStepSelect={currentStep > index}
-                    />
-                  ))}
-                </Stepper>
+                {/* Step Indicator - Inline on Desktop */}
+                <div className="flex flex-col md:flex-row md:justify-center gap-2 md:gap-4 mb-8">
+                  {steps.map((step, index) => {
+                    const Icon = step.icon;
+                    const isActive = index === currentStep;
+                    const isCompleted = index < currentStep;
+
+                    return (
+                      <div
+                        key={index}
+                        onClick={() => currentStep > index && setCurrentStep(index)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all cursor-pointer ${
+                          isActive
+                            ? 'bg-blue-50 border-2 border-blue-500'
+                            : isCompleted
+                            ? 'bg-green-50 border-2 border-green-500'
+                            : 'bg-gray-50 border-2 border-gray-200'
+                        } ${currentStep > index ? 'hover:bg-blue-100' : 'cursor-default'}`}
+                      >
+                        <div className={`flex items-center justify-center w-6 h-6 rounded-full ${
+                          isActive
+                            ? 'bg-blue-500'
+                            : isCompleted
+                            ? 'bg-green-500'
+                            : 'bg-gray-300'
+                        }`}>
+                          {isCompleted ? (
+                            <CheckCircle className="w-4 h-4 text-white" />
+                          ) : (
+                            <Icon className="w-4 h-4 text-white" />
+                          )}
+                        </div>
+                        <span className={`text-sm font-medium ${
+                          isActive ? 'text-blue-700' : isCompleted ? 'text-green-700' : 'text-gray-500'
+                        }`}>
+                          {step.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
 
                 {/* Step Content */}
                 {renderStepContent()}
