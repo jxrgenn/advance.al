@@ -1346,9 +1346,9 @@ const EmployersPage = () => {
           </Grid.Col>
         </Grid>
 
-        {/* Pricing Section - Below Form with 3D Asset */}
+        {/* Pricing Section - Upwork Style */}
         <Box mt={60}>
-          <div className="grid grid-cols-1 md:grid-cols-[1fr_300px] gap-8 items-center mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_300px] gap-8 items-center mb-12">
             <div>
               <Title order={2} size="h2" fw={600} ta={{ base: 'center', md: 'left' }} mb="md">
                 Çmimet
@@ -1367,56 +1367,134 @@ const EmployersPage = () => {
             </div>
           </div>
 
-          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="lg">
-            <Paper shadow="sm" p="xl" radius="md" withBorder>
-              <Stack gap="md">
-                <Title order={3} size="h3">Postim Standard</Title>
-                <Group gap="xs" align="baseline">
-                  <Text size="3rem" fw={700}>28€</Text>
-                  <Text c="dimmed">/28 ditë</Text>
-                </Group>
-                <Stack gap="xs">
-                  <Text size="sm">✓ Postimi aktiv për 28 ditë</Text>
-                  <Text size="sm">✓ Shfaqje në listën e punëve</Text>
-                  <Text size="sm">✓ Aplikime të pakufizuara</Text>
-                  <Text size="sm">✓ Menaxhim aplikimesh</Text>
-                </Stack>
-              </Stack>
-            </Paper>
+          {/* Upwork-style 2-column pricing cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl mx-auto">
+            {/* Basic Plan */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm hover:shadow-md transition-shadow">
+              <div className="mb-6">
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">Bazë</h3>
+                <p className="text-sm text-gray-600 mb-4">Për të filluar</p>
+                <div className="flex items-center gap-2 mb-6">
+                  <span className="text-base font-medium text-gray-900">28€ për 28 ditë</span>
+                </div>
+              </div>
 
-            <Paper shadow="sm" p="xl" radius="md" withBorder style={{ borderColor: '#228be6', borderWidth: 2 }}>
-              <Badge color="blue" mb="md">Rekomanduar</Badge>
-              <Stack gap="md">
-                <Title order={3} size="h3">Postim i Promovuar</Title>
-                <Group gap="xs" align="baseline">
-                  <Text size="3rem" fw={700}>50€</Text>
-                  <Text c="dimmed">/28 ditë</Text>
-                </Group>
-                <Stack gap="xs">
-                  <Text size="sm">✓ Të gjitha nga Standard</Text>
-                  <Text size="sm" fw={600}>✓ Pozicion prioritar në listë</Text>
-                  <Text size="sm" fw={600}>✓ Badge "E Promovuar"</Text>
-                  <Text size="sm" fw={600}>✓ 3x më shumë vizibilitet</Text>
-                </Stack>
-              </Stack>
-            </Paper>
+              <button className="w-full py-3 px-6 rounded-full border-2 border-[#228be6] text-[#228be6] font-medium hover:bg-[#228be6] hover:text-white transition-colors mb-6">
+                Fillo me këtë plan
+              </button>
 
-            <Paper shadow="sm" p="xl" radius="md" withBorder>
-              <Stack gap="md">
-                <Title order={3} size="h3">Top 10 Kandidatët</Title>
-                <Group gap="xs" align="baseline">
-                  <Text size="3rem" fw={700}>10€</Text>
-                  <Text c="dimmed">/postim</Text>
-                </Group>
-                <Stack gap="xs">
-                  <Text size="sm" fw={600}>✓ 10 kandidatët më të mirë</Text>
-                  <Text size="sm">✓ Përzgjedhur nga AI</Text>
-                  <Text size="sm">✓ Bazuar në përshtatshmëri</Text>
-                  <Text size="sm">✓ Kurseni kohë përzgjedhje</Text>
-                </Stack>
-              </Stack>
-            </Paper>
-          </SimpleGrid>
+              <div className="border-t border-gray-200 pt-6">
+                <p className="font-semibold text-gray-900 mb-4">Plani Bazë përfshin:</p>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-[#228be6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                    </svg>
+                    <p className="text-sm text-gray-700">Postimi aktiv për 28 ditë</p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-[#228be6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                    </svg>
+                    <p className="text-sm text-gray-700">Shfaqje në listën e punëve</p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-[#228be6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                    </svg>
+                    <p className="text-sm text-gray-700">Aplikime të pakufizuara</p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-[#228be6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                    </svg>
+                    <p className="text-sm text-gray-700">Menaxhim aplikimesh</p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-[#228be6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                    </svg>
+                    <p className="text-sm text-gray-700">Mbështetje standarde</p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-[#228be6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                    </svg>
+                    <p className="text-sm text-gray-700">30 ftesa për postim pune</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Business Plus Plan */}
+            <div className="bg-white rounded-2xl border-2 border-[#14b8a6] p-8 shadow-md hover:shadow-lg transition-shadow relative">
+              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                <span className="bg-[#14b8a6] text-white px-4 py-1 rounded-full text-sm font-medium">
+                  Rekomanduar
+                </span>
+              </div>
+
+              <div className="mb-6 pt-2">
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">Business Plus</h3>
+                <p className="text-sm text-gray-600 mb-4">Për rritje</p>
+                <div className="flex items-center gap-2 mb-6">
+                  <span className="text-base font-medium text-gray-900">50€ për 28 ditë</span>
+                </div>
+              </div>
+
+              <button className="w-full py-3 px-6 rounded-full bg-[#14b8a6] text-white font-medium hover:bg-[#0d9488] transition-colors mb-6">
+                Regjistrohu falas
+              </button>
+
+              <div className="border-t border-gray-200 pt-6">
+                <p className="font-semibold text-gray-900 mb-4">Çdo gjë në Bazë, plus</p>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-[#14b8a6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                    </svg>
+                    <p className="text-sm text-gray-700 font-medium">Pozicion prioritar në listë</p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-[#14b8a6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                    </svg>
+                    <p className="text-sm text-gray-700 font-medium">Badge "E Promovuar"</p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-[#14b8a6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                    </svg>
+                    <p className="text-sm text-gray-700 font-medium">3x më shumë vizibilitet</p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-[#14b8a6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                    </svg>
+                    <p className="text-sm text-gray-700">Top 10 kandidatë (10€ extra)</p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-[#14b8a6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                    </svg>
+                    <p className="text-sm text-gray-700">Mbështetje prioritare 24/7</p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-[#14b8a6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                    </svg>
+                    <p className="text-sm text-gray-700">60 ftesa për postim pune</p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-[#14b8a6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                    </svg>
+                    <p className="text-sm text-gray-700">15 mesazhe të drejtpërdrejta në ditë</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <Text c="dimmed" ta="center" size="sm" mt="xl">
             💡 Kombinoni postimin e promovuar me Top 10 Kandidatët për rezultate më të mira

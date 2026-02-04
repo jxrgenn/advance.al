@@ -65,8 +65,9 @@ const RotatingContact: React.FC<RotatingContactProps> = ({
   const currentContact = contacts[currentIndex];
 
   return (
-    <div className={`w-full bg-gradient-to-br from-[#2d6a6a] to-[#1f4d4d] py-16 px-6 ${className}`}>
-      <div className="max-w-5xl mx-auto">
+    <section className={`w-full py-16 px-6 ${className}`}>
+      <div className="max-w-6xl mx-auto">
+        <div className="max-w-5xl mx-auto bg-gradient-to-br from-[#2d6a6a] to-[#1f4d4d] rounded-3xl p-8 md:p-12 shadow-lg">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
           {/* Left side - Profile images */}
           <div className="flex justify-center md:justify-start gap-4">
@@ -151,8 +152,9 @@ const RotatingContact: React.FC<RotatingContactProps> = ({
             />
           ))}
         </div>
+        </div>
       </div>
-    </div>
+    </section>
   );
 };
 
