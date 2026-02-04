@@ -273,6 +273,48 @@ const jobSchema = new Schema({
     type: String,
     unique: true,
     required: true
+  },
+
+  // AI-Powered Job Similarity (NEW)
+  embedding: {
+    vector: [{
+      type: Number
+    }], // 1536 dimensions from text-embedding-3-small
+    model: {
+      type: String,
+      default: 'text-embedding-3-small'
+    },
+    generatedAt: Date,
+    status: {
+      type: String,
+      enum: ['pending', 'processing', 'completed', 'failed'],
+      default: 'pending'
+    },
+    error: String,
+    retries: {
+      type: Number,
+      default: 0
+    },
+    language: String
+  },
+
+  similarJobs: [{
+    jobId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Job'
+    },
+    score: {
+      type: Number,
+      min: 0,
+      max: 1
+    },
+    computedAt: Date
+  }],
+
+  similarityMetadata: {
+    lastComputed: Date,
+    nextComputeAt: Date, // lastComputed + 7 days
+    jobCountWhenComputed: Number
   }
 }, {
   timestamps: true,
@@ -290,6 +332,12 @@ jobSchema.index({ tier: 1, status: 1 });
 jobSchema.index({ isDeleted: 1 });
 // jobSchema.index({ slug: 1 }); // Removed: slug already has unique: true
 jobSchema.index({ expiresAt: 1 });
+
+// Embedding system indexes
+jobSchema.index({ 'embedding.status': 1 }); // For worker queries
+jobSchema.index({ 'embedding.vector': 1 }, { sparse: true }); // Sparse index for similarity computation
+jobSchema.index({ 'similarJobs.score': -1 }); // For sorting similar jobs
+jobSchema.index({ 'similarityMetadata.nextComputeAt': 1 }); // For recomputation scheduling
 
 // Virtual for formatted salary
 jobSchema.virtual('formattedSalary').get(function() {
