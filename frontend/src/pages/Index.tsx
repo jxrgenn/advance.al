@@ -1,22 +1,21 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import JobCard from "@/components/JobCard";
-import SearchInput from "@/components/SearchInput";
 import CoreFilters from "@/components/CoreFilters";
 import RecentlyViewedJobs from "@/components/RecentlyViewedJobs";
 import PremiumJobsCarousel from "@/components/PremiumJobsCarousel";
+import { QuickUserBanner } from "@/components/QuickUserBanner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
-import { Search, MapPin, Filter, Briefcase, Loader2, Calendar, DollarSign, Clock, Building, Bookmark, GraduationCap, Users, Award } from "lucide-react";
+import { Search, MapPin, Filter, Briefcase, Loader2, Calendar, DollarSign, Clock, Building, Bookmark, GraduationCap, Users, Award, ChevronDown, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { jobsApi, locationsApi, applicationsApi, Job, Location } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -29,10 +28,9 @@ const Index = () => {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
-  const [selectedJobTypes, setSelectedJobTypes] = useState<string[]>([]);
   const [selectedType, setSelectedType] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
-
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   // Core Platform Filters State
   const [coreFilters, setCoreFilters] = useState({
     diaspora: false,
@@ -53,6 +51,36 @@ const Index = () => {
     postedWithin: '',
     sortBy: 'newest'
   });
+
+  // Filter UI state
+  const [showAllFilters, setShowAllFilters] = useState(false);
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const previousExpandedCategoryRef = useRef<string | null>(null);
+  
+  // Pending filters - these are what users configure before applying
+  const [pendingAdvancedFilters, setPendingAdvancedFilters] = useState(advancedFilters);
+  const [pendingCoreFilters, setPendingCoreFilters] = useState(coreFilters);
+  
+  // Auto-save when category closes
+  useEffect(() => {
+    const prev = previousExpandedCategoryRef.current;
+    // When a category closes (expandedCategory changes from a value to null or different value)
+    if (prev !== null && expandedCategory !== prev) {
+      // Category was closed, auto-apply the pending filters
+      const hasChanges = JSON.stringify(pendingAdvancedFilters) !== JSON.stringify(advancedFilters) ||
+                        JSON.stringify(pendingCoreFilters) !== JSON.stringify(coreFilters);
+      
+      if (hasChanges) {
+        // Auto-apply filters
+        setAdvancedFilters(pendingAdvancedFilters);
+        setCoreFilters(pendingCoreFilters);
+        setPagination(prev => ({ ...prev, currentPage: 1 }));
+        loadJobs(1, false);
+      }
+    }
+    previousExpandedCategoryRef.current = expandedCategory;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedCategory]);
 
   const [pagination, setPagination] = useState({
     currentPage: 1,
@@ -89,21 +117,21 @@ const Index = () => {
   // Enhanced debounced search with loading states
   useEffect(() => {
     // Don't search if query is too short
-    if (searchQuery.length > 0 && searchQuery.length < 2) {
+    if (searchQuery.length > 0 && searchQuery.length < 3) {
       return;
     }
 
     // Set search loading state
-    if (searchQuery.length >= 2) {
+    if (searchQuery.length >= 3) {
       setSearchLoading(true);
     }
 
     const debounceTimeout = setTimeout(() => {
-      loadJobs(1, searchQuery.length >= 2); // Reset to page 1 for new searches
-    }, searchQuery.length >= 2 ? 300 : 0); // Faster debounce for better UX
+      loadJobs(1, searchQuery.length >= 3); // Reset to page 1 for new searches
+    }, searchQuery.length >= 3 ? 600 : 0); // Longer debounce to prevent rate limiting
 
     return () => clearTimeout(debounceTimeout);
-  }, [searchQuery, selectedLocations, selectedJobTypes, selectedType, advancedFilters, coreFilters]);
+  }, [searchQuery, selectedLocations, selectedType]); // Removed advancedFilters and coreFilters to prevent rate limiting
 
   const loadJobs = async (page = 1, isSearch = false) => {
     try {
@@ -118,20 +146,16 @@ const Index = () => {
       const queryParams: any = {
         search: searchQuery || undefined,
         city: selectedLocations.length > 0 ? selectedLocations.join(',') : undefined,
-        jobType: selectedJobTypes.length > 0 ? selectedJobTypes.join(',') : undefined,
         page,
         limit: 10
       };
 
       // Add advanced filters if they exist
-      if (advancedFilters.salaryRange[0] > 0 || advancedFilters.salaryRange[1] < 2000) {
-        queryParams.salaryMin = advancedFilters.salaryRange[0];
-        queryParams.salaryMax = advancedFilters.salaryRange[1];
+      // Salary range - only send if user has modified from defaults
+      if (advancedFilters.salaryRange[0] > 0 || advancedFilters.salaryRange[1] < 5000) {
+        queryParams.minSalary = advancedFilters.salaryRange[0];
+        queryParams.maxSalary = advancedFilters.salaryRange[1];
         queryParams.currency = advancedFilters.currency;
-      }
-
-      if (advancedFilters.experience) {
-        queryParams.experience = advancedFilters.experience;
       }
 
       if (advancedFilters.company) {
@@ -139,11 +163,17 @@ const Index = () => {
       }
 
       if (advancedFilters.remote) {
-        queryParams.remote = true;
+        queryParams.remote = 'true';
       }
 
+      // Categories - send as comma-separated for OR logic
       if (advancedFilters.categories && advancedFilters.categories.length > 0) {
         queryParams.categories = advancedFilters.categories.join(',');
+      }
+
+      // Experience - map to backend seniority
+      if (advancedFilters.experience) {
+        queryParams.experience = advancedFilters.experience;
       }
 
       // Add core platform filters
@@ -301,10 +331,29 @@ const Index = () => {
 
   const handleInstantSearch = (query: string) => {
     setSearchQuery(query);
+    setShowSuggestions(false);
     // The useEffect will handle the debounced search
   };
 
+  // Sample job title suggestions
+  const jobTitleSuggestions = [
+    'Software Developer', 'Digital Marketing', 'React Developer',
+    'Frontend Developer', 'Backend Developer', 'Marketing Manager',
+    'Project Manager', 'Data Analyst', 'UX Designer', 'Product Manager',
+    'Sales Manager', 'Content Writer', 'Graphic Designer', 'Accountant',
+    'HR Manager', 'Business Analyst', 'Full Stack Developer', 'DevOps Engineer'
+  ];
+
+  const getFilteredSuggestions = () => {
+    if (!searchQuery.trim()) return jobTitleSuggestions.slice(0, 8);
+    const queryLower = searchQuery.toLowerCase();
+    return jobTitleSuggestions
+      .filter(title => title.toLowerCase().includes(queryLower))
+      .slice(0, 8);
+  };
+
   const handleCoreFilterChange = (filterKey: string, value: boolean) => {
+    // Core filters apply immediately (they're quick filters)
     setCoreFilters(prev => ({
       ...prev,
       [filterKey]: value
@@ -314,7 +363,6 @@ const Index = () => {
   const clearFilters = () => {
     setSearchQuery("");
     setSelectedLocations([]);
-    setSelectedJobTypes([]);
     setSelectedType("");
     setCoreFilters({
       diaspora: false,
@@ -326,13 +374,22 @@ const Index = () => {
   };
 
   const handleShowFilters = () => {
-    setShowFilters(true);
+    // When opening filters, sync pending filters with current active filters
+    setPendingAdvancedFilters(advancedFilters);
+    setPendingCoreFilters(coreFilters);
+    setShowAllFilters(true);
   };
 
   const handleApplyFilters = async () => {
-    setShowFilters(false);
+    // Copy pending filters to active filters
+    setAdvancedFilters(pendingAdvancedFilters);
+    setCoreFilters(pendingCoreFilters);
+    setShowAllFilters(false);
+    setExpandedCategory(null);
     setPagination(prev => ({ ...prev, currentPage: 1 }));
-    await loadJobs(1);
+    
+    // Reload jobs with new filters
+    await loadJobs(1, false);
 
     toast({
       title: "Filtrat u aplikuan",
@@ -341,6 +398,36 @@ const Index = () => {
   };
 
   const handleResetFilters = async () => {
+    // Reset both active and pending filters
+    const defaultAdvancedFilters = {
+      salaryRange: [0, 2000] as [number, number],
+      currency: 'EUR',
+      experience: '',
+      company: '',
+      remote: false,
+      categories: [] as string[],
+      postedWithin: '',
+      sortBy: 'newest'
+    };
+    const defaultCoreFilters = {
+      diaspora: false,
+      ngaShtepia: false,
+      partTime: false,
+      administrata: false,
+      sezonale: false
+    };
+    
+    setAdvancedFilters(defaultAdvancedFilters);
+    setCoreFilters(defaultCoreFilters);
+    setPendingAdvancedFilters(defaultAdvancedFilters);
+    setPendingCoreFilters(defaultCoreFilters);
+    setShowAllFilters(false);
+    setExpandedCategory(null);
+    setSelectedLocations([]);
+    setPagination(prev => ({ ...prev, currentPage: 1 }));
+    
+    // Reload jobs without filters
+    await loadJobs(1, false);
     setAdvancedFilters({
       salaryRange: [0, 2000],
       currency: 'EUR',
@@ -359,7 +446,6 @@ const Index = () => {
       sezonale: false
     });
     setSelectedLocations([]);
-    setSelectedJobTypes([]);
     setSelectedType('');
     setSearchQuery('');
 
@@ -373,7 +459,7 @@ const Index = () => {
   };
 
   const toggleCategory = (category: string) => {
-    setAdvancedFilters(prev => ({
+    setPendingAdvancedFilters(prev => ({
       ...prev,
       categories: prev.categories.includes(category)
         ? prev.categories.filter(c => c !== category)
@@ -381,10 +467,47 @@ const Index = () => {
     }));
   };
 
+  // Immediately apply filter removal when X is clicked on active filter badge
+  const handleRemoveFilter = async (filterType: string, value?: any) => {
+    const updatedPendingFilters = { ...pendingAdvancedFilters };
+    const updatedCoreFilters = { ...pendingCoreFilters };
+    
+    switch (filterType) {
+      case 'experience':
+        updatedPendingFilters.experience = '';
+        break;
+      case 'company':
+        updatedPendingFilters.company = '';
+        break;
+      case 'remote':
+        updatedPendingFilters.remote = false;
+        break;
+      case 'postedWithin':
+        updatedPendingFilters.postedWithin = '';
+        break;
+      case 'salaryRange':
+        updatedPendingFilters.salaryRange = [0, 5000];
+        break;
+      case 'category':
+        if (value) {
+          updatedPendingFilters.categories = updatedPendingFilters.categories.filter(c => c !== value);
+        }
+        break;
+    }
+    
+    // Apply immediately
+    setPendingAdvancedFilters(updatedPendingFilters);
+    setAdvancedFilters(updatedPendingFilters);
+    setPendingCoreFilters(updatedCoreFilters);
+    setCoreFilters(updatedCoreFilters);
+    setPagination(prev => ({ ...prev, currentPage: 1 }));
+    await loadJobs(1, false);
+  };
+
   // Merge recommendations with regular jobs intelligently
   const getMergedJobs = () => {
     const recommendationIds = new Set(recommendations.map(job => job._id));
-    const hasActiveFilters = searchQuery || selectedLocations.length > 0 || selectedJobTypes.length > 0 || selectedType ||
+    const hasActiveFilters = searchQuery || selectedLocations.length > 0 || selectedType ||
       Object.values(coreFilters).some(Boolean) ||
       advancedFilters.company ||
       advancedFilters.experience ||
@@ -417,7 +540,7 @@ const Index = () => {
 
       <div className="container py-8 pt-20">
         {/* Premium Jobs Carousel - Full width, above heading */}
-        {!loading && !searchQuery && selectedLocations.length === 0 && selectedJobTypes.length === 0 && !selectedType && (
+        {!loading && !searchQuery && selectedLocations.length === 0 && !selectedType && (
           <div className="mb-8">
             <PremiumJobsCarousel jobs={jobs} />
           </div>
@@ -432,7 +555,7 @@ const Index = () => {
             </h1>
             <p className="text-lg text-muted-foreground mb-6">
               {loading ? "Duke ngarkuar..." :
-                searchQuery.length >= 2 ?
+                searchQuery.length >= 3 ?
                   `${pagination.totalJobs} rezultate për "${searchQuery}"` :
                   `${pagination.totalJobs} vende pune të disponueshme në Shqipëri`
               }
@@ -440,90 +563,103 @@ const Index = () => {
           </div>
 
           {/* Right: 3D Asset */}
-          <div className="hidden md:flex justify-center items-center">
+          <div className="flex justify-center md:justify-end items-center">
             <img
-              src="/3d_assets/man_climbing.png"
+              src="/3d_assets/searching_character.png"
               alt="Career Growth - Reach your professional goals"
-              className="w-full max-w-[220px] object-contain"
+              className="w-full max-w-[200px] md:max-w-[260px] object-contain"
               loading="eager"
             />
           </div>
         </div>
 
-        {/* Search and Filters */}
-        <Card className="mb-8">
-          <CardContent className="p-6">
-            <div className="flex flex-col gap-4">
-              {/* Search Input - Full width on all devices */}
-              <SearchInput
+        {/* Search Bar - Wellfound Style */}
+        <div className="mx-auto max-w-7xl mb-8">
+          <div className="flex flex-col gap-3 rounded-3xl bg-white p-4 shadow-md md:flex-row md:items-center md:gap-0 lg:pl-8">
+            {/* Job Title Search with Suggestions */}
+            <div className="relative flex flex-1 items-center rounded-xl border border-neutral-200 px-3 md:border-0">
+              <Search className="mr-1 h-4 w-4 flex-shrink-0 text-black" />
+              <Input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Job title"
                 value={searchQuery}
-                onChange={setSearchQuery}
-                onSearch={handleInstantSearch}
-                isLoading={searchLoading}
-                placeholder="Kërko punë, kompani, ose aftësi..."
-                className="w-full"
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleInstantSearch(searchQuery);
+                  }
+                }}
+                className="flex-1 border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-2"
               />
+              {searchLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />}
 
-              {/* Filter Dropdowns - Wrap on mobile */}
-              <div className="flex flex-wrap gap-2">
-                {/* City Multi-Select Dropdown */}
-                <Select
-                  value={selectedLocations.length === 1 ? selectedLocations[0] : selectedLocations.length > 1 ? "_multiple_" : ""}
-                  onValueChange={(value) => {
-                    if (value === "_all_") {
-                      setSelectedLocations([]);
-                    } else if (value) {
-                      setSelectedLocations(selectedLocations.includes(value)
-                        ? selectedLocations.filter(c => c !== value)
-                        : [...selectedLocations, value]
-                      );
-                    }
-                  }}
-                >
-                  <SelectTrigger className="w-[180px]">
-                    <MapPin className="mr-2 h-4 w-4" />
-                    <SelectValue placeholder={selectedLocations.length > 0 ? `${selectedLocations.length} qytete` : "Qyteti"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_all_">Të gjitha qytetet</SelectItem>
-                    {locations.map((location) => (
-                      <SelectItem key={location.city} value={location.city}>
-                        {location.city}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {/* Job Type Multi-Select Dropdown */}
-                <Select
-                  value={selectedJobTypes.length === 1 ? selectedJobTypes[0] : selectedJobTypes.length > 1 ? "_multiple_" : ""}
-                  onValueChange={(value) => {
-                    if (value === "_all_") {
-                      setSelectedJobTypes([]);
-                    } else if (value) {
-                      setSelectedJobTypes(selectedJobTypes.includes(value)
-                        ? selectedJobTypes.filter(t => t !== value)
-                        : [...selectedJobTypes, value]
-                      );
-                    }
-                  }}
-                >
-                  <SelectTrigger className="w-[180px]">
-                    <Briefcase className="mr-2 h-4 w-4" />
-                    <SelectValue placeholder={selectedJobTypes.length > 0 ? `${selectedJobTypes.length} lloje` : "Lloji i punës"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_all_">Të gjitha llojet</SelectItem>
-                    <SelectItem value="full-time">Full-time</SelectItem>
-                    <SelectItem value="part-time">Part-time</SelectItem>
-                    <SelectItem value="contract">Kontratë</SelectItem>
-                    <SelectItem value="internship">Praktikë</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* Search Suggestions Dropdown */}
+              {showSuggestions && getFilteredSuggestions().length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-neutral-200 rounded-xl shadow-lg z-50 max-h-64 overflow-y-auto">
+                  {getFilteredSuggestions().map((suggestion, index) => (
+                    <div
+                      key={index}
+                      className="px-4 py-2.5 hover:bg-slate-50 cursor-pointer transition-colors text-sm"
+                      onClick={() => {
+                        setSearchQuery(suggestion);
+                        handleInstantSearch(suggestion);
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span>{suggestion}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          </CardContent>
-        </Card>
+
+            {/* Separator */}
+            <div className="mx-0 hidden h-12 w-px bg-gray-400 md:mx-4 md:block" />
+
+            {/* Location Select */}
+            <div className="relative flex flex-1 items-center rounded-xl border border-neutral-200 px-3 md:border-0">
+              <MapPin className="mr-1 h-5 w-5 flex-shrink-0 text-black" />
+              <Select
+                value={selectedLocations.length === 1 ? selectedLocations[0] : selectedLocations.length > 1 ? "_multiple_" : ""}
+                onValueChange={(value) => {
+                  if (value === "_all_") {
+                    setSelectedLocations([]);
+                  } else if (value) {
+                    setSelectedLocations(selectedLocations.includes(value)
+                      ? selectedLocations.filter(c => c !== value)
+                      : [...selectedLocations, value]
+                    );
+                  }
+                }}
+              >
+                <SelectTrigger className="flex-1 border-0 shadow-none focus:ring-0 focus:ring-offset-0 h-auto px-0">
+                  <SelectValue placeholder={selectedLocations.length > 0 ? `${selectedLocations.length} qytete` : "Location"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_all_">Të gjitha qytetet</SelectItem>
+                  {locations.map((location) => (
+                    <SelectItem key={location.city} value={location.city}>
+                      {location.city}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Search Button */}
+            <Button
+              onClick={() => handleInstantSearch(searchQuery)}
+              className="ml-0 rounded-xl bg-black px-8 py-3.5 font-medium text-white transition-colors hover:bg-gray-800 md:ml-4 md:mt-0"
+            >
+              Search
+            </Button>
+          </div>
+        </div>
 
         {/* 3-Column Layout: Filters (20%) - Jobs (60%) - Announcements (20%) */}
         <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 mb-8">
@@ -532,19 +668,369 @@ const Index = () => {
             <CoreFilters
               filters={coreFilters}
               onFilterChange={handleCoreFilterChange}
+              onShowAllFilters={handleShowFilters}
+              showAllFilters={showAllFilters}
               className="sticky top-4"
             />
+
+            {/* Expandable Filter Section - Below CoreFilters */}
+            {showAllFilters && (
+              <div className="border-t border-b py-4 bg-background mt-4">
+                <div className="w-full">
+                  {/* Active Filters Display */}
+                  {(pendingAdvancedFilters.categories.length > 0 || pendingAdvancedFilters.experience || pendingAdvancedFilters.company || pendingAdvancedFilters.remote || pendingAdvancedFilters.postedWithin || (pendingAdvancedFilters.salaryRange[0] > 0 || pendingAdvancedFilters.salaryRange[1] < 5000)) && (
+                    <div className="mb-4">
+                      <div className="flex flex-wrap gap-2 items-center">
+                        <span className="text-sm font-medium text-muted-foreground">Filtrat aktive:</span>
+                        {pendingAdvancedFilters.experience && (
+                          <Badge variant="secondary" className="gap-1">
+                            Përvojë: {
+                              pendingAdvancedFilters.experience === 'entry' ? 'Fillestar' :
+                              pendingAdvancedFilters.experience === 'mid' ? 'I mesëm' :
+                              pendingAdvancedFilters.experience === 'senior' ? 'Senior' : 'Lead/Manager'
+                            }
+                            <button
+                              onClick={() => handleRemoveFilter('experience')}
+                              className="ml-1 hover:bg-muted rounded-full p-0.5"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        )}
+                        {pendingAdvancedFilters.company && (
+                          <Badge variant="secondary" className="gap-1">
+                            Kompani: {pendingAdvancedFilters.company}
+                            <button
+                              onClick={() => handleRemoveFilter('company')}
+                              className="ml-1 hover:bg-muted rounded-full p-0.5"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        )}
+                        {pendingAdvancedFilters.remote && (
+                          <Badge variant="secondary" className="gap-1">
+                            Punë në distancë
+                            <button
+                              onClick={() => handleRemoveFilter('remote')}
+                              className="ml-1 hover:bg-muted rounded-full p-0.5"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        )}
+                        {pendingAdvancedFilters.postedWithin && (
+                          <Badge variant="secondary" className="gap-1">
+                            Publikuar: {
+                              pendingAdvancedFilters.postedWithin === 'today' ? 'Sot' :
+                              pendingAdvancedFilters.postedWithin === 'week' ? 'Javën e fundit' : 'Muajin e fundit'
+                            }
+                            <button
+                              onClick={() => handleRemoveFilter('postedWithin')}
+                              className="ml-1 hover:bg-muted rounded-full p-0.5"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        )}
+                        {(pendingAdvancedFilters.salaryRange[0] > 0 || pendingAdvancedFilters.salaryRange[1] < 5000) && (
+                          <Badge variant="secondary" className="gap-1">
+                            Paga: {pendingAdvancedFilters.salaryRange[0]}-{pendingAdvancedFilters.salaryRange[1]} {pendingAdvancedFilters.currency}
+                            <button
+                              onClick={() => handleRemoveFilter('salaryRange')}
+                              className="ml-1 hover:bg-muted rounded-full p-0.5"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        )}
+                        {pendingAdvancedFilters.categories.map(cat => (
+                          <Badge key={cat} variant="secondary" className="gap-1">
+                            {cat}
+                            <button
+                              onClick={() => handleRemoveFilter('category', cat)}
+                              className="ml-1 hover:bg-muted rounded-full p-0.5"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    {/* Salary Range Category */}
+                    <div className="border rounded-lg">
+                      <button
+                        onClick={() => setExpandedCategory(expandedCategory === 'salary' ? null : 'salary')}
+                        className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <DollarSign className="h-3.5 w-3.5" />
+                          <Label className="text-sm font-medium cursor-pointer">Diapazoni i pagës</Label>
+                        </div>
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedCategory === 'salary' ? 'rotate-180' : ''}`} />
+                      </button>
+                      {expandedCategory === 'salary' && (
+                        <div className="px-3 pb-3 space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Monedha</Label>
+                              <Select
+                                value={pendingAdvancedFilters.currency}
+                                onValueChange={(value) => setPendingAdvancedFilters(prev => ({ ...prev, currency: value }))}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="EUR">EUR (€)</SelectItem>
+                                  <SelectItem value="ALL">ALL (L)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">
+                                Paga: {pendingAdvancedFilters.salaryRange[0]} - {pendingAdvancedFilters.salaryRange[1]} {pendingAdvancedFilters.currency}
+                              </Label>
+                              <Slider
+                                value={pendingAdvancedFilters.salaryRange}
+                                onValueChange={(value) => setPendingAdvancedFilters(prev => ({ ...prev, salaryRange: value as [number, number] }))}
+                                max={5000}
+                                min={0}
+                                step={50}
+                                className="w-full"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Experience Level Category */}
+                    <div className="border rounded-lg">
+                      <button
+                        onClick={() => setExpandedCategory(expandedCategory === 'experience' ? null : 'experience')}
+                        className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Briefcase className="h-3.5 w-3.5" />
+                          <Label className="text-sm font-medium cursor-pointer">Niveli i përvojës</Label>
+                        </div>
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedCategory === 'experience' ? 'rotate-180' : ''}`} />
+                      </button>
+                      {expandedCategory === 'experience' && (
+                        <div className="px-3 pb-3">
+                          <Select
+                            value={pendingAdvancedFilters.experience || "all"}
+                            onValueChange={(value) => setPendingAdvancedFilters(prev => ({ ...prev, experience: value === "all" ? "" : value }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Zgjidhni nivelin e përvojës" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Të gjitha nivelet</SelectItem>
+                              <SelectItem value="entry">Fillestar (0-2 vite)</SelectItem>
+                              <SelectItem value="mid">I mesëm (2-5 vite)</SelectItem>
+                              <SelectItem value="senior">Senior (5+ vite)</SelectItem>
+                              <SelectItem value="lead">Lead/Manager</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Company Search Category */}
+                    <div className="border rounded-lg">
+                      <button
+                        onClick={() => setExpandedCategory(expandedCategory === 'company' ? null : 'company')}
+                        className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Building className="h-3.5 w-3.5" />
+                          <Label className="text-sm font-medium cursor-pointer">Kompania</Label>
+                        </div>
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedCategory === 'company' ? 'rotate-180' : ''}`} />
+                      </button>
+                      {expandedCategory === 'company' && (
+                        <div className="px-3 pb-3">
+                          <Input
+                            value={pendingAdvancedFilters.company}
+                            onChange={(e) => setPendingAdvancedFilters(prev => ({ ...prev, company: e.target.value }))}
+                            placeholder="Kërkoni për kompani specifike..."
+                            className="w-full"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Job Categories Category */}
+                    <div className="border rounded-lg">
+                      <button
+                        onClick={() => setExpandedCategory(expandedCategory === 'categories' ? null : 'categories')}
+                        className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Filter className="h-3.5 w-3.5" />
+                          <Label className="text-sm font-medium cursor-pointer">Kategoritë e punës</Label>
+                        </div>
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedCategory === 'categories' ? 'rotate-180' : ''}`} />
+                      </button>
+                      {expandedCategory === 'categories' && (
+                        <div className="px-3 pb-3">
+                          <div className="space-y-2">
+                            {[
+                              'Teknologji',
+                              'Marketing',
+                              'Shitje',
+                              'Financë',
+                              'Burime Njerëzore',
+                              'Inxhinieri',
+                              'Dizajn',
+                              'Menaxhim',
+                              'Shëndetësi',
+                              'Arsim',
+                              'Turizëm',
+                              'Ndërtim'
+                            ].map((category) => (
+                              <div key={category} className="flex items-center space-x-2">
+                                <Checkbox
+                                  id={category}
+                                  checked={pendingAdvancedFilters.categories.includes(category)}
+                                  onCheckedChange={() => toggleCategory(category)}
+                                />
+                                <Label htmlFor={category} className="text-sm font-medium">
+                                  {category}
+                                </Label>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Remote Work Category */}
+                    <div className="border rounded-lg">
+                      <button
+                        onClick={() => setExpandedCategory(expandedCategory === 'remote' ? null : 'remote')}
+                        className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <MapPin className="h-3.5 w-3.5" />
+                          <Label className="text-sm font-medium cursor-pointer">Punë në distancë</Label>
+                        </div>
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedCategory === 'remote' ? 'rotate-180' : ''}`} />
+                      </button>
+                      {expandedCategory === 'remote' && (
+                        <div className="px-3 pb-3">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="remote"
+                              checked={pendingAdvancedFilters.remote}
+                              onCheckedChange={(checked) => setPendingAdvancedFilters(prev => ({ ...prev, remote: !!checked }))}
+                            />
+                            <Label htmlFor="remote" className="text-sm font-medium">
+                              Përfshi vetëm punët në distancë
+                            </Label>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Posted Within Category */}
+                    <div className="border rounded-lg">
+                      <button
+                        onClick={() => setExpandedCategory(expandedCategory === 'posted' ? null : 'posted')}
+                        className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-3.5 w-3.5" />
+                          <Label className="text-sm font-medium cursor-pointer">Publikuar brenda</Label>
+                        </div>
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedCategory === 'posted' ? 'rotate-180' : ''}`} />
+                      </button>
+                      {expandedCategory === 'posted' && (
+                        <div className="px-3 pb-3">
+                          <Select
+                            value={pendingAdvancedFilters.postedWithin || "all"}
+                            onValueChange={(value) => setPendingAdvancedFilters(prev => ({ ...prev, postedWithin: value === "all" ? "" : value }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Zgjidhni periudhën kohore" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Të gjitha kohët</SelectItem>
+                              <SelectItem value="today">Sot</SelectItem>
+                              <SelectItem value="week">Javën e fundit</SelectItem>
+                              <SelectItem value="month">Muajin e fundit</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Sort By Category */}
+                    <div className="border rounded-lg">
+                      <button
+                        onClick={() => setExpandedCategory(expandedCategory === 'sort' ? null : 'sort')}
+                        className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-3.5 w-3.5" />
+                          <Label className="text-sm font-medium cursor-pointer">Rendit sipas</Label>
+                        </div>
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedCategory === 'sort' ? 'rotate-180' : ''}`} />
+                      </button>
+                      {expandedCategory === 'sort' && (
+                        <div className="px-3 pb-3">
+                          <Select
+                            value={pendingAdvancedFilters.sortBy}
+                            onValueChange={(value) => setPendingAdvancedFilters(prev => ({ ...prev, sortBy: value }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="newest">Më të rejat</SelectItem>
+                              <SelectItem value="oldest">Më të vjetrat</SelectItem>
+                              <SelectItem value="salary">Paga (nga më e larta)</SelectItem>
+                              <SelectItem value="title">Titulli (A-Z)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex justify-between gap-2 pt-4 border-t">
+                      <Button variant="outline" onClick={handleResetFilters}>
+                        Rivendos të gjitha
+                      </Button>
+                      <Button variant="outline" onClick={() => {
+                        setPendingAdvancedFilters(advancedFilters);
+                        setPendingCoreFilters(coreFilters);
+                        setShowAllFilters(false);
+                        setExpandedCategory(null);
+                      }}>
+                        Anulo
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Main Content - Job Listings (60%) */}
           <div className="lg:col-span-6">
             {/* Recently Viewed Jobs - Show when not filtering and user is authenticated */}
-            {!loading && !searchQuery && selectedLocations.length === 0 && selectedJobTypes.length === 0 && !selectedType && !Object.values(coreFilters).some(Boolean) && isAuthenticated && (
+            {!loading && !searchQuery && selectedLocations.length === 0 && !selectedType && !Object.values(coreFilters).some(Boolean) && isAuthenticated && (
               <RecentlyViewedJobs className="mb-6" limit={4} />
             )}
 
             {/* Active Filters */}
-            {(selectedLocations.length > 0 || selectedJobTypes.length > 0 || selectedType || Object.values(coreFilters).some(Boolean)) && (
+            {(selectedLocations.length > 0 || selectedType || Object.values(coreFilters).some(Boolean)) && (
           <div className="flex items-center gap-2 mb-6 flex-wrap">
             <span className="text-sm text-muted-foreground">Filtrat aktive:</span>
             {selectedLocations.map((city) => (
@@ -554,17 +1040,6 @@ const Index = () => {
                 onClick={() => setSelectedLocations(selectedLocations.filter(c => c !== city))}
               >
                 {city} ×
-              </Badge>
-            ))}
-            {selectedJobTypes.map((jobType) => (
-              <Badge
-                key={jobType}
-                className="cursor-pointer bg-green-100 text-green-800 hover:bg-green-200"
-                onClick={() => setSelectedJobTypes(selectedJobTypes.filter(t => t !== jobType))}
-              >
-                {jobType === 'full-time' ? 'Full-time' :
-                 jobType === 'part-time' ? 'Part-time' :
-                 jobType === 'contract' ? 'Kontratë' : 'Praktikë'} ×
               </Badge>
             ))}
             {selectedType && (
@@ -622,9 +1097,21 @@ const Index = () => {
             {!loading && (
               <>
                 <div className="grid gap-6">
-                  {getMergedJobs().map((job) => (
-                    <JobCard key={job._id} job={job} onApply={handleApply} isRecommended={job.isRecommended} />
-                  ))}
+                  {getMergedJobs().reduce((acc: JSX.Element[], job, index) => {
+                    // Add job card
+                    acc.push(
+                      <JobCard key={job._id} job={job} onApply={handleApply} isRecommended={job.isRecommended} />
+                    );
+                    
+                    // Add banner every 4 jobs (after 4th, 8th, 12th, etc.) for non-authenticated users
+                    if (!isAuthenticated && (index + 1) % 4 === 0) {
+                      acc.push(
+                        <QuickUserBanner key={`banner-${index}`} />
+                      );
+                    }
+                    
+                    return acc;
+                  }, [])}
                 </div>
 
                 {/* No Results */}
@@ -637,7 +1124,7 @@ const Index = () => {
                     <p className="text-muted-foreground mb-4">
                       Provo të ndryshosh kriteret e kërkimit
                     </p>
-                    {(selectedLocations.length > 0 || selectedJobTypes.length > 0 || selectedType || searchQuery || Object.values(coreFilters).some(Boolean)) && (
+                    {(selectedLocations.length > 0 || selectedType || searchQuery || Object.values(coreFilters).some(Boolean)) && (
                       <Button onClick={clearFilters} variant="outline">
                         Pastro filtrat
                       </Button>
@@ -821,245 +1308,6 @@ const Index = () => {
           </div>
         </div>
       </div>
-
-      {/* Modal for advanced filters */}
-      <Dialog open={showFilters} onOpenChange={setShowFilters}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Filtrat e Avancuara</DialogTitle>
-            <DialogDescription>
-              Përdorni filtrat e detajuara për të gjetur punët që përputhen me preferencat tuaja
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-6 py-4">
-            {/* Salary Range */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <DollarSign className="h-4 w-4" />
-                <Label className="text-base font-semibold">Diapazoni i pagës</Label>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Monedha</Label>
-                  <Select
-                    value={advancedFilters.currency}
-                    onValueChange={(value) => setAdvancedFilters(prev => ({ ...prev, currency: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="EUR">EUR (€)</SelectItem>
-                      <SelectItem value="ALL">ALL (L)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>
-                    Paga: {advancedFilters.salaryRange[0]} - {advancedFilters.salaryRange[1]} {advancedFilters.currency}
-                  </Label>
-                  <Slider
-                    value={advancedFilters.salaryRange}
-                    onValueChange={(value) => setAdvancedFilters(prev => ({ ...prev, salaryRange: value as [number, number] }))}
-                    max={5000}
-                    min={0}
-                    step={50}
-                    className="w-full"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Experience Level */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Briefcase className="h-4 w-4" />
-                <Label className="text-base font-semibold">Niveli i përvojës</Label>
-              </div>
-              <Select
-                value={advancedFilters.experience}
-                onValueChange={(value) => setAdvancedFilters(prev => ({ ...prev, experience: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Zgjidhni nivelin e përvojës" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Të gjitha nivelet</SelectItem>
-                  <SelectItem value="entry">Fillestar (0-2 vite)</SelectItem>
-                  <SelectItem value="mid">I mesëm (2-5 vite)</SelectItem>
-                  <SelectItem value="senior">Senior (5+ vite)</SelectItem>
-                  <SelectItem value="lead">Lead/Manager</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Company Search */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Building className="h-4 w-4" />
-                <Label className="text-base font-semibold">Kompania</Label>
-              </div>
-              <Input
-                value={advancedFilters.company}
-                onChange={(e) => setAdvancedFilters(prev => ({ ...prev, company: e.target.value }))}
-                placeholder="Kërkoni për kompani specifike..."
-                className="w-full"
-              />
-            </div>
-
-            {/* Job Categories */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4" />
-                <Label className="text-base font-semibold">Kategoritë e punës</Label>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {[
-                  'Teknologji',
-                  'Marketing',
-                  'Shitje',
-                  'Financë',
-                  'Burime Njerëzore',
-                  'Inxhinieri',
-                  'Dizajn',
-                  'Menaxhim',
-                  'Shëndetësi',
-                  'Arsim',
-                  'Turizëm',
-                  'Ndërtim'
-                ].map((category) => (
-                  <div key={category} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={category}
-                      checked={advancedFilters.categories.includes(category)}
-                      onCheckedChange={() => toggleCategory(category)}
-                    />
-                    <Label htmlFor={category} className="text-sm font-medium">
-                      {category}
-                    </Label>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Remote Work */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <MapPin className="h-4 w-4" />
-                <Label className="text-base font-semibold">Punë në distancë</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="remote"
-                  checked={advancedFilters.remote}
-                  onCheckedChange={(checked) => setAdvancedFilters(prev => ({ ...prev, remote: !!checked }))}
-                />
-                <Label htmlFor="remote" className="text-sm font-medium">
-                  Përfshi vetëm punët në distancë
-                </Label>
-              </div>
-            </div>
-
-            {/* Posted Within */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                <Label className="text-base font-semibold">Publikuar brenda</Label>
-              </div>
-              <Select
-                value={advancedFilters.postedWithin}
-                onValueChange={(value) => setAdvancedFilters(prev => ({ ...prev, postedWithin: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Zgjidhni periudhën kohore" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Të gjitha kohët</SelectItem>
-                  <SelectItem value="today">Sot</SelectItem>
-                  <SelectItem value="week">Javën e fundit</SelectItem>
-                  <SelectItem value="month">Muajin e fundit</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Sort By */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                <Label className="text-base font-semibold">Rendit sipas</Label>
-              </div>
-              <Select
-                value={advancedFilters.sortBy}
-                onValueChange={(value) => setAdvancedFilters(prev => ({ ...prev, sortBy: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="newest">Më të rejat</SelectItem>
-                  <SelectItem value="oldest">Më të vjetrat</SelectItem>
-                  <SelectItem value="salary">Paga (nga më e larta)</SelectItem>
-                  <SelectItem value="title">Titulli (A-Z)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Active Filters Summary */}
-            {(advancedFilters.categories.length > 0 || advancedFilters.experience || advancedFilters.company || advancedFilters.remote || advancedFilters.postedWithin) && (
-              <div className="border rounded-lg p-4 bg-muted/50">
-                <div className="flex items-center gap-2 mb-3">
-                  <Filter className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-medium">Filtrat aktive</span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {advancedFilters.experience && (
-                    <Badge variant="secondary">
-                      Përvojë: {
-                        advancedFilters.experience === 'entry' ? 'Fillestar' :
-                        advancedFilters.experience === 'mid' ? 'I mesëm' :
-                        advancedFilters.experience === 'senior' ? 'Senior' : 'Lead/Manager'
-                      }
-                    </Badge>
-                  )}
-                  {advancedFilters.company && (
-                    <Badge variant="secondary">Kompani: {advancedFilters.company}</Badge>
-                  )}
-                  {advancedFilters.remote && (
-                    <Badge variant="secondary">Punë në distancë</Badge>
-                  )}
-                  {advancedFilters.postedWithin && (
-                    <Badge variant="secondary">
-                      Publikuar: {
-                        advancedFilters.postedWithin === 'today' ? 'Sot' :
-                        advancedFilters.postedWithin === 'week' ? 'Javën e fundit' : 'Muajin e fundit'
-                      }
-                    </Badge>
-                  )}
-                  {advancedFilters.categories.map(cat => (
-                    <Badge key={cat} variant="secondary">{cat}</Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex justify-between gap-2 pt-4 border-t">
-              <Button variant="outline" onClick={handleResetFilters}>
-                Rivendos të gjitha
-              </Button>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setShowFilters(false)}>
-                  Anulo
-                </Button>
-                <Button onClick={handleApplyFilters}>
-                  <Filter className="h-4 w-4 mr-2" />
-                  Apliko filtrat
-                </Button>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
       
       <Footer />
     </div>

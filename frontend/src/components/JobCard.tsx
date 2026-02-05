@@ -118,8 +118,8 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false }: Jo
       onClick={handleCardClick}
     >
       <CardContent className="p-4 sm:p-6 md:p-8">
-        {/* Tags positioned at top right corner */}
-        <div className="absolute top-2 right-2 sm:top-4 sm:right-4 flex items-center gap-1">
+        {/* Tags positioned at top right corner on desktop */}
+        <div className="absolute top-2 right-2 sm:top-4 sm:right-4 hidden sm:flex items-center gap-1">
           <Badge variant="outline" className="text-xs px-2 py-1 bg-background/80 backdrop-blur-sm border-primary/20 text-foreground font-medium">
             {job.jobType}
           </Badge>
@@ -130,11 +130,19 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false }: Jo
           {/* Left Side: Job Information (4 rows) */}
           <div className="flex-1 min-w-0 space-y-2 sm:space-y-3">
 
-            {/* Row 1: Job Title */}
-            <div>
-              <h3 className="text-base sm:text-lg md:text-xl font-bold text-foreground group-hover:text-primary transition-colors line-clamp-2">
-                {job.title}
-              </h3>
+            {/* Row 1: Job Title and Badge */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base sm:text-lg md:text-xl font-bold text-foreground group-hover:text-primary transition-colors line-clamp-2">
+                  {job.title}
+                </h3>
+              </div>
+              {/* Badge shown inline on mobile, hidden on desktop (desktop shows it in top right) */}
+              <div className="flex sm:hidden justify-center flex-shrink-0">
+                <Badge variant="outline" className="text-xs px-2 py-1 bg-background/80 backdrop-blur-sm border-primary/20 text-foreground font-medium whitespace-nowrap">
+                  {job.jobType}
+                </Badge>
+              </div>
             </div>
 
             {/* Row 2: Company Name + Verification */}

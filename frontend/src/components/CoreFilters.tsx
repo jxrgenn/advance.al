@@ -7,7 +7,8 @@ import {
   Building2,
   Calendar,
   Globe,
-  Star
+  Star,
+  ChevronDown
 } from 'lucide-react';
 
 interface CoreFiltersProps {
@@ -19,12 +20,16 @@ interface CoreFiltersProps {
     sezonale: boolean;
   };
   onFilterChange: (filterKey: string, value: boolean) => void;
+  onShowAllFilters?: () => void;
+  showAllFilters?: boolean;
   className?: string;
 }
 
 const CoreFilters: React.FC<CoreFiltersProps> = ({
   filters,
   onFilterChange,
+  onShowAllFilters,
+  showAllFilters = false,
   className = ""
 }) => {
   const coreFilters = [
@@ -60,7 +65,7 @@ const CoreFilters: React.FC<CoreFiltersProps> = ({
   return (
     <div className={`space-y-6 ${className}`}>
       <div>
-        <h3 className="text-lg font-semibold text-foreground mb-4">Filtro Sipas Kategorisë</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-4">Filtra të Shpejtë</h3>
         <div className="space-y-3">
           {coreFilters.map((category) => {
             const Icon = category.icon;
@@ -84,6 +89,25 @@ const CoreFilters: React.FC<CoreFiltersProps> = ({
           })}
         </div>
       </div>
+
+      {/* View All Filters Button */}
+      {onShowAllFilters && (
+        <>
+          <div className="border-t my-4"></div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onShowAllFilters();
+            }}
+            className="w-full flex items-center justify-center gap-2 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          >
+            <span>{showAllFilters ? "Fshihi të gjithë filtrat" : "Shiko të gjitha filtrat"}</span>
+            <ChevronDown className={`h-4 w-4 transition-transform ${showAllFilters ? 'rotate-180' : ''}`} />
+          </button>
+        </>
+      )}
 
       {/* Clear Filters */}
       {hasActiveFilters && (

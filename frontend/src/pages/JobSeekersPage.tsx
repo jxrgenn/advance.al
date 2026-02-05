@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import RotatingContact from "@/components/RotatingContact";
+import { JobSearchHero } from "@/components/JobSearchHero";
+import { CVCreatorSection } from "@/components/CVCreatorSection";
 import {
   Container,
   Title,
@@ -39,9 +41,25 @@ import { InputWithCounter } from "@/components/CharacterCounter";
 
 const JobSeekersPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { isAuthenticated, user } = useAuth();
   const [showQuickForm, setShowQuickForm] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Check for quick=true query parameter
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    if (searchParams.get('quick') === 'true') {
+      setShowQuickForm(true);
+      // Scroll to form section after a brief delay
+      setTimeout(() => {
+        const formSection = document.querySelector('[data-quick-form]');
+        if (formSection) {
+          formSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 300);
+    }
+  }, [location.search]);
 
   // CV Generation State
   const [cvInput, setCvInput] = useState('');
@@ -171,8 +189,9 @@ Telefoni: _______________`;
   // Toggle template handler
   const handleToggleTemplate = () => {
     if (!useTemplate) {
-      // Switching to template mode - load template
-      setCvInput(cvTemplateText);
+      // Switching to template mode - populate with template (with blank spaces, no underscores)
+      const templateWithSpaces = cvTemplateText.replace(/_+/g, (match) => ' '.repeat(match.length));
+      setCvInput(templateWithSpaces);
       setUseTemplate(true);
     } else {
       // Switching off template mode - clear input
@@ -907,8 +926,13 @@ Telefoni: _______________`;
       {/* Tutorial Overlay */}
       <TutorialOverlay />
 
-      <Container size="lg" py={40} pt={80}>
-        {/* Hero Section with 3D Asset */}
+      {/* New Hero Components */}
+      <JobSearchHero />
+      <CVCreatorSection />
+
+      <div className="px-4 sm:px-6 lg:px-8">
+        <Container size="lg" px={0} py={40} pt={80}>
+          {/* Hero Section with 3D Asset */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center mb-8">
           <div className="text-center md:text-left">
             <ThemeIcon size={40} radius="md" color="blue" variant="light" mb={12}>
@@ -921,11 +945,11 @@ Telefoni: _______________`;
               advance.al ju lidh me punëdhënës të shkëlqyer dhe ju ofron mundësi të reja për të rritur në fushën tuaj profesionale.
             </Text>
           </div>
-          <div className="hidden md:flex justify-center items-center">
+          <div className="hidden md:flex justify-end items-center">
             <img
-              src="/3d_assets/sitting2.png"
-              alt="Career Planning - Your professional journey starts here"
-              className="w-full max-w-[220px] object-contain"
+              src="/3d_assets/ideal_career1.png"
+              alt="Career Planning - Find your ideal career path"
+              className="w-full max-w-[160px] object-contain"
               loading="eager"
             />
           </div>
@@ -1091,7 +1115,8 @@ Telefoni: _______________`;
                         onChange={(e) => fullForm.setFieldValue('firstName', e.target.value)}
                         maxLength={50}
                         minLength={2}
-                        error={fullForm.errors.firstName}
+                        error={fullForm.errors.firstName as string | undefined}
+                        hideMinLengthWarning={true}
                         required
                       />
                       <InputWithCounter
@@ -1101,7 +1126,8 @@ Telefoni: _______________`;
                         onChange={(e) => fullForm.setFieldValue('lastName', e.target.value)}
                         maxLength={50}
                         minLength={2}
-                        error={fullForm.errors.lastName}
+                        error={fullForm.errors.lastName as string | undefined}
+                        hideMinLengthWarning={true}
                         required
                       />
                     </SimpleGrid>
@@ -1182,7 +1208,15 @@ Telefoni: _______________`;
                 </form>
               </Paper>
             ) : (
-              <Paper shadow="sm" p="xl" radius="md" withBorder bg="gray.0" style={{ borderColor: 'var(--mantine-color-gray-3)' }}>
+              <Paper 
+                shadow="sm" 
+                p="xl" 
+                radius="md" 
+                withBorder 
+                bg="gray.0" 
+                style={{ borderColor: 'var(--mantine-color-gray-3)' }}
+                data-quick-form
+              >
                 {/* Header - Fixed Alignment */}
                 <Group mb="xl" wrap="nowrap" align="start">
                   <ThemeIcon size={40} radius="md" color="blue" variant="filled" style={{ flexShrink: 0 }}>
@@ -1205,7 +1239,8 @@ Telefoni: _______________`;
                         onChange={(e) => quickForm.setFieldValue('firstName', e.target.value)}
                         maxLength={50}
                         minLength={2}
-                        error={quickForm.errors.firstName}
+                        error={quickForm.errors.firstName as string | undefined}
+                        hideMinLengthWarning={true}
                         required
                       />
                       <InputWithCounter
@@ -1215,7 +1250,8 @@ Telefoni: _______________`;
                         onChange={(e) => quickForm.setFieldValue('lastName', e.target.value)}
                         maxLength={50}
                         minLength={2}
-                        error={quickForm.errors.lastName}
+                        error={quickForm.errors.lastName as string | undefined}
+                        hideMinLengthWarning={true}
                         required
                       />
                     </SimpleGrid>
@@ -1318,15 +1354,15 @@ Telefoni: _______________`;
                   <Box>
                     <Title order={3}>Gjenero CV me AI</Title>
                     <Text c="dimmed" size="sm">
-                      Shkruani informacionet tuaja në mënyrë të natyrshme dhe AI-ja krijon një CV profesionale
+                      Shkruani informacionet tuaja në mënyrë të natyrshme dhe IA krijon një CV profesionale
                     </Text>
                   </Box>
                 </Group>
-                <div className="hidden md:flex justify-center items-center">
+                <div className="hidden md:flex justify-end items-center">
                   <img
-                    src="/3d_assets/tech.png"
-                    alt="Technology - Modern AI-powered CV generation"
-                    className="w-full max-w-[100px] object-contain"
+                    src="/3d_assets/generating_cv1.png"
+                    alt="AI-powered CV generation"
+                    className="w-full max-w-[110px] object-contain"
                     loading="lazy"
                   />
                 </div>
@@ -1338,7 +1374,7 @@ Telefoni: _______________`;
                 <Group justify="space-between" align="center">
                   <Box>
                     <Text size="sm" fw={500} mb={4}>Zgjidhni gjuhën e CV-së:</Text>
-                    <Text size="xs" c="dimmed">CV-ja do të gjenerojhet në gjuhën që zgjidhni këtu</Text>
+                    <Text size="xs" c="dimmed">CV-ja do të gjenerohet në gjuhën që zgjidhni këtu</Text>
                   </Box>
                   <SegmentedControl
                     value={selectedLanguage}
@@ -1369,7 +1405,7 @@ Telefoni: _______________`;
 
             <Grid.Col span={12}>
               <Textarea
-                placeholder={useTemplate ? "" : "Shembull: Emri: Alban Hoxha, Qyteti: Tiranë, Email: alban@email.com, Tel: +355 69 123 4567&#10;&#10;Kam punuar si zhvillues web për 5 vjet në XYZ ku kam zhvilluar aplikacione me React dhe Node.js. Para kësaj kam qenë asistent IT për 2 vjet.&#10;&#10;Diplomuar në Inxhinieri Kompjuterike nga Universiteti Politeknik i Tiranës në vitin 2018.&#10;&#10;Aftësi: JavaScript, React, Node.js, MongoDB, Anglisht C1, Italisht B2."}
+                placeholder={useTemplate ? "" : "Shembull: Emri: Alban Hoxha, Qyteti: Tiranë, Email: alban@email.com, Tel: +355 69 123 4567\n\nKam punuar si zhvillues web për 5 vjet në XYZ ku kam zhvilluar aplikacione me React dhe Node.js. Para kësaj kam qenë asistent IT për 2 vjet.\n\nDiplomuar në Inxhinieri Kompjuterike nga Universiteti Politeknik i Tiranës në vitin 2018.\n\nAftësi: JavaScript, React, Node.js, MongoDB, Anglisht C1, Italisht B2."}
                 minRows={useTemplate ? 20 : 7}
                 maxRows={useTemplate ? 30 : 15}
                 autosize
@@ -1378,7 +1414,7 @@ Telefoni: _______________`;
                 disabled={generating}
                 styles={{
                   input: {
-                    fontFamily: useTemplate ? 'monospace' : 'inherit',
+                    fontFamily: 'inherit',
                   }
                 }}
               />
@@ -1397,8 +1433,7 @@ Telefoni: _______________`;
             </Grid.Col>
 
             <Grid.Col span={12}>
-              <Group justify="space-between" align="center">
-                <Text size="xs" c="dimmed">💡 Cilësia e CV-së varet nga informacioni që jepni</Text>
+              <Group justify="flex-end" align="center">
                 <Button
                   variant="filled"
                   color="blue"
@@ -1468,7 +1503,8 @@ Telefoni: _______________`;
             )}
           </Grid>
         </Paper>
-      </Container>
+        </Container>
+      </div>
 
       {/* Contact Section */}
       <RotatingContact />

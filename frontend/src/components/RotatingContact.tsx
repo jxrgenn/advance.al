@@ -79,10 +79,10 @@ const RotatingContact: React.FC<RotatingContactProps> = ({
   return (
     <section className={`w-full py-12 px-6 ${className}`}>
       <div className="max-w-6xl mx-auto">
-        <div className="bg-gradient-to-br from-[#1e3a8a] to-[#1e40af] rounded-3xl p-4 md:p-8 shadow-lg">
-        {/* STRICTLY Fixed height container - Compact version */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 items-center h-[340px] md:h-[280px]">
-          {/* Left side - 3D Asset - Optimized size */}
+        <div className="bg-gradient-to-br from-[#1e3a8a] to-[#1e40af] rounded-3xl p-4 md:p-8 shadow-lg overflow-hidden">
+        {/* Responsive height container - auto on mobile, fixed on desktop */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 items-center min-h-[340px] md:h-[280px]">
+          {/* Left side - 3D Asset - Bigger size */}
           <div className="flex justify-center md:justify-start items-center h-full">
             <div className={`transition-all duration-500 ${
               isTransitioning ? 'opacity-0 scale-90' : 'opacity-100 scale-100'
@@ -90,15 +90,15 @@ const RotatingContact: React.FC<RotatingContactProps> = ({
               <img
                 src="/3d_assets/chat.png"
                 alt="Support - We're here to help"
-                className="w-full max-w-[260px] md:max-w-[300px] object-contain"
+                className="w-full max-w-[320px] md:max-w-[380px] object-contain"
                 loading="lazy"
               />
             </div>
           </div>
 
-          {/* Right side - Contact info - Fixed height */}
+          {/* Right side - Contact info - Flexible height */}
           <div
-            className={`text-white transition-all duration-300 flex flex-col justify-center ${
+            className={`text-white transition-all duration-300 flex flex-col justify-center py-4 md:py-0 text-center md:text-left ${
               isTransitioning ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'
             }`}
           >
@@ -109,7 +109,7 @@ const RotatingContact: React.FC<RotatingContactProps> = ({
               {currentContact.subheading}
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center md:justify-start items-center sm:items-start">
               {/* Phone */}
               <a
                 href={`tel:${currentContact.phone}`}

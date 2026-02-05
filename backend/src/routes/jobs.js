@@ -94,10 +94,15 @@ router.get('/', optionalAuth, async (req, res) => {
       search = '',
       city = '',
       category = '',
+      categories = '',
       jobType = '',
       minSalary = '',
       maxSalary = '',
       company = '',
+      experience = '',
+      seniority = '',
+      remote = '',
+      postedAfter = '',
       page = 1,
       limit = 10,
       sortBy = 'postedAt',
@@ -121,7 +126,17 @@ router.get('/', optionalAuth, async (req, res) => {
       }
     }
 
-    if (category) filters.category = category;
+    // Category filter - support both single category and multiple categories (comma-separated)
+    if (categories) {
+      // Multiple categories with OR logic
+      const categoryList = categories.split(',').map(c => c.trim()).filter(Boolean);
+      if (categoryList.length > 0) {
+        filters.categories = categoryList; // Pass array for OR logic
+      }
+    } else if (category) {
+      // Single category (backward compatibility)
+      filters.category = category;
+    }
 
     // JobType filter (comma-separated - OR logic via $in)
     if (jobType) {
@@ -159,6 +174,30 @@ router.get('/', optionalAuth, async (req, res) => {
           }
         }
       });
+    }
+
+    // Experience/Seniority filter - map experience to seniority
+    if (experience) {
+      // Map frontend experience values to backend seniority values
+      const experienceMap = {
+        'entry': 'junior',
+        'mid': 'mid',
+        'senior': 'senior',
+        'lead': 'lead'
+      };
+      filters.seniority = experienceMap[experience] || experience;
+    } else if (seniority) {
+      filters.seniority = seniority;
+    }
+
+    // Remote work filter
+    if (remote === 'true') {
+      filters.remote = true;
+    }
+
+    // Posted after date filter
+    if (postedAfter) {
+      filters.postedAfter = new Date(postedAfter);
     }
 
     // Add platform category filters
@@ -209,9 +248,13 @@ router.get('/', optionalAuth, async (req, res) => {
       // expiresAt: { $gt: new Date() },  // Temporarily disabled
       ...(search && { $text: { $search: search } }),
       ...(city && { 'location.city': Array.isArray(filters.city) ? { $in: filters.city } : city }),
-      ...(category && { category }),
+      ...(categories && Array.isArray(filters.categories) && { category: { $in: filters.categories } }),
+      ...(category && !categories && { category }),
       ...(jobType && { jobType: Array.isArray(filters.jobType) ? { $in: filters.jobType } : jobType }),
       ...(company && mongoose.Types.ObjectId.isValid(company) && { employerId: company }),
+      ...(filters.seniority && { seniority: filters.seniority }),
+      ...(filters.remote && { 'location.remote': true }),
+      ...(filters.postedAfter && { postedAt: { $gte: filters.postedAfter } }),
       ...(diaspora === 'true' && { 'platformCategories.diaspora': true }),
       ...(ngaShtepia === 'true' && { 'platformCategories.ngaShtepia': true }),
       ...(partTime === 'true' && { 'platformCategories.partTime': true }),

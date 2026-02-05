@@ -164,7 +164,7 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
             <Button
               variant="outline"
               size="icon"
-              className="absolute left-2 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full bg-background/80 backdrop-blur-sm hover:bg-background hidden md:flex"
+              className="absolute -left-4 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full bg-background/80 backdrop-blur-sm hover:bg-background hidden md:flex"
               onClick={scrollPrev}
             >
               <ChevronLeft className="h-4 w-4" />

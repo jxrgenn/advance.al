@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import RotatingContact from "@/components/RotatingContact";
+import { Companies } from "@/components/CompaniesComponent";
 import {
   Container,
   Title,
@@ -1131,8 +1132,12 @@ const EmployersPage = () => {
       {/* Tutorial Overlay */}
       <TutorialOverlay />
 
-      <Container size="lg" py={40} pt={80}>
-        {/* Hero Section with 3D Asset */}
+      {/* Companies Component - First component on page */}
+      <Companies />
+
+      <div className="px-4 sm:px-6 lg:px-8">
+        <Container size="lg" px={0} py={40} pt={80} data-employer-form>
+          {/* Hero Section with 3D Asset */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center mb-8">
           <div className="text-center md:text-left">
             <ThemeIcon size={40} radius="md" color="blue" variant="light" mb={12}>
@@ -1145,11 +1150,11 @@ const EmployersPage = () => {
               advance.al ju ndihmon të gjeni dhe punësoni kandidatë të shkëlqyer për kompaninë tuaj.
             </Text>
           </div>
-          <div className="hidden md:flex justify-center items-center">
+          <div className="hidden md:flex justify-end items-center">
             <img
-              src="/3d_assets/handshake.png"
-              alt="Partnership - Build strong teams with trusted talent"
-              className="w-full max-w-[220px] object-contain"
+              src="/3d_assets/ideal_career1.png"
+              alt="Find ideal candidates for your team"
+              className="w-full max-w-[160px] object-contain"
               loading="eager"
             />
           </div>
@@ -1359,23 +1364,13 @@ const EmployersPage = () => {
 
         {/* Pricing Section - Upwork Style */}
         <Box mt={60}>
-          <div className="grid grid-cols-1 md:grid-cols-[1fr_300px] gap-8 items-center mb-12">
-            <div>
-              <Title order={2} size="h2" fw={600} ta={{ base: 'center', md: 'left' }} mb="md">
-                Çmimet
-              </Title>
-              <Text c="dimmed" size="lg" ta={{ base: 'center', md: 'left' }} mb={0}>
-                Zgjidhni opsionin që ju përshtatet më mirë
-              </Text>
-            </div>
-            <div className="hidden md:flex justify-center items-center">
-              <img
-                src="/3d_assets/trophy.png"
-                alt="Success - Achieve your recruitment goals"
-                className="w-full max-w-[140px] object-contain"
-                loading="lazy"
-              />
-            </div>
+          <div className="mb-12 text-center md:text-left">
+            <Title order={2} size="h2" fw={600} ta={{ base: 'center', md: 'left' }} mb="md">
+              Çmimet
+            </Title>
+            <Text c="dimmed" size="lg" ta={{ base: 'center', md: 'left' }} mb={0}>
+              Zgjidhni opsionin që ju përshtatet më mirë
+            </Text>
           </div>
 
           {/* Upwork-style 2-column pricing cards */}
@@ -1390,7 +1385,7 @@ const EmployersPage = () => {
                 </div>
               </div>
 
-              <button className="w-full py-3 px-6 rounded-full border-2 border-[#228be6] text-[#228be6] font-medium hover:bg-[#228be6] hover:text-white transition-colors mb-6">
+              <button className="w-full py-3 px-6 rounded-full border-2 border-primary text-primary font-medium hover:bg-primary hover:text-primary-foreground transition-colors mb-6">
                 Fillo me këtë plan
               </button>
 
@@ -1398,37 +1393,37 @@ const EmployersPage = () => {
                 <p className="font-semibold text-gray-900 mb-4">Plani Bazë përfshin:</p>
                 <div className="space-y-3">
                   <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-[#228be6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
                     <p className="text-sm text-gray-700">Postimi aktiv për 28 ditë</p>
                   </div>
                   <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-[#228be6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
                     <p className="text-sm text-gray-700">Shfaqje në listën e punëve</p>
                   </div>
                   <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-[#228be6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
                     <p className="text-sm text-gray-700">Aplikime të pakufizuara</p>
                   </div>
                   <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-[#228be6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
                     <p className="text-sm text-gray-700">Menaxhim aplikimesh</p>
                   </div>
                   <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-[#228be6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
                     <p className="text-sm text-gray-700">Mbështetje standarde</p>
                   </div>
                   <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-[#228be6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
                     <p className="text-sm text-gray-700">30 ftesa për postim pune</p>
@@ -1438,9 +1433,9 @@ const EmployersPage = () => {
             </div>
 
             {/* Business Plus Plan */}
-            <div className="bg-white rounded-2xl border-2 border-[#14b8a6] p-8 shadow-md hover:shadow-lg transition-shadow relative">
+            <div className="bg-white rounded-2xl border-2 border-primary p-8 shadow-md hover:shadow-lg transition-shadow relative">
               <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                <span className="bg-[#14b8a6] text-white px-4 py-1 rounded-full text-sm font-medium">
+                <span className="bg-primary text-primary-foreground px-4 py-1 rounded-full text-sm font-medium">
                   Rekomanduar
                 </span>
               </div>
@@ -1453,7 +1448,7 @@ const EmployersPage = () => {
                 </div>
               </div>
 
-              <button className="w-full py-3 px-6 rounded-full bg-[#14b8a6] text-white font-medium hover:bg-[#0d9488] transition-colors mb-6">
+              <button className="w-full py-3 px-6 rounded-full bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors mb-6">
                 Regjistrohu falas
               </button>
 
@@ -1461,43 +1456,43 @@ const EmployersPage = () => {
                 <p className="font-semibold text-gray-900 mb-4">Çdo gjë në Bazë, plus</p>
                 <div className="space-y-3">
                   <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-[#14b8a6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
                     <p className="text-sm text-gray-700 font-medium">Pozicion prioritar në listë</p>
                   </div>
                   <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-[#14b8a6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
                     <p className="text-sm text-gray-700 font-medium">Badge "E Promovuar"</p>
                   </div>
                   <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-[#14b8a6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
                     <p className="text-sm text-gray-700 font-medium">3x më shumë vizibilitet</p>
                   </div>
                   <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-[#14b8a6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
                     <p className="text-sm text-gray-700">Top 10 kandidatë (10€ extra)</p>
                   </div>
                   <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-[#14b8a6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
                     <p className="text-sm text-gray-700">Mbështetje prioritare 24/7</p>
                   </div>
                   <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-[#14b8a6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
                     <p className="text-sm text-gray-700">60 ftesa për postim pune</p>
                   </div>
                   <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-[#14b8a6] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
                     <p className="text-sm text-gray-700">15 mesazhe të drejtpërdrejta në ditë</p>
@@ -1511,7 +1506,8 @@ const EmployersPage = () => {
             💡 Kombinoni postimin e promovuar me Top 10 Kandidatët për rezultate më të mira
           </Text>
         </Box>
-      </Container>
+        </Container>
+      </div>
 
       {/* Contact Section */}
       <RotatingContact />

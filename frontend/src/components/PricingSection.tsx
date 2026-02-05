@@ -142,11 +142,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({
         ))}
       </div>
 
-      <div className="mt-8 text-center">
-        <p className="text-sm text-gray-600">
-          💡 Kombinoni postimin e promovuar me Top 10 Kandidatët për rezultate më të mira
-        </p>
-      </div>
+      
     </div>
   );
 };

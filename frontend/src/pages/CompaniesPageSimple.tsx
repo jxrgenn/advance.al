@@ -152,7 +152,7 @@ const CompaniesPageSimple = () => {
       <Navigation />
 
       {/* Header */}
-      <section className="bg-gradient-to-br from-primary/10 to-background py-16">
+      <section className="bg-gradient-to-br from-primary/10 to-background pt-20 pb-6 md:py-8">
         <div className="container mx-auto px-4">
           <div className="text-center space-y-6">
             <h1 className="text-4xl md:text-5xl font-bold">
@@ -168,7 +168,7 @@ const CompaniesPageSimple = () => {
       </section>
 
       {/* Search and Filters */}
-      <section className="py-8 border-b">
+      <section className="py-4 md:py-6 border-b">
         <div className="container mx-auto px-4">
           <div className="flex flex-col md:flex-row gap-4 max-w-4xl mx-auto">
             <div className="relative flex-1">
@@ -207,7 +207,7 @@ const CompaniesPageSimple = () => {
       </section>
 
       {/* Companies List */}
-      <section className="py-16">
+      <section className="py-8 md:py-8">
         <div className="container mx-auto px-4">
           {loading ? (
             <div className="flex justify-center items-center py-20">

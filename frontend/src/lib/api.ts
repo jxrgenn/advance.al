@@ -394,13 +394,25 @@ export const jobsApi = {
     search?: string;
     city?: string;
     category?: string;
+    categories?: string;
     jobType?: string;
     minSalary?: number;
     maxSalary?: number;
+    experience?: string;
+    seniority?: string;
+    remote?: string;
+    postedAfter?: string;
+    company?: string;
+    currency?: string;
     page?: number;
     limit?: number;
     sortBy?: string;
     sortOrder?: string;
+    diaspora?: string;
+    ngaShtepia?: string;
+    partTime?: string;
+    administrata?: string;
+    sezonale?: string;
   } = {}): Promise<ApiResponse<{
     jobs: Job[];
     pagination: {

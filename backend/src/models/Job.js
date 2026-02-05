@@ -448,8 +448,10 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
     query.jobType = Array.isArray(filters.jobType) ? { $in: filters.jobType } : filters.jobType;
   }
 
-  // Category filter
-  if (filters.category) {
+  // Category filter - support both single and multiple categories (OR logic)
+  if (filters.categories && Array.isArray(filters.categories)) {
+    query.category = { $in: filters.categories };
+  } else if (filters.category) {
     query.category = filters.category;
   }
 
@@ -473,6 +475,21 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
   }
   if (filters.sezonale === true) {
     query['platformCategories.sezonale'] = true;
+  }
+
+  // Seniority/Experience filter
+  if (filters.seniority) {
+    query.seniority = filters.seniority;
+  }
+
+  // Remote work filter
+  if (filters.remote === true) {
+    query['location.remote'] = true;
+  }
+
+  // Posted after date filter
+  if (filters.postedAfter) {
+    query.postedAt = { $gte: filters.postedAfter };
   }
 
   // Salary range filter
