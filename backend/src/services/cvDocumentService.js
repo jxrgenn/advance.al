@@ -14,7 +14,7 @@ const COLORS = {
  * @returns {Promise<Buffer>} - The Word document as a buffer
  */
 export async function generateCVDocument(cvData, language = 'sq') {
-  const labels = language === 'sq' ? LABELS_SQ : LABELS_EN;
+  const labels = language === 'sq' ? LABELS_SQ : language === 'de' ? LABELS_DE : LABELS_EN;
 
   const sections = [];
 
@@ -442,4 +442,26 @@ const LABELS_EN = {
   present: 'Present',
   achievements: 'Achievements',
   gpa: 'GPA'
+};
+
+// German labels
+const LABELS_DE = {
+  cvTitle: 'LEBENSLAUF',
+  yourName: 'Ihr Name',
+  email: 'E-Mail',
+  phone: 'Telefon',
+  address: 'Adresse',
+  professionalSummary: 'Berufliches Profil',
+  workExperience: 'Berufserfahrung',
+  education: 'Ausbildung',
+  skills: 'Kenntnisse',
+  technicalSkills: 'Technische Kenntnisse',
+  softSkills: 'Soft Skills',
+  tools: 'Tools/Software',
+  languages: 'Sprachkenntnisse',
+  certifications: 'Zertifikate',
+  references: 'Referenzen',
+  present: 'Aktuell',
+  achievements: 'Errungenschaften',
+  gpa: 'Notendurchschnitt'
 };
