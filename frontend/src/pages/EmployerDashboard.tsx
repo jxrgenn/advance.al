@@ -737,7 +737,8 @@ const EmployerDashboard = () => {
       }
 
       // Create full URL if it's a relative path
-      const fullUrl = cvUrl.startsWith('http') ? cvUrl : `http://localhost:3001${cvUrl}`;
+      const baseUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
+      const fullUrl = cvUrl.startsWith('http') ? cvUrl : `${baseUrl}${cvUrl}`;
       console.log(`🌐 Full CV URL: ${fullUrl}`);
 
       // Try to fetch the CV to check if it exists
@@ -1675,9 +1676,10 @@ const EmployerDashboard = () => {
                                 console.log(`👁️ Opening CV in browser for viewing`);
                                 const jobSeeker = selectedApplication.jobSeekerId as User;
                                 const resumeUrl = jobSeeker.profile.jobSeekerProfile?.resume || '';
+                                const resumeBaseUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
                                 const fullUrl = resumeUrl.startsWith('http')
                                   ? resumeUrl
-                                  : `http://localhost:3001${resumeUrl}`;
+                                  : `${resumeBaseUrl}${resumeUrl}`;
                                 window.open(fullUrl, '_blank');
                               }}
                               className="text-xs"

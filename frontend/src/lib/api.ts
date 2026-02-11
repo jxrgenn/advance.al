@@ -293,6 +293,11 @@ const apiRequest = async <T>(
     }
 
     if (!response.ok) {
+      // Clear auth tokens on 401 so user is logged out cleanly instead of
+      // being stuck in a broken half-authenticated state with an expired token
+      if (response.status === 401) {
+        removeAuthToken();
+      }
       throw new ApiError(data, response.status);
     }
 
