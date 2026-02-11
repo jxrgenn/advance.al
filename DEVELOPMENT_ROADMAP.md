@@ -1,10 +1,10 @@
 # advance.al - DEVELOPMENT STATUS & ROADMAP
 
 **Date:** September 25-28, 2025
-**Last Updated:** February 11, 2026 (PRE-LAUNCH AUDIT COMPLETE)
+**Last Updated:** February 11, 2026 (ALL PRE-LAUNCH FIXES COMPLETE — 10/10 DONE)
 **Platform:** Premier Job Marketplace for Albania
-**CURRENT STATUS:** 🔧 **PRE-LAUNCH FIXES IN PROGRESS — See PRE_LAUNCH_FIXES.md** 🔧
-**Phase:** Pre-Launch Bug Fixes & Production Hardening
+**CURRENT STATUS:** ✅ **ALL PRE-LAUNCH FIXES APPLIED — READY FOR DEPLOY** ✅
+**Phase:** Pre-Launch Bug Fixes & Production Hardening — COMPLETE
 **Brand:** advance.al (formerly Albania JobFlow)
 
 ## 🎉 **CURRENT SYSTEM STATUS - FULLY OPERATIONAL**
@@ -16,8 +16,28 @@
 **Admin Dashboard:** ✅ COMPLETE (Real data, user management, job management)
 **Business Control Panel:** ✅ IMPLEMENTED (Revenue management, pricing engine, campaigns)
 **User Reporting System:** ✅ IMPLEMENTED (Full reporting workflow)
-**Rate Limiting:** ✅ DISABLED (All 429 errors resolved)
+**Rate Limiting:** ✅ ENABLED (15 req/15min on /login and /register — 429 confirmed working)
 **Login Credentials:** Admin: admin@punashqip.al / password123
+
+---
+
+## ✅ **PRE-LAUNCH FIXES — FEBRUARY 11, 2026 (ALL 10 COMPLETE)**
+
+All fixes verified: frontend build passes 0 TypeScript errors; backend curl-tested.
+Git commits: `d1bdbdf` → `47fcc2d` → `c451a78` → `d661ce7` → `f4fd9cb` → `27c486b` → `60dfc8c`
+
+| # | Fix | File(s) | Status |
+|---|-----|---------|--------|
+| 1 | SPA `_redirects` for Render routing | `frontend/public/_redirects` | ✅ Done |
+| 2 | `NODE_ENV=production` in start script | `backend/package.json` | ✅ Done |
+| 3 | `trust proxy` for correct IP under PaaS | `backend/server.js` | ✅ Done |
+| 4 | Re-enable auth rate limiter (15/15min) | `backend/src/routes/auth.js` | ✅ Done — 429 confirmed |
+| 5 | Clear localStorage tokens on 401 | `frontend/src/lib/api.ts` | ✅ Done |
+| 6 | Fix hardcoded `localhost:3001` URLs | `frontend/src/pages/EmployerDashboard.tsx` | ✅ Done |
+| 7 | Fix NotFound page (Albanian text, nav/footer) | `frontend/src/pages/NotFound.tsx` | ✅ Done |
+| 8 | ProtectedRoute redirects instead of text | `AuthContext.tsx` + `App.tsx` | ✅ Done |
+| 9 | Replace analytics N+1 with aggregation | `backend/src/routes/admin.js` | ✅ Done |
+| 10 | EmployerRegister: real state + API call | `frontend/src/pages/EmployerRegister.tsx` | ✅ Done |
 
 ---
 
