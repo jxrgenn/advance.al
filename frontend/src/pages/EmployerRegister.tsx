@@ -6,31 +6,75 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building, Mail, Lock, MapPin, Users, CreditCard } from "lucide-react";
+import { Building, Mail, Lock, MapPin, Users, CreditCard, Briefcase } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+
+const INDUSTRIES = [
+  'Teknologji Informacioni',
+  'Financë dhe Bankë',
+  'Shëndetësi',
+  'Arsim',
+  'Ndërtim',
+  'Tregti',
+  'Turizëm dhe Hotelieri',
+  'Transport dhe Logjistikë',
+  'Prodhim',
+  'Media dhe Komunikim',
+  'Juridik',
+  'Konsulencë',
+  'Bujqësi',
+  'Energji',
+  'Tjetër',
+];
 
 const EmployerRegister = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState(1);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { register } = useAuth();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false);
-      toast({
-        title: "Mirësevini në PunaShqip!",
-        description: "Llogaria juaj u krijua me sukses. Mund të filloni të postoni vende pune.",
-      });
-      navigate('/employer-dashboard');
-    }, 1500);
+  // Form state — all fields controlled
+  const [companyName, setCompanyName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [location, setLocation] = useState('');
+  const [companySize, setCompanySize] = useState('1-10 punonjës');
+  const [industry, setIndustry] = useState('');
+  const [description, setDescription] = useState('');
+
+  const validateStep1 = (): string | null => {
+    if (!companyName.trim()) return 'Emri i kompanisë është i detyrueshëm';
+    if (!email.trim()) return 'Email-i është i detyrueshëm';
+    if (!/\S+@\S+\.\S+/.test(email)) return 'Email-i nuk është i vlefshëm';
+    if (password.length < 6) return 'Fjalëkalimi duhet të ketë të paktën 6 karaktere';
+    if (password !== confirmPassword) return 'Fjalëkalimet nuk përputhen';
+    return null;
+  };
+
+  const validateStep2 = (): string | null => {
+    if (!location.trim()) return 'Vendndodhja është e detyrueshme';
+    if (!industry) return 'Sektori i kompanisë është i detyrueshëm';
+    return null;
   };
 
   const nextStep = () => {
+    if (step === 1) {
+      const error = validateStep1();
+      if (error) {
+        toast({ title: 'Gabim', description: error, variant: 'destructive' });
+        return;
+      }
+    }
+    if (step === 2) {
+      const error = validateStep2();
+      if (error) {
+        toast({ title: 'Gabim', description: error, variant: 'destructive' });
+        return;
+      }
+    }
     if (step < 3) setStep(step + 1);
   };
 
@@ -38,10 +82,42 @@ const EmployerRegister = () => {
     if (step > 1) setStep(step - 1);
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      await register({
+        email: email.trim(),
+        password,
+        userType: 'employer',
+        firstName: companyName.trim(),
+        lastName: '-',
+        city: location.trim(),
+        companyName: companyName.trim(),
+        industry,
+        companySize,
+      });
+      toast({
+        title: 'Mirësevini në PunaShqip!',
+        description: 'Llogaria juaj u krijua me sukses. Mund të filloni të postoni vende pune.',
+      });
+      navigate('/employer-dashboard');
+    } catch (error: any) {
+      toast({
+        title: 'Gabim në regjistrim',
+        description: error?.message || 'Ndodhi një gabim. Ju lutemi provoni përsëri.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
-      
+
       <div className="container flex items-center justify-center min-h-[calc(100vh-4rem)] py-8">
         <div className="w-full max-w-2xl">
           <Card>
@@ -51,7 +127,7 @@ const EmployerRegister = () => {
                 Hapi {step} nga 3 - {step === 1 ? 'Informacioni Bazë' : step === 2 ? 'Detajet e Kompanisë' : 'Metoda e Pagesës'}
               </CardDescription>
               <div className="w-full max-w-xs mx-auto bg-secondary rounded-full h-2 mt-4">
-                <div 
+                <div
                   className="bg-primary h-2 rounded-full transition-all duration-300"
                   style={{ width: `${(step / 3) * 100}%` }}
                 ></div>
@@ -65,11 +141,13 @@ const EmployerRegister = () => {
                       <Label htmlFor="company-name">Emri i Kompanisë *</Label>
                       <div className="relative">
                         <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input 
-                          id="company-name" 
+                        <Input
+                          id="company-name"
                           placeholder="Tech Innovations AL"
                           className="pl-10"
-                          required 
+                          value={companyName}
+                          onChange={(e) => setCompanyName(e.target.value)}
+                          required
                         />
                       </div>
                     </div>
@@ -78,12 +156,14 @@ const EmployerRegister = () => {
                       <Label htmlFor="company-email">Email i Kompanisë *</Label>
                       <div className="relative">
                         <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input 
-                          id="company-email" 
-                          type="email" 
+                        <Input
+                          id="company-email"
+                          type="email"
                           placeholder="hr@kompania.com"
                           className="pl-10"
-                          required 
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          required
                         />
                       </div>
                     </div>
@@ -93,11 +173,13 @@ const EmployerRegister = () => {
                         <Label htmlFor="password">Fjalëkalimi *</Label>
                         <div className="relative">
                           <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input 
-                            id="password" 
+                          <Input
+                            id="password"
                             type="password"
                             className="pl-10"
-                            required 
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            required
                           />
                         </div>
                       </div>
@@ -106,11 +188,13 @@ const EmployerRegister = () => {
                         <Label htmlFor="confirm-password">Konfirmo Fjalëkalimin *</Label>
                         <div className="relative">
                           <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input 
-                            id="confirm-password" 
+                          <Input
+                            id="confirm-password"
                             type="password"
                             className="pl-10"
-                            required 
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            required
                           />
                         </div>
                       </div>
@@ -128,20 +212,46 @@ const EmployerRegister = () => {
                       <Label htmlFor="location">Vendndodhja *</Label>
                       <div className="relative">
                         <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input 
-                          id="location" 
+                        <Input
+                          id="location"
                           placeholder="Tiranë, Shqipëri"
                           className="pl-10"
-                          required 
+                          value={location}
+                          onChange={(e) => setLocation(e.target.value)}
+                          required
                         />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="industry">Sektori *</Label>
+                      <div className="relative">
+                        <Briefcase className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                        <select
+                          id="industry"
+                          className="w-full pl-10 pr-3 py-2 border border-input bg-background rounded-md text-sm"
+                          value={industry}
+                          onChange={(e) => setIndustry(e.target.value)}
+                          required
+                        >
+                          <option value="">Zgjidh sektorin...</option>
+                          {INDUSTRIES.map((ind) => (
+                            <option key={ind} value={ind}>{ind}</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
 
                     <div className="space-y-2">
                       <Label htmlFor="company-size">Madhësia e Kompanisë</Label>
                       <div className="relative">
-                        <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <select className="w-full pl-10 pr-3 py-2 border border-input bg-background rounded-md">
+                        <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                        <select
+                          id="company-size"
+                          className="w-full pl-10 pr-3 py-2 border border-input bg-background rounded-md text-sm"
+                          value={companySize}
+                          onChange={(e) => setCompanySize(e.target.value)}
+                        >
                           <option>1-10 punonjës</option>
                           <option>11-50 punonjës</option>
                           <option>51-200 punonjës</option>
@@ -156,6 +266,8 @@ const EmployerRegister = () => {
                         id="description"
                         placeholder="Shkruaj një përshkrim të shkurtër për kompaniën tuaj..."
                         rows={4}
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
                       />
                     </div>
 
@@ -207,7 +319,7 @@ const EmployerRegister = () => {
                         <Label>Metoda e Pagesës (Demo)</Label>
                         <div className="relative">
                           <CreditCard className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input 
+                          <Input
                             placeholder="**** **** **** 1234"
                             className="pl-10"
                             disabled
