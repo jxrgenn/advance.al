@@ -14,11 +14,9 @@ const openai = new OpenAI({
  */
 export async function extractCVDataFromText(naturalLanguageText, targetLanguage = 'sq') {
   try {
-    const languageName = targetLanguage === 'sq' ? 'ALBANIAN' : targetLanguage === 'de' ? 'GERMAN' : 'ENGLISH';
+    const languageName = targetLanguage === 'sq' ? 'ALBANIAN' : 'ENGLISH';
     const languageInstructions = targetLanguage === 'sq'
       ? '- Generate ALL professional descriptions in Albanian\n- Use Albanian terminology: "Përgjegjësi", "Arritje", "Aftësi", "Përvojë profesionale"\n- Dates: "Janar", "Shkurt", "Mars", etc. for months\n- Set language field to "sq"'
-      : targetLanguage === 'de'
-      ? '- Generate ALL professional descriptions in German\n- Use German terminology: "Verantwortlichkeiten", "Errungenschaften", "Fähigkeiten", "Berufserfahrung"\n- Dates: "Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember" for months\n- Set language field to "de"\n- Use formal German (Sie-Form in descriptions, du-Form acceptable for skills lists)\n- Professional German CV conventions: precise, structured, achievement-focused'
       : '- Generate ALL professional descriptions in English\n- Use English terminology: "Responsibilities", "Achievements", "Skills", "Professional Experience"\n- Dates: "January", "February", "March", etc. for months\n- Set language field to "en"';
 
     const completion = await openai.chat.completions.create({
@@ -86,8 +84,8 @@ User mentions → You may NOT infer (speculation):
 🗓️ DATE FORMATTING (ALWAYS EUROPEAN):
 - Full dates: DD.MM.YYYY (e.g., 15.03.2020)
 - Month/Year: MM.YYYY (e.g., 03.2020) or "Janar 2020" (Albanian) / "January 2020" (English)
-- Current position: "Aktualisht" (Albanian) / "Present" (English) / "Aktuell" (German)
-- Date ranges: "01.2020 - 12.2023" or "Janar 2020 - Dhjetor 2023" / "January 2020 - December 2023" / "Januar 2020 - Dezember 2023"
+- Current position: "Aktualisht" (Albanian) or "Present" (English)
+- Date ranges: "01.2020 - 12.2023" or "Janar 2020 - Dhjetor 2023" / "January 2020 - December 2023"
 
 🌍 LANGUAGE PROFICIENCY INFERENCE:
 - "flas shum mir anglisht" / "fluent English" → C1 or C2

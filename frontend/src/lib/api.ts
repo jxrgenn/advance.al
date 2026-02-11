@@ -1783,7 +1783,7 @@ export const cvApi = {
   /**
    * Generate CV from natural language input
    */
-  generate: async (naturalLanguageInput: string, targetLanguage: 'sq' | 'en' | 'de' = 'sq'): Promise<ApiResponse<{
+  generate: async (naturalLanguageInput: string, targetLanguage: 'sq' | 'en' = 'sq'): Promise<ApiResponse<{
     cvData: any;
     fileId: string;
     fileName: string;

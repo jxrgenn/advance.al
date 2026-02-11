@@ -66,7 +66,7 @@ const JobSeekersPage = () => {
   const [generating, setGenerating] = useState(false);
   const [generatedCV, setGeneratedCV] = useState<any>(null);
   const [useTemplate, setUseTemplate] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState<'sq' | 'en' | 'de'>('sq');
+  const [selectedLanguage, setSelectedLanguage] = useState<'sq' | 'en'>('sq');
 
   // Tutorial system state - simplified with scroll lock
   const [showTutorial, setShowTutorial] = useState(false);
@@ -438,7 +438,7 @@ Telefoni: _______________`;
         setGeneratedCV(response.data);
         notifications.show({
           title: "CV u gjenerua me sukses!",
-          message: `CV-ja juaj është gati për shkarkim (${response.data.language === 'sq' ? 'Shqip' : response.data.language === 'de' ? 'Gjermanisht' : 'Anglisht'})`,
+          message: `CV-ja juaj është gati për shkarkim (${response.data.language === 'sq' ? 'Shqip' : 'Anglisht'})`,
           color: "green"
         });
 
@@ -1378,12 +1378,11 @@ Telefoni: _______________`;
                   </Box>
                   <SegmentedControl
                     value={selectedLanguage}
-                    onChange={(value) => setSelectedLanguage(value as 'sq' | 'en' | 'de')}
+                    onChange={(value) => setSelectedLanguage(value as 'sq' | 'en')}
                     disabled={generating}
                     data={[
                       { label: '🇦🇱 Shqip', value: 'sq' },
-                      { label: '🇬🇧 English', value: 'en' },
-                      { label: '🇩🇪 Deutsch', value: 'de' }
+                      { label: '🇬🇧 English', value: 'en' }
                     ]}
                     size="sm"
                   />
@@ -1456,7 +1455,7 @@ Telefoni: _______________`;
                     <Box>
                       <Title order={4} c="green.8">CV-ja juaj është gati!</Title>
                       <Text size="sm" c="dimmed" mt={4}>
-                        Gjuha: {generatedCV.language === 'sq' ? 'Shqip' : generatedCV.language === 'de' ? 'Deutsch' : 'English'} | Madhësia: {(generatedCV.fileSize / 1024).toFixed(1)} KB
+                        Gjuha: {generatedCV.language === 'sq' ? 'Shqip' : 'English'} | Madhësia: {(generatedCV.fileSize / 1024).toFixed(1)} KB
                       </Text>
                     </Box>
                     <CheckCircle size={32} className="text-green-600" />

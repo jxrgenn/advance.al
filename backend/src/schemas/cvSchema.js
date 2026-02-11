@@ -3,7 +3,7 @@ import { z } from 'zod';
 // Define Zod schema for OpenAI structured output
 // Note: OpenAI requires .nullable() with .optional() or use .default() instead
 export const cvSchema = z.object({
-  language: z.enum(['sq', 'en', 'de']).describe('Detected language: sq for Albanian, en for English, de for German'),
+  language: z.enum(['sq', 'en']).describe('Detected language: sq for Albanian, en for English'),
   personalInfo: z.object({
     fullName: z.string().describe('Full name of the person'),
     email: z.string().default(''),
