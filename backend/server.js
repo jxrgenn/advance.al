@@ -30,6 +30,7 @@ import cvRoutes from './src/routes/cv.js';
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1); // Trust first proxy hop (required for Render/PaaS — fixes rate limiting per real IP)
 const PORT = process.env.PORT || 3001;
 
 // Connect to Database
