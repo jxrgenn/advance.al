@@ -7,14 +7,16 @@ import resendEmailService from '../lib/resendEmailService.js';
 
 const router = express.Router();
 
-// Stricter rate limiting for auth routes - DISABLED FOR DEVELOPMENT
-// // const authLimiter = rateLimit({
-//   windowMs: 15 * 60 * 1000, // 15 minutes
-//   max: 10, // limit each IP to 10 requests per windowMs
-//   message: {
-//     error: 'Shumë tentativa kyçjeje, ju lutemi provoni përsëri pas 15 minutash.',
-//   }
-// });
+// Stricter rate limiting for auth routes
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 15, // 15 attempts per 15 min per IP (vs 100 shared on global limiter)
+  message: {
+    error: 'Shumë tentativa kyçjeje, ju lutemi provoni përsëri pas 15 minutash.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Registration validation rules
 const registerValidation = [
@@ -76,7 +78,7 @@ const handleValidationErrors = (req, res, next) => {
 // @route   POST /api/auth/register
 // @desc    Register a new user
 // @access  Public
-router.post('/register', registerValidation, handleValidationErrors, async (req, res) => {
+router.post('/register', authLimiter, registerValidation, handleValidationErrors, async (req, res) => {
   try {
     const { email, password, userType, firstName, lastName, city, phone, companyName, industry, companySize } = req.body;
 
@@ -193,7 +195,7 @@ router.post('/register', registerValidation, handleValidationErrors, async (req,
 // @route   POST /api/auth/login
 // @desc    Login user
 // @access  Public
-router.post('/login', loginValidation, handleValidationErrors, async (req, res) => {
+router.post('/login', authLimiter, loginValidation, handleValidationErrors, async (req, res) => {
   try {
     const { email, password } = req.body;
     console.log('🔐 Login attempt for:', email);
