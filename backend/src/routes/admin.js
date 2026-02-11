@@ -194,56 +194,33 @@ router.get('/analytics', async (req, res) => {
       dateRange.push(date.toISOString().split('T')[0]);
     }
 
-    // Get REAL user growth data
-    const userGrowth = await Promise.all(
-      dateRange.map(async (date) => {
-        const nextDate = new Date(date);
-        nextDate.setDate(nextDate.getDate() + 1);
+    // Get growth data using aggregation pipelines (3 queries total instead of 3×N)
+    const [userGrowthRaw, jobGrowthRaw, applicationGrowthRaw] = await Promise.all([
+      User.aggregate([
+        { $match: { createdAt: { $gte: startDate } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } }
+      ]),
+      Job.aggregate([
+        { $match: { postedAt: { $gte: startDate } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$postedAt' } }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } }
+      ]),
+      Application.aggregate([
+        { $match: { appliedAt: { $gte: startDate } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$appliedAt' } }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } }
+      ])
+    ]);
 
-        const count = await User.countDocuments({
-          createdAt: {
-            $gte: new Date(date),
-            $lt: nextDate
-          }
-        });
+    // Convert aggregation results into the full date range (fill in zeros for days with no activity)
+    const userGrowthMap = Object.fromEntries(userGrowthRaw.map(r => [r._id, r.count]));
+    const jobGrowthMap = Object.fromEntries(jobGrowthRaw.map(r => [r._id, r.count]));
+    const applicationGrowthMap = Object.fromEntries(applicationGrowthRaw.map(r => [r._id, r.count]));
 
-        return { date, count };
-      })
-    );
-
-    // Get REAL job growth data
-    const jobGrowth = await Promise.all(
-      dateRange.map(async (date) => {
-        const nextDate = new Date(date);
-        nextDate.setDate(nextDate.getDate() + 1);
-
-        const count = await Job.countDocuments({
-          postedAt: {
-            $gte: new Date(date),
-            $lt: nextDate
-          }
-        });
-
-        return { date, count };
-      })
-    );
-
-    // Get REAL application growth data
-    const applicationGrowth = await Promise.all(
-      dateRange.map(async (date) => {
-        const nextDate = new Date(date);
-        nextDate.setDate(nextDate.getDate() + 1);
-
-        const count = await Application.countDocuments({
-          appliedAt: {
-            $gte: new Date(date),
-            $lt: nextDate
-          }
-        });
-
-        return { date, count };
-      })
-    );
+    const userGrowth = dateRange.map(date => ({ date, count: userGrowthMap[date] || 0 }));
+    const jobGrowth = dateRange.map(date => ({ date, count: jobGrowthMap[date] || 0 }));
+    const applicationGrowth = dateRange.map(date => ({ date, count: applicationGrowthMap[date] || 0 }));
 
     // Calculate REAL conversion rates
     const [totalUsers, totalApplications, totalHired] = await Promise.all([
