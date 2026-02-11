@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, ProtectedRoute } from "@/contexts/AuthContext";
 import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import '@mantine/core/styles.css';
@@ -50,9 +50,21 @@ const App = () => (
             <Route path="/companies" element={<CompaniesPageSimple />} />
             <Route path="/company/:id" element={<CompanyProfile />} />
             <Route path="/employer-register" element={<EmployerRegister />} />
-            <Route path="/employer-dashboard" element={<EmployerDashboard />} />
-            <Route path="/admin" element={<AdminDashboard />} />
-            <Route path="/admin/reports" element={<AdminReports />} />
+            <Route path="/employer-dashboard" element={
+              <ProtectedRoute allowedUserTypes={['employer']}>
+                <EmployerDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin" element={
+              <ProtectedRoute allowedUserTypes={['admin']}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/reports" element={
+              <ProtectedRoute allowedUserTypes={['admin']}>
+                <AdminReports />
+              </ProtectedRoute>
+            } />
             <Route path="/report-user" element={<ReportUser />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/saved-jobs" element={<SavedJobs />} />

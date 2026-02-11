@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
+import { Navigate } from 'react-router-dom';
 import { authApi, User, getCurrentUserFromStorage, isAuthenticated } from '@/lib/api';
 
 // Auth State Types
@@ -289,20 +290,19 @@ interface ProtectedRouteProps {
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,
   allowedUserTypes,
-  fallback = <div>You are not authorized to view this page.</div>,
 }) => {
   const { isAuthenticated, user, isLoading } = useAuth();
 
   if (isLoading) {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+    return <div className="flex items-center justify-center min-h-screen">Duke ngarkuar...</div>;
   }
 
   if (!isAuthenticated || !user) {
-    return <div className="flex items-center justify-center min-h-screen">Please log in to continue.</div>;
+    return <Navigate to="/login" replace />;
   }
 
   if (allowedUserTypes && !allowedUserTypes.includes(user.userType)) {
-    return <>{fallback}</>;
+    return <Navigate to="/login" replace />;
   }
 
   return <>{children}</>;
