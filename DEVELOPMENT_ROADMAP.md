@@ -21,6 +21,47 @@
 
 ---
 
+## ✅ **SEMANTIC JOB-MATCH NOTIFICATION SYSTEM — FEBRUARY 12, 2026**
+
+**Commit:** `3ce8a64` | 12 files changed, 672 insertions(+), 63 deletions(-)
+**Status:** ✅ COMPLETE — pushed to `origin/main`
+
+### Summary
+Full AI-powered job-match notification pipeline using OpenAI `text-embedding-3-small` (1536 dims) and cosine similarity. When a new job is posted, both QuickUsers and full jobseekers are semantically matched and notified by email. Twilio SMS wired as optional.
+
+### Phases Completed
+
+| Phase | Work | Files |
+|-------|------|-------|
+| 1 | Fix hardcoded emails (`admin@punashqip.al` → env var) | `resendEmailService.js`, `send-verification.js` |
+| 2 | Consolidate job-alert emails from Nodemailer → Resend | `resendEmailService.js`, `notificationService.js` |
+| 3 | Add `embedding` field to `QuickUser` model | `models/QuickUser.js` |
+| 4 | Add `notifications.jobAlerts` + `embedding` field to `User` model | `models/User.js` |
+| 5 | Build `userEmbeddingService.js` — embedding gen + cosine matching | `services/userEmbeddingService.js` *(new)* |
+| 6 | Hook embedding generation into registration + profile update routes | `routes/quickusers.js`, `routes/auth.js`, `routes/users.js` |
+| 7 | Upgrade `notifyMatchingUsers()` with two-path semantic + keyword matching | `lib/notificationService.js` |
+| 8 | Add "Njoftimet e Punës" toggle card to `Profile.tsx` | `frontend/src/pages/Profile.tsx` |
+| 9 | Wire real Twilio SMS with dynamic import + graceful fallback | `lib/emailService.js`, `backend/package.json` |
+
+### Key Technical Details
+- **Threshold:** `USER_JOB_SIMILARITY_THRESHOLD` env var (default `0.55`)
+- **Shared rate limiter:** `userEmbeddingService` delegates to `jobEmbeddingService.callOpenAIWithRetry()` to share the `pLimit(3)` OpenAI limiter
+- **`select: false`** on `.embedding.vector` — 1536-float array excluded from normal queries; explicit `.select('+embedding.vector')` used in matching
+- **Non-blocking:** Embedding generation uses `setImmediate()` — never delays HTTP response
+- **Two-path matching:** Semantic first; keyword fallback for QuickUsers when job has no embedding yet
+- **Opt-in:** Full jobseekers only notified if `notifications.jobAlerts === true`
+- **Twilio:** Optional dependency — dynamic `import('twilio')` only fires when env vars present
+
+### Environment Variables Required for Full Functionality
+```
+USER_JOB_SIMILARITY_THRESHOLD=0.55   # optional, default shown
+TWILIO_ACCOUNT_SID=...
+TWILIO_AUTH_TOKEN=...
+TWILIO_PHONE=...                      # E.164 format e.g. +1234567890
+```
+
+---
+
 ## ✅ **PRE-LAUNCH FIXES — FEBRUARY 11, 2026 (ALL 10 COMPLETE)**
 
 All fixes verified: frontend build passes 0 TypeScript errors; backend curl-tested.
