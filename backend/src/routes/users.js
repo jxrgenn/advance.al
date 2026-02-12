@@ -4,6 +4,7 @@ import path from 'path';
 import { body, validationResult } from 'express-validator';
 import { User } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer, requireAdmin } from '../middleware/auth.js';
+import userEmbeddingService from '../services/userEmbeddingService.js';
 
 const router = express.Router();
 
@@ -260,6 +261,22 @@ router.put('/profile', authenticate, async (req, res) => {
 
     await user.save();
     console.log('User after save:', JSON.stringify(user.toObject(), null, 2));
+
+    // Regenerate embedding if jobseeker updated semantically relevant fields (async, non-blocking)
+    if (user.userType === 'jobseeker' && jobSeekerProfile) {
+      const semanticFields = ['title', 'skills', 'bio', 'experience'];
+      const hasSemanticChange = semanticFields.some(f => jobSeekerProfile[f] !== undefined);
+      if (hasSemanticChange) {
+        setImmediate(async () => {
+          try {
+            await userEmbeddingService.generateJobSeekerEmbedding(user._id);
+            console.log(`🧠 Embedding regenerated for jobseeker ${user._id}`);
+          } catch (error) {
+            console.error('Error regenerating jobseeker embedding:', error);
+          }
+        });
+      }
+    }
 
     res.json({
       success: true,

@@ -162,7 +162,7 @@ advance.al - Platforma e Punës në Shqipëri
 
     const emailResult = await resend.emails.send({
       from: 'Advance.al <onboarding@resend.dev>',
-      to: 'advance.al123456@gmail.com',
+      to: to,
       subject: emailSubject,
       html: htmlContent,
       text: textContent,

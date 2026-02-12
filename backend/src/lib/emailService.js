@@ -131,23 +131,35 @@ class EmailService {
     }
   }
 
-  // Send SMS (placeholder - integrate with SMS service)
+  // Send SMS via Twilio (requires TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE env vars)
   async sendSMS(to, message) {
-    // For now, just log the SMS
-    console.log(`📱 SMS to ${to}: ${message}`);
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken  = process.env.TWILIO_AUTH_TOKEN;
+    const fromPhone  = process.env.TWILIO_PHONE;
 
-    // In production, integrate with SMS service like Twilio:
-    // const client = twilio(accountSid, authToken);
-    // const result = await client.messages.create({
-    //   body: message,
-    //   from: process.env.TWILIO_PHONE,
-    //   to: to
-    // });
+    // If Twilio is not configured, log and return mock success
+    if (!accountSid || !authToken || !fromPhone) {
+      console.log(`📱 [SMS mock — Twilio not configured] To: ${to} | Message: ${message}`);
+      return { success: true, messageId: `sms_mock_${Date.now()}` };
+    }
 
-    return {
-      success: true,
-      messageId: `sms_mock_${Date.now()}`
-    };
+    try {
+      // Dynamic import so the package is only required when Twilio is actually configured
+      const twilio = (await import('twilio')).default;
+      const client = twilio(accountSid, authToken);
+
+      const result = await client.messages.create({
+        body: message,
+        from: fromPhone,
+        to: to
+      });
+
+      console.log(`✅ SMS sent to ${to}: ${result.sid}`);
+      return { success: true, messageId: result.sid };
+    } catch (error) {
+      console.error(`❌ SMS send error for ${to}:`, error.message);
+      return { success: false, error: error.message };
+    }
   }
 
   // Verify email configuration

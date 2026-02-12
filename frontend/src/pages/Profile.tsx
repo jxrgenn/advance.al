@@ -71,6 +71,8 @@ const Profile = () => {
 
   const [savingWorkExperience, setSavingWorkExperience] = useState(false);
   const [savingEducation, setSavingEducation] = useState(false);
+  const [jobAlertsEnabled, setJobAlertsEnabled] = useState(false);
+  const [savingJobAlerts, setSavingJobAlerts] = useState(false);
 
   // Unified tutorial steps with tab metadata
   const allTutorialSteps = [
@@ -232,6 +234,9 @@ const Profile = () => {
         skills: user.profile?.jobSeekerProfile?.skills || [],
         availability: user.profile?.jobSeekerProfile?.availability || ''
       });
+
+      // Initialize job alerts toggle
+      setJobAlertsEnabled(user.profile?.jobSeekerProfile?.notifications?.jobAlerts ?? false);
     }
   }, [user]);
 
@@ -278,6 +283,40 @@ const Profile = () => {
   const handleSkillsChange = (skillsString: string) => {
     const skillsArray = skillsString.split(',').map(skill => skill.trim()).filter(skill => skill.length > 0);
     handleInputChange('skills', skillsArray);
+  };
+
+  // Immediately save the job alerts toggle when it changes
+  const handleToggleJobAlerts = async (checked: boolean) => {
+    setJobAlertsEnabled(checked);
+    setSavingJobAlerts(true);
+    try {
+      const response = await usersApi.updateProfile({
+        jobSeekerProfile: {
+          notifications: { jobAlerts: checked }
+        }
+      });
+      if (response.success) {
+        await refreshUser();
+        toast({
+          title: checked ? "Njoftimet aktivizuara" : "Njoftimet çaktivizuara",
+          description: checked
+            ? "Do të merrni email kur postohen punë që përputhen me profilin tuaj."
+            : "Nuk do të merrni më email për punë të reja.",
+        });
+      } else {
+        setJobAlertsEnabled(!checked); // revert on failure
+        throw new Error(response.message || 'Gabim në ndryshimin e preferencave');
+      }
+    } catch (error: any) {
+      setJobAlertsEnabled(!checked);
+      toast({
+        title: "Gabim",
+        description: error.message || "Nuk mund të ruhen preferencat e njoftimeve",
+        variant: "destructive"
+      });
+    } finally {
+      setSavingJobAlerts(false);
+    }
   };
 
   const handleSave = async () => {
@@ -1492,6 +1531,44 @@ const Profile = () => {
                     </div>
                   </CardContent>
                 </Card>
+
+                {/* Job Alerts Notification Toggle — jobseekers only */}
+                {user?.userType === 'jobseeker' && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Njoftimet e Punës</CardTitle>
+                      <CardDescription>
+                        Merr email automatikisht kur postohen punë që përputhen me profilin tënd
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">Njoftimet me email</p>
+                          <p className="text-xs text-muted-foreground">
+                            Sistemi përdor inteligjencë artificiale për të gjetur punët që të përshtaten më mirë
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {savingJobAlerts && (
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          )}
+                          <Switch
+                            id="job-alerts"
+                            checked={jobAlertsEnabled}
+                            onCheckedChange={handleToggleJobAlerts}
+                            disabled={savingJobAlerts}
+                          />
+                        </div>
+                      </div>
+                      {jobAlertsEnabled && (
+                        <p className="text-xs text-green-600 mt-3">
+                          ✓ Njoftimet janë aktive. Do të merrni email kur postohen punë të reja të përshtatshme.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
 
                 <Card data-tutorial="cv-upload">
                   <CardHeader>

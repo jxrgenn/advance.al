@@ -4,6 +4,7 @@ import rateLimit from 'express-rate-limit';
 import { User } from '../models/index.js';
 import { generateToken, generateRefreshToken, verifyToken, authenticate } from '../middleware/auth.js';
 import resendEmailService from '../lib/resendEmailService.js';
+import userEmbeddingService from '../services/userEmbeddingService.js';
 
 const router = express.Router();
 
@@ -153,7 +154,7 @@ router.post('/register', authLimiter, registerValidation, handleValidationErrors
     user.lastLoginAt = new Date();
     await user.save();
 
-    // Send welcome email for job seekers (async, don't wait for completion)
+    // Send welcome email + generate embedding for job seekers (async, non-blocking)
     if (userType === 'jobseeker') {
       setImmediate(async () => {
         try {
@@ -161,6 +162,13 @@ router.post('/register', authLimiter, registerValidation, handleValidationErrors
           console.log(`📧 Welcome email sent to ${user.email}`);
         } catch (error) {
           console.error('Error sending welcome email:', error);
+        }
+
+        try {
+          await userEmbeddingService.generateJobSeekerEmbedding(user._id);
+          console.log(`🧠 Embedding generated for jobseeker ${user._id}`);
+        } catch (error) {
+          console.error('Error generating jobseeker embedding:', error);
         }
       });
     }

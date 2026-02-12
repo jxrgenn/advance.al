@@ -136,6 +136,14 @@ const quickUserSchema = new Schema({
   },
   userAgent: {
     type: String
+  },
+
+  // Semantic embedding for job matching (text-embedding-3-small, 1536 dims)
+  embedding: {
+    vector:      { type: [Number], select: false },  // excluded from normal queries (large field)
+    status:      { type: String, enum: ['pending', 'processing', 'completed', 'failed'], default: 'pending' },
+    generatedAt: { type: Date },
+    error:       { type: String }
   }
 }, {
   timestamps: true,

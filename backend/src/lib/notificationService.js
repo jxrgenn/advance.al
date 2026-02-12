@@ -1,19 +1,19 @@
-import { QuickUser } from '../models/index.js';
-import emailService from './emailService.js';
+import { QuickUser, User } from '../models/index.js';
+import resendEmailService from './resendEmailService.js';
+import emailService from './emailService.js'; // kept for SMS only
+import userEmbeddingService from '../services/userEmbeddingService.js';
 
 class NotificationService {
   constructor() {
-    this.emailQueue = [];
-    this.smsQueue = [];
     this.isProcessing = false;
   }
 
-  // Send email using real email service
+  // Send email via Resend (consolidated — no longer uses Nodemailer for job alerts)
   async sendEmail(to, subject, htmlContent, textContent) {
-    return await emailService.sendEmail(to, subject, htmlContent, textContent);
+    return await resendEmailService.sendTransactionalEmail(to, subject, htmlContent, textContent);
   }
 
-  // Send SMS using SMS service
+  // Send SMS using SMS service (Twilio placeholder)
   async sendSMS(to, message) {
     return await emailService.sendSMS(to, message);
   }
@@ -127,6 +127,114 @@ advance.al - Platforma #1 e Punës në Shqipëri
     return `🎯 Punë e re: ${job.title} në ${job.company.name}, ${job.location.city}. Shiko: https://advance.al/jobs/${job._id} | Çregjistrohu: ${user.getUnsubscribeUrl()}`;
   }
 
+  // Generate email content for a full jobseeker account (no unsubscribe token — they manage via profile)
+  generateFullUserJobNotificationEmail(user, job) {
+    const firstName = user.profile?.firstName || 'Kandidat';
+    const subject = `Punë e re: ${job.title} në ${job.location.city}`;
+
+    const textContent = `
+Përshëndetje ${firstName},
+
+Një punë e re që përputhet me profilin tuaj është publikuar:
+
+📋 Pozicioni: ${job.title}
+🏢 Kompania: ${job.company.name}
+📍 Vendndodhja: ${job.location.city}${job.location.remote ? ' (Punë në distancë)' : ''}
+💰 Paga: ${job.salary ? `${job.salary.min}-${job.salary.max} ${job.salary.currency}` : 'Nuk është specifikuar'}
+📅 Afati: ${new Date(job.applicationDeadline).toLocaleDateString('sq-AL')}
+
+📝 Përshkrimi:
+${job.description.substring(0, 200)}...
+
+👀 Shiko detajet e plota dhe apliko: https://advance.al/jobs/${job._id}
+
+---
+Mund të çaktivizoni njoftimet nga faqja juaj e profilit: https://advance.al/profile
+
+advance.al - Platforma #1 e Punës në Shqipëri
+`;
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+    .content { background: #fff; padding: 30px; border: 1px solid #e0e0e0; }
+    .job-card { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #667eea; }
+    .job-title { font-size: 20px; font-weight: bold; color: #667eea; margin-bottom: 10px; }
+    .job-info { margin: 8px 0; }
+    .cta-button { display: inline-block; background: #667eea; color: white; padding: 15px 30px; text-decoration: none; border-radius: 25px; font-weight: bold; margin: 20px 0; }
+    .footer { background: #f8f9fa; padding: 20px; border-radius: 0 0 10px 10px; font-size: 12px; color: #666; }
+    .footer a { color: #667eea; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎯 Punë e re për ju!</h1>
+      <p>Përshëndetje ${firstName}, gjenim një mundësi të shkëlqyer!</p>
+    </div>
+    <div class="content">
+      <div class="job-card">
+        <div class="job-title">${job.title}</div>
+        <div class="job-info"><strong>🏢 Kompania:</strong> ${job.company.name}</div>
+        <div class="job-info"><strong>📍 Vendndodhja:</strong> ${job.location.city}${job.location.remote ? ' <span style="color:#28a745;">(Punë në distancë)</span>' : ''}</div>
+        ${job.salary ? `<div class="job-info"><strong>💰 Paga:</strong> ${job.salary.min}-${job.salary.max} ${job.salary.currency}</div>` : ''}
+        <div class="job-info"><strong>📅 Afati:</strong> ${new Date(job.applicationDeadline).toLocaleDateString('sq-AL')}</div>
+        <div class="job-info"><strong>🎯 Kategoria:</strong> ${job.category}</div>
+      </div>
+      <p><strong>📝 Përshkrimi i shkurtër:</strong></p>
+      <p>${job.description.substring(0, 300)}${job.description.length > 300 ? '...' : ''}</p>
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="https://advance.al/jobs/${job._id}?utm_source=email&utm_medium=notification&utm_campaign=job_match_account"
+           class="cta-button">👀 Shiko Detajet dhe Apliko</a>
+      </div>
+      <p style="font-size: 14px; color: #666;">
+        💡 <strong>Përse mora këtë email?</strong><br>
+        Keni aktivizuar njoftimet e punës në llogarinë tuaj dhe ky pozicion përputhet me profilin tuaj.
+      </p>
+    </div>
+    <div class="footer">
+      <p><strong>advance.al</strong> - Platforma #1 e Punës në Shqipëri</p>
+      <p><a href="https://advance.al/profile">⚙️ Menaxho njoftimet nga profili juaj</a></p>
+    </div>
+  </div>
+</body>
+</html>
+`;
+
+    return { subject, textContent, htmlContent };
+  }
+
+  // Send job notification to a full jobseeker account (User model)
+  async sendJobNotificationToFullUser(user, job) {
+    try {
+      const emailContent = this.generateFullUserJobNotificationEmail(user, job);
+      const emailResult = await this.sendEmail(
+        user.email,
+        emailContent.subject,
+        emailContent.htmlContent,
+        emailContent.textContent
+      );
+
+      return {
+        success: emailResult.success,
+        userId: user._id,
+        type: 'full_account',
+        messageId: emailResult.messageId
+      };
+    } catch (error) {
+      console.error(`Error sending notification to full user ${user._id}:`, error);
+      return { success: false, error: error.message, userId: user._id };
+    }
+  }
+
   // Send job notification to a specific user
   async sendJobNotificationToUser(user, job) {
     try {
@@ -178,25 +286,47 @@ advance.al - Platforma #1 e Punës në Shqipëri
     }
   }
 
-  // Notify all matching users about a new job
+  // Notify all matching users about a new job.
+  // Uses semantic embedding matching (preferred) with keyword fallback for QuickUsers.
+  // Also notifies full jobseeker accounts that have opted into alerts (semantic only).
   async notifyMatchingUsers(job) {
     try {
       console.log(`🔍 Finding users to notify for job: ${job.title}`);
 
-      // Find all users that match this job
-      const matchingUsers = await QuickUser.findMatchesForJob(job);
+      // ── 1. Semantic matching (QuickUsers + full jobseekers) ──────────────────
+      const { quickUsers: semanticQuickUsers, jobSeekers: semanticJobSeekers } =
+        await userEmbeddingService.findSemanticMatchesForJob(job);
 
-      console.log(`📧 Found ${matchingUsers.length} matching users`);
+      console.log(`🧠 Semantic matches: ${semanticQuickUsers.length} QuickUsers, ${semanticJobSeekers.length} jobseekers`);
 
-      if (matchingUsers.length === 0) {
+      // ── 2. Keyword fallback for QuickUsers (when job has no embedding) ───────
+      let keywordQuickUsers = [];
+      const jobHasEmbedding = job.embedding?.vector?.length === 1536;
+
+      if (!jobHasEmbedding) {
+        console.log('⚠️  Job has no embedding — falling back to keyword matching for QuickUsers');
+        keywordQuickUsers = await QuickUser.findMatchesForJob(job);
+        console.log(`🔑 Keyword matches: ${keywordQuickUsers.length} QuickUsers`);
+      }
+
+      // ── 3. Merge & deduplicate QuickUser lists ───────────────────────────────
+      const semanticQuickUserIds = new Set(semanticQuickUsers.map(e => e.user._id.toString()));
+      // Extract raw user docs (semantic results are { user, score } objects)
+      const semanticQuickUserDocs = semanticQuickUsers.map(e => e.user);
+      const newKeywordUsers = keywordQuickUsers.filter(
+        u => !semanticQuickUserIds.has(u._id.toString())
+      );
+      const allQuickUsers = [...semanticQuickUserDocs, ...newKeywordUsers];
+      const allJobSeekers = semanticJobSeekers.map(e => e.user);
+
+      const totalTargets = allQuickUsers.length + allJobSeekers.length;
+      console.log(`📧 Total notification targets: ${totalTargets} (${allQuickUsers.length} QuickUsers + ${allJobSeekers.length} jobseekers)`);
+
+      if (totalTargets === 0) {
         return {
           success: true,
           message: 'No matching users found',
-          stats: {
-            totalUsers: 0,
-            notificationsSent: 0,
-            errors: 0
-          }
+          stats: { totalUsers: 0, notificationsSent: 0, errors: 0 }
         };
       }
 
@@ -204,34 +334,48 @@ advance.al - Platforma #1 e Punës në Shqipëri
       let successCount = 0;
       let errorCount = 0;
 
-      // Process notifications in batches to avoid overwhelming email/SMS services
+      // ── 4. Notify QuickUsers ─────────────────────────────────────────────────
       const batchSize = 10;
-      for (let i = 0; i < matchingUsers.length; i += batchSize) {
-        const batch = matchingUsers.slice(i, i + batchSize);
-
-        const batchPromises = batch.map(user =>
-          this.sendJobNotificationToUser(user, job)
+      for (let i = 0; i < allQuickUsers.length; i += batchSize) {
+        const batch = allQuickUsers.slice(i, i + batchSize);
+        const batchResults = await Promise.allSettled(
+          batch.map(user => this.sendJobNotificationToUser(user, job))
         );
-
-        const batchResults = await Promise.allSettled(batchPromises);
 
         batchResults.forEach((result, index) => {
           if (result.status === 'fulfilled') {
             results.push(result.value);
-            if (result.value.success) {
-              successCount++;
-            } else {
-              errorCount++;
-            }
+            result.value.success ? successCount++ : errorCount++;
           } else {
-            console.error(`Batch error for user ${batch[index]._id}:`, result.reason);
+            console.error(`QuickUser batch error for ${batch[index]._id}:`, result.reason);
             errorCount++;
           }
         });
 
-        // Small delay between batches to be respectful to email/SMS APIs
-        if (i + batchSize < matchingUsers.length) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+        if (i + batchSize < allQuickUsers.length) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+
+      // ── 5. Notify full jobseeker accounts ────────────────────────────────────
+      for (let i = 0; i < allJobSeekers.length; i += batchSize) {
+        const batch = allJobSeekers.slice(i, i + batchSize);
+        const batchResults = await Promise.allSettled(
+          batch.map(user => this.sendJobNotificationToFullUser(user, job))
+        );
+
+        batchResults.forEach((result, index) => {
+          if (result.status === 'fulfilled') {
+            results.push(result.value);
+            result.value.success ? successCount++ : errorCount++;
+          } else {
+            console.error(`JobSeeker batch error for ${batch[index]._id}:`, result.reason);
+            errorCount++;
+          }
+        });
+
+        if (i + batchSize < allJobSeekers.length) {
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
 
@@ -241,9 +385,15 @@ advance.al - Platforma #1 e Punës në Shqipëri
         success: true,
         message: `Notifications sent to ${successCount} users`,
         stats: {
-          totalUsers: matchingUsers.length,
+          totalUsers: totalTargets,
           notificationsSent: successCount,
-          errors: errorCount
+          errors: errorCount,
+          breakdown: {
+            quickUsers: allQuickUsers.length,
+            jobSeekers: allJobSeekers.length,
+            semanticMatches: semanticQuickUsers.length + allJobSeekers.length,
+            keywordMatches: newKeywordUsers.length
+          }
         },
         results
       };
@@ -253,11 +403,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
       return {
         success: false,
         error: error.message,
-        stats: {
-          totalUsers: 0,
-          notificationsSent: 0,
-          errors: 1
-        }
+        stats: { totalUsers: 0, notificationsSent: 0, errors: 1 }
       };
     }
   }

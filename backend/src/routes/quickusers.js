@@ -4,6 +4,7 @@ import rateLimit from 'express-rate-limit';
 import { QuickUser } from '../models/index.js';
 import notificationService from '../lib/notificationService.js';
 import resendEmailService from '../lib/resendEmailService.js';
+import userEmbeddingService from '../services/userEmbeddingService.js';
 
 const router = express.Router();
 
@@ -156,13 +157,20 @@ router.post('/', quickUserValidation, handleValidationErrors, async (req, res) =
     const quickUser = new QuickUser(userData);
     await quickUser.save();
 
-    // Send welcome email via Resend (async, don't wait for completion)
+    // Send welcome email + generate embedding (async, non-blocking)
     setImmediate(async () => {
       try {
         await resendEmailService.sendQuickUserWelcomeEmail(quickUser);
         console.log(`📧 Welcome email sent to ${quickUser.email}`);
       } catch (error) {
         console.error('Error sending welcome email:', error);
+      }
+
+      try {
+        await userEmbeddingService.generateQuickUserEmbedding(quickUser._id);
+        console.log(`🧠 Embedding generated for QuickUser ${quickUser._id}`);
+      } catch (error) {
+        console.error('Error generating QuickUser embedding:', error);
       }
     });
 

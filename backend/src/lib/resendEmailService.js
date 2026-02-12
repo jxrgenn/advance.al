@@ -126,7 +126,7 @@ advance.al - Platforma e Punës në Shqipëri
 
       const emailResult = await this.resend.emails.send({
         from: 'Advance.al <onboarding@resend.dev>',
-        to: 'advance.al123456@gmail.com',
+        to: user.email,
         subject: subject,
         html: htmlContent,
         text: textContent,
@@ -274,7 +274,7 @@ advance.al - Platforma e Punës në Shqipëri
 
       const emailResult = await this.resend.emails.send({
         from: 'Advance.al <onboarding@resend.dev>',
-        to: 'advance.al123456@gmail.com',
+        to: user.email,
         subject: subject,
         html: htmlContent,
         text: textContent,
@@ -465,7 +465,7 @@ advance.al - Platforma e Punës në Shqipëri
 
       const emailResult = await this.resend.emails.send({
         from: 'Advance.al <support@resend.dev>',
-        to: 'advance.al123456@gmail.com',
+        to: user.email,
         subject: details.subject,
         html: htmlContent,
         text: textContent,
@@ -599,7 +599,7 @@ Ky email u dërgua në ${toEmail}
 
       const emailResult = await this.resend.emails.send({
         from: 'advance.al <noreply@advance.al>',
-        to: 'advance.al123456@gmail.com',
+        to: toEmail,
         subject: subject,
         html: htmlContent,
         text: textContent,
@@ -623,6 +623,34 @@ Ky email u dërgua në ${toEmail}
     } catch (error) {
       console.error('❌ Error sending bulk notification email:', error);
       throw error;
+    }
+  }
+
+  // Generic transactional email — used by notificationService for job alerts
+  async sendTransactionalEmail(to, subject, htmlContent, textContent) {
+    if (!this.enabled) {
+      console.log('📧 Email sending disabled - skipping transactional email');
+      return { success: false, message: 'Email service disabled' };
+    }
+
+    try {
+      const emailResult = await this.resend.emails.send({
+        from: 'advance.al <noreply@advance.al>',
+        to,
+        subject,
+        html: htmlContent,
+        text: textContent,
+      });
+
+      if (emailResult.error) {
+        console.error('❌ Resend transactional error:', emailResult.error);
+        throw new Error('Failed to send transactional email via Resend');
+      }
+
+      return { success: true, messageId: emailResult.data?.id };
+    } catch (error) {
+      console.error('❌ Error sending transactional email:', error);
+      return { success: false, error: error.message };
     }
   }
 }

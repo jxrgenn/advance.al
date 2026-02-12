@@ -89,6 +89,25 @@ const jobSeekerProfileSchema = new Schema({
     default: 'immediately'
   },
 
+  // Job alert notification preferences
+  notifications: {
+    jobAlerts: {
+      type: Boolean,
+      default: false  // opt-in — user must explicitly enable
+    },
+    alertCategories: [{
+      type: String  // empty = match all categories
+    }]
+  },
+
+  // Semantic embedding for job matching (text-embedding-3-small, 1536 dims)
+  embedding: {
+    vector:      { type: [Number], select: false },  // excluded from normal queries (large field)
+    status:      { type: String, enum: ['pending', 'processing', 'completed', 'failed'], default: 'pending' },
+    generatedAt: { type: Date },
+    error:       { type: String }
+  },
+
   // AI-Generated CV Data
   aiGeneratedCV: {
     language: {
