@@ -64,15 +64,20 @@ const corsOptions = {
       'http://localhost:5173', // Vite dev server
       'http://localhost:3000', // Alternative dev port
       'http://127.0.0.1:5173',
-      'http://127.0.0.1:3000'
+      'http://127.0.0.1:3000',
+      'https://advance-al-frontend.vercel.app', // Production frontend
+      'https://advance-al.vercel.app',           // Alternative Vercel URL
     ];
-    
-    // In production, add your deployed frontend URL
+
+    // Allow additional origin from env var (e.g. custom domain later)
     if (process.env.FRONTEND_URL) {
       allowedOrigins.push(process.env.FRONTEND_URL);
     }
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
+
+    // Allow all Vercel preview deployment URLs (advance-al-*-username.vercel.app)
+    const isVercelPreview = /^https:\/\/advance-al[a-z0-9-]*\.vercel\.app$/.test(origin);
+
+    if (allowedOrigins.indexOf(origin) !== -1 || isVercelPreview) {
       callback(null, true);
     } else {
       console.log('CORS blocked origin:', origin);
