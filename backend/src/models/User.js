@@ -112,7 +112,7 @@ const jobSeekerProfileSchema = new Schema({
   aiGeneratedCV: {
     language: {
       type: String,
-      enum: ['sq', 'en'], // sq = Albanian, en = English
+      enum: ['sq', 'en', 'de'], // sq = Albanian, en = English, de = German
       default: 'sq'
     },
     personalInfo: {
