@@ -23,6 +23,9 @@ class NotificationService {
     const unsubscribeUrl = user.getUnsubscribeUrl();
     const trackingUrl = `https://advance.al/api/quickusers/track-click`;
 
+    // Extract company name from populated employerId
+    const companyName = job.employerId?.profile?.employerProfile?.companyName || 'Kompani';
+
     const subject = `Punë e re: ${job.title} në ${job.location.city}`;
 
     const textContent = `
@@ -31,7 +34,7 @@ Përshëndetje ${user.firstName},
 Një punë e re që përputhet me interesat tuaja është publikuar:
 
 📋 Pozicioni: ${job.title}
-🏢 Kompania: ${job.company.name}
+🏢 Kompania: ${companyName}
 📍 Vendndodhja: ${job.location.city}${job.location.remote ? ' (Punë në distancë)' : ''}
 💰 Paga: ${job.salary ? `${job.salary.min}-${job.salary.max} ${job.salary.currency}` : 'Nuk është specifikuar'}
 📅 Afati: ${new Date(job.applicationDeadline).toLocaleDateString('sq-AL')}
@@ -80,7 +83,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
     <div class="content">
       <div class="job-card">
         <div class="job-title">${job.title}</div>
-        <div class="job-info"><strong>🏢 Kompania:</strong> ${job.company.name}</div>
+        <div class="job-info"><strong>🏢 Kompania:</strong> ${companyName}</div>
         <div class="job-info"><strong>📍 Vendndodhja:</strong> ${job.location.city}${job.location.remote ? ' <span style="color: #28a745;">(Punë në distancë)</span>' : ''}</div>
         ${job.salary ? `<div class="job-info"><strong>💰 Paga:</strong> ${job.salary.min}-${job.salary.max} ${job.salary.currency}</div>` : ''}
         <div class="job-info"><strong>📅 Afati:</strong> ${new Date(job.applicationDeadline).toLocaleDateString('sq-AL')}</div>
@@ -124,12 +127,14 @@ advance.al - Platforma #1 e Punës në Shqipëri
 
   // Generate SMS content for job notification
   generateJobNotificationSMS(user, job) {
-    return `🎯 Punë e re: ${job.title} në ${job.company.name}, ${job.location.city}. Shiko: https://advance.al/jobs/${job._id} | Çregjistrohu: ${user.getUnsubscribeUrl()}`;
+    const companyName = job.employerId?.profile?.employerProfile?.companyName || 'Kompani';
+    return `🎯 Punë e re: ${job.title} në ${companyName}, ${job.location.city}. Shiko: https://advance.al/jobs/${job._id} | Çregjistrohu: ${user.getUnsubscribeUrl()}`;
   }
 
   // Generate email content for a full jobseeker account (no unsubscribe token — they manage via profile)
   generateFullUserJobNotificationEmail(user, job) {
     const firstName = user.profile?.firstName || 'Kandidat';
+    const companyName = job.employerId?.profile?.employerProfile?.companyName || 'Kompani';
     const subject = `Punë e re: ${job.title} në ${job.location.city}`;
 
     const textContent = `
@@ -138,7 +143,7 @@ Përshëndetje ${firstName},
 Një punë e re që përputhet me profilin tuaj është publikuar:
 
 📋 Pozicioni: ${job.title}
-🏢 Kompania: ${job.company.name}
+🏢 Kompania: ${companyName}
 📍 Vendndodhja: ${job.location.city}${job.location.remote ? ' (Punë në distancë)' : ''}
 💰 Paga: ${job.salary ? `${job.salary.min}-${job.salary.max} ${job.salary.currency}` : 'Nuk është specifikuar'}
 📅 Afati: ${new Date(job.applicationDeadline).toLocaleDateString('sq-AL')}
@@ -183,7 +188,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
     <div class="content">
       <div class="job-card">
         <div class="job-title">${job.title}</div>
-        <div class="job-info"><strong>🏢 Kompania:</strong> ${job.company.name}</div>
+        <div class="job-info"><strong>🏢 Kompania:</strong> ${companyName}</div>
         <div class="job-info"><strong>📍 Vendndodhja:</strong> ${job.location.city}${job.location.remote ? ' <span style="color:#28a745;">(Punë në distancë)</span>' : ''}</div>
         ${job.salary ? `<div class="job-info"><strong>💰 Paga:</strong> ${job.salary.min}-${job.salary.max} ${job.salary.currency}</div>` : ''}
         <div class="job-info"><strong>📅 Afati:</strong> ${new Date(job.applicationDeadline).toLocaleDateString('sq-AL')}</div>

@@ -747,12 +747,15 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, createJ
       totalSpent: req.user.totalSpent || 0
     };
 
+    // Declare outside try block for analytics callback access
+    let pricingResult;
+    let appliedCampaign = null;
+
     try {
       // 1. Calculate base pricing using rules
-      const pricingResult = await PricingRule.calculateOptimalPrice(basePrice, jobData, employerData);
+      pricingResult = await PricingRule.calculateOptimalPrice(basePrice, jobData, employerData);
       let finalPrice = pricingResult.finalPrice;
       let totalDiscount = pricingResult.discount;
-      let appliedCampaign = null;
 
       // 2. Check for active campaigns that apply to this employer/job
       const activeCampaigns = await BusinessCampaign.find({
@@ -901,7 +904,9 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, createJ
     setImmediate(async () => {
       try {
         console.log(`🔔 Starting notification process for job: ${job.title}`);
-        const notificationResult = await notificationService.notifyMatchingUsers(job);
+        // Fetch and populate job with employer data for email templates
+        const populatedJob = await Job.findById(job._id).populate('employerId', 'profile.employerProfile.companyName');
+        const notificationResult = await notificationService.notifyMatchingUsers(populatedJob);
         console.log(`✅ Notification process completed:`, notificationResult.stats);
       } catch (error) {
         console.error('Error in job notification process:', error);
