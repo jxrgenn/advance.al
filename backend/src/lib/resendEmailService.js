@@ -653,6 +653,142 @@ Ky email u dërgua në ${toEmail}
       return { success: false, error: error.message };
     }
   }
+
+  // Send application message notification email
+  async sendApplicationMessageEmail(recipient, sender, job, message, messageType) {
+    if (!this.enabled) {
+      console.log('📧 Email sending disabled - skipping application message email');
+      return { success: false, message: 'Email service disabled' };
+    }
+
+    try {
+      const messageTypeLabels = {
+        text: 'Mesazh i ri',
+        interview_invite: 'Ftesë për intervistë',
+        offer: 'Ofertë pune',
+        rejection: 'Përgjigje për aplikimin'
+      };
+
+      const typeLabel = messageTypeLabels[messageType] || 'Mesazh i ri';
+      const subject = `${typeLabel} për aplikimin tuaj - ${job.title}`;
+
+      const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${typeLabel} - advance.al</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: Arial, sans-serif;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
+        <!-- Header -->
+        <div style="text-align: center; margin-bottom: 30px; padding: 20px 0; border-bottom: 2px solid #2563eb;">
+            <h1 style="color: #2563eb; margin: 0; font-size: 28px; font-weight: bold;">advance.al</h1>
+            <p style="color: #6b7280; margin: 5px 0 0 0; font-size: 16px;">Platforma e Punës në Shqipëri</p>
+        </div>
+
+        <!-- Main Content -->
+        <div style="background: #f9fafb; border-radius: 8px; padding: 30px; margin: 20px 0;">
+            <h2 style="color: #1f2937; margin-top: 0; font-size: 24px;">💬 ${typeLabel}</h2>
+
+            <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 20px 0;">
+                Përshëndetje ${recipient.firstName},
+            </p>
+
+            <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 20px 0;">
+                Keni marrë një mesazh të ri për aplikimin tuaj në pozicionin <strong>${job.title}</strong>.
+            </p>
+
+            <!-- Job Info -->
+            <div style="background: #ffffff; border-radius: 8px; padding: 20px; margin: 25px 0; border-left: 4px solid #10b981;">
+                <h3 style="color: #1f2937; margin-top: 0;">📋 Detajet e Punës</h3>
+                <p style="margin: 8px 0; color: #4b5563;"><strong>Titulli:</strong> ${job.title}</p>
+                <p style="margin: 8px 0; color: #4b5563;"><strong>Kompania:</strong> ${job.companyName || 'N/A'}</p>
+                <p style="margin: 8px 0; color: #4b5563;"><strong>Nga:</strong> ${sender.firstName} ${sender.lastName}</p>
+            </div>
+
+            <!-- Message Content -->
+            <div style="background: #dbeafe; border: 1px solid #3b82f6; border-radius: 8px; padding: 20px; margin: 25px 0;">
+                <h4 style="color: #1e40af; margin-top: 0;">Mesazhi:</h4>
+                <p style="color: #1f2937; line-height: 1.6; margin: 0; white-space: pre-wrap;">${message}</p>
+            </div>
+
+            <!-- CTA Button -->
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="https://advance.al/applications"
+                   style="background: #2563eb; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
+                    💬 Shiko Aplikimin dhe Përgjigju
+                </a>
+            </div>
+
+            <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 15px; margin: 25px 0;">
+                <p style="color: #92400e; margin: 0; font-size: 14px; font-weight: 500;">
+                    💡 <strong>Këshillë:</strong> Përgjigjuni shpejt për të rritur shanset tuaja për të marrë këtë punë!
+                </p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+            <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
+                © 2025 advance.al - Platforma e Punës në Shqipëri
+            </p>
+            <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
+                Ky email u dërgua sepse keni një mesazh të ri për aplikimin tuaj.
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+      `;
+
+      const textContent = `
+${typeLabel} - advance.al
+
+Përshëndetje ${recipient.firstName},
+
+Keni marrë një mesazh të ri për aplikimin tuaj në pozicionin "${job.title}".
+
+Detajet e Punës:
+- Titulli: ${job.title}
+- Kompania: ${job.companyName || 'N/A'}
+- Nga: ${sender.firstName} ${sender.lastName}
+
+Mesazhi:
+${message}
+
+Shiko aplikimin dhe përgjigju: https://advance.al/applications
+
+--
+advance.al - Platforma e Punës në Shqipëri
+      `;
+
+      const emailResult = await this.resend.emails.send({
+        from: 'Advance.al <noreply@resend.dev>',
+        to: recipient.email,
+        subject,
+        html: htmlContent,
+        text: textContent,
+      });
+
+      if (emailResult.error) {
+        console.error('❌ Resend application message error:', emailResult.error);
+        throw new Error('Failed to send application message email via Resend');
+      }
+
+      console.log('✅ Application message email sent:', emailResult.data?.id);
+
+      return {
+        success: true,
+        emailId: emailResult.data?.id
+      };
+
+    } catch (error) {
+      console.error('❌ Error sending application message email:', error);
+      throw error;
+    }
+  }
 }
 
 // Create singleton instance

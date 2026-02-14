@@ -2,6 +2,7 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import { Application, Job, User } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer } from '../middleware/auth.js';
+import resendEmailService from '../lib/resendEmailService.js';
 
 const router = express.Router();
 
@@ -540,6 +541,49 @@ router.post('/:id/message', authenticate, async (req, res) => {
     }
 
     await application.addMessage(req.user._id, message.trim(), type);
+
+    // Send email notification to the other party (non-blocking)
+    setImmediate(async () => {
+      try {
+        // Populate application with full details
+        await application.populate([
+          { path: 'jobId', select: 'title' },
+          { path: 'jobSeekerId', select: 'email profile.firstName profile.lastName' },
+          { path: 'employerId', select: 'email profile.firstName profile.lastName profile.employerProfile.companyName' }
+        ]);
+
+        // Determine sender and recipient
+        const isEmployerSending = application.employerId._id.equals(req.user._id);
+        const sender = isEmployerSending ? application.employerId.profile : application.jobSeekerId.profile;
+        const recipient = isEmployerSending ? application.jobSeekerId : application.employerId;
+
+        // Prepare job data
+        const jobData = {
+          title: application.jobId.title,
+          companyName: application.employerId.profile.employerProfile?.companyName || 'N/A'
+        };
+
+        // Send email
+        await resendEmailService.sendApplicationMessageEmail(
+          {
+            email: recipient.email,
+            firstName: recipient.profile.firstName,
+            lastName: recipient.profile.lastName
+          },
+          {
+            firstName: sender.firstName,
+            lastName: sender.lastName
+          },
+          jobData,
+          message.trim(),
+          type
+        );
+
+        console.log(`📧 Application message email sent to ${recipient.email}`);
+      } catch (error) {
+        console.error('Error sending application message email:', error);
+      }
+    });
 
     res.json({
       success: true,
