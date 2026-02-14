@@ -307,12 +307,15 @@ export const jobSeekerSignupRules = {
     firstName: profileValidationRules.personal.firstName,
     lastName: profileValidationRules.personal.lastName,
     email: profileValidationRules.settings.email,
-    password: {
-      required: true,
-      minLength: 8,
-      message: "Fjalëkalimi duhet të ketë të paktën 8 karaktere"
-    },
-    phone: profileValidationRules.personal.phone
+    phone: {
+      required: false,
+      custom: (value: string) => {
+        if (!value || value.trim() === '') return true; // Optional field
+        const cleaned = value.replace(/[\s\-\(\)]/g, ''); // Remove spaces, dashes, parentheses
+        return /^\+?[0-9]{9,15}$/.test(cleaned);
+      },
+      message: "Numri i telefonit duhet të jetë i vlefshëm (9-15 shifra)"
+    }
   }
 };
 
