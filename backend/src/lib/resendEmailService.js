@@ -14,6 +14,21 @@ class ResendEmailService {
     }
 
     this.testEmail = 'advance.al123456@gmail.com'; // Your email for testing
+    // Enable test mode to redirect all emails to testEmail (set EMAIL_TEST_MODE=true in .env)
+    this.testMode = process.env.EMAIL_TEST_MODE === 'true';
+
+    if (this.testMode) {
+      console.log(`📧 EMAIL TEST MODE ENABLED - All emails will be sent to ${this.testEmail}`);
+    }
+  }
+
+  // Helper to get recipient email (redirects to test email in test mode)
+  getRecipientEmail(originalEmail) {
+    if (this.testMode) {
+      console.log(`📧 [TEST MODE] Redirecting email from ${originalEmail} to ${this.testEmail}`);
+      return this.testEmail;
+    }
+    return originalEmail;
   }
 
   // Send welcome email to new full account user
@@ -126,7 +141,7 @@ advance.al - Platforma e Punës në Shqipëri
 
       const emailResult = await this.resend.emails.send({
         from: 'Advance.al <onboarding@resend.dev>',
-        to: user.email,
+        to: this.getRecipientEmail(user.email),
         subject: subject,
         html: htmlContent,
         text: textContent,
@@ -274,7 +289,7 @@ advance.al - Platforma e Punës në Shqipëri
 
       const emailResult = await this.resend.emails.send({
         from: 'Advance.al <onboarding@resend.dev>',
-        to: user.email,
+        to: this.getRecipientEmail(user.email),
         subject: subject,
         html: htmlContent,
         text: textContent,
@@ -465,7 +480,7 @@ advance.al - Platforma e Punës në Shqipëri
 
       const emailResult = await this.resend.emails.send({
         from: 'Advance.al <support@resend.dev>',
-        to: user.email,
+        to: this.getRecipientEmail(user.email),
         subject: details.subject,
         html: htmlContent,
         text: textContent,
@@ -599,7 +614,7 @@ Ky email u dërgua në ${toEmail}
 
       const emailResult = await this.resend.emails.send({
         from: 'advance.al <noreply@advance.al>',
-        to: toEmail,
+        to: this.getRecipientEmail(toEmail),
         subject: subject,
         html: htmlContent,
         text: textContent,
@@ -636,7 +651,7 @@ Ky email u dërgua në ${toEmail}
     try {
       const emailResult = await this.resend.emails.send({
         from: 'advance.al <noreply@advance.al>',
-        to,
+        to: this.getRecipientEmail(to),
         subject,
         html: htmlContent,
         text: textContent,
@@ -766,7 +781,7 @@ advance.al - Platforma e Punës në Shqipëri
 
       const emailResult = await this.resend.emails.send({
         from: 'Advance.al <noreply@resend.dev>',
-        to: recipient.email,
+        to: this.getRecipientEmail(recipient.email),
         subject,
         html: htmlContent,
         text: textContent,
