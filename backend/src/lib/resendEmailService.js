@@ -14,17 +14,14 @@ class ResendEmailService {
     }
 
     this.testEmail = 'advance.al123456@gmail.com'; // Your email for testing
-    // Enable test mode to redirect all emails to testEmail (set EMAIL_TEST_MODE=true in .env)
-    this.testMode = process.env.EMAIL_TEST_MODE === 'true';
-
-    if (this.testMode) {
-      console.log(`📧 EMAIL TEST MODE ENABLED - All emails will be sent to ${this.testEmail}`);
-    }
+    console.log(`📧 EMAIL_TEST_MODE env value: "${process.env.EMAIL_TEST_MODE}"`);
   }
 
   // Helper to get recipient email (redirects to test email in test mode)
+  // Checks env var at call time (not constructor time) to handle dotenv load order
   getRecipientEmail(originalEmail) {
-    if (this.testMode) {
+    const isTestMode = process.env.EMAIL_TEST_MODE === 'true';
+    if (isTestMode) {
       console.log(`📧 [TEST MODE] Redirecting email from ${originalEmail} to ${this.testEmail}`);
       return this.testEmail;
     }
