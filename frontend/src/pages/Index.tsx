@@ -9,7 +9,7 @@ import PremiumJobsCarousel from "@/components/PremiumJobsCarousel";
 import { QuickUserBanner } from "@/components/QuickUserBanner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+// import { Card, CardContent } from "@/components/ui/card"; // Temporarily disabled with right sidebar
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -1022,8 +1022,8 @@ const Index = () => {
             )}
           </div>
 
-          {/* Main Content - Job Listings (60%) */}
-          <div className="lg:col-span-6">
+          {/* Main Content - Job Listings (80% - expanded since right sidebar is disabled) */}
+          <div className="lg:col-span-8">
             {/* Recently Viewed Jobs - Show when not filtering and user is authenticated */}
             {!loading && !searchQuery && selectedLocations.length === 0 && !selectedType && !Object.values(coreFilters).some(Boolean) && isAuthenticated && (
               <RecentlyViewedJobs className="mb-6" limit={4} />
@@ -1174,10 +1174,9 @@ const Index = () => {
             )}
           </div>
 
-          {/* Right Sidebar - Event Announcements (20%) */}
-          <div className="hidden lg:block lg:col-span-2">
+          {/* Right Sidebar - Event Announcements (20%) - TEMPORARILY DISABLED */}
+          {/* <div className="hidden lg:block lg:col-span-2">
             <div className="sticky top-4 space-y-3">
-              {/* Career Fair Event */}
               <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-blue-500">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
@@ -1193,7 +1192,6 @@ const Index = () => {
                 </CardContent>
               </Card>
 
-              {/* Workshop Event */}
               <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-blue-500">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
@@ -1209,7 +1207,6 @@ const Index = () => {
                 </CardContent>
               </Card>
 
-              {/* Tech Meetup */}
               <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-blue-500">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
@@ -1225,7 +1222,6 @@ const Index = () => {
                 </CardContent>
               </Card>
 
-              {/* LinkedIn Workshop */}
               <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-blue-500">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
@@ -1241,7 +1237,6 @@ const Index = () => {
                 </CardContent>
               </Card>
 
-              {/* Startup Event */}
               <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-blue-500">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
@@ -1257,7 +1252,6 @@ const Index = () => {
                 </CardContent>
               </Card>
 
-              {/* Internship Deadline */}
               <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-blue-500">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
@@ -1273,7 +1267,6 @@ const Index = () => {
                 </CardContent>
               </Card>
 
-              {/* Coding Bootcamp */}
               <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-blue-500">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
@@ -1289,7 +1282,6 @@ const Index = () => {
                 </CardContent>
               </Card>
 
-              {/* Job Interview Seminar */}
               <Card className="hover:shadow-md transition-shadow duration-200 border-l-2 border-l-blue-500">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
@@ -1305,7 +1297,7 @@ const Index = () => {
                 </CardContent>
               </Card>
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
       
