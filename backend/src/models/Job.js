@@ -415,6 +415,11 @@ jobSchema.methods.isExpired = function() {
   return new Date() > this.expiresAt;
 };
 
+// Static method to validate ObjectId
+jobSchema.statics.isValidObjectId = function(id) {
+  return mongoose.Types.ObjectId.isValid(id);
+};
+
 // Static method to find active jobs
 jobSchema.statics.findActive = function(filter = {}) {
   return this.find({ 
