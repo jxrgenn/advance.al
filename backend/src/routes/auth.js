@@ -81,7 +81,7 @@ const handleValidationErrors = (req, res, next) => {
 // @access  Public
 router.post('/register', authLimiter, registerValidation, handleValidationErrors, async (req, res) => {
   try {
-    const { email, password, userType, firstName, lastName, city, phone, companyName, industry, companySize } = req.body;
+    const { email, password, userType, firstName, lastName, city, phone, companyName, industry, companySize, description } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });
@@ -125,6 +125,7 @@ router.post('/register', authLimiter, registerValidation, handleValidationErrors
         companyName,
         industry,
         companySize,
+        ...(description && { description }),
         verified: false,
         verificationStatus: 'pending'
       };

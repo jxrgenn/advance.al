@@ -37,16 +37,20 @@ const EmployerRegister = () => {
 
   // Form state — all fields controlled
   const [companyName, setCompanyName] = useState('');
+  const [contactFirstName, setContactFirstName] = useState('');
+  const [contactLastName, setContactLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [location, setLocation] = useState('');
-  const [companySize, setCompanySize] = useState('1-10 punonjës');
+  const [companySize, setCompanySize] = useState('1-10');
   const [industry, setIndustry] = useState('');
   const [description, setDescription] = useState('');
 
   const validateStep1 = (): string | null => {
     if (!companyName.trim()) return 'Emri i kompanisë është i detyrueshëm';
+    if (!contactFirstName.trim()) return 'Emri i personit të kontaktit është i detyrueshëm';
+    if (!contactLastName.trim()) return 'Mbiemri i personit të kontaktit është i detyrueshëm';
     if (!email.trim()) return 'Email-i është i detyrueshëm';
     if (!/\S+@\S+\.\S+/.test(email)) return 'Email-i nuk është i vlefshëm';
     if (password.length < 6) return 'Fjalëkalimi duhet të ketë të paktën 6 karaktere';
@@ -91,12 +95,13 @@ const EmployerRegister = () => {
         email: email.trim(),
         password,
         userType: 'employer',
-        firstName: companyName.trim(),
-        lastName: '-',
+        firstName: contactFirstName.trim(),
+        lastName: contactLastName.trim(),
         city: location.trim(),
         companyName: companyName.trim(),
         industry,
         companySize,
+        description: description.trim() || undefined,
       });
       toast({
         title: 'Mirësevini në PunaShqip!',
@@ -147,6 +152,29 @@ const EmployerRegister = () => {
                           className="pl-10"
                           value={companyName}
                           onChange={(e) => setCompanyName(e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="contact-first-name">Emri i Kontaktit *</Label>
+                        <Input
+                          id="contact-first-name"
+                          placeholder="Andi"
+                          value={contactFirstName}
+                          onChange={(e) => setContactFirstName(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="contact-last-name">Mbiemri i Kontaktit *</Label>
+                        <Input
+                          id="contact-last-name"
+                          placeholder="Krasniqi"
+                          value={contactLastName}
+                          onChange={(e) => setContactLastName(e.target.value)}
                           required
                         />
                       </div>
@@ -252,10 +280,10 @@ const EmployerRegister = () => {
                           value={companySize}
                           onChange={(e) => setCompanySize(e.target.value)}
                         >
-                          <option>1-10 punonjës</option>
-                          <option>11-50 punonjës</option>
-                          <option>51-200 punonjës</option>
-                          <option>200+ punonjës</option>
+                          <option value="1-10">1-10 punonjës</option>
+                          <option value="11-50">11-50 punonjës</option>
+                          <option value="51-200">51-200 punonjës</option>
+                          <option value="200+">200+ punonjës</option>
                         </select>
                       </div>
                     </div>

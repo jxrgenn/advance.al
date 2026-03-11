@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { adminApi, isAuthenticated, getUserType, User } from "@/lib/api";
+import { adminApi, reportsApi, isAuthenticated, getUserType, User } from "@/lib/api";
 import {
   CheckCircle, XCircle, Clock, Building, MapPin, Mail, Phone,
   Users, Briefcase, TrendingUp, TrendingDown, DollarSign,
@@ -685,42 +685,6 @@ const AdminDashboard = () => {
     }
   };
 
-  // Send bulk notification function
-  const sendBulkNotification = async () => {
-    if (!bulkNotificationText.trim()) {
-      toast({
-        title: "Gabim",
-        description: "Ju lutemi shkruani njoftimin",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setSendingNotification(true);
-    try {
-      // Here you would call an API to send bulk notification
-      // For now, we'll just simulate it
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      toast({
-        title: "Sukses",
-        description: "Njoftimi u dërgua me sukses te të gjithë përdoruesit",
-      });
-
-      setBulkNotificationText('');
-      setBulkNotificationModal(false);
-    } catch (error: any) {
-      console.error('Error sending bulk notification:', error);
-      toast({
-        title: "Gabim",
-        description: "Nuk mund të dërgohet njoftimi",
-        variant: "destructive"
-      });
-    } finally {
-      setSendingNotification(false);
-    }
-  };
-
   // Load reported jobs function
   const loadReportedJobs = async (page: number = 1) => {
     setReportedJobsLoading(true);
@@ -831,35 +795,40 @@ const AdminDashboard = () => {
     }
   };
 
-  // Load reports data (showing active users for testing suspension functionality)
+  // Load reports data from real reports API
   const loadReportsData = async () => {
     setReportsLoading(true);
     try {
-      // Fetch active users to simulate reports for testing
-      const response = await adminApi.getAllUsers({
-        status: 'active',
+      const response = await reportsApi.getAdminReports({
+        status: 'pending',
         page: 1,
-        limit: 5 // Show first 5 active users as "reported" for testing
+        limit: 10,
+        sortBy: 'createdAt',
+        sortOrder: 'desc'
       });
 
       if (response.success && response.data) {
-        // Convert active users to "report" format for testing
-        const simulatedReports = response.data.users.map((user: any, index: number) => ({
-          id: user._id,
-          type: index % 2 === 0 ? 'inappropriate_content' : 'spam',
+        const reports = response.data.reports.map((report: any) => ({
+          id: report._id,
+          type: report.category || 'other',
           reportedUser: {
-            id: user._id,
-            name: user.profile?.fullName || `${user.profile?.firstName} ${user.profile?.lastName}`,
-            email: user.email,
-            phone: user.profile?.phone || 'N/A'
+            id: report.reportedUser?._id || report.reportedUserId,
+            name: report.reportedUser?.profile ?
+              `${report.reportedUser.profile.firstName} ${report.reportedUser.profile.lastName}` :
+              'I panjohur',
+            email: report.reportedUser?.email || 'N/A',
+            phone: report.reportedUser?.profile?.phone || 'N/A'
           },
-          reportedBy: { name: 'Sistem Testimi' },
-          reason: index % 2 === 0 ? 'Përmbajtje e dyshimtë në profil' : 'Aktivitet suspicious',
-          timestamp: new Date(Date.now() - (index + 1) * 60 * 60 * 1000).toISOString(),
-          status: 'pending'
+          reportedBy: {
+            name: report.reporter?.profile ?
+              `${report.reporter.profile.firstName} ${report.reporter.profile.lastName}` :
+              'Anonim'
+          },
+          reason: report.description || report.category || '',
+          timestamp: report.createdAt,
+          status: report.status
         }));
-
-        setReportsData(simulatedReports);
+        setReportsData(reports);
       } else {
         setReportsData([]);
       }
@@ -896,12 +865,17 @@ const AdminDashboard = () => {
   const handleReportAction = async (reportId: string, action: 'approve' | 'reject', userId?: string) => {
     try {
       if (action === 'approve' && userId) {
-        // Suspend the reported user
-        await handleUserAction(userId, 'suspend', 'Pezulluar për shkak të raportimit');
-        // Reload reports data to reflect the user is no longer active
+        // Take action on the report via real API
+        await reportsApi.takeAction(reportId, {
+          action: 'suspend',
+          reason: 'Pezulluar për shkak të raportimit',
+          notifyUser: true,
+        });
+        // Reload reports data
         loadReportsData();
       } else {
-        // Just remove from reports list if rejecting
+        // Reject the report via real API
+        await reportsApi.updateReport(reportId, { status: 'dismissed' });
         setReportsData(prev => prev.filter(report => report.id !== reportId));
       }
 
@@ -1107,14 +1081,14 @@ const AdminDashboard = () => {
                             <span className="text-sm">Punëdhënës të Verifikuar</span>
                             <span className="text-sm font-medium">{dashboardStats.verifiedEmployers}/{dashboardStats.totalEmployers}</span>
                           </div>
-                          <Progress value={(dashboardStats.verifiedEmployers / dashboardStats.totalEmployers) * 100} />
+                          <Progress value={dashboardStats.totalEmployers > 0 ? (dashboardStats.verifiedEmployers / dashboardStats.totalEmployers) * 100 : 0} />
                         </div>
                         <div className="space-y-2">
                           <div className="flex justify-between">
                             <span className="text-sm">Punë Aktive</span>
                             <span className="text-sm font-medium">{dashboardStats.activeJobs}/{dashboardStats.totalJobs}</span>
                           </div>
-                          <Progress value={(dashboardStats.activeJobs / dashboardStats.totalJobs) * 100} />
+                          <Progress value={dashboardStats.totalJobs > 0 ? (dashboardStats.activeJobs / dashboardStats.totalJobs) * 100 : 0} />
                         </div>
                         <div className="grid grid-cols-2 gap-4 pt-4">
                           <div className="text-center">

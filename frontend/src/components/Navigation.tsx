@@ -37,26 +37,8 @@ const Navigation = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [expandedNotificationId, setExpandedNotificationId] = useState<string | null>(null);
 
-  // Prevent page shift when dropdowns open
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      // Remove any padding-right that gets added to body
-      if (document.body.style.paddingRight) {
-        document.body.style.paddingRight = '';
-      }
-      // Remove overflow hidden that might be added
-      if (document.body.style.overflow === 'hidden') {
-        document.body.style.overflow = '';
-      }
-    });
-
-    observer.observe(document.body, {
-      attributes: true,
-      attributeFilter: ['style']
-    });
-
-    return () => observer.disconnect();
-  }, []);
+  // Note: DropdownMenu components use modal={false} to prevent
+  // body scroll-lock and padding-right shifts from Radix UI
 
   // Load notifications when user is authenticated
   useEffect(() => {
@@ -198,6 +180,14 @@ const Navigation = () => {
         </Link>
 
         <div className="hidden md:flex items-center space-x-6 absolute left-1/2 -translate-x-1/2">
+          <Link
+            to="/"
+            className={`text-sm font-medium transition-colors hover:text-primary ${
+              location.pathname === "/" ? "text-primary" : "text-muted-foreground"
+            }`}
+          >
+            Punët
+          </Link>
           <Link
             to="/about"
             className={`text-sm font-medium transition-colors hover:text-primary ${
@@ -444,6 +434,15 @@ loadNotifications();
       {mobileMenuOpen && (
         <div className="md:hidden border-t bg-background">
           <div className="container py-4 space-y-3">
+            <Link
+              to="/"
+              className={`block py-2 text-sm font-medium transition-colors hover:text-primary ${
+                location.pathname === "/" ? "text-primary" : "text-muted-foreground"
+              }`}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Punët
+            </Link>
             <Link
               to="/about"
               className={`block py-2 text-sm font-medium transition-colors hover:text-primary ${

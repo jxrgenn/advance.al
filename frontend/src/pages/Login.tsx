@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Mail, Lock, AlertCircle } from "lucide-react";
+import { Mail, Lock, AlertCircle, Briefcase, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -16,11 +16,14 @@ const Login = () => {
     password: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
   const { login, isLoading, error, clearError, isAuthenticated, user } = useAuth();
+
+  const isRegisterPage = location.pathname === '/register';
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -87,6 +90,60 @@ const Login = () => {
     }
   };
 
+  if (isRegisterPage) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navigation />
+        <div className="container flex items-center justify-center min-h-[calc(100vh-4rem)] py-12 pt-12">
+          <div className="w-full max-w-md">
+            <Card>
+              <CardHeader className="text-center space-y-2">
+                <CardTitle className="text-2xl">Regjistrohu</CardTitle>
+                <CardDescription>
+                  Zgjidh llojin e llogarisë për të vazhduar
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Link to="/jobseekers" className="block">
+                  <Card className="hover:border-primary transition-colors cursor-pointer">
+                    <CardContent className="flex items-center gap-4 p-6">
+                      <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
+                        <User className="h-6 w-6 text-blue-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold">Punëkërkues</h3>
+                        <p className="text-sm text-muted-foreground">Kërko punë dhe apliko online</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+                <Link to="/employer-register" className="block">
+                  <Card className="hover:border-primary transition-colors cursor-pointer">
+                    <CardContent className="flex items-center gap-4 p-6">
+                      <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
+                        <Briefcase className="h-6 w-6 text-green-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold">Punëdhënës</h3>
+                        <p className="text-sm text-muted-foreground">Posto vende pune dhe gjej kandidatë</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+                <div className="text-center text-sm pt-2">
+                  <span className="text-muted-foreground">Ke tashmë llogari? </span>
+                  <Link to="/login" className="text-primary hover:underline font-medium">
+                    Kyçu këtu
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -113,15 +170,15 @@ const Login = () => {
                       <Label htmlFor="email">Email</Label>
                       <div className="relative">
                         <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input 
+                        <Input
                           id="email"
                           name="email"
-                          type="email" 
+                          type="email"
                           placeholder="andi.krasniqi@email.com"
                           className="pl-10"
                           value={formData.email}
                           onChange={handleInputChange}
-                          required 
+                          required
                           autoComplete="email"
                         />
                       </div>
@@ -130,11 +187,10 @@ const Login = () => {
                       <Label htmlFor="password">Fjalëkalimi</Label>
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input 
+                        <Input
                           id="password"
                           name="password"
                           type="password"
-                          placeholder="password123"
                           className="pl-10"
                           value={formData.password}
                           onChange={handleInputChange}
@@ -160,10 +216,26 @@ const Login = () => {
                     </div>
                   </div>
                   <div className="mt-3 text-center">
-                    <Link to="/forgot-password" className="text-sm text-muted-foreground hover:text-primary">
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotPassword(true)}
+                      className="text-sm text-muted-foreground hover:text-primary"
+                    >
                       Ke harruar fjalëkalimin?
-                    </Link>
+                    </button>
                   </div>
+
+                  {showForgotPassword && (
+                    <Alert className="mt-4">
+                      <Mail className="h-4 w-4" />
+                      <AlertDescription>
+                        Për të rivendosur fjalëkalimin, na kontaktoni në{' '}
+                        <a href="mailto:support@advance.al" className="text-primary hover:underline font-medium">
+                          support@advance.al
+                        </a>
+                      </AlertDescription>
+                    </Alert>
+                  )}
                 </CardContent>
               </Card>
 
