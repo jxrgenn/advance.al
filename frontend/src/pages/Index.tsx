@@ -7,6 +7,7 @@ import CoreFilters from "@/components/CoreFilters";
 import RecentlyViewedJobs from "@/components/RecentlyViewedJobs";
 import PremiumJobsCarousel from "@/components/PremiumJobsCarousel";
 import { QuickUserBanner } from "@/components/QuickUserBanner";
+import ScrollToTopButton from "@/components/ScrollToTopButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 // import { Card, CardContent } from "@/components/ui/card"; // Temporarily disabled with right sidebar
@@ -131,7 +132,7 @@ const Index = () => {
     }, searchQuery.length >= 3 ? 600 : 0); // Longer debounce to prevent rate limiting
 
     return () => clearTimeout(debounceTimeout);
-  }, [searchQuery, selectedLocations, selectedType]); // Removed advancedFilters and coreFilters to prevent rate limiting
+  }, [searchQuery, selectedLocations, selectedType, coreFilters]);
 
   const loadJobs = async (page = 1, isSearch = false) => {
     try {
@@ -146,6 +147,7 @@ const Index = () => {
       const queryParams: any = {
         search: searchQuery || undefined,
         city: selectedLocations.length > 0 ? selectedLocations.join(',') : undefined,
+        jobType: selectedType || undefined,
         page,
         limit: 10
       };
@@ -545,33 +547,6 @@ const Index = () => {
             <PremiumJobsCarousel jobs={jobs} />
           </div>
         )}
-
-        {/* Hero Section with 3D Asset */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center mb-12">
-          {/* Left: Text Content */}
-          <div className="text-center md:text-left">
-            <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-4 leading-tight">
-              Gjej punën e përshtatshme për ty
-            </h1>
-            <p className="text-lg text-muted-foreground mb-6">
-              {loading ? "Duke ngarkuar..." :
-                searchQuery.length >= 3 ?
-                  `${pagination.totalJobs} rezultate për "${searchQuery}"` :
-                  `${pagination.totalJobs} vende pune të disponueshme në Shqipëri`
-              }
-            </p>
-          </div>
-
-          {/* Right: 3D Asset */}
-          <div className="flex justify-center md:justify-end items-center">
-            <img
-              src="/3d_assets/searching_character.png"
-              alt="Career Growth - Reach your professional goals"
-              className="w-full max-w-[200px] md:max-w-[260px] object-contain"
-              loading="eager"
-            />
-          </div>
-        </div>
 
         {/* Search Bar - Wellfound Style */}
         <div className="mx-auto max-w-7xl mb-8">
@@ -1301,6 +1276,8 @@ const Index = () => {
         </div>
       </div>
       
+      <ScrollToTopButton />
+
       <Footer />
     </div>
   );

@@ -109,11 +109,16 @@ router.post('/jobs/:jobId/purchase', authenticate, async (req, res) => {
       });
     }
 
-    // MOCK PAYMENT: Always succeeds
-    // TODO: Integrate real payment gateway (Stripe, PayPal, etc.)
-    console.log('💰 Mock payment processing... (always succeeds)');
+    // Payment gateway not yet integrated
+    if (process.env.ENABLE_MOCK_PAYMENTS !== 'true') {
+      return res.status(503).json({
+        success: false,
+        message: 'Sistemi i pagesave do të jetë i disponueshëm së shpejti'
+      });
+    }
 
-    // Simulate payment delay
+    // MOCK PAYMENT: Always succeeds (only in test mode)
+    // TODO: Integrate real payment gateway (Stripe, PayPal, etc.)
     await new Promise(resolve => setTimeout(resolve, 500));
 
     // Grant access to job
@@ -122,8 +127,6 @@ router.post('/jobs/:jobId/purchase', authenticate, async (req, res) => {
     if (!grantResult.success) {
       throw new Error(grantResult.message);
     }
-
-    console.log('✅ Access granted successfully');
 
     res.json({
       success: true,

@@ -79,9 +79,9 @@ router.post('/apply', authenticate, requireJobSeeker, applyValidation, handleVal
     // Validate job seeker profile completeness for one-click apply
     if (applicationMethod === 'one_click') {
       const user = req.user;
-      const profile = user.profile.jobSeekerProfile;
+      const profile = user.profile?.jobSeekerProfile;
 
-      if (!user.profile.firstName || !user.profile.lastName || !profile.title || !profile.resume) {
+      if (!profile || !user.profile.firstName || !user.profile.lastName || !profile.title || !profile.resume) {
         return res.status(400).json({
           success: false,
           message: 'Për aplikim me një klik duhet të keni emrin, mbiemrin, titullin e punës dhe CV-në në profil'

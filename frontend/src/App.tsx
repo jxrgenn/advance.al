@@ -65,11 +65,31 @@ const App = () => (
                 <AdminReports />
               </ProtectedRoute>
             } />
-            <Route path="/report-user" element={<ReportUser />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/saved-jobs" element={<SavedJobs />} />
-            <Route path="/post-job" element={<PostJob />} />
-            <Route path="/edit-job/:id" element={<EditJob />} />
+            <Route path="/report-user" element={
+              <ProtectedRoute>
+                <ReportUser />
+              </ProtectedRoute>
+            } />
+            <Route path="/profile" element={
+              <ProtectedRoute allowedUserTypes={['jobseeker']}>
+                <Profile />
+              </ProtectedRoute>
+            } />
+            <Route path="/saved-jobs" element={
+              <ProtectedRoute allowedUserTypes={['jobseeker']}>
+                <SavedJobs />
+              </ProtectedRoute>
+            } />
+            <Route path="/post-job" element={
+              <ProtectedRoute allowedUserTypes={['employer']}>
+                <PostJob />
+              </ProtectedRoute>
+            } />
+            <Route path="/edit-job/:id" element={
+              <ProtectedRoute allowedUserTypes={['employer']}>
+                <EditJob />
+              </ProtectedRoute>
+            } />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

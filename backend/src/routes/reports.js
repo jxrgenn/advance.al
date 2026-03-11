@@ -179,7 +179,7 @@ router.post('/',
         actionDetails: {
           actionData: {
             reason: `Report submitted for ${category}`,
-            notes: description.substring(0, 100) + (description.length > 100 ? '...' : '')
+            notes: description ? description.substring(0, 100) + (description.length > 100 ? '...' : '') : ''
           }
         },
         context: {

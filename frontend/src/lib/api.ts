@@ -237,9 +237,11 @@ const removeAuthToken = (): void => {
   localStorage.removeItem('user');
 };
 
+let isRefreshing = false;
+
 const apiRequest = async <T>(
   endpoint: string,
-  options: RequestInit & { isFormData?: boolean } = {}
+  options: RequestInit & { isFormData?: boolean; _isRetry?: boolean } = {}
 ): Promise<ApiResponse<T>> => {
   const url = `${API_BASE_URL}${endpoint}`;
   const token = getAuthToken();
@@ -283,10 +285,36 @@ const apiRequest = async <T>(
     }
 
     if (!response.ok) {
-      // Clear auth tokens on 401 so user is logged out cleanly instead of
-      // being stuck in a broken half-authenticated state with an expired token
-      if (response.status === 401) {
+      // On 401, try to refresh the token before giving up
+      if (response.status === 401 && !options._isRetry && !isRefreshing && endpoint !== '/auth/refresh' && endpoint !== '/auth/login') {
+        isRefreshing = true;
+        try {
+          const refreshToken = localStorage.getItem('refreshToken');
+          if (refreshToken) {
+            const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ refreshToken }),
+            });
+            const refreshData = await refreshResponse.json();
+            if (refreshResponse.ok && refreshData.success) {
+              setAuthToken(refreshData.data.token);
+              localStorage.setItem('refreshToken', refreshData.data.refreshToken);
+              isRefreshing = false;
+              // Retry the original request with the new token
+              return apiRequest<T>(endpoint, { ...options, _isRetry: true });
+            }
+          }
+        } catch {
+          // Refresh failed, fall through to logout
+        }
+        isRefreshing = false;
+        // Refresh failed — clear tokens and notify React
         removeAuthToken();
+        window.dispatchEvent(new Event('auth:logout'));
+      } else if (response.status === 401) {
+        removeAuthToken();
+        window.dispatchEvent(new Event('auth:logout'));
       }
       throw new ApiError(data, response.status);
     }

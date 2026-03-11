@@ -238,6 +238,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     checkAuthOnMount();
   }, []); // Only run once on mount
 
+  // Listen for 401 logout events from api.ts to sync React state
+  useEffect(() => {
+    const handleForceLogout = () => {
+      dispatch({ type: 'LOGOUT' });
+    };
+    window.addEventListener('auth:logout', handleForceLogout);
+    return () => window.removeEventListener('auth:logout', handleForceLogout);
+  }, []);
+
   // Auto-refresh user data every 5 minutes
   useEffect(() => {
     if (state.isAuthenticated) {
@@ -302,7 +311,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   if (allowedUserTypes && !allowedUserTypes.includes(user.userType)) {
-    return <Navigate to="/login" replace />;
+    // Redirect to user's default dashboard instead of login (avoids login page flash)
+    const defaultRoute = user.userType === 'admin' ? '/admin' :
+                         user.userType === 'employer' ? '/employer-dashboard' : '/';
+    return <Navigate to={defaultRoute} replace />;
   }
 
   return <>{children}</>;
