@@ -337,7 +337,6 @@ const AdminDashboard = () => {
 
       if (response.success && response.data) {
         setDashboardStats(response.data);
-        console.log('✅ Admin dashboard loaded with 100% REAL DATA:', response.data);
         return;
       } else {
         throw new Error(response.message || 'Failed to load dashboard stats');
@@ -428,7 +427,6 @@ const AdminDashboard = () => {
         setConfigurationSettings(response.data.settings);
       } else {
         // If no settings exist, initialize defaults
-        console.log('No configuration settings found, initializing defaults...');
         await initializeDefaultSettings();
       }
     } catch (error) {
@@ -442,7 +440,6 @@ const AdminDashboard = () => {
 
   const initializeDefaultSettings = async () => {
     try {
-      console.log('Initializing default configuration settings...');
       const initResponse = await adminApi.initializeDefaultConfiguration();
       if (initResponse.success) {
         toast({
@@ -586,7 +583,6 @@ const AdminDashboard = () => {
   // Load all jobs function
   const loadAllJobs = async (page: number = 1) => {
     setJobsLoading(true);
-    console.log('🔍 Loading all jobs, page:', page);
 
     try {
       const response = await adminApi.getAllJobs({
@@ -594,10 +590,7 @@ const AdminDashboard = () => {
         limit: 10
       });
 
-      console.log('📊 All jobs API response:', response);
-
       if (response.success && response.data) {
-        console.log('✅ Jobs loaded successfully:', response.data.jobs?.length || 0, 'jobs');
         setAllJobs(response.data.jobs || []);
         setJobsPagination(response.data.pagination || {
           currentPage: 1,

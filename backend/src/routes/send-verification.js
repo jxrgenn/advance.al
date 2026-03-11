@@ -118,7 +118,7 @@ router.post('/', emailLimiter, emailValidation, handleValidationErrors, async (r
         <!-- Footer -->
         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-                © 2024 advance.al - Platforma e Punës në Shqipëri
+                © ${new Date().getFullYear()} advance.al - Platforma e Punës në Shqipëri
             </p>
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
                 Nëse keni pyetje, na kontaktoni në support@advance.al
@@ -147,7 +147,7 @@ advance.al - Platforma e Punës në Shqipëri
     `;
 
     const emailResult = await resend.emails.send({
-      from: 'Advance.al <onboarding@resend.dev>',
+      from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
       to: to,
       subject: emailSubject,
       html: htmlContent,

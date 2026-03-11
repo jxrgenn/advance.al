@@ -16,8 +16,6 @@ router.get('/jobs/:jobId/candidates', authenticate, async (req, res) => {
     const employerId = req.user._id;
     const limit = parseInt(req.query.limit) || 15;
 
-    console.log(`📋 Fetching candidates for job ${jobId} by employer ${employerId}`);
-
     // Verify job belongs to this employer
     const job = await Job.findById(jobId);
     if (!job) {
@@ -80,8 +78,6 @@ router.post('/jobs/:jobId/purchase', authenticate, async (req, res) => {
   try {
     const { jobId } = req.params;
     const employerId = req.user._id;
-
-    console.log(`💳 Processing payment for job ${jobId} by employer ${employerId}`);
 
     // Verify job belongs to this employer
     const job = await Job.findById(jobId);
@@ -155,8 +151,6 @@ router.post('/track-contact', authenticate, async (req, res) => {
   try {
     const { jobId, candidateId, contactMethod } = req.body;
     const employerId = req.user._id;
-
-    console.log(`📞 Tracking contact: Job ${jobId}, Candidate ${candidateId}, Method: ${contactMethod}`);
 
     // Verify job belongs to this employer
     const job = await Job.findById(jobId);

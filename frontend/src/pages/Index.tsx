@@ -18,13 +18,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { Search, MapPin, Filter, Briefcase, Loader2, Calendar, DollarSign, Clock, Building, Bookmark, GraduationCap, Users, Award, ChevronDown, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { jobsApi, locationsApi, applicationsApi, Job, Location } from "@/lib/api";
+import { jobsApi, locationsApi, applicationsApi, usersApi, Job, Location } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 
 const Index = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [recommendations, setRecommendations] = useState<Job[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [savedJobsMap, setSavedJobsMap] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -244,6 +245,16 @@ const Index = () => {
       if (response.success && response.data) {
         setJobs(response.data.jobs);
         setPagination(response.data.pagination);
+
+        // Bulk check saved status for all loaded jobs (non-blocking)
+        if (isAuthenticated && user?.userType === 'jobseeker' && response.data.jobs.length > 0) {
+          const jobIds = response.data.jobs.map((j: Job) => j._id);
+          usersApi.checkSavedBulk(jobIds).then(res => {
+            if (res.success && res.data?.savedMap) {
+              setSavedJobsMap(prev => ({ ...prev, ...res.data!.savedMap }));
+            }
+          }).catch(() => {});
+        }
       }
     } catch (error: any) {
       console.error('Error loading jobs:', error);
@@ -1075,7 +1086,7 @@ const Index = () => {
                   {getMergedJobs().reduce((acc: JSX.Element[], job, index) => {
                     // Add job card
                     acc.push(
-                      <JobCard key={job._id} job={job} onApply={handleApply} isRecommended={job.isRecommended} />
+                      <JobCard key={job._id} job={job} onApply={handleApply} isRecommended={job.isRecommended} initialSaved={savedJobsMap[job._id]} />
                     );
                     
                     // Add banner every 4 jobs (after 4th, 8th, 12th, etc.) for non-authenticated users

@@ -588,7 +588,7 @@ Telefoni: _______________`;
 
     const element = document.querySelector(step.selector);
     if (!element) {
-      console.warn(`Tutorial element not found: ${step.selector}`);
+      // Tutorial element not found, skip
       return;
     }
 

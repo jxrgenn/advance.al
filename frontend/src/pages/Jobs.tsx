@@ -70,11 +70,7 @@ const Jobs = () => {
     const searchParams = new URLSearchParams(location.search);
     const companyParam = searchParams.get('company');
 
-    console.log('URL search changed:', location.search);
-    console.log('Company param from URL:', companyParam);
-
     if (companyParam) {
-      console.log('Setting company filter to:', companyParam);
       setAdvancedFilters(prev => ({ ...prev, company: companyParam }));
     }
   }, [location.search]);
@@ -135,7 +131,6 @@ const Jobs = () => {
 
       if (advancedFilters.company) {
         queryParams.company = advancedFilters.company;
-        console.log('Adding company filter:', advancedFilters.company);
       }
 
       if (advancedFilters.remote) {

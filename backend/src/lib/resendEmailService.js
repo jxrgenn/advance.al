@@ -15,7 +15,6 @@ class ResendEmailService {
     }
 
     this.testEmail = 'advance.al123456@gmail.com'; // Your email for testing
-    console.log(`📧 EMAIL_TEST_MODE env value: "${process.env.EMAIL_TEST_MODE}"`);
   }
 
   // Helper to get recipient email (redirects to test email in test mode)
@@ -23,7 +22,6 @@ class ResendEmailService {
   getRecipientEmail(originalEmail) {
     const isTestMode = process.env.EMAIL_TEST_MODE === 'true';
     if (isTestMode) {
-      console.log(`📧 [TEST MODE] Redirecting email from ${originalEmail} to ${this.testEmail}`);
       return this.testEmail;
     }
     return originalEmail;
@@ -32,7 +30,6 @@ class ResendEmailService {
   // Send welcome email to new full account user
   async sendFullAccountWelcomeEmail(user) {
     if (!this.enabled) {
-      console.log('📧 Email sending disabled - skipping full account welcome email');
       return { success: false, message: 'Email service disabled' };
     }
 
@@ -105,7 +102,7 @@ class ResendEmailService {
         <!-- Footer -->
         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-                © 2024 advance.al - Platforma e Punës në Shqipëri
+                © ${new Date().getFullYear()} advance.al - Platforma e Punës në Shqipëri
             </p>
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
                 Nëse keni pyetje, na kontaktoni në support@advance.al
@@ -144,21 +141,17 @@ advance.al - Platforma e Punës në Shqipëri
       `;
 
       const emailResult = await this.resend.emails.send({
-        from: 'Advance.al <onboarding@resend.dev>',
+        from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(user.email),
         subject: subject,
         html: htmlContent,
         text: textContent,
       });
 
-      console.log('📬 Full account email send result:', emailResult);
-
       if (emailResult.error) {
         console.error('❌ Resend error:', emailResult.error);
         throw new Error('Failed to send email via Resend');
       }
-
-      console.log('✅ Full account welcome email sent:', emailResult.data?.id);
 
       return {
         success: true,
@@ -174,7 +167,6 @@ advance.al - Platforma e Punës në Shqipëri
   // Send welcome email to new quick user
   async sendQuickUserWelcomeEmail(user) {
     if (!this.enabled) {
-      console.log('📧 Email sending disabled - skipping quick user welcome email');
       return { success: false, message: 'Email service disabled' };
     }
 
@@ -256,7 +248,7 @@ advance.al - Platforma e Punës në Shqipëri
         <!-- Footer -->
         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-                © 2024 advance.al - Platforma e Punës në Shqipëri
+                © ${new Date().getFullYear()} advance.al - Platforma e Punës në Shqipëri
             </p>
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
                 <a href="${user.getUnsubscribeUrl()}" style="color: #6b7280;">Çregjistrohu nga njoftimet</a> |
@@ -300,21 +292,17 @@ advance.al - Platforma e Punës në Shqipëri
       `;
 
       const emailResult = await this.resend.emails.send({
-        from: 'Advance.al <onboarding@resend.dev>',
+        from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(user.email),
         subject: subject,
         html: htmlContent,
         text: textContent,
       });
 
-      console.log('📬 Quick user email send result:', emailResult);
-
       if (emailResult.error) {
         console.error('❌ Resend error:', emailResult.error);
         throw new Error('Failed to send email via Resend');
       }
-
-      console.log('✅ Quick user welcome email sent:', emailResult.data?.id);
 
       return {
         success: true,
@@ -330,7 +318,6 @@ advance.al - Platforma e Punës në Shqipëri
   // Send account action email (warning, suspension, ban)
   async sendAccountActionEmail(user, action, reason, duration = null) {
     if (!this.enabled) {
-      console.log('📧 Email sending disabled - skipping account action email');
       return { success: false, message: 'Email service disabled' };
     }
 
@@ -454,7 +441,7 @@ advance.al - Platforma e Punës në Shqipëri
         <!-- Footer -->
         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-                © 2024 advance.al - Platforma e Punës në Shqipëri
+                © ${new Date().getFullYear()} advance.al - Platforma e Punës në Shqipëri
             </p>
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
                 Ky email u dërgua sepse u morr një vendim administrativ për llogarinë tuaj.
@@ -496,21 +483,17 @@ advance.al - Platforma e Punës në Shqipëri
       `;
 
       const emailResult = await this.resend.emails.send({
-        from: 'Advance.al <support@resend.dev>',
+        from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(user.email),
         subject: details.subject,
         html: htmlContent,
         text: textContent,
       });
 
-      console.log('📬 Account action email send result:', emailResult);
-
       if (emailResult.error) {
         console.error('❌ Resend error:', emailResult.error);
         throw new Error('Failed to send account action email via Resend');
       }
-
-      console.log('✅ Account action email sent:', emailResult.data?.id);
 
       return {
         success: true,
@@ -526,7 +509,6 @@ advance.al - Platforma e Punës në Shqipëri
   // Send bulk notification email
   async sendBulkNotificationEmail(toEmail, notificationData) {
     if (!this.enabled) {
-      console.log('📧 Email sending disabled - skipping bulk notification email');
       return { success: false, message: 'Email service disabled' };
     }
 
@@ -632,11 +614,8 @@ Shko te advance.al: https://advance.al
 Ky email u dërgua në ${toEmail}
 `;
 
-      console.log(`📧 Sending bulk notification email to: ${toEmail}`);
-      console.log(`📧 Subject: ${subject}`);
-
       const emailResult = await this.resend.emails.send({
-        from: 'advance.al <noreply@advance.al>',
+        from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(toEmail),
         subject: subject,
         html: htmlContent,
@@ -650,8 +629,6 @@ Ky email u dërgua në ${toEmail}
         console.error('❌ Resend error:', emailResult.error);
         throw new Error('Failed to send bulk notification email via Resend');
       }
-
-      console.log('✅ Bulk notification email sent:', emailResult.data?.id);
 
       return {
         success: true,
@@ -667,13 +644,12 @@ Ky email u dërgua në ${toEmail}
   // Generic transactional email — used by notificationService for job alerts
   async sendTransactionalEmail(to, subject, htmlContent, textContent) {
     if (!this.enabled) {
-      console.log('📧 Email sending disabled - skipping transactional email');
       return { success: false, message: 'Email service disabled' };
     }
 
     try {
       const emailResult = await this.resend.emails.send({
-        from: 'advance.al <noreply@advance.al>',
+        from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(to),
         subject,
         html: htmlContent,
@@ -695,7 +671,6 @@ Ky email u dërgua në ${toEmail}
   // Send application message notification email
   async sendApplicationMessageEmail(recipient, sender, job, message, messageType) {
     if (!this.enabled) {
-      console.log('📧 Email sending disabled - skipping application message email');
       return { success: false, message: 'Email service disabled' };
     }
 
@@ -812,7 +787,7 @@ advance.al - Platforma e Punës në Shqipëri
       `;
 
       const emailResult = await this.resend.emails.send({
-        from: 'Advance.al <noreply@resend.dev>',
+        from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(recipient.email),
         subject,
         html: htmlContent,
@@ -823,8 +798,6 @@ advance.al - Platforma e Punës në Shqipëri
         console.error('❌ Resend application message error:', emailResult.error);
         throw new Error('Failed to send application message email via Resend');
       }
-
-      console.log('✅ Application message email sent:', emailResult.data?.id);
 
       return {
         success: true,

@@ -813,7 +813,7 @@ const BusinessDashboard: React.FC = () => {
                   <Input
                     id="employer-search"
                     placeholder="Email ose emri i kompanisë..."
-                    onChange={(e) => console.log('Search:', e.target.value)}
+                    onChange={() => {}}
                   />
                 </div>
                 <div>

@@ -838,6 +838,14 @@ export const usersApi = {
   // Check if a job is saved
   isJobSaved: async (jobId: string): Promise<ApiResponse<{ isSaved: boolean }>> => {
     return apiRequest<{ isSaved: boolean }>(`/users/saved-jobs/check/${jobId}`);
+  },
+
+  // Bulk check saved status for multiple jobs (avoids N+1 API calls)
+  checkSavedBulk: async (jobIds: string[]): Promise<ApiResponse<{ savedMap: Record<string, boolean> }>> => {
+    return apiRequest<{ savedMap: Record<string, boolean> }>('/users/saved-jobs/check-bulk', {
+      method: 'POST',
+      body: JSON.stringify({ jobIds }),
+    });
   }
 };
 

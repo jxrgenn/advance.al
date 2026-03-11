@@ -58,11 +58,8 @@ const JobDetail = () => {
   const checkIfApplied = async (jobId: string) => {
     try {
       const response = await applicationsApi.getAppliedJobIds();
-      console.log('📋 Checking if applied to job:', jobId);
-      console.log('📋 Applied jobs response:', response);
       if (response.success && response.data && response.data.jobIds) {
         const applied = response.data.jobIds.includes(jobId);
-        console.log('✅ Has applied:', applied);
         setHasApplied(applied);
       }
     } catch (error) {
@@ -75,8 +72,6 @@ const JobDetail = () => {
       setLoading(true);
       const response = await jobsApi.getJob(jobId);
       if (response.success && response.data) {
-        console.log('DEBUG LOADED JOB DATA:', response.data.job);
-        console.log('DEBUG EMPLOYER DATA:', response.data.job.employerId);
         setJob(response.data.job);
         // Track this job as recently viewed
         addRecentlyViewed(response.data.job._id);
@@ -354,7 +349,7 @@ const JobDetail = () => {
 
     const element = document.querySelector(step.selector);
     if (!element) {
-      console.warn(`Tutorial element not found: ${step.selector}`);
+      // Tutorial element not found, skip
       return;
     }
 

@@ -671,7 +671,6 @@ router.get('/:id/similar', async (req, res) => {
     }
 
     // If embeddings are being processed, use fallback
-    console.log(`📊 No cached similar jobs for ${jobId}, using fallback`);
     const fallbackJobs = await jobEmbeddingService.getSimilarJobsFallback(jobId);
 
     res.json({
@@ -835,7 +834,6 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, createJ
           campaign.parameters.currentUses += 1;
           await campaign.trackConversion(campaignDiscount, req.user.createdAt > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
 
-          console.log(`💰 Applied campaign "${campaign.name}": ${campaignDiscount}€ discount`);
           break; // Apply only one campaign
         }
       }
@@ -849,7 +847,7 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, createJ
         campaignApplied: appliedCampaign
       };
     } catch (pricingError) {
-      console.warn('Pricing calculation failed, using default price:', pricingError);
+      console.error('Pricing calculation failed, using default price:', pricingError);
       job.pricing = {
         basePrice: basePrice,
         finalPrice: basePrice,
@@ -892,7 +890,6 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, createJ
       if (isFreeForEmployer) {
         job.pricing.finalPrice = 0; // Override price to 0 for whitelisted employers
         job.pricing.discount = job.pricing.basePrice; // Show full discount
-        console.log(`🆓 Free posting applied for whitelisted employer: ${employer.email}`);
       }
     }
 
@@ -941,7 +938,6 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, createJ
           }
         }
 
-        console.log(`📊 Revenue analytics updated: +${job.pricing.finalPrice}€`);
       } catch (analyticsError) {
         console.error('❌ Error updating revenue analytics:', analyticsError);
       }
@@ -953,11 +949,9 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, createJ
     // Send notifications to matching quick users (async, don't wait for completion)
     setImmediate(async () => {
       try {
-        console.log(`🔔 Starting notification process for job: ${job.title}`);
         // Fetch and populate job with employer data for email templates
         const populatedJob = await Job.findById(job._id).populate('employerId', 'profile.employerProfile.companyName');
-        const notificationResult = await notificationService.notifyMatchingUsers(populatedJob);
-        console.log(`✅ Notification process completed:`, notificationResult.stats);
+        await notificationService.notifyMatchingUsers(populatedJob);
       } catch (error) {
         console.error('Error in job notification process:', error);
       }
@@ -966,9 +960,7 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, createJ
     // Queue embedding generation (async, non-blocking)
     setImmediate(async () => {
       try {
-        console.log(`🤖 Queueing embedding generation for job: ${job.title}`);
         await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10); // Priority 10 (normal)
-        console.log(`✅ Embedding queued for job: ${job._id}`);
       } catch (error) {
         console.error('❌ Error queueing embedding for job:', error);
       }
@@ -1068,7 +1060,6 @@ router.put('/:id', authenticate, requireEmployer, requireVerifiedEmployer, updat
     // Re-queue embedding generation after update (async, non-blocking)
     setImmediate(async () => {
       try {
-        console.log(`🤖 Re-queueing embedding for updated job: ${job.title}`);
         // Clear old similar jobs since content changed
         await Job.findByIdAndUpdate(job._id, {
           $set: {
@@ -1077,7 +1068,6 @@ router.put('/:id', authenticate, requireEmployer, requireVerifiedEmployer, updat
           }
         });
         await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10);
-        console.log(`✅ Embedding re-queued for job: ${job._id}`);
       } catch (error) {
         console.error('❌ Error re-queueing embedding for job:', error);
       }

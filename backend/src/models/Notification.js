@@ -112,8 +112,6 @@ notificationSchema.methods.markAsRead = function() {
 
 // Static method to create application status change notification
 notificationSchema.statics.createApplicationStatusNotification = async function(application, oldStatus, newStatus) {
-  console.log(`📧 Creating notification for application status change: ${oldStatus} → ${newStatus}`);
-  
   try {
     // Populate the application data we need
     await application.populate([
@@ -167,12 +165,10 @@ notificationSchema.statics.createApplicationStatusNotification = async function(
       });
 
       await notification.save();
-      console.log(`✅ Notification created successfully for user ${application.jobSeekerId}`);
-      
+
       return notification;
-    } else {
-      console.log(`⚠️ No notification template for status: ${newStatus}`);
     }
+
   } catch (error) {
     console.error('❌ Error creating application status notification:', error);
   }
@@ -217,8 +213,6 @@ notificationSchema.statics.getUnreadCount = function(userId) {
 
 // Static method to create account action notification (warning, suspension, ban)
 notificationSchema.statics.createAccountActionNotification = async function(userId, action, reason, duration = null, reportId = null) {
-  console.log(`📧 Creating ${action} notification for user ${userId}`);
-
   try {
     const actionMessages = {
       warning: {
@@ -265,12 +259,10 @@ notificationSchema.statics.createAccountActionNotification = async function(user
       });
 
       await notification.save();
-      console.log(`✅ ${action} notification created successfully for user ${userId}`);
 
       return notification;
-    } else {
-      console.log(`⚠️ No notification template for action: ${action}`);
     }
+
   } catch (error) {
     console.error(`❌ Error creating ${action} notification:`, error);
   }

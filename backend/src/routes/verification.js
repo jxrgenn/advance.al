@@ -60,8 +60,6 @@ setInterval(cleanExpiredCodes, 5 * 60 * 1000);
 // Email sending function
 const sendEmail = async (email, code) => {
   try {
-    console.log(`📧 Sending verification email to ${email} with code: ${code}`);
-
     const subject = 'Kodi i Verifikimit - PunaShqip.al';
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -119,7 +117,6 @@ Nëse nuk keni kërkuar këtë verifikim, ju lutemi injoroni këtë email.
 
 // Mock SMS sending function
 const sendSMS = async (phone, code) => {
-  console.log(`📱 Mock sending SMS to ${phone} with code: ${code}`);
   // In production, integrate with SMS service like Twilio, AWS SNS, etc.
   return true;
 };

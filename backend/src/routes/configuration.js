@@ -59,8 +59,6 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
   try {
     const { category, includeAudit = false } = req.query;
 
-    console.log('📋 Fetching configuration settings:', { category, includeAudit });
-
     let settings;
     if (category) {
       settings = await SystemConfiguration.getByCategory(category);
@@ -136,8 +134,6 @@ router.put('/:id', authenticate, requireAdmin, configurationLimit, configuration
     const { value, reason } = req.body;
     const settingId = req.params.id;
 
-    console.log('🔧 Updating configuration setting:', { settingId, value, reason });
-
     const setting = await SystemConfiguration.findById(settingId);
     if (!setting) {
       return res.status(404).json({
@@ -167,8 +163,6 @@ router.put('/:id', authenticate, requireAdmin, configurationLimit, configuration
       }
     );
 
-    console.log(`✅ Configuration setting updated: ${setting.key} = ${value}`);
-
     // Get updated setting with populated fields
     const updatedSetting = await SystemConfiguration.findById(settingId)
       .populate('lastModifiedBy', 'profile.firstName profile.lastName email');
@@ -196,8 +190,6 @@ router.post('/:id/reset', authenticate, requireAdmin, configurationLimit, async 
   try {
     const { reason } = req.body;
     const settingId = req.params.id;
-
-    console.log('🔄 Resetting configuration setting:', { settingId, reason });
 
     const setting = await SystemConfiguration.findById(settingId);
     if (!setting) {
@@ -227,8 +219,6 @@ router.post('/:id/reset', authenticate, requireAdmin, configurationLimit, async 
         userAgent: req.get('User-Agent')
       }
     );
-
-    console.log(`✅ Configuration setting reset: ${setting.key} = ${setting.defaultValue}`);
 
     // Get updated setting with populated fields
     const updatedSetting = await SystemConfiguration.findById(settingId)
@@ -332,14 +322,11 @@ router.get('/audit', authenticate, requireAdmin, async (req, res) => {
 // @access  Private (Admins only)
 router.get('/system-health', authenticate, requireAdmin, async (req, res) => {
   try {
-    console.log('🏥 Fetching system health status');
-
     // Get latest health check
     let latestHealth = await SystemHealth.getLatestHealth();
 
     // If no recent health check (within last 5 minutes), create one
     if (!latestHealth || (Date.now() - latestHealth.timestamp.getTime()) > 5 * 60 * 1000) {
-      console.log('⚡ Creating new health check');
       latestHealth = await SystemHealth.createHealthCheck();
     }
 
@@ -369,8 +356,6 @@ router.get('/system-health', authenticate, requireAdmin, async (req, res) => {
 // @access  Private (Admins only)
 router.post('/initialize-defaults', authenticate, requireAdmin, async (req, res) => {
   try {
-    console.log('🔧 Initializing default configuration settings');
-
     const createdSettings = await SystemConfiguration.createDefaultSettings(req.user._id);
 
     res.json({
@@ -395,8 +380,6 @@ router.post('/initialize-defaults', authenticate, requireAdmin, async (req, res)
 router.post('/maintenance-mode', authenticate, requireAdmin, async (req, res) => {
   try {
     const { enabled, reason } = req.body;
-
-    console.log('🚧 Toggling maintenance mode:', { enabled, reason });
 
     const maintenanceSetting = await SystemConfiguration.getSetting('maintenance_mode');
     if (!maintenanceSetting) {

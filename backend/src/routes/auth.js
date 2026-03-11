@@ -162,14 +162,12 @@ router.post('/register', authLimiter, registerValidation, handleValidationErrors
       setImmediate(async () => {
         try {
           await resendEmailService.sendFullAccountWelcomeEmail(user);
-          console.log(`📧 Welcome email sent to ${user.email}`);
         } catch (error) {
           console.error('Error sending welcome email:', error);
         }
 
         try {
           await userEmbeddingService.generateJobSeekerEmbedding(user._id);
-          console.log(`🧠 Embedding generated for jobseeker ${user._id}`);
         } catch (error) {
           console.error('Error generating jobseeker embedding:', error);
         }
@@ -209,14 +207,11 @@ router.post('/register', authLimiter, registerValidation, handleValidationErrors
 router.post('/login', authLimiter, loginValidation, handleValidationErrors, async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log('🔐 Login attempt for:', email);
 
     // Find user and include password for comparison
     const user = await User.findOne({ email }).select('+password');
-    console.log('👤 User found:', !!user, user ? `(${user.email}, ${user.userType}, ${user.status})` : 'null');
-    
+
     if (!user) {
-      console.log('❌ User not found for email:', email);
       return res.status(401).json({
         success: false,
         message: 'Email ose fjalëkalim i gabuar'
@@ -312,7 +307,7 @@ router.post('/login', authLimiter, loginValidation, handleValidationErrors, asyn
 // @route   POST /api/auth/refresh
 // @desc    Refresh access token using refresh token
 // @access  Public
-router.post('/refresh', async (req, res) => {
+router.post('/refresh', authLimiter, async (req, res) => {
   try {
     const { refreshToken } = req.body;
 

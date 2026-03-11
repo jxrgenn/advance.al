@@ -282,8 +282,6 @@ const PostJob = () => {
         return;
       }
 
-      console.log('🚀 PostJob form submitted to jobs API!', values);
-
       // Map form values to backend enum values
       const mapJobType = (type: string) => {
         const mapping: { [key: string]: string } = {
@@ -356,8 +354,6 @@ const PostJob = () => {
         } : undefined,
         platformCategories: values.platformCategories
       };
-
-      console.log('📤 Sending job data:', jobData);
 
       const response = await jobsApi.createJob(jobData);
 
@@ -775,7 +771,7 @@ const PostJob = () => {
 
       // If there are validation errors preventing step advance, skip the form step change
       if (hasErrors && step.formStep > currentStep) {
-        console.warn(`Cannot advance to step ${step.formStep} due to validation errors:`, errors.errors);
+        // Cannot advance due to validation errors
         // Don't proceed with highlight
         return;
       } else {
@@ -789,7 +785,7 @@ const PostJob = () => {
     // NOW proceed with NEW smooth highlighting logic (copied from JobSeekersPage)
     const element = document.querySelector(step.selector);
     if (!element) {
-      console.warn(`Tutorial element not found: ${step.selector}`);
+      // Tutorial element not found, skip
       return;
     }
 

@@ -215,7 +215,6 @@ const Profile = () => {
 
   useEffect(() => {
     if (user) {
-      console.log('User data in Profile component:', user);
       // Set current CV if user has one uploaded
       if (user.profile?.jobSeekerProfile?.resume) {
         setCurrentCV(user.profile.jobSeekerProfile.resume);
@@ -246,10 +245,7 @@ const Profile = () => {
     
     try {
       setLoadingApplications(true);
-      console.log('Loading applications for user:', user.id);
-      
       const response = await applicationsApi.getMyApplications({});
-      console.log('Applications response:', response);
       
       if (response.success && response.data) {
         setApplications(response.data.applications || []);
@@ -390,9 +386,7 @@ const Profile = () => {
       }
 
       // Update profile via API
-      console.log('Sending profile update:', updateData);
       const response = await usersApi.updateProfile(updateData);
-      console.log('Profile update response:', response);
 
       if (response.success && response.data?.user) {
         await refreshUser();
@@ -752,9 +746,6 @@ const Profile = () => {
   };
 
   const closeTutorial = () => {
-    console.log('=== closeTutorial CALLED ===');
-    console.log('Closing tutorial from step:', tutorialStep);
-
     // Disable scroll lock
     isScrollLockedRef.current = false;
 
@@ -770,29 +761,19 @@ const Profile = () => {
     document.body.style.paddingRight = '';
     timersRef.current.forEach(timer => clearTimeout(timer));
     timersRef.current = [];
-    console.log('Tutorial closed successfully');
   };
 
   const nextTutorialStep = () => {
-    console.log('=== nextTutorialStep CALLED ===');
-    console.log('Current step:', tutorialStep);
-    console.log('Total steps:', allTutorialSteps.length);
-    console.log('Is transitioning:', isTransitioning);
-    console.log('Is last step:', tutorialStep === allTutorialSteps.length - 1);
-
     if (isTransitioning) {
-      console.log('Blocked: already transitioning');
       return;
     }
 
     // Normal step progression
     if (tutorialStep < allTutorialSteps.length - 1) {
-      console.log('Going to next step...');
       const nextStep = allTutorialSteps[tutorialStep + 1];
 
       // Check if next step requires a different tab
       if (nextStep && nextStep.requiresTab !== currentTab) {
-        console.log('Next step requires tab switch to:', nextStep.requiresTab);
         // Automatically switch tabs
         setIsTransitioning(true);
         setCurrentTab(nextStep.requiresTab);
@@ -807,7 +788,6 @@ const Profile = () => {
         return;
       }
 
-      console.log('Same tab, moving to step:', tutorialStep + 1);
       setIsTransitioning(true);
       setTutorialStep(tutorialStep + 1);
       highlightElement(tutorialStep + 1);
@@ -815,28 +795,19 @@ const Profile = () => {
       const timer = setTimeout(() => setIsTransitioning(false), 350);
       timersRef.current.push(timer);
     } else {
-      console.log('Last step reached, closing tutorial');
       closeTutorial();
     }
   };
 
   const previousTutorialStep = () => {
-    console.log('=== previousTutorialStep CALLED ===');
-    console.log('Current step:', tutorialStep);
-    console.log('Is transitioning:', isTransitioning);
-    console.log('Is first step:', tutorialStep === 0);
-
     if (isTransitioning || tutorialStep === 0) {
-      console.log('Blocked: transitioning or at first step');
       return;
     }
 
     const prevStep = allTutorialSteps[tutorialStep - 1];
-    console.log('Going to previous step:', tutorialStep - 1, 'Tab:', prevStep.requiresTab);
 
     // Check if previous step requires a different tab
     if (prevStep && prevStep.requiresTab !== currentTab) {
-      console.log('Previous step requires tab switch from', currentTab, 'to', prevStep.requiresTab);
       // Automatically switch tabs
       setIsTransitioning(true);
       setCurrentTab(prevStep.requiresTab);
@@ -845,7 +816,6 @@ const Profile = () => {
       // Wait for tab to render, then highlight
       const timer = setTimeout(async () => {
         // Don't scroll to top - let highlightElement handle scrolling
-        console.log('Switched to', prevStep.requiresTab, 'tab, letting highlightElement handle scroll');
         await highlightElement(tutorialStep - 1);
         setIsTransitioning(false);
       }, 350);
@@ -853,7 +823,6 @@ const Profile = () => {
       return;
     }
 
-    console.log('Same tab, moving to step:', tutorialStep - 1);
     setIsTransitioning(true);
     setTutorialStep(tutorialStep - 1);
     highlightElement(tutorialStep - 1);
@@ -863,10 +832,7 @@ const Profile = () => {
   };
 
   const highlightElement = async (stepIndex: number) => {
-    console.log('=== highlightElement CALLED ===');
-    console.log('Step index:', stepIndex);
     const step = allTutorialSteps[stepIndex];
-    console.log('Step details:', step);
 
     if (!step) {
       console.error('No step found at index:', stepIndex);
@@ -875,7 +841,6 @@ const Profile = () => {
 
     // Tab switch steps don't need highlighting
     if (step.isTabSwitch) {
-      console.log('Tab switch step, skipping highlight');
       return;
     }
 
@@ -883,19 +848,16 @@ const Profile = () => {
       setPreviousElementPosition(elementPosition);
     }
 
-    console.log('Waiting for element:', step.selector);
     // Wait for element to be available and visible
     const element = await waitForElement(step.selector);
     if (!element) {
-      console.warn(`Tutorial element not found or hidden: ${step.selector}`);
+      // Tutorial element not found or hidden
       // Skip this step if element doesn't exist
       if (tutorialStep < allTutorialSteps.length - 1) {
-        console.log('Skipping to next step');
         nextTutorialStep();
       }
       return;
     }
-    console.log('Element found:', element);
 
     const rect = element.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
@@ -972,36 +934,6 @@ const Profile = () => {
 
           targetScroll = (rect.top + currentScroll) - elementTopInViewport + scrollOffsetValue;
         }
-
-        console.log('MOBILE SCROLL DEBUG:');
-        console.log('- Current scroll:', currentScroll);
-        console.log('- Element rect.top:', rect.top);
-        console.log('- Element top (absolute):', elementTop);
-        console.log('- Element height:', rect.height);
-        console.log('- Is large element:', isLargeElement);
-        console.log('- Card height:', cardHeight);
-        console.log('- Card position:', fitsBelow ? 'BELOW' : 'ABOVE');
-        if (fitsBelow) {
-          console.log('- Element target position (25%):', viewportHeight * 0.25);
-        } else {
-          const elementHeight = rect.height;
-          const bottomMargin = 16;
-          const minElementTop = cardHeight + gap + 8;
-          const maxElementTop = viewportHeight - bottomMargin - elementHeight + scrollOffsetValue;
-          const centeredTop = cardHeight + gap + ((viewportHeight - cardHeight - gap - elementHeight) / 2);
-          const finalElementTop = Math.max(minElementTop, Math.min(centeredTop, maxElementTop));
-
-          console.log('- Element height:', elementHeight);
-          console.log('- Min element top (below card):', minElementTop);
-          console.log('- Max element top (fit bottom):', maxElementTop);
-          console.log('- Centered element top:', centeredTop);
-          console.log('- Final element top position:', finalElementTop);
-          console.log('- Element bottom will be at:', finalElementTop + elementHeight - scrollOffsetValue, '(viewport height:', viewportHeight, ')');
-        }
-        console.log('- Scroll offset:', scrollOffsetValue);
-        console.log('- Target scroll:', targetScroll);
-        console.log('- Final scroll (max 0):', Math.max(0, targetScroll));
-        console.log('- Element selector:', step.selector);
 
         // Temporarily unlock scroll for tutorial animation
         isScrollLockedRef.current = false;
@@ -1245,10 +1177,7 @@ const Profile = () => {
             </span>
             <div className="flex gap-2">
               <Button
-                onClick={() => {
-                  console.log('Prapa clicked, current step:', tutorialStep);
-                  previousTutorialStep();
-                }}
+                onClick={previousTutorialStep}
                 variant="outline"
                 size="sm"
                 disabled={tutorialStep === 0 || isTransitioning}
@@ -1257,12 +1186,9 @@ const Profile = () => {
               </Button>
               <Button
                 onClick={() => {
-                  console.log('Button clicked, current step:', tutorialStep, 'total steps:', allTutorialSteps.length);
                   if (tutorialStep === allTutorialSteps.length - 1) {
-                    console.log('Closing tutorial');
                     closeTutorial();
                   } else {
-                    console.log('Going to next step');
                     nextTutorialStep();
                   }
                 }}

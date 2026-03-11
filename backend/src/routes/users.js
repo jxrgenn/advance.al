@@ -175,7 +175,6 @@ router.get('/profile', authenticate, async (req, res) => {
 // @access  Private
 router.put('/profile', authenticate, async (req, res) => {
   try {
-    console.log('Profile update request body:', JSON.stringify(req.body, null, 2));
     const user = await User.findById(req.user._id);
 
     if (!user) {
@@ -199,7 +198,6 @@ router.put('/profile', authenticate, async (req, res) => {
     await Promise.all(validation.map(validator => validator.run(req)));
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.log('Validation errors:', errors.array());
       return res.status(400).json({
         success: false,
         message: 'Gabime në validim',
@@ -246,8 +244,6 @@ router.put('/profile', authenticate, async (req, res) => {
             user.profile.employerProfile[key] = employerProfile[key];
           }
         });
-        console.log('Verified employer: Only allowed fields updated:', allowedFields);
-        console.log('Attempted to update:', Object.keys(employerProfile));
       } else {
         // Unverified employers can update most fields
         user.profile.employerProfile = {
@@ -261,7 +257,6 @@ router.put('/profile', authenticate, async (req, res) => {
     }
 
     await user.save();
-    console.log('User after save:', JSON.stringify(user.toObject(), null, 2));
 
     // Regenerate embedding if jobseeker updated semantically relevant fields (async, non-blocking)
     if (user.userType === 'jobseeker' && jobSeekerProfile) {
@@ -271,7 +266,6 @@ router.put('/profile', authenticate, async (req, res) => {
         setImmediate(async () => {
           try {
             await userEmbeddingService.generateJobSeekerEmbedding(user._id);
-            console.log(`🧠 Embedding regenerated for jobseeker ${user._id}`);
           } catch (error) {
             console.error('Error regenerating jobseeker embedding:', error);
           }
@@ -355,16 +349,33 @@ router.get('/public-profile/:id', authenticate, requireEmployer, async (req, res
 });
 
 // @route   DELETE /api/users/account
-// @desc    Delete user account (soft delete)
+// @desc    Delete user account (soft delete) — requires password confirmation
 // @access  Private
 router.delete('/account', authenticate, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Fjalëkalimi është i detyrueshëm për fshirjen e llogarisë'
+      });
+    }
+
+    const user = await User.findById(req.user._id).select('+password');
 
     if (!user) {
       return res.status(404).json({
         success: false,
         message: 'Përdoruesi nuk u gjet'
+      });
+    }
+
+    const isPasswordValid = await user.comparePassword(password);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Fjalëkalimi i gabuar'
       });
     }
 
@@ -745,6 +756,48 @@ router.post('/education', authenticate, requireJobSeeker, [
     res.status(500).json({
       success: false,
       message: 'Gabim në shtimin e arsimimit'
+    });
+  }
+});
+
+// @route   POST /api/users/saved-jobs/check-bulk
+// @desc    Check saved status for multiple jobs at once (avoids N+1 API calls)
+// @access  Private (Job Seeker only)
+router.post('/saved-jobs/check-bulk', authenticate, requireJobSeeker, async (req, res) => {
+  try {
+    const { jobIds } = req.body;
+
+    if (!Array.isArray(jobIds) || jobIds.length === 0) {
+      return res.json({ success: true, data: { savedMap: {} } });
+    }
+
+    // Limit to 50 IDs per request
+    const limitedIds = jobIds.slice(0, 50);
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Përdoruesi nuk u gjet'
+      });
+    }
+
+    const savedSet = new Set(user.savedJobs.map(id => id.toString()));
+    const savedMap = {};
+    for (const id of limitedIds) {
+      savedMap[id] = savedSet.has(id);
+    }
+
+    res.json({
+      success: true,
+      data: { savedMap }
+    });
+
+  } catch (error) {
+    console.error('Bulk check saved jobs error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Gabim në kontrollimin e punëve të ruajtura'
     });
   }
 });

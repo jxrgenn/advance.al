@@ -114,10 +114,8 @@ const CompaniesPageSimple = () => {
             website: company.website,
             logo: company.logo
           }));
-          console.log('✅ LOADED REAL COMPANIES:', transformedCompanies.map(c => ({ name: c.name, logo: c.logo })));
           setCompanies(transformedCompanies);
         } else {
-          console.log('⚠️ NO REAL COMPANIES FOUND - USING MOCK DATA');
           // Use mock data if no real companies found
           setCompanies(mockCompanies);
         }
@@ -245,7 +243,6 @@ const CompaniesPageSimple = () => {
                             alt={`${company.name} logo`}
                             className="max-w-full max-h-full object-contain rounded-lg"
                             onError={(e) => {
-                              console.log('Image failed to load:', company.logo);
                               // Fallback to Building icon if image fails to load
                               const target = e.target as HTMLImageElement;
                               const container = target.parentElement;

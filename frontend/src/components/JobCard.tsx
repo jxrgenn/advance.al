@@ -1,6 +1,5 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { MapPin, Euro, Building, ArrowRight, CheckCircle, Bookmark, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Job, usersApi } from "@/lib/api";
@@ -14,25 +13,28 @@ interface JobCardProps {
   onApply?: (jobId: string) => void;
   hasApplied?: boolean;
   isRecommended?: boolean;
+  initialSaved?: boolean;
+  compact?: boolean;
 }
 
-const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false }: JobCardProps) => {
+const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, initialSaved }: JobCardProps) => {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const { toast } = useToast();
   const { isJobRecentlyViewed } = useRecentlyViewed();
-  const [isSaved, setIsSaved] = useState(false);
+  const [isSaved, setIsSaved] = useState(initialSaved ?? false);
   const [isLoading, setIsLoading] = useState(false);
 
   // Check if this job has been viewed
   const isViewed = isJobRecentlyViewed(job._id);
-  
+
   const handleCardClick = () => {
     navigate(`/jobs/${job._id}`);
   };
 
-  // Check if job is saved when component mounts or user changes
+  // Only check individually if initialSaved was not provided by parent
   useEffect(() => {
+    if (initialSaved !== undefined) return;
     const checkIfSaved = async () => {
       if (isAuthenticated && user?.userType === 'jobseeker') {
         try {
@@ -40,8 +42,8 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false }: Jo
           if (response.success && response.data) {
             setIsSaved(response.data.isSaved);
           }
-        } catch (error) {
-          console.error('Error checking if job is saved:', error);
+        } catch {
+          // Silently ignore — saved status is non-critical
         }
       } else {
         setIsSaved(false);
@@ -49,7 +51,7 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false }: Jo
     };
 
     checkIfSaved();
-  }, [job._id, isAuthenticated, user]);
+  }, [job._id, isAuthenticated, user, initialSaved]);
 
   const handleSaveToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -118,31 +120,21 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false }: Jo
       onClick={handleCardClick}
     >
       <CardContent className="p-4 sm:p-6 md:p-8">
-        {/* Tags positioned at top right corner on desktop */}
-        <div className="absolute top-2 right-2 sm:top-4 sm:right-4 hidden sm:flex items-center gap-1">
-          <Badge variant="outline" className="text-xs px-2 py-1 bg-background/80 backdrop-blur-sm border-primary/20 text-foreground font-medium">
-            {job.jobType}
-          </Badge>
-        </div>
-
         {/* Main Layout: Content Left, Logo Right */}
         <div className="flex items-start gap-3 sm:gap-4 md:gap-6 min-h-[100px] sm:min-h-[120px]">
           {/* Left Side: Job Information (4 rows) */}
           <div className="flex-1 min-w-0 space-y-2 sm:space-y-3">
 
-            {/* Row 1: Job Title and Badge */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-              <div className="flex-1 min-w-0">
-                <h3 className="text-base sm:text-lg md:text-xl font-bold text-foreground group-hover:text-primary transition-colors line-clamp-2">
-                  {job.title}
-                </h3>
-              </div>
-              {/* Badge shown inline on mobile, hidden on desktop (desktop shows it in top right) */}
-              <div className="flex sm:hidden justify-center flex-shrink-0">
-                <Badge variant="outline" className="text-xs px-2 py-1 bg-background/80 backdrop-blur-sm border-primary/20 text-foreground font-medium whitespace-nowrap">
+            {/* Row 1: Job Title */}
+            <div className="flex flex-col gap-1">
+              <h3 className="text-base sm:text-lg md:text-xl font-bold text-foreground group-hover:text-primary transition-colors line-clamp-2">
+                {job.title}
+              </h3>
+              {job.jobType && (
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   {job.jobType}
-                </Badge>
-              </div>
+                </span>
+              )}
             </div>
 
             {/* Row 2: Company Name + Verification */}

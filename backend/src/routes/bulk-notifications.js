@@ -100,8 +100,6 @@ router.post('/', authenticate, requireAdmin, bulkNotificationLimit, bulkNotifica
       scheduledFor
     } = req.body;
 
-    console.log('📨 Creating bulk notification:', { title, targetAudience, deliveryChannels });
-
     // Create bulk notification record
     const bulkNotification = new BulkNotification({
       title,
@@ -129,7 +127,6 @@ router.post('/', authenticate, requireAdmin, bulkNotificationLimit, bulkNotifica
 
     // Get target users
     const targetUsers = await bulkNotification.getTargetUsers();
-    console.log(`🎯 Found ${targetUsers.length} target users for audience: ${targetAudience}`);
 
     if (targetUsers.length === 0) {
       await bulkNotification.markAsFailed('No target users found');
@@ -176,8 +173,6 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
       targetAudience,
       type
     } = req.query;
-
-    console.log('📋 Fetching bulk notification history:', { page, limit, status, targetAudience, type });
 
     const options = {
       page: parseInt(page),
@@ -338,8 +333,6 @@ router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
 // Background processing function for notifications
 async function processNotifications(bulkNotification, targetUsers) {
   try {
-    console.log(`🔄 Processing ${targetUsers.length} notifications for bulk notification ${bulkNotification._id}`);
-
     let sentCount = 0;
     let deliveredCount = 0;
     let emailsSent = 0;
@@ -408,12 +401,10 @@ async function processNotifications(bulkNotification, targetUsers) {
         emailsFailed
       });
 
-      console.log(`📊 Processed batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(targetUsers.length / batchSize)}`);
     }
 
     // Mark as completed
     await bulkNotification.markAsSent();
-    console.log(`✅ Bulk notification ${bulkNotification._id} completed successfully`);
 
   } catch (error) {
     console.error('❌ Error in background processing:', error);

@@ -93,12 +93,9 @@ router.post('/campaigns', authenticate, requireAdmin, businessControlLimit, camp
     const campaign = new BusinessCampaign(campaignData);
     await campaign.save();
 
-    console.log(`📢 New campaign created: ${campaign.name} by ${req.user.email}`);
-
     // If campaign should start immediately, activate it
     if (new Date(campaign.schedule.startDate) <= new Date() && campaign.schedule.autoActivate) {
       await campaign.activate();
-      console.log(`⚡ Campaign ${campaign.name} activated automatically`);
     }
 
     res.status(201).json({
@@ -195,8 +192,6 @@ router.put('/campaigns/:id', authenticate, requireAdmin, businessControlLimit, a
     campaign.lastModifiedBy = req.user._id;
     await campaign.save();
 
-    console.log(`📝 Campaign ${campaign.name} updated by ${req.user.email}`);
-
     res.json({
       success: true,
       message: 'Kampanja u përditësua me sukses',
@@ -229,8 +224,6 @@ router.post('/campaigns/:id/activate', authenticate, requireAdmin, async (req, r
 
     await campaign.activate();
 
-    console.log(`⚡ Campaign ${campaign.name} activated by ${req.user.email}`);
-
     res.json({
       success: true,
       message: 'Kampanja u aktivizua me sukses',
@@ -262,8 +255,6 @@ router.post('/campaigns/:id/pause', authenticate, requireAdmin, async (req, res)
     }
 
     await campaign.pause(req.user._id);
-
-    console.log(`⏸️ Campaign ${campaign.name} paused by ${req.user.email}`);
 
     res.json({
       success: true,
@@ -321,8 +312,6 @@ router.post('/pricing-rules', authenticate, requireAdmin, businessControlLimit, 
 
     const rule = new PricingRule(ruleData);
     await rule.save();
-
-    console.log(`💰 New pricing rule created: ${rule.name} by ${req.user.email}`);
 
     res.status(201).json({
       success: true,
@@ -416,8 +405,6 @@ router.put('/pricing-rules/:id', authenticate, requireAdmin, businessControlLimi
     rule.lastModifiedBy = req.user._id;
     await rule.save();
 
-    console.log(`💰 Pricing rule ${rule.name} updated by ${req.user.email}`);
-
     res.json({
       success: true,
       message: 'Rregulla e çmimit u përditësua me sukses',
@@ -452,8 +439,6 @@ router.post('/pricing-rules/:id/toggle', authenticate, requireAdmin, async (req,
     rule.lastModifiedBy = req.user._id;
     await rule.save();
 
-    console.log(`💰 Pricing rule ${rule.name} ${rule.isActive ? 'activated' : 'deactivated'} by ${req.user.email}`);
-
     res.json({
       success: true,
       message: `Rregulla e çmimit u ${rule.isActive ? 'aktivizua' : 'çaktivizua'} me sukses`,
@@ -478,8 +463,6 @@ router.post('/pricing-rules/:id/toggle', authenticate, requireAdmin, async (req,
 router.get('/analytics/dashboard', authenticate, requireAdmin, async (req, res) => {
   try {
     const { period = 'today' } = req.query;
-
-    console.log(`📊 Fetching business dashboard data for period: ${period}`);
 
     // Get revenue analytics summary
     const dashboardSummary = await RevenueAnalytics.getDashboardSummary({ period });
@@ -528,8 +511,6 @@ router.get('/analytics/revenue', authenticate, requireAdmin, async (req, res) =>
       granularity = 'daily' // daily, weekly, monthly
     } = req.query;
 
-    console.log(`💰 Fetching revenue analytics for ${days} days`);
-
     const revenueTrends = await RevenueAnalytics.getRevenueTrends({ days: parseInt(days) });
     const businessIntelligence = await RevenueAnalytics.calculateBusinessIntelligence({ days: parseInt(days) });
 
@@ -570,8 +551,6 @@ router.get('/analytics/revenue', authenticate, requireAdmin, async (req, res) =>
 // @access  Private (Admins only)
 router.post('/analytics/update', authenticate, requireAdmin, async (req, res) => {
   try {
-    console.log(`🔄 Manual analytics update triggered by ${req.user.email}`);
-
     // Update today's analytics
     const today = await RevenueAnalytics.getOrCreateDaily();
 
@@ -604,8 +583,6 @@ router.post('/analytics/update', authenticate, requireAdmin, async (req, res) =>
       averageJobPrice: todayJobs > 0 ? revenue / todayJobs : 0
     });
 
-    console.log(`✅ Analytics updated: ${todayJobs} jobs, €${revenue} revenue, ${newEmployers} new employers`);
-
     res.json({
       success: true,
       message: 'Analizat u përditësuan me sukses',
@@ -634,12 +611,9 @@ router.post('/platform/emergency', authenticate, requireAdmin, async (req, res) 
   try {
     const { action, reason } = req.body;
 
-    console.log(`🚨 EMERGENCY ACTION: ${action} by ${req.user.email} - Reason: ${reason}`);
-
     switch (action) {
       case 'freeze_posting':
         // This would integrate with a platform settings system
-        console.log('🛑 Job posting frozen');
         break;
 
       case 'pause_all_campaigns':
@@ -647,7 +621,6 @@ router.post('/platform/emergency', authenticate, requireAdmin, async (req, res) 
           { isActive: true },
           { isActive: false, status: 'paused', lastModifiedBy: req.user._id }
         );
-        console.log('⏸️ All campaigns paused');
         break;
 
       case 'reset_pricing':
@@ -655,7 +628,6 @@ router.post('/platform/emergency', authenticate, requireAdmin, async (req, res) 
           { isActive: true },
           { isActive: false, lastModifiedBy: req.user._id }
         );
-        console.log('💰 All pricing rules deactivated');
         break;
 
       case 'reactivate_campaigns':
@@ -663,7 +635,6 @@ router.post('/platform/emergency', authenticate, requireAdmin, async (req, res) 
           { status: 'paused' },
           { isActive: true, status: 'active', lastModifiedBy: req.user._id }
         );
-        console.log('🔄 All paused campaigns reactivated');
         break;
 
       default:
@@ -773,8 +744,6 @@ router.post('/whitelist/:employerId', authenticate, requireAdmin, [
     employer.freePostingGrantedAt = new Date();
     await employer.save();
 
-    console.log(`🆓 Employer ${employer.email} added to free posting whitelist by ${req.user.email}`);
-
     res.json({
       success: true,
       message: 'Punëdhënësi u shtua në listën e privilegjuar',
@@ -823,8 +792,6 @@ router.delete('/whitelist/:employerId', authenticate, requireAdmin, async (req, 
     employer.freePostingGrantedBy = null;
     employer.freePostingGrantedAt = null;
     await employer.save();
-
-    console.log(`❌ Employer ${employer.email} removed from free posting whitelist by ${req.user.email}`);
 
     res.json({
       success: true,

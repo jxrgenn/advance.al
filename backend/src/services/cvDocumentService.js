@@ -377,7 +377,6 @@ export async function generateCVDocument(cvData, language = 'sq') {
   });
 
   const buffer = await Packer.toBuffer(doc);
-  console.log(`✅ CV document generated successfully (${buffer.length} bytes)`);
   return buffer;
 }
 

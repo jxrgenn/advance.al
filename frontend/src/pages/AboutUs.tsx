@@ -5,6 +5,7 @@ import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import RotatingContact from "@/components/RotatingContact";
 import AdvanceLanding from "@/components/about_us_actual_landing";
+import ScrollToTopButton from "@/components/ScrollToTopButton";
 import { useEffect, useState, useRef } from "react";
 import {
   Users,
@@ -384,70 +385,10 @@ const AboutUs = () => {
         </div>
       </section>
 
-      {/* Albanian Market Focus */}
-      <section className="py-16">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              E Krijuar Specifikisht për Shqipërinë
-            </h2>
-            <p className="text-lg md:text-xl text-muted-foreground max-w-3xl mx-auto">
-              Ne e dimë tregun shqiptar më mirë se kushdo. Platforma jonë është e përshtatur
-              100% për nevojat dhe kulturën e biznesit shqiptar.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-8 items-center">
-            <div>
-              <div className="space-y-6">
-                <div className="flex items-center space-x-4">
-                  <MapPin className="h-6 w-6 text-primary" />
-                  <div>
-                    <h4 className="font-semibold">Të Gjitha Qytetet Shqiptare</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Nga Shkodra në Sarandë, kemi punë në çdo qytet të Shqipërisë
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-4">
-                  <Users className="h-6 w-6 text-primary" />
-                  <div>
-                    <h4 className="font-semibold">Komuniteti Shqiptar</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Krijoni lidhje me profesionistë të tjerë shqiptarë
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-4">
-                  <Building className="h-6 w-6 text-primary" />
-                  <div>
-                    <h4 className="font-semibold">Biznese Lokale</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Mbështesim rritjen e bizneseve shqiptare
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-br from-red-500/10 via-red-600/5 to-background p-8 rounded-xl border-2">
-              <div className="text-center space-y-4">
-                <div className="text-6xl">🇦🇱</div>
-                <h3 className="text-2xl font-bold">Made in Albania</h3>
-                <p className="text-muted-foreground">
-                  Prej shqiptarësh, për shqiptarë. Krenohemi që jemi të parët që
-                  sjellin teknologjinë moderne në tregun e punës në Shqipëri.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* Contact Information - New Component */}
       <RotatingContact />
+
+      <ScrollToTopButton />
 
       {/* Call to Action */}
       <section className="py-16 bg-primary text-primary-foreground">

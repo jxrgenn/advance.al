@@ -733,12 +733,8 @@ router.post('/admin/:id/reopen',
         });
       }
 
-      console.log('About to reopen report:', report._id, 'with admin:', req.user._id);
-
       // Reopen the report
       await report.reopen(req.user._id, reason);
-
-      console.log('Report reopened successfully');
 
       res.json({
         success: true,

@@ -8,7 +8,6 @@ const router = express.Router();
 // @desc    Get all companies (employers)
 // @access  Public
 router.get('/', optionalAuth, async (req, res) => {
-  console.log('🚨🚨🚨 BACKEND COMPANIES ROUTE HIT AT', new Date().toISOString(), '🚨🚨🚨');
   try {
     const {
       search = '',
@@ -103,15 +102,10 @@ router.get('/', optionalAuth, async (req, res) => {
       { $limit: parseInt(limit) }
     ];
 
-    console.log('🏢 Companies query:', JSON.stringify(matchQuery, null, 2));
-    console.log('🔍 Companies pipeline:', JSON.stringify(pipeline, null, 2));
-
     const companies = await User.aggregate(pipeline);
-    console.log('📊 Found companies:', companies.length);
 
     // Get total count for pagination
     const totalCompanies = await User.countDocuments(matchQuery);
-    console.log('📈 Total companies count:', totalCompanies);
     const totalPages = Math.ceil(totalCompanies / parseInt(limit));
 
     // Format response

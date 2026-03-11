@@ -58,7 +58,6 @@ class AlertService {
     const lastAlert = this.lastAlerts[type] || 0;
 
     if (now - lastAlert < this.alertCooldown) {
-      console.log(`[ALERT] Skipping ${type} alert (cooldown)`);
       return;
     }
 
@@ -72,7 +71,6 @@ class AlertService {
       });
 
       this.lastAlerts[type] = now;
-      console.log(`[ALERT] Sent ${type} alert to ${this.emailTo}`);
     } catch (error) {
       console.error(`[ALERT] Failed to send ${type} alert:`, error.message);
     }

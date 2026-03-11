@@ -70,11 +70,11 @@ const PricingSection: React.FC<PricingSectionProps> = ({
 }) => {
   return (
     <div className={`w-full ${className}`}>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl mx-auto">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-5xl mx-auto">
         {plans.map((plan, index) => (
           <Card
             key={index}
-            className={`relative transition-all duration-200 hover:shadow-lg ${
+            className={`relative transition-all duration-200 hover:shadow-lg max-w-sm mx-auto ${
               plan.highlighted
                 ? 'border-2 border-green-400 shadow-md bg-gradient-to-br from-green-50/30 to-white'
                 : 'border hover:border-gray-300'
@@ -88,8 +88,8 @@ const PricingSection: React.FC<PricingSectionProps> = ({
               </div>
             )}
 
-            <CardHeader className="pb-4 pt-8">
-              <CardTitle className="text-2xl font-bold text-gray-900">
+            <CardHeader className="pb-3 pt-6">
+              <CardTitle className="text-xl font-semibold text-gray-900">
                 {plan.name}
               </CardTitle>
               <CardDescription className="text-sm text-gray-600">
@@ -98,7 +98,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({
 
               <div className="mt-4">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold text-gray-900">
+                  <span className="text-2xl font-bold text-gray-900">
                     {plan.serviceFee}
                   </span>
                   <span className="text-sm text-gray-600">
@@ -110,7 +110,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({
               <Button
                 variant={plan.buttonVariant}
                 size="lg"
-                className={`w-full mt-6 ${
+                className={`w-full mt-5 ${
                   plan.highlighted
                     ? 'bg-green-600 hover:bg-green-700 text-white'
                     : 'border-green-600 text-green-700 hover:bg-green-50'
@@ -120,7 +120,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({
               </Button>
             </CardHeader>
 
-            <CardContent className="pt-6 border-t">
+            <CardContent className="pt-4 border-t">
               <h4 className="font-semibold text-sm text-gray-900 mb-4">
                 {index === 0 ? `Plani ${plan.name} përfshin:` : `${plan.features[0]}`}
               </h4>

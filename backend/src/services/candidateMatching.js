@@ -264,7 +264,6 @@ class CandidateMatchingService {
 
       // If we have enough cached matches, return them
       if (cachedMatches.length >= limit) {
-        console.log(`✅ Found ${cachedMatches.length} cached matches for job ${jobId}`);
         return {
           success: true,
           fromCache: true,
@@ -273,7 +272,6 @@ class CandidateMatchingService {
       }
 
       // Cache miss or insufficient matches - recalculate
-      console.log(`🔄 Recalculating matches for job ${jobId}`);
 
       // Get job details
       const job = await Job.findById(jobId);
@@ -289,8 +287,6 @@ class CandidateMatchingService {
         status: 'active'
       })
       .select('email profile createdAt');
-
-      console.log(`📊 Found ${candidates.length} total job seekers`);
 
       // Calculate match scores for all candidates
       const matchResults = [];
@@ -328,8 +324,6 @@ class CandidateMatchingService {
 
       // Insert new matches
       await CandidateMatch.insertMany(matchDocuments);
-
-      console.log(`✅ Cached ${matchDocuments.length} new matches for job ${jobId}`);
 
       // Fetch newly created matches with populated data
       const newMatches = await CandidateMatch.find({ jobId })

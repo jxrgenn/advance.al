@@ -43,8 +43,6 @@ router.get('/', authenticate, async (req, res) => {
       unreadOnly = false
     } = req.query;
 
-    console.log(`📨 Fetching notifications for user: ${req.user._id}`);
-
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
     const notifications = await Notification.getUserNotifications(req.user._id, {
@@ -59,8 +57,6 @@ router.get('/', authenticate, async (req, res) => {
     });
 
     const unreadCount = await Notification.getUnreadCount(req.user._id);
-
-    console.log(`📊 Found ${notifications.length} notifications (${unreadCount} unread)`);
 
     const totalPages = Math.ceil(totalNotifications / parseInt(limit));
 
@@ -93,11 +89,7 @@ router.get('/', authenticate, async (req, res) => {
 // @access  Private
 router.get('/unread-count', authenticate, async (req, res) => {
   try {
-    console.log(`🔢 Getting unread count for user: ${req.user._id}`);
-    
     const unreadCount = await Notification.getUnreadCount(req.user._id);
-    
-    console.log(`📊 Unread notifications count: ${unreadCount}`);
 
     res.json({
       success: true,
@@ -118,8 +110,6 @@ router.get('/unread-count', authenticate, async (req, res) => {
 // @access  Private
 router.patch('/:id/read', authenticate, async (req, res) => {
   try {
-    console.log(`✅ Marking notification ${req.params.id} as read for user: ${req.user._id}`);
-
     const notification = await Notification.findOne({
       _id: req.params.id,
       userId: req.user._id
@@ -133,8 +123,6 @@ router.patch('/:id/read', authenticate, async (req, res) => {
     }
 
     await notification.markAsRead();
-
-    console.log(`✅ Notification marked as read successfully`);
 
     res.json({
       success: true,
@@ -155,11 +143,7 @@ router.patch('/:id/read', authenticate, async (req, res) => {
 // @access  Private
 router.patch('/mark-all-read', authenticate, async (req, res) => {
   try {
-    console.log(`✅ Marking all notifications as read for user: ${req.user._id}`);
-
     const result = await Notification.markAllAsReadForUser(req.user._id);
-
-    console.log(`✅ Marked ${result.modifiedCount} notifications as read`);
 
     res.json({
       success: true,
@@ -181,8 +165,6 @@ router.patch('/mark-all-read', authenticate, async (req, res) => {
 // @access  Private
 router.delete('/:id', authenticate, async (req, res) => {
   try {
-    console.log(`🗑️ Deleting notification ${req.params.id} for user: ${req.user._id}`);
-
     const result = await Notification.findOneAndDelete({
       _id: req.params.id,
       userId: req.user._id
@@ -194,8 +176,6 @@ router.delete('/:id', authenticate, async (req, res) => {
         message: 'Njoftimi nuk u gjet'
       });
     }
-
-    console.log(`✅ Notification deleted successfully`);
 
     res.json({
       success: true,

@@ -162,14 +162,12 @@ router.post('/', quickUserValidation, handleValidationErrors, async (req, res) =
     setImmediate(async () => {
       try {
         await resendEmailService.sendQuickUserWelcomeEmail(quickUser);
-        console.log(`📧 Welcome email sent to ${quickUser.email}`);
       } catch (error) {
         console.error('Error sending welcome email:', error);
       }
 
       try {
         await userEmbeddingService.generateQuickUserEmbedding(quickUser._id);
-        console.log(`🧠 Embedding generated for QuickUser ${quickUser._id}`);
       } catch (error) {
         console.error('Error generating QuickUser embedding:', error);
       }

@@ -182,7 +182,6 @@ router.get('/applied-jobs', authenticate, requireJobSeeker, async (req, res) => 
 // @access  Private (Job Seekers only)
 router.get('/my-applications', authenticate, requireJobSeeker, async (req, res) => {
   try {
-    console.log('Getting job seeker applications for user:', req.user._id);
     const {
       status = '',
       page = 1,
@@ -194,15 +193,7 @@ router.get('/my-applications', authenticate, requireJobSeeker, async (req, res) 
     const filters = {};
     if (status) filters.status = status;
 
-    console.log('Job seeker filters:', filters);
     const applications = await Application.getJobSeekerApplications(req.user._id, filters);
-    console.log('Found job seeker applications:', applications.length, applications.map(app => ({
-      id: app._id,
-      jobTitle: app.jobId?.title,
-      companyName: app.jobId?.employerId?.profile?.employerProfile?.companyName,
-      status: app.status,
-      appliedAt: app.appliedAt
-    })));
 
     // Apply sorting and pagination
     const sortOptions = {};
@@ -338,7 +329,6 @@ router.get('/job/:jobId', authenticate, requireEmployer, async (req, res) => {
 // @access  Private (Employers only)
 router.get('/employer/all', authenticate, requireEmployer, async (req, res) => {
   try {
-    console.log('Getting employer applications for user:', req.user._id);
     const {
       status = '',
       jobId = '',
@@ -352,15 +342,7 @@ router.get('/employer/all', authenticate, requireEmployer, async (req, res) => {
     if (status) filters.status = status;
     if (jobId) filters.jobId = jobId;
 
-    console.log('Filters:', filters);
     const applications = await Application.getEmployerApplications(req.user._id, filters);
-    console.log('Found applications:', applications.length, applications.map(app => ({
-      id: app._id,
-      jobTitle: app.jobId?.title,
-      jobSeekerName: app.jobSeekerId?.profile?.firstName + ' ' + app.jobSeekerId?.profile?.lastName,
-      status: app.status,
-      appliedAt: app.appliedAt
-    })));
 
     // Apply sorting and pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -597,7 +579,6 @@ router.post('/:id/message', authenticate, async (req, res) => {
           type
         );
 
-        console.log(`📧 Application message email sent to ${recipient.email}`);
       } catch (error) {
         console.error('Error sending application message email:', error);
       }

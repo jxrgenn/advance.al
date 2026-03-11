@@ -300,7 +300,6 @@ reportSchema.methods.resolve = async function(action, reason, adminId, duration 
         try {
           const resendEmailService = await import('../lib/resendEmailService.js');
           await resendEmailService.default.sendAccountActionEmail(reportedUser, action, reason, duration);
-          console.log(`📧 Account action email sent to ${reportedUser.email}`);
         } catch (error) {
           console.error('Error sending account action email:', error);
         }

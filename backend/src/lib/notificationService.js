@@ -315,22 +315,16 @@ advance.al - Platforma #1 e Punës në Shqipëri
   // Also notifies full jobseeker accounts that have opted into alerts (semantic only).
   async notifyMatchingUsers(job) {
     try {
-      console.log(`🔍 Finding users to notify for job: ${job.title}`);
-
       // ── 1. Semantic matching (QuickUsers + full jobseekers) ──────────────────
       const { quickUsers: semanticQuickUsers, jobSeekers: semanticJobSeekers } =
         await userEmbeddingService.findSemanticMatchesForJob(job);
-
-      console.log(`🧠 Semantic matches: ${semanticQuickUsers.length} QuickUsers, ${semanticJobSeekers.length} jobseekers`);
 
       // ── 2. Keyword fallback for QuickUsers (when job has no embedding) ───────
       let keywordQuickUsers = [];
       const jobHasEmbedding = job.embedding?.vector?.length === 1536;
 
       if (!jobHasEmbedding) {
-        console.log('⚠️  Job has no embedding — falling back to keyword matching for QuickUsers');
         keywordQuickUsers = await QuickUser.findMatchesForJob(job);
-        console.log(`🔑 Keyword matches: ${keywordQuickUsers.length} QuickUsers`);
       }
 
       // ── 3. Merge & deduplicate QuickUser lists ───────────────────────────────
@@ -344,7 +338,6 @@ advance.al - Platforma #1 e Punës në Shqipëri
       const allJobSeekers = semanticJobSeekers.map(e => e.user);
 
       const totalTargets = allQuickUsers.length + allJobSeekers.length;
-      console.log(`📧 Total notification targets: ${totalTargets} (${allQuickUsers.length} QuickUsers + ${allJobSeekers.length} jobseekers)`);
 
       if (totalTargets === 0) {
         return {
@@ -402,8 +395,6 @@ advance.al - Platforma #1 e Punës në Shqipëri
           await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
-
-      console.log(`✅ Notification process completed: ${successCount} sent, ${errorCount} errors`);
 
       return {
         success: true,
@@ -538,8 +529,6 @@ Ekipi i advance.al
   // Daily digest of new jobs for users who prefer daily notifications
   async sendDailyDigest() {
     try {
-      console.log('📅 Starting daily digest process...');
-
       // Find users who prefer daily notifications and haven't been notified in the last 20 hours
       const now = new Date();
       const twentyHoursAgo = new Date(now.getTime() - 20 * 60 * 60 * 1000);
@@ -554,14 +543,11 @@ Ekipi i advance.al
         ]
       });
 
-      console.log(`📧 Found ${dailyUsers.length} users for daily digest`);
-
       // For daily digest, we would need to fetch jobs from the last 24 hours
       // This is a simplified version - in production, you'd fetch actual recent jobs
       const recentJobs = []; // await Job.find({ createdAt: { $gte: yesterday } });
 
       if (recentJobs.length === 0) {
-        console.log('📭 No new jobs for daily digest');
         return { success: true, message: 'No new jobs to digest' };
       }
 
@@ -583,8 +569,6 @@ Ekipi i advance.al
         }
       }
 
-      console.log(`✅ Daily digest completed: ${successCount} sent`);
-
       return {
         success: true,
         message: `Daily digest sent to ${successCount} users`,
@@ -600,8 +584,6 @@ Ekipi i advance.al
   // Weekly digest for users who prefer weekly notifications
   async sendWeeklyDigest() {
     try {
-      console.log('📅 Starting weekly digest process...');
-
       // Find users who prefer weekly notifications and haven't been notified in the last 6 days
       const now = new Date();
       const sixDaysAgo = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
@@ -615,8 +597,6 @@ Ekipi i advance.al
           { lastNotifiedAt: { $lt: sixDaysAgo } }
         ]
       });
-
-      console.log(`📧 Found ${weeklyUsers.length} users for weekly digest`);
 
       // Similar to daily digest but for weekly timeframe
       // Implementation would be similar to daily digest

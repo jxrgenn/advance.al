@@ -188,10 +188,6 @@ Now, read the user's input 3 times, understand their intent deeply, and craft an
     // Ensure language is set correctly
     cvData.language = targetLanguage;
 
-    console.log('✅ OpenAI CV extraction successful');
-    console.log('📊 Token usage:', completion.usage);
-    console.log('🌍 Target language:', targetLanguage);
-
     return {
       success: true,
       data: cvData,

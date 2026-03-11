@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
+import ScrollToTopButton from "@/components/ScrollToTopButton";
 import { Link } from "react-router-dom";
 import {
   Building,
@@ -141,11 +142,11 @@ const CompaniesPage = () => {
     <div className="min-h-screen bg-background">
       <Navigation />
 
-      {/* Header Section */}
-      <section className="bg-gradient-to-br from-primary/10 via-primary/5 to-background py-16">
+      {/* Header + Search and Filters */}
+      <section className="bg-gradient-to-br from-primary/10 via-primary/5 to-background py-10">
         <div className="container mx-auto px-4">
-          <div className="text-center space-y-6 mb-12">
-            <Badge variant="secondary" className="text-lg px-6 py-2 mb-4">
+          <div className="text-center space-y-4 mb-6">
+            <Badge variant="secondary" className="text-lg px-6 py-2 mb-2">
               advance.al
             </Badge>
             <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight">
@@ -153,145 +154,135 @@ const CompaniesPage = () => {
               <br />
               <span className="text-primary">në advance.al</span>
             </h1>
-            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
+            <p className="text-lg md:text-xl text-muted-foreground max-w-3xl mx-auto">
               Zbuloni kompanitë më të mira në Shqipëri që po kërkojnë talente të reja.
               Të gjitha kompanitë janë të verifikuara dhe të besueshme.
             </p>
           </div>
 
-          {/* Statistics */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto">
-            <Card className="p-6 text-center bg-background/80 backdrop-blur">
-              <CardContent className="space-y-2 p-0">
-                <div className="text-3xl font-bold text-primary">{pagination.totalCompanies}</div>
-                <div className="text-sm text-muted-foreground">Kompani Aktive</div>
-              </CardContent>
-            </Card>
-            {/* <Card className="p-6 text-center bg-background/80 backdrop-blur">
-              <CardContent className="space-y-2 p-0">
-                <div className="text-3xl font-bold text-primary">
-                  {companies.reduce((sum, company) => sum + company.activeJobs, 0)}
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)] gap-8 items-start">
+            {/* Search and Filters */}
+            <Card className="p-5 md:p-6">
+              <div className="space-y-5">
+                {/* Search Bar */}
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <Input
+                    placeholder="Kërko kompani sipas emrit ose përshkrimit..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-12 text-base md:text-lg py-4"
+                  />
                 </div>
-                <div className="text-sm text-muted-foreground">Vende Pune</div>
-              </CardContent>
-            </Card> */}
-            <Card className="p-6 text-center bg-background/80 backdrop-blur">
-              <CardContent className="space-y-2 p-0">
-                <div className="text-3xl font-bold text-primary">
-                  {companies.filter(c => c.verified).length}
+
+                {/* Filters */}
+                <div className="grid md:grid-cols-3 gap-4">
+                  {/* <Select onValueChange={setSelectedIndustry} value={selectedIndustry}>
+                    <SelectTrigger className="text-base p-4">
+                      <SelectValue placeholder="Të gjitha industritë" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Të gjitha industritë</SelectItem>
+                      {industries.map((industry) => (
+                        <SelectItem key={industry} value={industry}>{industry}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select> */}
+
+                  <Select onValueChange={setSelectedLocation} value={selectedLocation}>
+                    <SelectTrigger className="text-base py-3 px-3">
+                      <SelectValue placeholder="Të gjitha qytetet" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Të gjitha qytetet</SelectItem>
+                      {cities.map((city) => (
+                        <SelectItem key={city} value={city}>{city}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select onValueChange={setSelectedSize} value={selectedSize}>
+                    <SelectTrigger className="text-base py-3 px-3">
+                      <SelectValue placeholder="Të gjitha madhësitë" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Të gjitha madhësitë</SelectItem>
+                      {companySizes.map((size) => (
+                        <SelectItem key={size} value={size}>{size} punonjës</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Button
+                    variant="outline"
+                    onClick={clearFilters}
+                    className="text-base py-3 px-3"
+                  >
+                    <Filter className="mr-2 h-4 w-4" />
+                    Pastro Filtrat
+                  </Button>
                 </div>
-                <div className="text-sm text-muted-foreground">Të Verifikuara</div>
-              </CardContent>
+
+                {/* Active Filters */}
+                {(searchQuery || selectedIndustry || selectedLocation || selectedSize) && (
+                  <div className="flex flex-wrap gap-2">
+                    <span className="text-sm text-muted-foreground">Filtrat aktive:</span>
+                    {searchQuery && (
+                      <Badge variant="secondary" className="cursor-pointer" onClick={() => setSearchQuery("")}>
+                        Kërkim: "{searchQuery}" ×
+                      </Badge>
+                    )}
+                    {selectedIndustry && (
+                      <Badge variant="secondary" className="cursor-pointer" onClick={() => setSelectedIndustry("")}>
+                        {selectedIndustry} ×
+                      </Badge>
+                    )}
+                    {selectedLocation && (
+                      <Badge variant="secondary" className="cursor-pointer" onClick={() => setSelectedLocation("")}>
+                        {selectedLocation} ×
+                      </Badge>
+                    )}
+                    {selectedSize && (
+                      <Badge variant="secondary" className="cursor-pointer" onClick={() => setSelectedSize("")}>
+                        {selectedSize} punonjës ×
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </div>
             </Card>
-            <Card className="p-6 text-center bg-background/80 backdrop-blur">
-              <CardContent className="space-y-2 p-0">
-                <div className="text-3xl font-bold text-primary">
-                  {companies.length > 0 ? Math.round((companies.filter(c => c.verified).length / companies.length) * 100) : 0}%
-                </div>
-                <div className="text-sm text-muted-foreground">Të Verifikuara</div>
-              </CardContent>
-            </Card>
+
+            {/* Statistics */}
+            <div className="grid grid-cols-2 gap-4">
+              <Card className="p-5 text-center bg-background/80 backdrop-blur">
+                <CardContent className="space-y-1.5 p-0">
+                  <div className="text-2xl md:text-3xl font-bold text-primary">{pagination.totalCompanies}</div>
+                  <div className="text-xs md:text-sm text-muted-foreground">Kompani Aktive</div>
+                </CardContent>
+              </Card>
+              <Card className="p-5 text-center bg-background/80 backdrop-blur">
+                <CardContent className="space-y-1.5 p-0">
+                  <div className="text-2xl md:text-3xl font-bold text-primary">
+                    {companies.filter(c => c.verified).length}
+                  </div>
+                  <div className="text-xs md:text-sm text-muted-foreground">Të Verifikuara</div>
+                </CardContent>
+              </Card>
+              <Card className="p-5 text-center bg-background/80 backdrop-blur col-span-2">
+                <CardContent className="space-y-1.5 p-0">
+                  <div className="text-2xl md:text-3xl font-bold text-primary">
+                    {companies.length > 0 ? Math.round((companies.filter(c => c.verified).length / companies.length) * 100) : 0}%
+                  </div>
+                  <div className="text-xs md:text-sm text-muted-foreground">Përqindja e kompanive të verifikuara</div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Search and Filters */}
-      <section className="py-8 bg-muted/30">
-        <div className="container mx-auto px-4">
-          <Card className="p-6">
-            <div className="space-y-6">
-              {/* Search Bar */}
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                <Input
-                  placeholder="Kërko kompani sipas emrit ose përshkrimit..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-12 text-lg p-6"
-                />
-              </div>
-
-              {/* Filters */}
-              <div className="grid md:grid-cols-4 gap-4">
-                {/* <Select onValueChange={setSelectedIndustry} value={selectedIndustry}>
-                  <SelectTrigger className="text-base p-4">
-                    <SelectValue placeholder="Të gjitha industritë" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Të gjitha industritë</SelectItem>
-                    {industries.map((industry) => (
-                      <SelectItem key={industry} value={industry}>{industry}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select> */}
-
-                <Select onValueChange={setSelectedLocation} value={selectedLocation}>
-                  <SelectTrigger className="text-base p-4">
-                    <SelectValue placeholder="Të gjitha qytetet" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Të gjitha qytetet</SelectItem>
-                    {cities.map((city) => (
-                      <SelectItem key={city} value={city}>{city}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Select onValueChange={setSelectedSize} value={selectedSize}>
-                  <SelectTrigger className="text-base p-4">
-                    <SelectValue placeholder="Të gjitha madhësitë" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Të gjitha madhësitë</SelectItem>
-                    {companySizes.map((size) => (
-                      <SelectItem key={size} value={size}>{size} punonjës</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Button
-                  variant="outline"
-                  onClick={clearFilters}
-                  className="text-base p-4"
-                >
-                  <Filter className="mr-2 h-4 w-4" />
-                  Pastro Filtrat
-                </Button>
-              </div>
-
-              {/* Active Filters */}
-              {(searchQuery || selectedIndustry || selectedLocation || selectedSize) && (
-                <div className="flex flex-wrap gap-2">
-                  <span className="text-sm text-muted-foreground">Filtrat aktive:</span>
-                  {searchQuery && (
-                    <Badge variant="secondary" className="cursor-pointer" onClick={() => setSearchQuery("")}>
-                      Kërkim: "{searchQuery}" ×
-                    </Badge>
-                  )}
-                  {selectedIndustry && (
-                    <Badge variant="secondary" className="cursor-pointer" onClick={() => setSelectedIndustry("")}>
-                      {selectedIndustry} ×
-                    </Badge>
-                  )}
-                  {selectedLocation && (
-                    <Badge variant="secondary" className="cursor-pointer" onClick={() => setSelectedLocation("")}>
-                      {selectedLocation} ×
-                    </Badge>
-                  )}
-                  {selectedSize && (
-                    <Badge variant="secondary" className="cursor-pointer" onClick={() => setSelectedSize("")}>
-                      {selectedSize} punonjës ×
-                    </Badge>
-                  )}
-                </div>
-              )}
-            </div>
-          </Card>
-        </div>
-      </section>
-
       {/* Companies Grid */}
-      <section className="py-16">
+      <section className="py-14">
         <div className="container mx-auto px-4">
           {loading ? (
             <div className="flex items-center justify-center py-12">
@@ -556,6 +547,8 @@ const CompaniesPage = () => {
         </div>
       </section>
       
+      <ScrollToTopButton />
+
       <Footer />
     </div>
   );

@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
+import { mkdirSync } from 'fs';
+import path from 'path';
 import { connectDB } from './src/config/database.js';
 
 // Import routes (will create these next)
@@ -75,8 +77,9 @@ const corsOptions = {
       allowedOrigins.push(process.env.FRONTEND_URL);
     }
 
-    // Allow all Vercel preview deployment URLs (advance-al-*-username.vercel.app)
-    const isVercelPreview = /^https:\/\/advance-al[a-z0-9-]*\.vercel\.app$/.test(origin);
+    // Allow Vercel preview deployment URLs (advance-al-<hash>-<team>.vercel.app)
+    // Requires at least one dash-separated segment after project name to prevent spoofing
+    const isVercelPreview = /^https:\/\/advance-al(?:-frontend)?-[a-z0-9]+-[a-z0-9-]+\.vercel\.app$/.test(origin);
 
     if (allowedOrigins.indexOf(origin) !== -1 || isVercelPreview) {
       callback(null, true);
@@ -119,6 +122,9 @@ if (process.env.NODE_ENV === 'development') {
 // Body Parser Middleware
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// Ensure upload directories exist
+mkdirSync(path.join(process.cwd(), 'uploads', 'resumes'), { recursive: true });
 
 // Serve static files for uploads
 app.use('/uploads', express.static('./uploads'));
@@ -203,11 +209,14 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // Default error
+  // Default error - sanitize message in production
   const statusCode = err.statusCode || 500;
+  const clientMessage = process.env.NODE_ENV === 'production' && statusCode === 500
+    ? 'Ndodhi një gabim. Ju lutemi provoni përsëri.'
+    : err.message || 'Gabim i brendshëm i serverit';
   res.status(statusCode).json({
     success: false,
-    message: err.message || 'Gabim i brendshëm i serverit',
+    message: clientMessage,
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
 });

@@ -25,13 +25,11 @@ class EmailService {
       try {
         this.transporter = nodemailer.createTransport(emailConfig);
         this.isConfigured = true;
-        console.log('📧 Email service configured successfully');
       } catch (error) {
         console.error('❌ Email configuration error:', error);
         this.setupTestAccount();
       }
     } else {
-      console.log('⚠️ No email credentials found, using test account');
       this.setupTestAccount();
     }
   }
@@ -52,8 +50,6 @@ class EmailService {
       });
 
       this.isConfigured = true;
-      console.log('📧 Using Ethereal test account:', testAccount.user);
-      console.log('🔗 View emails at: https://ethereal.email');
     } catch (error) {
       console.error('❌ Failed to setup test email account:', error);
       this.isConfigured = false;
@@ -63,7 +59,6 @@ class EmailService {
   // Send email with retry logic
   async sendEmail(to, subject, htmlContent, textContent) {
     if (!this.isConfigured) {
-      console.log('📧 Email not configured, simulating send to:', to);
       return {
         success: true,
         messageId: `mock_${Date.now()}`,
@@ -90,11 +85,6 @@ class EmailService {
         previewUrl = nodemailer.getTestMessageUrl(info);
       }
 
-      console.log(`✅ Email sent to ${to}: ${info.messageId}`);
-      if (previewUrl) {
-        console.log(`🔗 Preview: ${previewUrl}`);
-      }
-
       return {
         success: true,
         messageId: info.messageId,
@@ -106,7 +96,6 @@ class EmailService {
 
       // Retry once
       try {
-        console.log('🔄 Retrying email send...');
         const retryInfo = await this.transporter.sendMail(mailOptions);
 
         let previewUrl = null;
@@ -114,7 +103,6 @@ class EmailService {
           previewUrl = nodemailer.getTestMessageUrl(retryInfo);
         }
 
-        console.log(`✅ Email sent on retry to ${to}: ${retryInfo.messageId}`);
         return {
           success: true,
           messageId: retryInfo.messageId,
@@ -139,7 +127,6 @@ class EmailService {
 
     // If Twilio is not configured, log and return mock success
     if (!accountSid || !authToken || !fromPhone) {
-      console.log(`📱 [SMS mock — Twilio not configured] To: ${to} | Message: ${message}`);
       return { success: true, messageId: `sms_mock_${Date.now()}` };
     }
 
@@ -154,7 +141,6 @@ class EmailService {
         to: to
       });
 
-      console.log(`✅ SMS sent to ${to}: ${result.sid}`);
       return { success: true, messageId: result.sid };
     } catch (error) {
       console.error(`❌ SMS send error for ${to}:`, error.message);
@@ -170,7 +156,6 @@ class EmailService {
 
     try {
       await this.transporter.verify();
-      console.log('✅ Email connection verified');
       return { success: true };
     } catch (error) {
       console.error('❌ Email verification failed:', error);

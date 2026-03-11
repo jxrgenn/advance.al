@@ -3,12 +3,23 @@ import { Job, User, Application } from '../models/index.js';
 
 const router = express.Router();
 
+// In-memory cache for public stats (avoids 6 DB queries per landing page load)
+let statsCache = null;
+let statsCacheExpiry = 0;
+const STATS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 // @route   GET /api/stats/public
 // @desc    Get public platform statistics for landing page
 // @access  Public
 router.get('/public', async (req, res) => {
   try {
-    console.log('📊 Fetching public platform statistics...');
+    // Return cached data if still valid
+    if (statsCache && Date.now() < statsCacheExpiry) {
+      return res.json({
+        success: true,
+        data: statsCache
+      });
+    }
 
     // Run all queries in parallel for better performance
     const [
@@ -24,8 +35,8 @@ router.get('/public', async (req, res) => {
       User.countDocuments({ userType: 'employer', isDeleted: false }),
       User.countDocuments({ userType: 'jobseeker', isDeleted: false }),
       Application.countDocuments({ withdrawn: false }),
-      Job.find({ 
-        isDeleted: false, 
+      Job.find({
+        isDeleted: false,
         status: 'active',
         expiresAt: { $gt: new Date() }
       })
@@ -53,14 +64,9 @@ router.get('/public', async (req, res) => {
       }))
     };
 
-    console.log('📈 Platform statistics:', {
-      totalJobs,
-      activeJobs,
-      totalCompanies,
-      totalJobSeekers,
-      totalApplications,
-      recentJobsCount: recentJobs.length
-    });
+    // Cache the result
+    statsCache = stats;
+    statsCacheExpiry = Date.now() + STATS_CACHE_TTL;
 
     res.json({
       success: true,
@@ -68,7 +74,7 @@ router.get('/public', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error fetching platform statistics:', error);
+    console.error('Error fetching platform statistics:', error);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e statistikave të platformës'

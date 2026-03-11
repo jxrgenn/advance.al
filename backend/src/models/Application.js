@@ -148,8 +148,6 @@ applicationSchema.methods.markAsViewed = function() {
 
 // Update application status
 applicationSchema.methods.updateStatus = async function(newStatus, notes = '') {
-  console.log(`🔄 Updating application status from "${this.status}" to "${newStatus}"`);
-  
   const oldStatus = this.status;
   this.status = newStatus;
   this.respondedAt = new Date();
@@ -165,7 +163,6 @@ applicationSchema.methods.updateStatus = async function(newStatus, notes = '') {
     try {
       const Notification = mongoose.model('Notification');
       await Notification.createApplicationStatusNotification(this, oldStatus, newStatus);
-      console.log(`✅ Notification created for status change: ${oldStatus} → ${newStatus}`);
     } catch (error) {
       console.error('❌ Error creating status change notification:', error);
       // Don't fail the status update if notification fails
@@ -242,8 +239,6 @@ applicationSchema.statics.getEmployerApplications = function(employerId, filters
     query.jobId = filters.jobId;
   }
   
-  console.log('Application query:', query);
-  
   return this.find(query)
     .populate('jobId', 'title location category employerId')
     .populate('jobSeekerId', 'profile.firstName profile.lastName profile.jobSeekerProfile profile.location email')
@@ -260,8 +255,6 @@ applicationSchema.statics.getJobSeekerApplications = function(jobSeekerId, filte
   if (filters.status) {
     query.status = filters.status;
   }
-  
-  console.log('Job seeker application query:', query);
   
   return this.find(query)
     .populate({

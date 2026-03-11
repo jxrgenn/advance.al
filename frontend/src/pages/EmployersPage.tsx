@@ -525,7 +525,7 @@ const EmployersPage = () => {
 
       // If there are validation errors preventing step advance, skip the form step change
       if (hasErrors && step.formStep > currentStep) {
-        console.warn(`Cannot advance to step ${step.formStep} due to validation errors:`, errors.errors);
+        // Cannot advance due to validation errors
         // Don't proceed with highlight
         return;
       } else {
@@ -539,7 +539,7 @@ const EmployersPage = () => {
     // NOW proceed with NEW smooth highlighting logic
     const element = document.querySelector(step.selector);
     if (!element) {
-      console.warn(`Tutorial element not found: ${step.selector}`);
+      // Tutorial element not found, skip
       return;
     }
 

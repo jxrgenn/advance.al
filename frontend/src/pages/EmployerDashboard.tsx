@@ -250,7 +250,6 @@ const EmployerDashboard = () => {
       if (jobsResponse.success && jobsResponse.data) {
         employerJobs = jobsResponse.data.jobs || [];
         setJobs(employerJobs);
-        console.log('Loaded jobs:', employerJobs.length, employerJobs);
       } else {
         console.error('Failed to load jobs:', jobsResponse);
       }
@@ -258,7 +257,6 @@ const EmployerDashboard = () => {
       if (applicationsResponse.success && applicationsResponse.data) {
         employerApplications = applicationsResponse.data.applications || [];
         setApplications(employerApplications);
-        console.log('Loaded applications:', employerApplications.length, employerApplications);
       } else {
         console.error('Failed to load applications:', applicationsResponse);
       }
@@ -267,14 +265,6 @@ const EmployerDashboard = () => {
       const activeJobs = employerJobs.filter(job => job.status === 'active').length;
       const totalViews = employerJobs.reduce((sum, job) => sum + (job.viewCount || 0), 0);
       const totalApplications = employerApplications.length; // Use actual applications count
-
-      console.log('Stats calculation:', {
-        totalJobs: employerJobs.length,
-        activeJobs,
-        totalViews,
-        totalApplications,
-        jobStatuses: employerJobs.map(job => ({ id: job._id, status: job.status, views: job.viewCount }))
-      });
 
       setStats({
         activeJobs,
@@ -449,7 +439,7 @@ const EmployerDashboard = () => {
 
     const element = document.querySelector(step.selector);
     if (!element) {
-      console.warn(`Tutorial element not found: ${step.selector}`);
+      // Tutorial element not found, skip
       return;
     }
 
@@ -635,8 +625,6 @@ const EmployerDashboard = () => {
   };
 
   const handleApplicationStatusChange = async (applicationId: string, newStatus: string) => {
-    console.log(`🔄 Changing application ${applicationId} status to: ${newStatus}`);
-
     try {
       // Add to updating set
       setUpdatingApplications(prev => new Set(prev).add(applicationId));
@@ -646,8 +634,6 @@ const EmployerDashboard = () => {
         newStatus,
         `Status changed to ${newStatus} by employer`
       );
-
-      console.log(`✅ Status update response:`, response);
 
       if (response.success) {
         // Update the application in the local state
@@ -690,8 +676,6 @@ const EmployerDashboard = () => {
   };
 
   const handleViewApplicationDetails = async (applicationId: string) => {
-    console.log(`👁️ Opening application details for: ${applicationId}`);
-
     try {
       setLoadingApplicationDetails(true);
 
@@ -704,8 +688,6 @@ const EmployerDashboard = () => {
 
       // Fetch detailed application data with full population
       const response = await applicationsApi.getApplication(applicationId);
-      console.log(`📄 Application details response:`, response);
-
       if (response.success && response.data) {
         setSelectedApplication(response.data.application);
       } else {
@@ -725,9 +707,6 @@ const EmployerDashboard = () => {
   };
 
   const handleDownloadCV = async (cvUrl: string, applicantName: string) => {
-    console.log(`📄 Attempting to download CV for: ${applicantName}`);
-    console.log(`🔗 CV URL: ${cvUrl}`);
-
     try {
       setDownloadingCV(true);
 
@@ -739,8 +718,6 @@ const EmployerDashboard = () => {
       // Create full URL if it's a relative path
       const baseUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
       const fullUrl = cvUrl.startsWith('http') ? cvUrl : `${baseUrl}${cvUrl}`;
-      console.log(`🌐 Full CV URL: ${fullUrl}`);
-
       // Try to fetch the CV to check if it exists
       const response = await fetch(fullUrl, {
         method: 'HEAD', // Just check if the file exists
@@ -753,8 +730,6 @@ const EmployerDashboard = () => {
         throw new Error(`CV file not accessible (Status: ${response.status})`);
       }
 
-      console.log(`✅ CV file verified, opening for download`);
-
       // Create a temporary link to trigger download
       const link = document.createElement('a');
       link.href = fullUrl;
@@ -765,8 +740,6 @@ const EmployerDashboard = () => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-
-      console.log(`🎉 CV download initiated successfully`);
 
       toast({
         title: "CV në proces shkarkimi",
@@ -788,8 +761,6 @@ const EmployerDashboard = () => {
 
   // Candidate Matching Handlers
   const handleViewCandidates = async (job: Job) => {
-    console.log(`🔍 Opening candidate matching for job: ${job._id}`);
-
     try {
       setSelectedJobForMatching(job);
       setMatchingModalOpen(true);
@@ -808,13 +779,11 @@ const EmployerDashboard = () => {
 
           if (matchesResponse.success && matchesResponse.data) {
             setCandidateMatches(matchesResponse.data.matches);
-            console.log(`✅ Loaded ${matchesResponse.data.matches.length} matching candidates (from ${matchesResponse.data.fromCache ? 'cache' : 'fresh calculation'})`);
           } else {
             throw new Error(matchesResponse.message || 'Failed to load candidates');
           }
         } else {
           // No access - show payment prompt
-          console.log(`🔒 Employer does not have access to candidate matching for this job`);
           setCandidateMatches([]);
         }
       }
@@ -832,8 +801,6 @@ const EmployerDashboard = () => {
   };
 
   const handlePurchaseMatching = async (jobId: string) => {
-    console.log(`💳 Processing payment for job: ${jobId}`);
-
     try {
       setPurchasingAccess(true);
 
@@ -841,8 +808,6 @@ const EmployerDashboard = () => {
       const response = await matchingApi.purchaseMatching(jobId);
 
       if (response.success && response.data) {
-        console.log(`✅ Payment successful! Access granted to job ${jobId}`);
-
         // Update access state
         setHasMatchingAccess(prev => ({ ...prev, [jobId]: true }));
 
@@ -1673,7 +1638,6 @@ const EmployerDashboard = () => {
                               size="sm"
                               disabled={downloadingCV}
                               onClick={() => {
-                                console.log(`👁️ Opening CV in browser for viewing`);
                                 const jobSeeker = selectedApplication.jobSeekerId as User;
                                 const resumeUrl = jobSeeker.profile.jobSeekerProfile?.resume || '';
                                 const resumeBaseUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
