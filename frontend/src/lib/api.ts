@@ -1,12 +1,4 @@
 // API Configuration
-console.log('🌍 Environment Variables Debug:', {
-  all_env_vars: import.meta.env,
-  VITE_API_URL: import.meta.env.VITE_API_URL,
-  NODE_ENV: import.meta.env.NODE_ENV,
-  MODE: import.meta.env.MODE
-});
-
-// Get the API URL and ensure it has the correct format
 let rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 // Fix common issues with the API URL
@@ -18,7 +10,6 @@ if (rawApiUrl.includes('.com/api/api')) {
 }
 
 const API_BASE_URL = rawApiUrl;
-console.log('🔧 Fixed API_BASE_URL:', { original: import.meta.env.VITE_API_URL, fixed: API_BASE_URL });
 
 // Types
 export interface ApiResponse<T> {
@@ -251,7 +242,6 @@ const apiRequest = async <T>(
   options: RequestInit & { isFormData?: boolean } = {}
 ): Promise<ApiResponse<T>> => {
   const url = `${API_BASE_URL}${endpoint}`;
-  console.log('🔍 API Debug:', { API_BASE_URL, endpoint, url, envVar: import.meta.env.VITE_API_URL });
   const token = getAuthToken();
 
   const headers: Record<string, string> = {
@@ -1797,12 +1787,10 @@ export const cvApi = {
     downloadUrl: string;
     previewUrl: string;
   }>> => {
-    console.log('🤖 Generating CV... Input length:', naturalLanguageInput.length, 'Target language:', targetLanguage);
     const response = await apiRequest('/cv/generate', {
       method: 'POST',
       body: JSON.stringify({ naturalLanguageInput, targetLanguage })
     });
-    console.log('✅ CV Generated:', response);
     return response;
   },
 
@@ -1810,14 +1798,10 @@ export const cvApi = {
    * Download CV file with authentication
    */
   downloadFile: async (fileId: string, fileName: string): Promise<void> => {
-    console.log('⬇️ Downloading CV file...', fileId);
     const token = getAuthToken();
     if (!token) {
-      console.error('❌ No auth token found!');
       throw new Error('Not authenticated');
     }
-
-    console.log('🔑 Using auth token:', token.substring(0, 20) + '...');
 
     const response = await fetch(`${API_BASE_URL}/cv/download/${fileId}`, {
       headers: {
@@ -1825,17 +1809,11 @@ export const cvApi = {
       }
     });
 
-    console.log('📡 Download response status:', response.status);
-
     if (!response.ok) {
-      const text = await response.text();
-      console.error('❌ Download failed:', text);
       throw new Error('Failed to download CV');
     }
 
     const blob = await response.blob();
-    console.log('✅ Blob created, size:', blob.size, 'bytes');
-
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -1844,21 +1822,16 @@ export const cvApi = {
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
-    console.log('✅ Download initiated!');
   },
 
   /**
    * Preview CV file in new tab with authentication
    */
   previewFile: async (fileId: string): Promise<void> => {
-    console.log('👁️ Previewing CV file...', fileId);
     const token = getAuthToken();
     if (!token) {
-      console.error('❌ No auth token found!');
       throw new Error('Not authenticated');
     }
-
-    console.log('🔑 Using auth token:', token.substring(0, 20) + '...');
 
     const response = await fetch(`${API_BASE_URL}/cv/preview/${fileId}`, {
       headers: {
@@ -1866,31 +1839,19 @@ export const cvApi = {
       }
     });
 
-    console.log('📡 Preview response status:', response.status);
-
     if (!response.ok) {
-      const text = await response.text();
-      console.error('❌ Preview failed:', text);
       throw new Error('Failed to preview CV');
     }
 
     const blob = await response.blob();
-    console.log('✅ Blob created, size:', blob.size, 'bytes');
-
-    // Create blob URL and open in new tab
     const url = window.URL.createObjectURL(blob);
     const newWindow = window.open(url, '_blank');
 
-    // Revoke URL after window loads (keep it alive long enough for browser to load)
     if (newWindow) {
-      // Wait 10 seconds before revoking to ensure document is fully loaded
       setTimeout(() => {
         window.URL.revokeObjectURL(url);
-        console.log('🧹 Blob URL revoked after window load');
       }, 10000);
     }
-
-    console.log('✅ Preview opened in new tab!');
   },
 
   /**

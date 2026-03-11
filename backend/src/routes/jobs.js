@@ -88,7 +88,6 @@ const createJobValidation = [
 // @desc    Get all jobs with search and filters
 // @access  Public
 router.get('/', optionalAuth, async (req, res) => {
-  console.log('🚨🚨🚨 JOBS ROUTE HIT AT', new Date().toISOString(), '🚨🚨🚨');
   try {
     const {
       search = '',
@@ -207,18 +206,6 @@ router.get('/', optionalAuth, async (req, res) => {
     if (administrata === 'true') filters.administrata = true;
     if (sezonale === 'true') filters.sezonale = true;
 
-    // DEBUG: Check total jobs in database
-    const allJobsCount = await Job.countDocuments({});
-    const allActiveJobs = await Job.countDocuments({ isDeleted: false });
-    const jobsByStatus = await Job.aggregate([
-      { $group: { _id: '$status', count: { $sum: 1 } } }
-    ]);
-
-    console.log('📊 JOBS DEBUG:');
-    console.log('- Total jobs in DB:', allJobsCount);
-    console.log('- Non-deleted jobs:', allActiveJobs);
-    console.log('- Jobs by status:', jobsByStatus);
-
     // Execute search
     let query = Job.searchJobs(search, filters);
 
@@ -241,11 +228,11 @@ router.get('/', optionalAuth, async (req, res) => {
     // Execute query with .lean() for 5x performance improvement (read-only)
     const jobs = await query.lean().exec();
 
-    // Get total count for pagination (temporarily remove restrictive filters)
+    // Get total count for pagination
     const countQuery = {
       isDeleted: false,
-      // status: 'active',  // Temporarily disabled
-      // expiresAt: { $gt: new Date() },  // Temporarily disabled
+      status: 'active',
+      expiresAt: { $gt: new Date() },
       ...(search && { $text: { $search: search } }),
       ...(city && { 'location.city': Array.isArray(filters.city) ? { $in: filters.city } : city }),
       ...(categories && Array.isArray(filters.categories) && { category: { $in: filters.categories } }),
@@ -658,8 +645,17 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, createJ
       }
     } = req.body;
 
+    // Validate tier against allowed values (prevent client sending arbitrary tiers)
+    const allowedTiers = ['basic', 'premium', 'featured'];
+    if (!allowedTiers.includes(tier)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tier i pavlefshëm. Vlerat e lejuara: basic, premium, featured'
+      });
+    }
+
     // Validate salary range
-    if (salary.min && salary.max && salary.min > salary.max) {
+    if (salary.min != null && salary.max != null && salary.min > salary.max) {
       return res.status(400).json({
         success: false,
         message: 'Paga minimale nuk mund të jetë më e lartë se paga maksimale'
@@ -712,8 +708,8 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, createJ
       category,
       seniority,
       salary: {
-        min: salary.min || null,
-        max: salary.max || null,
+        min: salary.min != null ? salary.min : null,
+        max: salary.max != null ? salary.max : null,
         currency: salary.currency || 'EUR',
         negotiable: salary.negotiable !== undefined ? salary.negotiable : true,
         showPublic: salary.showPublic !== undefined ? salary.showPublic : true
@@ -977,33 +973,41 @@ router.put('/:id', authenticate, requireEmployer, requireVerifiedEmployer, creat
       salary,
       customQuestions,
       tags,
-      status
+      expiresAt,
+      applicationMethod,
+      externalApplicationUrl,
+      applicationEmail
     } = req.body;
+    // Note: `status` intentionally NOT destructured — status changes only via PATCH /api/jobs/:id/status
 
     // Validate salary range
-    if (salary && salary.min && salary.max && salary.min > salary.max) {
+    if (salary && salary.min != null && salary.max != null && salary.min > salary.max) {
       return res.status(400).json({
         success: false,
         message: 'Paga minimale nuk mund të jetë më e lartë se paga maksimale'
       });
     }
 
-    // Update job fields
-    Object.assign(job, {
-      title,
-      description,
-      requirements,
-      benefits,
-      location,
-      jobType,
-      category,
-      seniority,
-      salary,
-      customQuestions,
-      tags: tags ? tags.slice(0, 10) : job.tags,
-      status: status || job.status,
+    // Update job fields (only defined values override)
+    const updates = {
+      ...(title !== undefined && { title }),
+      ...(description !== undefined && { description }),
+      ...(requirements !== undefined && { requirements }),
+      ...(benefits !== undefined && { benefits }),
+      ...(location !== undefined && { location }),
+      ...(jobType !== undefined && { jobType }),
+      ...(category !== undefined && { category }),
+      ...(seniority !== undefined && { seniority }),
+      ...(salary !== undefined && { salary }),
+      ...(customQuestions !== undefined && { customQuestions }),
+      ...(tags !== undefined && { tags: tags.slice(0, 10) }),
+      ...(expiresAt !== undefined && { expiresAt }),
+      ...(applicationMethod !== undefined && { applicationMethod }),
+      ...(externalApplicationUrl !== undefined && { externalApplicationUrl }),
+      ...(applicationEmail !== undefined && { applicationEmail }),
       updatedAt: new Date()
-    });
+    };
+    Object.assign(job, updates);
 
     await job.save();
 

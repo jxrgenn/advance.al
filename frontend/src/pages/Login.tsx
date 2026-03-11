@@ -167,16 +167,6 @@ const Login = () => {
                 </CardContent>
               </Card>
 
-          {/* Demo Account Info */}
-          <div className="mt-6 p-4 bg-muted/50 rounded-lg">
-            <h3 className="text-sm font-medium mb-2">Llogari Test:</h3>
-            <div className="text-xs space-y-1 text-muted-foreground">
-              <p><strong>Kërkues Pune:</strong> andi.krasniqi@email.com / password123</p>
-              <p><strong>Kërkues Pune:</strong> sara.marku@email.com / password123</p>
-              <p><strong>Punëdhënës:</strong> klajdi@techinnovations.al / password123</p>
-              <p><strong>Punëdhënës:</strong> admin@digitalfuture.al / password123</p>
-            </div>
-          </div>
         </div>
       </div>
     </div>
