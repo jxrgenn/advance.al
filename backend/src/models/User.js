@@ -287,12 +287,12 @@ const userSchema = new Schema({
     unique: true,
     lowercase: true,
     trim: true,
-    match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, 'Ju lutemi vendosni një email të vlefshëm']
+    match: [/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/, 'Ju lutemi vendosni një email të vlefshëm']
   },
   password: {
     type: String,
     required: true,
-    minlength: 6
+    minlength: 8
   },
   userType: {
     type: String,

@@ -475,6 +475,24 @@ router.patch('/:id/status', authenticate, requireEmployer, async (req, res) => {
       });
     }
 
+    // Validate status transitions
+    const validTransitions = {
+      pending: ['viewed', 'shortlisted', 'rejected'],
+      viewed: ['shortlisted', 'rejected'],
+      shortlisted: ['hired', 'rejected'],
+      rejected: [],
+      hired: []
+    };
+
+    const currentStatus = application.status || 'pending';
+    const allowed = validTransitions[currentStatus] || [];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Nuk mund të ndryshoni statusin nga "${currentStatus}" në "${status}"`
+      });
+    }
+
     await application.updateStatus(status, notes);
 
     const statusMessages = {

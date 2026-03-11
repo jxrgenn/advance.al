@@ -26,8 +26,10 @@ const registerValidation = [
     .normalizeEmail()
     .withMessage('Email i pavlefshëm'),
   body('password')
-    .isLength({ min: 6 })
-    .withMessage('Fjalëkalimi duhet të ketë të paktën 6 karaktere'),
+    .isLength({ min: 8 })
+    .withMessage('Fjalëkalimi duhet të ketë të paktën 8 karaktere')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+    .withMessage('Fjalëkalimi duhet të përmbajë të paktën një shkronjë të madhe, një të vogël dhe një numër'),
   body('userType')
     .isIn(['jobseeker', 'employer'])
     .withMessage('Lloji i përdoruesit duhet të jetë jobseeker ose employer'),

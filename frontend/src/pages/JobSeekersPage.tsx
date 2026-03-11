@@ -5,6 +5,7 @@ import Footer from "@/components/Footer";
 import RotatingContact from "@/components/RotatingContact";
 import { JobSearchHero } from "@/components/JobSearchHero";
 import { CVCreatorSection } from "@/components/CVCreatorSection";
+import ScrollToTopButton from "@/components/ScrollToTopButton";
 import {
   Container,
   Title,
@@ -217,7 +218,7 @@ Telefoni: _______________`;
     {
       selector: '[data-tutorial="password"]',
       title: "Fjalëkalimi",
-      content: "Krijoni një fjalëkalim të sigurt me të paktën 6 karaktere.",
+      content: "Krijoni një fjalëkalim të sigurt me të paktën 8 karaktere.",
       position: "bottom"
     },
     {
@@ -932,6 +933,42 @@ Telefoni: _______________`;
 
       <div className="px-4 sm:px-6 lg:px-8">
         <Container size="lg" px={0} py={40} pt={80}>
+          <Paper
+            withBorder
+            p="md"
+            radius="md"
+            shadow="xs"
+            className="mb-6"
+          >
+            <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={4}>
+              Zgjidhni mënyrën e regjistrimit
+            </Text>
+            <Text size="sm" c="dimmed" mb={6}>
+              Në këtë faqe mund të krijoni një <strong>profil të plotë punëkërkuesi</strong> me llogari ose një <strong>profil të shpejtë</strong> vetëm për
+              njoftime me email. Zgjidhni opsionin që ju përshtatet më shumë për mënyrën se si doni të aplikoni për punë.
+            </Text>
+            <Group gap="lg" align="flex-start" wrap="wrap">
+              <Box className="flex-1 min-w-[220px]">
+                <Text size="sm" fw={600} mb={2}>
+                  Profil i Shpejtë
+                </Text>
+                <Text size="xs" c="dimmed">
+                  Plotësoni vetëm disa fusha bazë dhe merrni njoftime për punë që ju përputhen. Nuk krijohet llogari e plotë,
+                  por punëdhënësit mund t’ju kontaktojnë direkt.
+                </Text>
+              </Box>
+              <Box className="flex-1 min-w-[220px]">
+                <Text size="sm" fw={600} mb={2}>
+                  Profil i Plotë
+                </Text>
+                <Text size="xs" c="dimmed">
+                  Krijoni llogari me të dhëna të plota, ruani aplikimet tuaja, aplikoni me 1 klik dhe përdorni mjetet tona të AI
+                  për CV dhe përputhje më të mira me punët.
+                </Text>
+              </Box>
+            </Group>
+          </Paper>
+
           {/* Hero Section with 3D Asset */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center mb-8">
           <div className="text-center md:text-left">
@@ -1508,6 +1545,8 @@ Telefoni: _______________`;
 
       {/* Contact Section */}
       <RotatingContact />
+
+      <ScrollToTopButton />
 
       <Footer />
     </Box>

@@ -112,8 +112,12 @@ applicationSchema.index({ employerId: 1, status: 1 });
 applicationSchema.index({ appliedAt: -1 });
 applicationSchema.index({ status: 1 });
 
-// Compound index to prevent duplicate applications
-applicationSchema.index({ jobId: 1, jobSeekerId: 1 }, { unique: true });
+// Compound index to prevent duplicate applications (allows re-application after withdrawal)
+// MIGRATION: Run `db.applications.dropIndex("jobId_1_jobSeekerId_1")` before deploying
+applicationSchema.index(
+  { jobId: 1, jobSeekerId: 1 },
+  { unique: true, partialFilterExpression: { withdrawn: { $ne: true } } }
+);
 
 // Virtual for time since applied
 applicationSchema.virtual('timeAgo').get(function() {
@@ -201,13 +205,17 @@ applicationSchema.methods.markMessagesAsRead = function(userId) {
 };
 
 // Withdraw application
-applicationSchema.methods.withdraw = function(reason = '') {
+applicationSchema.methods.withdraw = async function(reason = '') {
   this.withdrawn = true;
   this.withdrawnAt = new Date();
   if (reason) {
     this.withdrawalReason = reason;
   }
-  return this.save();
+  await this.save();
+  // Decrement the job's application count
+  const Job = mongoose.model('Job');
+  await Job.findByIdAndUpdate(this.jobId, { $inc: { applicationCount: -1 } });
+  return this;
 };
 
 // Static method to check if user already applied for job

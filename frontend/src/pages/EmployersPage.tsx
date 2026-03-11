@@ -145,7 +145,7 @@ const EmployersPage = () => {
     {
       selector: '[data-tutorial="password"]',
       title: "Fjalëkalimi",
-      content: "Krijoni një fjalëkalim të sigurt me të paktën 6 karaktere.",
+      content: "Krijoni një fjalëkalim të sigurt me të paktën 8 karaktere.",
       position: "bottom",
       formStep: 0
     },
@@ -204,7 +204,7 @@ const EmployersPage = () => {
       // Step 0: Personal Info - Validate using validation system
       const step1Validation = validateForm(values, employerSignupRules.step1);
       const step0Validation = validateForm(
-        { email: values.email, password: values.password, confirmPassword: values.password, companyName: '' },
+        { email: values.email, password: values.password, confirmPassword: values.confirmPassword, companyName: '' },
         employerSignupRules.step0
       );
 
@@ -703,7 +703,7 @@ const EmployersPage = () => {
 
       // Comprehensive validation before submit
       const step0Validation = validateForm(
-        { email: values.email, password: values.password, confirmPassword: values.password, companyName: values.companyName },
+        { email: values.email, password: values.password, confirmPassword: values.confirmPassword, companyName: values.companyName },
         employerSignupRules.step0
       );
       const step1Validation = validateForm(values, employerSignupRules.step1);

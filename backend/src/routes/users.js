@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import { body, validationResult } from 'express-validator';
 import { User } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer, requireAdmin } from '../middleware/auth.js';
@@ -645,7 +646,7 @@ router.post('/work-experience', authenticate, requireJobSeeker, [
     }
 
     const experienceData = {
-      id: Date.now().toString(), // Simple ID generation
+      id: randomUUID(),
       position: req.body.position,
       company: req.body.company,
       location: req.body.location || '',
@@ -709,7 +710,7 @@ router.post('/education', authenticate, requireJobSeeker, [
     }
 
     const educationData = {
-      id: Date.now().toString(), // Simple ID generation
+      id: randomUUID(),
       degree: req.body.degree,
       fieldOfStudy: req.body.fieldOfStudy || '',
       institution: req.body.institution,

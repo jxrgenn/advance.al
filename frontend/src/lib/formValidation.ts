@@ -36,7 +36,8 @@ export interface ValidationResult {
 export const validateField = (
   fieldName: string,
   value: any,
-  rule: ValidationRule
+  rule: ValidationRule,
+  formData?: { [key: string]: any }
 ): ValidationError | null => {
   // Required check
   if (rule.required && (!value || (typeof value === 'string' && value.trim() === ''))) {
@@ -79,8 +80,8 @@ export const validateField = (
     };
   }
 
-  // Custom validation
-  if (rule.custom && !rule.custom(value)) {
+  // Custom validation (pass formData for cross-field checks like confirmPassword)
+  if (rule.custom && !rule.custom(value, formData)) {
     return {
       field: fieldName,
       message: rule.message || `${fieldName} nuk është i vlefshëm`,
@@ -102,7 +103,7 @@ export const validateForm = (
 
   Object.entries(rules).forEach(([fieldName, rule]) => {
     const value = formData[fieldName];
-    const error = validateField(fieldName, value, rule);
+    const error = validateField(fieldName, value, rule, formData);
     if (error) {
       errors.push(error);
     }
@@ -144,7 +145,7 @@ export const profileValidationRules = {
       message: "Mbiemri duhet të jetë midis 2 dhe 50 karakteresh"
     },
     phone: {
-      required: true,
+      required: false,
       pattern: /^\+?[0-9]{9,15}$/,
       message: "Numri i telefonit duhet të jetë i vlefshëm (9-15 shifra)"
     },
@@ -205,7 +206,7 @@ export const profileValidationRules = {
     },
     endDate: {
       required: false,
-      message: "Data e mbarimit është e detyrueshme"
+      message: "Data e mbarimit duhet të jetë e vlefshme"
     },
     description: {
       required: false,
@@ -246,7 +247,7 @@ export const profileValidationRules = {
     },
     endDate: {
       required: false,
-      message: "Data e mbarimit është e detyrueshme"
+      message: "Data e mbarimit duhet të jetë e vlefshme"
     },
     description: {
       required: false,

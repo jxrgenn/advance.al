@@ -360,8 +360,8 @@ jobSchema.virtual('timeAgo').get(function() {
   return 'Sapo postuar';
 });
 
-// Generate unique slug before saving
-jobSchema.pre('save', async function(next) {
+// Generate unique slug before validation (must run before validate, not save)
+jobSchema.pre('validate', async function(next) {
   if (this.isNew || this.isModified('title')) {
     const baseSlug = this.title
       .toLowerCase()
@@ -391,16 +391,14 @@ jobSchema.pre('save', function(next) {
   next();
 });
 
-// Increment view count
+// Increment view count (atomic to prevent race conditions)
 jobSchema.methods.incrementViewCount = function() {
-  this.viewCount += 1;
-  return this.save();
+  return mongoose.model('Job').findByIdAndUpdate(this._id, { $inc: { viewCount: 1 } });
 };
 
-// Increment application count
+// Increment application count (atomic to prevent race conditions)
 jobSchema.methods.incrementApplicationCount = function() {
-  this.applicationCount += 1;
-  return this.save();
+  return mongoose.model('Job').findByIdAndUpdate(this._id, { $inc: { applicationCount: 1 } });
 };
 
 // Soft delete method

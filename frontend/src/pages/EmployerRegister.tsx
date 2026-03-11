@@ -53,7 +53,7 @@ const EmployerRegister = () => {
     if (!contactLastName.trim()) return 'Mbiemri i personit të kontaktit është i detyrueshëm';
     if (!email.trim()) return 'Email-i është i detyrueshëm';
     if (!/\S+@\S+\.\S+/.test(email)) return 'Email-i nuk është i vlefshëm';
-    if (password.length < 6) return 'Fjalëkalimi duhet të ketë të paktën 6 karaktere';
+    if (password.length < 8) return 'Fjalëkalimi duhet të ketë të paktën 8 karaktere';
     if (password !== confirmPassword) return 'Fjalëkalimet nuk përputhen';
     return null;
   };
