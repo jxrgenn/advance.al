@@ -2,19 +2,19 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import rateLimit from 'express-rate-limit';
 import { Notification, Job, QuickUser } from '../models/index.js';
-import { authenticate, requireEmployer } from '../middleware/auth.js';
+import { authenticate, requireEmployer, requireAdmin } from '../middleware/auth.js';
 import notificationService from '../lib/notificationService.js';
 
 const router = express.Router();
 
 // Rate limiting for notification operations
-// const notificationLimiter = rateLimit({
-//   windowMs: 15 * 60 * 1000, // 15 minutes
-//   max: 20, // limit each IP to 20 notification requests per window
-//   message: {
-//     error: 'Shumë kërkesa për njoftimet, ju lutemi provoni përsëri pas 15 minutash.',
-//   }
-// });
+const notificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // limit each IP to 20 notification requests per window
+  message: {
+    error: 'Shumë kërkesa për njoftimet, ju lutemi provoni përsëri pas 15 minutash.',
+  }
+});
 
 // Handle validation errors
 const handleValidationErrors = (req, res, next) => {
@@ -214,9 +214,9 @@ router.delete('/:id', authenticate, async (req, res) => {
 // === QuickUser Notification System Routes ===
 
 // @route   POST /api/notifications/test-job-match
-// @desc    Test job matching and notification system (development/admin only)
-// @access  Public (should be restricted in production)
-router.post('/test-job-match', async (req, res) => {
+// @desc    Test job matching and notification system (admin only)
+// @access  Admin
+router.post('/test-job-match', authenticate, requireAdmin, async (req, res) => {
   try {
     const { jobId } = req.body;
 
@@ -255,9 +255,9 @@ router.post('/test-job-match', async (req, res) => {
 });
 
 // @route   POST /api/notifications/send-daily-digest
-// @desc    Manually trigger daily digest (admin/cron only)
-// @access  Public (should be restricted in production)
-router.post('/send-daily-digest', async (req, res) => {
+// @desc    Manually trigger daily digest (admin only)
+// @access  Admin
+router.post('/send-daily-digest', authenticate, requireAdmin, async (req, res) => {
   try {
     const result = await notificationService.sendDailyDigest();
 
@@ -277,9 +277,9 @@ router.post('/send-daily-digest', async (req, res) => {
 });
 
 // @route   POST /api/notifications/send-weekly-digest
-// @desc    Manually trigger weekly digest (admin/cron only)
-// @access  Public (should be restricted in production)
-router.post('/send-weekly-digest', async (req, res) => {
+// @desc    Manually trigger weekly digest (admin only)
+// @access  Admin
+router.post('/send-weekly-digest', authenticate, requireAdmin, async (req, res) => {
   try {
     const result = await notificationService.sendWeeklyDigest();
 
@@ -299,9 +299,9 @@ router.post('/send-weekly-digest', async (req, res) => {
 });
 
 // @route   POST /api/notifications/test-welcome-email
-// @desc    Test welcome email sending (development only)
-// @access  Public (should be restricted in production)
-router.post('/test-welcome-email', async (req, res) => {
+// @desc    Test welcome email sending (admin only)
+// @access  Admin
+router.post('/test-welcome-email', authenticate, requireAdmin, async (req, res) => {
   try {
     const { quickUserId } = req.body;
 
@@ -341,8 +341,8 @@ router.post('/test-welcome-email', async (req, res) => {
 
 // @route   GET /api/notifications/quickuser-stats
 // @desc    Get notification statistics for quick users
-// @access  Public (should be restricted to admin in production)
-router.get('/quickuser-stats', async (req, res) => {
+// @access  Admin
+router.get('/quickuser-stats', authenticate, requireAdmin, async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 
@@ -443,8 +443,8 @@ router.get('/quickuser-stats', async (req, res) => {
 
 // @route   POST /api/notifications/manual-notify
 // @desc    Manually send notification to specific quick user for a job (admin only)
-// @access  Public (should be restricted to admin in production)
-router.post('/manual-notify', [
+// @access  Admin
+router.post('/manual-notify', authenticate, requireAdmin, [
   body('quickUserId').notEmpty().withMessage('Quick User ID është i detyrueshëm'),
   body('jobId').notEmpty().withMessage('Job ID është i detyrueshëm')
 ], handleValidationErrors, async (req, res) => {
@@ -497,8 +497,8 @@ router.post('/manual-notify', [
 
 // @route   GET /api/notifications/eligible-users/:jobId
 // @desc    Get list of users eligible to receive notification for a specific job
-// @access  Public (should be restricted to admin in production)
-router.get('/eligible-users/:jobId', async (req, res) => {
+// @access  Admin
+router.get('/eligible-users/:jobId', authenticate, requireAdmin, async (req, res) => {
   try {
     const { jobId } = req.params;
 

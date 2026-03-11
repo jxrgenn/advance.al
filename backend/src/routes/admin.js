@@ -1,6 +1,7 @@
 import express from 'express';
 import { User, Job, Application, QuickUser } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { escapeRegex } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -472,11 +473,12 @@ router.get('/users', async (req, res) => {
     }
 
     if (search) {
+      const safeSearch = escapeRegex(search);
       query.$or = [
-        { 'profile.firstName': { $regex: search, $options: 'i' } },
-        { 'profile.lastName': { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { 'profile.employerProfile.companyName': { $regex: search, $options: 'i' } }
+        { 'profile.firstName': { $regex: safeSearch, $options: 'i' } },
+        { 'profile.lastName': { $regex: safeSearch, $options: 'i' } },
+        { email: { $regex: safeSearch, $options: 'i' } },
+        { 'profile.employerProfile.companyName': { $regex: safeSearch, $options: 'i' } }
       ];
     }
 
@@ -538,10 +540,11 @@ router.get('/jobs', async (req, res) => {
     }
 
     if (search) {
+      const safeSearch = escapeRegex(search);
       query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { category: { $regex: search, $options: 'i' } }
+        { title: { $regex: safeSearch, $options: 'i' } },
+        { description: { $regex: safeSearch, $options: 'i' } },
+        { category: { $regex: safeSearch, $options: 'i' } }
       ];
     }
 

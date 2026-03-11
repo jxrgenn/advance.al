@@ -15,9 +15,9 @@ export const generateRefreshToken = (payload) => {
   });
 };
 
-// Verify JWT Token
+// Verify JWT Token — pinned to HS256 to prevent alg:none attacks
 export const verifyToken = (token, secret = process.env.JWT_SECRET) => {
-  return jwt.verify(token, secret);
+  return jwt.verify(token, secret, { algorithms: ['HS256'] });
 };
 
 // Authentication Middleware

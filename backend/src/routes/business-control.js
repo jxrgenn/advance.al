@@ -3,6 +3,7 @@ import { body, query, validationResult } from 'express-validator';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { BusinessCampaign, PricingRule, RevenueAnalytics, Job, User } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { escapeRegex } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -846,14 +847,15 @@ router.get('/employers/search', authenticate, requireAdmin, async (req, res) => 
   try {
     const { q = '', limit = 20 } = req.query;
 
+    const safeQ = escapeRegex(q);
     const searchQuery = {
       userType: 'employer',
       isDeleted: false,
       $or: [
-        { email: { $regex: q, $options: 'i' } },
-        { 'profile.employerProfile.companyName': { $regex: q, $options: 'i' } },
-        { 'profile.firstName': { $regex: q, $options: 'i' } },
-        { 'profile.lastName': { $regex: q, $options: 'i' } }
+        { email: { $regex: safeQ, $options: 'i' } },
+        { 'profile.employerProfile.companyName': { $regex: safeQ, $options: 'i' } },
+        { 'profile.firstName': { $regex: safeQ, $options: 'i' } },
+        { 'profile.lastName': { $regex: safeQ, $options: 'i' } }
       ]
     };
 

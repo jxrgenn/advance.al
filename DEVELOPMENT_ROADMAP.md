@@ -1,23 +1,59 @@
 # advance.al - DEVELOPMENT STATUS & ROADMAP
 
 **Date:** September 25-28, 2025
-**Last Updated:** February 11, 2026 (ALL PRE-LAUNCH FIXES COMPLETE — 10/10 DONE)
+**Last Updated:** March 11, 2026 (VERIFIED PRODUCTION AUDIT — cross-checked against source code)
 **Platform:** Premier Job Marketplace for Albania
-**CURRENT STATUS:** ✅ **ALL PRE-LAUNCH FIXES APPLIED — READY FOR DEPLOY** ✅
-**Phase:** Pre-Launch Bug Fixes & Production Hardening — COMPLETE
+**CURRENT STATUS:** 🔴 **PRODUCTION AUDIT VERIFIED — 145 ISSUES IDENTIFIED — IMPLEMENTATION PLAN FINALIZED**
+**Phase:** Production Readiness Implementation (see `PRODUCTION_READY_IMPLEMENTATION_PLAN.md`)
 **Brand:** advance.al (formerly Albania JobFlow)
 
-## 🎉 **CURRENT SYSTEM STATUS - FULLY OPERATIONAL**
+## 🔴 **COMPREHENSIVE PRODUCTION AUDIT — MARCH 11, 2026 (VERIFIED)**
+
+Full codebase audit completed across 60+ backend files, 40+ frontend files, plus end-to-end logic audit of every user flow, button, and feature. Every finding cross-verified against actual source code by 5 independent verification agents. Found **145 verified issues** across 11 sub-phases. 1 false positive removed, 3 findings corrected, 12 new findings added, 4 implementation conflicts documented. Complete implementation plan in `PRODUCTION_READY_IMPLEMENTATION_PLAN.md`.
+
+**Summary of findings:**
+- **Phase 1 — CRITICAL SECURITY:** 16 issues (+3 new: privilege escalation via PUT body, unauthenticated email spam vector, create validation on updates)
+- **Phase 2 — BROKEN FLOWS:** 15 issues (5 unprotected routes, 401 state desync, no token refresh, filters don't work, registration data loss, crashes on null data)
+- **Phase 3 — DATA INTEGRITY:** 16 issues (+4 new: formValidation custom validator broken, confirmPassword always passes, phone required/optional mismatch, error message inconsistency)
+- **Phase 4 — PRODUCTION HARDENING:** 16 issues (+2 new: stats.js 6 uncached queries per landing page load, send-verification.js diagnostic leaks)
+- **Phase 5 — UX POLISH:** 15 issues (pagination broken, notification polling missing, dead features, duplicate toast systems)
+- **Phase 6 — SCALABILITY:** 7 issues (files in MongoDB, OOM on semantic matching, no caching, no monitoring)
+- **Phase 7A — JOB SEEKER LOGIC:** 9 issues (-1: ~~7A.4 removed as false positive~~)
+- **Phase 7B — EMPLOYER LOGIC:** 17 issues (+3 new: backend PUT missing expiresAt/applicationMethod, EditJob missing URL/email fields, checkbox type safety)
+- **Phase 7C — ADMIN LOGIC:** 12 issues (getReportActions doesn't exist, rejected jobs status mismatch, config tab broken, freeze posting does nothing, simulated fake reports)
+- **Phase 7D — BUSINESS LOGIC:** 12 issues (pricing uses Math.random(), revenue counts unpaid jobs, suspension auto-lift never runs, 4 notification types are dead code, no payment gateway)
+- **Phase 7E — CROSS-CUTTING:** 10 issues (similar jobs location broken, recommendations not rendered, about page stats hardcoded, footer social links dead)
+
+**Implementation conflicts identified:** 4 (MutationObserver scoping, tier validation vs stripping, Application index migration, password minimum alignment) — all have documented mitigations.
+
+**Estimated total effort: 22-32 working days across all 11 sub-phases.**
+
+---
+
+## CURRENT SYSTEM STATUS (Post-Audit Assessment)
 
 **Database Connectivity:** ✅ WORKING (MongoDB Atlas operational)
-**Core APIs:** ✅ FUNCTIONAL (All endpoints responding properly)
-**Authentication System:** ✅ COMPLETE (JWT 2h token expiry, role-based routing)
-**Email System:** ✅ WORKING (Resend API integrated)
-**Admin Dashboard:** ✅ COMPLETE (Real data, user management, job management)
-**Business Control Panel:** ✅ IMPLEMENTED (Revenue management, pricing engine, campaigns)
-**User Reporting System:** ✅ IMPLEMENTED (Full reporting workflow)
-**Rate Limiting:** ✅ ENABLED (15 req/15min on /login and /register — 429 confirmed working)
-**Login Credentials:** Admin: admin@punashqip.al / password123
+**Core APIs:** ⚠️ FUNCTIONAL but 7 endpoints publicly exposed without auth
+**Authentication System:** ⚠️ JWT working but no token revocation, refresh unused, secrets compromised
+**Email System:** ⚠️ WORKING but XSS-vulnerable templates, inconsistent sender addresses
+**Admin Dashboard:** ⚠️ IMPLEMENTED but contains fake/simulated report data, dead code
+**Business Control Panel:** ⚠️ IMPLEMENTED but mock payment, emergency actions are no-ops
+**User Reporting System:** ⚠️ IMPLEMENTED but route conflicts, crash on empty description
+**Rate Limiting:** ⚠️ PARTIALLY ENABLED (quickusers and notifications rate limiters are disabled)
+**Job Listings:** ⚠️ BROKEN — expired/draft/paused jobs visible to public, filters disabled
+
+---
+
+## ✅ **HOMEPAGE & MARKETING UI POLISH — MARCH 5, 2026**
+
+- Navbar: added dedicated **“Punët”** link pointing to the main jobs index (desktop + mobile).
+- Jobs index: removed legacy **“Gjej punën e përshtatshme për ty”** hero block; search + listings remain unchanged.
+- Job cards: removed job-type pill badges and now show a subtle inline job-type label alongside title/location/salary.
+- Global UX: introduced a floating **scroll-to-top** button on long pages (index, punëkërkues, kompanitë, rreth nesh).
+- About page: removed the **“Made for Albanians / E Krijuar Specifikisht për Shqipërinë”** section to slim the page.
+- Pricing: made pricing cards visually slimmer via reduced padding/typography and a tighter grid, preserving logic and API.
+- Jobseekers: added a short explainer above “Profil i Shpejtë” vs “Profil i Plotë” so users clearly understand which path to choose.
+- Companies page: merged the welcome hero and search/filter sections into a single, more compact component with inline stats.
 
 ---
 

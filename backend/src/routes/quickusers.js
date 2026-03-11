@@ -5,17 +5,18 @@ import { QuickUser } from '../models/index.js';
 import notificationService from '../lib/notificationService.js';
 import resendEmailService from '../lib/resendEmailService.js';
 import userEmbeddingService from '../services/userEmbeddingService.js';
+import { authenticate, requireAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Rate limiting for quick user operations - DISABLED FOR DEVELOPMENT
-// // const quickUserLimiter = rateLimit({
-//   windowMs: 15 * 60 * 1000, // 15 minutes
-//   max: 10, // limit each IP to 10 requests per window
-//   message: {
-//     error: 'Shumë kërkesa për regjistrimin e shpejtë, ju lutemi provoni përsëri pas 15 minutash.',
-//   }
-// });
+// Rate limiting for quick user operations
+const quickUserLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // limit each IP to 10 requests per window
+  message: {
+    error: 'Shumë kërkesa për regjistrimin e shpejtë, ju lutemi provoni përsëri pas 15 minutash.',
+  }
+});
 
 // Validation for quick user creation
 const quickUserValidation = [
@@ -287,10 +288,82 @@ router.post('/track-click', async (req, res) => {
   }
 });
 
+// @route   GET /api/quickusers/analytics/overview
+// @desc    Get analytics overview for quick users
+// @access  Admin
+router.get('/analytics/overview', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    const analytics = await QuickUser.getAnalytics(startDate, endDate);
+
+    res.json({
+      success: true,
+      data: analytics[0] || {
+        totalUsers: 0,
+        activeUsers: 0,
+        convertedUsers: 0,
+        totalNotificationsSent: 0,
+        totalEmailClicks: 0,
+        avgNotificationsPerUser: 0,
+        avgClicksPerUser: 0
+      }
+    });
+
+  } catch (error) {
+    console.error('Analytics error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Gabim në marrjen e analizave'
+    });
+  }
+});
+
+// @route   POST /api/quickusers/find-matches
+// @desc    Find quick users that match a job
+// @access  Admin
+router.post('/find-matches', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { job } = req.body;
+
+    if (!job) {
+      return res.status(400).json({
+        success: false,
+        message: 'Të dhënat e punës janë të detyrueshme'
+      });
+    }
+
+    // Find matching users
+    const matches = await QuickUser.findMatchesForJob(job);
+
+    res.json({
+      success: true,
+      data: {
+        totalMatches: matches.length,
+        matches: matches.map(user => ({
+          id: user._id,
+          name: user.fullName,
+          email: user.email,
+          location: user.location,
+          interests: user.allInterests,
+          canReceiveNotification: user.canReceiveNotification
+        }))
+      }
+    });
+
+  } catch (error) {
+    console.error('Find matches error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Gabim në gjetjen e përputhjes'
+    });
+  }
+});
+
 // @route   GET /api/quickusers/:id
 // @desc    Get quick user by ID
-// @access  Public (for now, could be restricted later)
-router.get('/:id', async (req, res) => {
+// @access  Admin
+router.get('/:id', authenticate, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -388,78 +461,6 @@ router.put('/:id/preferences', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Gabim në përditësimin e preferencave'
-    });
-  }
-});
-
-// @route   GET /api/quickusers/analytics/overview
-// @desc    Get analytics overview for quick users
-// @access  Public (should be restricted to admin in production)
-router.get('/analytics/overview', async (req, res) => {
-  try {
-    const { startDate, endDate } = req.query;
-
-    const analytics = await QuickUser.getAnalytics(startDate, endDate);
-
-    res.json({
-      success: true,
-      data: analytics[0] || {
-        totalUsers: 0,
-        activeUsers: 0,
-        convertedUsers: 0,
-        totalNotificationsSent: 0,
-        totalEmailClicks: 0,
-        avgNotificationsPerUser: 0,
-        avgClicksPerUser: 0
-      }
-    });
-
-  } catch (error) {
-    console.error('Analytics error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Gabim në marrjen e analizave'
-    });
-  }
-});
-
-// @route   POST /api/quickusers/find-matches
-// @desc    Find quick users that match a job (for testing)
-// @access  Public (should be restricted to admin/system in production)
-router.post('/find-matches', async (req, res) => {
-  try {
-    const { job } = req.body;
-
-    if (!job) {
-      return res.status(400).json({
-        success: false,
-        message: 'Të dhënat e punës janë të detyrueshme'
-      });
-    }
-
-    // Find matching users
-    const matches = await QuickUser.findMatchesForJob(job);
-
-    res.json({
-      success: true,
-      data: {
-        totalMatches: matches.length,
-        matches: matches.map(user => ({
-          id: user._id,
-          name: user.fullName,
-          email: user.email,
-          location: user.location,
-          interests: user.allInterests,
-          canReceiveNotification: user.canReceiveNotification
-        }))
-      }
-    });
-
-  } catch (error) {
-    console.error('Find matches error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Gabim në gjetjen e përputhjes'
     });
   }
 });

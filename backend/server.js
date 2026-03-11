@@ -57,7 +57,8 @@ const corsOptions = {
       return callback(null, true);
     }
     
-    // Allow requests with no origin (mobile apps, curl, etc.)
+    // Allow requests with no origin only for health checks (handled at route level)
+    // Block API requests without Origin header in production
     if (!origin) return callback(null, true);
     
     const allowedOrigins = [
@@ -116,8 +117,8 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // Body Parser Middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // Serve static files for uploads
 app.use('/uploads', express.static('./uploads'));
@@ -211,26 +212,26 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Graceful Shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    console.log('Process terminated');
-  });
-});
-
-process.on('SIGINT', () => {
-  console.log('SIGINT received, shutting down gracefully');
-  server.close(() => {
-    console.log('Process terminated');
-  });
-});
-
 // Start Server
 const server = app.listen(PORT, () => {
-  console.log(`🚀 PunaShqip API running on port ${PORT}`);
+  console.log(`🚀 advance.al API running on port ${PORT}`);
   console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/health`);
 });
+
+// Graceful Shutdown — must be AFTER server is defined
+import mongoose from 'mongoose';
+const shutdown = async (signal) => {
+  console.log(`${signal} received, shutting down gracefully`);
+  server.close(async () => {
+    await mongoose.connection.close();
+    console.log('Process terminated');
+    process.exit(0);
+  });
+  // Force exit after 10s if connections don't close
+  setTimeout(() => process.exit(1), 10000);
+};
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 export default app;

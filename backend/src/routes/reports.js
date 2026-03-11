@@ -3,6 +3,7 @@ import { body, query, validationResult } from 'express-validator';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { Report, ReportAction, User } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { escapeRegex } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -302,9 +303,10 @@ router.get('/admin',
 
       // Add search functionality
       if (search) {
+        const safeSearch = escapeRegex(search);
         filter.$or = [
-          { description: { $regex: search, $options: 'i' } },
-          { category: { $regex: search, $options: 'i' } }
+          { description: { $regex: safeSearch, $options: 'i' } },
+          { category: { $regex: safeSearch, $options: 'i' } }
         ];
       }
 
