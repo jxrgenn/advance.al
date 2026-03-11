@@ -609,7 +609,25 @@ router.patch('/users/:userId/manage', async (req, res) => {
         user.suspensionReason = undefined;
         break;
       case 'delete':
-        await User.findByIdAndDelete(userId);
+        // Prevent admin from deleting themselves
+        if (userId === req.user._id.toString()) {
+          return res.status(400).json({
+            success: false,
+            message: 'Nuk mund të fshini llogarinë tuaj'
+          });
+        }
+        // Prevent deleting other admins
+        if (user.userType === 'admin') {
+          return res.status(403).json({
+            success: false,
+            message: 'Nuk mund të fshini administratorë të tjerë'
+          });
+        }
+        // Soft delete instead of hard delete
+        user.isDeleted = true;
+        user.status = 'deleted';
+        user.deletedAt = new Date();
+        await user.save();
         return res.json({
           success: true,
           message: 'Përdoruesi u fshi me sukses'
@@ -670,7 +688,10 @@ router.patch('/jobs/:jobId/manage', async (req, res) => {
         job.tier = 'basic';
         break;
       case 'delete':
-        await Job.findByIdAndDelete(jobId);
+        // Soft delete instead of hard delete
+        job.isDeleted = true;
+        job.status = 'closed';
+        await job.save();
         return res.json({
           success: true,
           message: 'Puna u fshi me sukses'

@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { escapeHtml } from '../utils/sanitize.js';
 
 class ResendEmailService {
   constructor() {
@@ -36,6 +37,12 @@ class ResendEmailService {
     }
 
     try {
+      // Sanitize user-supplied data for HTML templates
+      const safeFirstName = escapeHtml(user.profile?.firstName);
+      const safeLastName = escapeHtml(user.profile?.lastName);
+      const safeEmail = escapeHtml(user.email);
+      const safeCity = escapeHtml(user.profile?.location?.city);
+
       const subject = 'Mirë se vini në advance.al! 🎉 Llogaria juaj u krijua me sukses';
 
       const htmlContent = `
@@ -56,7 +63,7 @@ class ResendEmailService {
 
         <!-- Main Content -->
         <div style="background: #f9fafb; border-radius: 8px; padding: 30px; margin: 20px 0;">
-            <h2 style="color: #1f2937; margin-top: 0; font-size: 24px;">🎉 Mirë se vini ${user.profile.firstName}!</h2>
+            <h2 style="color: #1f2937; margin-top: 0; font-size: 24px;">🎉 Mirë se vini ${safeFirstName}!</h2>
 
             <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 20px 0;">
                 Llogaria juaj në advance.al u krijua me sukses! Tani mund të filloni të kërkoni për punën e ëndrrave tuaja në Shqipëri.
@@ -65,9 +72,9 @@ class ResendEmailService {
             <!-- Account Info -->
             <div style="background: #ffffff; border-radius: 8px; padding: 20px; margin: 25px 0; border-left: 4px solid #10b981;">
                 <h3 style="color: #1f2937; margin-top: 0;">📋 Detajet e Llogarisë</h3>
-                <p style="margin: 8px 0; color: #4b5563;"><strong>Emri:</strong> ${user.profile.firstName} ${user.profile.lastName}</p>
-                <p style="margin: 8px 0; color: #4b5563;"><strong>Email:</strong> ${user.email}</p>
-                <p style="margin: 8px 0; color: #4b5563;"><strong>Qyteti:</strong> ${user.profile.location.city}</p>
+                <p style="margin: 8px 0; color: #4b5563;"><strong>Emri:</strong> ${safeFirstName} ${safeLastName}</p>
+                <p style="margin: 8px 0; color: #4b5563;"><strong>Email:</strong> ${safeEmail}</p>
+                <p style="margin: 8px 0; color: #4b5563;"><strong>Qyteti:</strong> ${safeCity}</p>
                 <p style="margin: 8px 0; color: #4b5563;"><strong>Lloji:</strong> Kërkues Pune</p>
             </div>
 
@@ -172,6 +179,14 @@ advance.al - Platforma e Punës në Shqipëri
     }
 
     try {
+      // Sanitize user-supplied data
+      const safeFirstName = escapeHtml(user.firstName);
+      const safeLastName = escapeHtml(user.lastName);
+      const safeEmail = escapeHtml(user.email);
+      const safeLocation = escapeHtml(user.location);
+      const safeInterests = user.interests ? user.interests.map(i => escapeHtml(i)).join(', ') : '';
+      const safeCustomInterests = user.customInterests ? user.customInterests.map(i => escapeHtml(i)).join(', ') : '';
+
       const subject = 'Mirë se vini në advance.al! 🎉 Regjistrimi për njoftimet u krye me sukses';
 
       const htmlContent = `
@@ -192,7 +207,7 @@ advance.al - Platforma e Punës në Shqipëri
 
         <!-- Main Content -->
         <div style="background: #f9fafb; border-radius: 8px; padding: 30px; margin: 20px 0;">
-            <h2 style="color: #1f2937; margin-top: 0; font-size: 24px;">🎉 Mirë se vini ${user.firstName}!</h2>
+            <h2 style="color: #1f2937; margin-top: 0; font-size: 24px;">🎉 Mirë se vini ${safeFirstName}!</h2>
 
             <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 20px 0;">
                 Regjistrimi juaj për njoftimet e punës në advance.al u krye me sukses! Do të merrni email për punë të reja që përputhen me interesat tuaja.
@@ -201,12 +216,12 @@ advance.al - Platforma e Punës në Shqipëri
             <!-- User Info -->
             <div style="background: #ffffff; border-radius: 8px; padding: 20px; margin: 25px 0; border-left: 4px solid #10b981;">
                 <h3 style="color: #1f2937; margin-top: 0;">📋 Detajet e Regjistrimit</h3>
-                <p style="margin: 8px 0; color: #4b5563;"><strong>Emri:</strong> ${user.firstName} ${user.lastName}</p>
-                <p style="margin: 8px 0; color: #4b5563;"><strong>Email:</strong> ${user.email}</p>
-                <p style="margin: 8px 0; color: #4b5563;"><strong>Qyteti:</strong> ${user.location}</p>
-                <p style="margin: 8px 0; color: #4b5563;"><strong>Interesat:</strong> ${user.interests.join(', ')}</p>
+                <p style="margin: 8px 0; color: #4b5563;"><strong>Emri:</strong> ${safeFirstName} ${safeLastName}</p>
+                <p style="margin: 8px 0; color: #4b5563;"><strong>Email:</strong> ${safeEmail}</p>
+                <p style="margin: 8px 0; color: #4b5563;"><strong>Qyteti:</strong> ${safeLocation}</p>
+                <p style="margin: 8px 0; color: #4b5563;"><strong>Interesat:</strong> ${safeInterests}</p>
                 ${user.customInterests && user.customInterests.length > 0 ?
-                  `<p style="margin: 8px 0; color: #4b5563;"><strong>Interesat e tjera:</strong> ${user.customInterests.join(', ')}</p>` : ''
+                  `<p style="margin: 8px 0; color: #4b5563;"><strong>Interesat e tjera:</strong> ${safeCustomInterests}</p>` : ''
                 }
             </div>
 
@@ -360,6 +375,11 @@ advance.al - Platforma e Punës në Shqipëri
         throw new Error(`Unknown action type: ${action}`);
       }
 
+      // Sanitize user-supplied data
+      const safeFirstName = escapeHtml(user.profile?.firstName);
+      const safeLastName = escapeHtml(user.profile?.lastName);
+      const safeReason = escapeHtml(reason);
+
       const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -381,7 +401,7 @@ advance.al - Platforma e Punës në Shqipëri
             <h2 style="color: #1f2937; margin-top: 0; font-size: 24px;">${details.title}</h2>
 
             <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 20px 0;">
-                Përshëndetje ${user.profile.firstName} ${user.profile.lastName},
+                Përshëndetje ${safeFirstName} ${safeLastName},
             </p>
 
             <div style="background: #ffffff; border-left: 4px solid ${details.color}; border-radius: 8px; padding: 20px; margin: 25px 0;">
@@ -389,7 +409,7 @@ advance.al - Platforma e Punës në Shqipëri
                     ${details.description}
                 </p>
                 ${duration ? `<p style="color: #4b5563; margin: 10px 0 0 0;"><strong>Kohëzgjatja:</strong> ${duration} ditë</p>` : ''}
-                <p style="color: #4b5563; margin: 10px 0 0 0;"><strong>Arsyeja:</strong> ${reason || 'Shkelje e rregullave të platformës'}</p>
+                <p style="color: #4b5563; margin: 10px 0 0 0;"><strong>Arsyeja:</strong> ${safeReason || 'Shkelje e rregullave të platformës'}</p>
             </div>
 
             ${action === 'warning' ? `
@@ -513,6 +533,12 @@ advance.al - Platforma e Punës në Shqipëri
     try {
       const { title, message, type, userName } = notificationData;
 
+      // Sanitize user-supplied data
+      const safeTitle = escapeHtml(title);
+      const safeMessage = escapeHtml(message);
+      const safeUserName = escapeHtml(userName);
+      const safeToEmail = escapeHtml(toEmail);
+
       const typeIcons = {
         announcement: '📢',
         maintenance: '🔧',
@@ -529,7 +555,7 @@ advance.al - Platforma e Punës në Shqipëri
         update: '#8b5cf6'
       };
 
-      const subject = `${typeIcons[type] || '📢'} ${title} - advance.al`;
+      const subject = `${typeIcons[type] || '📢'} ${safeTitle} - advance.al`;
 
       const htmlContent = `
 <!DOCTYPE html>
@@ -537,7 +563,7 @@ advance.al - Platforma e Punës në Shqipëri
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title} - advance.al</title>
+    <title>${safeTitle} - advance.al</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: Arial, sans-serif;">
     <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
@@ -550,15 +576,15 @@ advance.al - Platforma e Punës në Shqipëri
         <!-- Main Content -->
         <div style="background: #f9fafb; border-radius: 8px; padding: 30px; margin: 20px 0; border-left: 4px solid ${typeColors[type] || '#2563eb'};">
             <h2 style="color: #1f2937; margin-top: 0; font-size: 24px;">
-                ${typeIcons[type] || '📢'} ${title}
+                ${typeIcons[type] || '📢'} ${safeTitle}
             </h2>
 
             <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 20px 0;">
-                Përshëndetje ${userName},
+                Përshëndetje ${safeUserName},
             </p>
 
             <div style="background: #ffffff; border-radius: 8px; padding: 20px; margin: 25px 0;">
-                <p style="color: #1f2937; line-height: 1.6; font-size: 16px; margin: 0; white-space: pre-line;">${message}</p>
+                <p style="color: #1f2937; line-height: 1.6; font-size: 16px; margin: 0; white-space: pre-line;">${safeMessage}</p>
             </div>
 
             <!-- Footer Info -->
@@ -582,7 +608,7 @@ advance.al - Platforma e Punës në Shqipëri
                 © 2025 advance.al - Platforma e Punës në Shqipëri
             </p>
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-                Ky email u dërgua në ${toEmail}
+                Ky email u dërgua në ${safeToEmail}
             </p>
         </div>
     </div>
@@ -682,7 +708,16 @@ Ky email u dërgua në ${toEmail}
       };
 
       const typeLabel = messageTypeLabels[messageType] || 'Mesazh i ri';
-      const subject = `${typeLabel} për aplikimin tuaj - ${job.title}`;
+
+      // Sanitize user-supplied data
+      const safeRecipientName = escapeHtml(recipient.firstName);
+      const safeSenderFirstName = escapeHtml(sender.firstName);
+      const safeSenderLastName = escapeHtml(sender.lastName);
+      const safeJobTitle = escapeHtml(job.title);
+      const safeCompanyName = escapeHtml(job.companyName || 'N/A');
+      const safeMessage = escapeHtml(message);
+
+      const subject = `${typeLabel} për aplikimin tuaj - ${safeJobTitle}`;
 
       const htmlContent = `
 <!DOCTYPE html>
@@ -705,25 +740,25 @@ Ky email u dërgua në ${toEmail}
             <h2 style="color: #1f2937; margin-top: 0; font-size: 24px;">💬 ${typeLabel}</h2>
 
             <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 20px 0;">
-                Përshëndetje ${recipient.firstName},
+                Përshëndetje ${safeRecipientName},
             </p>
 
             <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 20px 0;">
-                Keni marrë një mesazh të ri për aplikimin tuaj në pozicionin <strong>${job.title}</strong>.
+                Keni marrë një mesazh të ri për aplikimin tuaj në pozicionin <strong>${safeJobTitle}</strong>.
             </p>
 
             <!-- Job Info -->
             <div style="background: #ffffff; border-radius: 8px; padding: 20px; margin: 25px 0; border-left: 4px solid #10b981;">
                 <h3 style="color: #1f2937; margin-top: 0;">📋 Detajet e Punës</h3>
-                <p style="margin: 8px 0; color: #4b5563;"><strong>Titulli:</strong> ${job.title}</p>
-                <p style="margin: 8px 0; color: #4b5563;"><strong>Kompania:</strong> ${job.companyName || 'N/A'}</p>
-                <p style="margin: 8px 0; color: #4b5563;"><strong>Nga:</strong> ${sender.firstName} ${sender.lastName}</p>
+                <p style="margin: 8px 0; color: #4b5563;"><strong>Titulli:</strong> ${safeJobTitle}</p>
+                <p style="margin: 8px 0; color: #4b5563;"><strong>Kompania:</strong> ${safeCompanyName}</p>
+                <p style="margin: 8px 0; color: #4b5563;"><strong>Nga:</strong> ${safeSenderFirstName} ${safeSenderLastName}</p>
             </div>
 
             <!-- Message Content -->
             <div style="background: #dbeafe; border: 1px solid #3b82f6; border-radius: 8px; padding: 20px; margin: 25px 0;">
                 <h4 style="color: #1e40af; margin-top: 0;">Mesazhi:</h4>
-                <p style="color: #1f2937; line-height: 1.6; margin: 0; white-space: pre-wrap;">${message}</p>
+                <p style="color: #1f2937; line-height: 1.6; margin: 0; white-space: pre-wrap;">${safeMessage}</p>
             </div>
 
             <!-- CTA Button -->

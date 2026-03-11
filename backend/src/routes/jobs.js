@@ -84,6 +84,75 @@ const createJobValidation = [
     .withMessage('Sezonale duhet të jetë true ose false')
 ];
 
+// Update validation — all fields optional for partial updates
+const updateJobValidation = [
+  body('title')
+    .optional()
+    .trim()
+    .isLength({ min: 5, max: 100 })
+    .withMessage('Titulli duhet të ketë midis 5-100 karaktere'),
+  body('description')
+    .optional()
+    .trim()
+    .isLength({ min: 50, max: 5000 })
+    .withMessage('Përshkrimi duhet të ketë midis 50-5000 karaktere'),
+  body('category')
+    .optional()
+    .isIn(['Teknologji', 'Marketing', 'Shitje', 'Financë', 'Burime Njerëzore', 'Inxhinieri', 'Dizajn', 'Menaxhim', 'Shëndetësi', 'Arsim', 'Turizëm', 'Ndërtim', 'Transport', 'Tjetër'])
+    .withMessage('Kategoria e zgjedhur nuk është e vlefshme'),
+  body('jobType')
+    .optional()
+    .isIn(['full-time', 'part-time', 'contract', 'internship'])
+    .withMessage('Lloji i punës nuk është i vlefshëm'),
+  body('location.city')
+    .optional()
+    .trim()
+    .notEmpty()
+    .withMessage('Qyteti është i detyrueshëm'),
+  body('salary.min')
+    .optional()
+    .isNumeric()
+    .isFloat({ min: 0 })
+    .withMessage('Paga minimale duhet të jetë numër pozitiv'),
+  body('salary.max')
+    .optional()
+    .isNumeric()
+    .isFloat({ min: 0 })
+    .withMessage('Paga maksimale duhet të jetë numër pozitiv'),
+  body('requirements')
+    .optional()
+    .isArray()
+    .withMessage('Kërkesat duhet të jenë një listë'),
+  body('benefits')
+    .optional()
+    .isArray()
+    .withMessage('Përfitimet duhet të jenë një listë'),
+  body('tags')
+    .optional()
+    .isArray()
+    .withMessage('Tags duhet të jenë një listë'),
+  body('platformCategories.diaspora')
+    .optional()
+    .isBoolean()
+    .withMessage('Diaspora duhet të jetë true ose false'),
+  body('platformCategories.ngaShtepia')
+    .optional()
+    .isBoolean()
+    .withMessage('Nga shtëpia duhet të jetë true ose false'),
+  body('platformCategories.partTime')
+    .optional()
+    .isBoolean()
+    .withMessage('Part Time duhet të jetë true ose false'),
+  body('platformCategories.administrata')
+    .optional()
+    .isBoolean()
+    .withMessage('Administrata duhet të jetë true ose false'),
+  body('platformCategories.sezonale')
+    .optional()
+    .isBoolean()
+    .withMessage('Sezonale duhet të jetë true ose false')
+];
+
 // @route   GET /api/jobs
 // @desc    Get all jobs with search and filters
 // @access  Public
@@ -938,7 +1007,7 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, createJ
 // @route   PUT /api/jobs/:id
 // @desc    Update job posting
 // @access  Private (Job owner only)
-router.put('/:id', authenticate, requireEmployer, requireVerifiedEmployer, createJobValidation, handleValidationErrors, async (req, res) => {
+router.put('/:id', authenticate, requireEmployer, requireVerifiedEmployer, updateJobValidation, handleValidationErrors, async (req, res) => {
   try {
     const job = await Job.findOne({
       _id: req.params.id,

@@ -3,24 +3,24 @@ import { Resend } from 'resend';
 import { body, validationResult } from 'express-validator';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
+import { escapeHtml } from '../utils/sanitize.js';
 
 dotenv.config();
 
 const router = express.Router();
 
 // Initialize Resend
-console.log('🔑 RESEND_API_KEY exists:', !!process.env.RESEND_API_KEY);
-console.log('🔑 RESEND_API_KEY starts with re_:', process.env.RESEND_API_KEY?.startsWith('re_'));
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Rate limiting for email sending - DISABLED FOR DEVELOPMENT
-// const emailLimiter = rateLimit({
-//   windowMs: 15 * 60 * 1000, // 15 minutes
-//   max: 3, // limit each IP to 3 emails per window
-//   message: {
-//     error: 'Shumë kërkesa për email, ju lutemi provoni përsëri pas 15 minutash.',
-//   }
-// });
+// Rate limiting for email sending
+const emailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 3, // limit each IP to 3 emails per window
+  message: {
+    success: false,
+    message: 'Shumë kërkesa për email, ju lutemi provoni përsëri pas 15 minutash.',
+  }
+});
 
 // Validation for email request
 const emailValidation = [
@@ -58,23 +58,16 @@ const handleValidationErrors = (req, res, next) => {
 // @route   POST /api/send-verification
 // @desc    Send verification email via Resend
 // @access  Public
-router.post('/', emailValidation, handleValidationErrors, async (req, res) => {
+router.post('/', emailLimiter, emailValidation, handleValidationErrors, async (req, res) => {
   try {
     const { to, companyName, contactPerson, verificationCode } = req.body;
 
-    console.log(`📧 Sending verification email to ${to} for company: ${companyName}`);
-    console.log('🔧 Testing Resend connectivity...');
-
-    // Test basic connectivity first
-    try {
-      const testResult = await resend.domains.list();
-      console.log('✅ Resend API is reachable');
-    } catch (testError) {
-      console.log('❌ Resend API connectivity test failed:', testError);
-    }
+    // Sanitize user-supplied data for HTML templates
+    const safeCompanyName = escapeHtml(companyName);
+    const safeContactPerson = escapeHtml(contactPerson);
 
     // Create email content
-    const emailSubject = `Kodi i Verifikimit - ${companyName}`;
+    const emailSubject = `Kodi i Verifikimit - ${safeCompanyName}`;
 
     const htmlContent = `
 <!DOCTYPE html>
@@ -94,10 +87,10 @@ router.post('/', emailValidation, handleValidationErrors, async (req, res) => {
 
         <!-- Main Content -->
         <div style="background: #f9fafb; border-radius: 8px; padding: 30px; margin: 20px 0;">
-            <h2 style="color: #1f2937; margin-top: 0; font-size: 24px;">Përshëndetje ${contactPerson}!</h2>
+            <h2 style="color: #1f2937; margin-top: 0; font-size: 24px;">Përshëndetje ${safeContactPerson}!</h2>
 
             <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 20px 0;">
-                Faleminderit për regjistrimin e kompanisë <strong>"${companyName}"</strong> në advance.al!
+                Faleminderit për regjistrimin e kompanisë <strong>"${safeCompanyName}"</strong> në advance.al!
             </p>
 
             <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 20px 0;">
@@ -139,9 +132,9 @@ router.post('/', emailValidation, handleValidationErrors, async (req, res) => {
     const textContent = `
 Verifikimi - advance.al
 
-Përshëndetje ${contactPerson}!
+Përshëndetje ${safeContactPerson}!
 
-Faleminderit për regjistrimin e kompanisë "${companyName}" në advance.al!
+Faleminderit për regjistrimin e kompanisë "${safeCompanyName}" në advance.al!
 
 Kodi juaj i verifikimit është: ${verificationCode}
 
@@ -153,13 +146,6 @@ Nëse nuk keni kërkuar këtë verifikim, ju lutemi injoroni këtë email.
 advance.al - Platforma e Punës në Shqipëri
     `;
 
-    // Send email via Resend - simplified for testing
-    console.log('📤 Attempting to send email with params:', {
-      from: '<onboarding@resend.dev>',
-      to: [to],
-      subject: emailSubject
-    });
-
     const emailResult = await resend.emails.send({
       from: 'Advance.al <onboarding@resend.dev>',
       to: to,
@@ -168,14 +154,9 @@ advance.al - Platforma e Punës në Shqipëri
       text: textContent,
     });
 
-    console.log('📬 Email send result:', emailResult);
-
     if (emailResult.error) {
-      console.error('❌ Resend error:', emailResult.error);
       throw new Error('Failed to send email via Resend');
     }
-
-    console.log('✅ Email sent successfully via Resend:', emailResult.data?.id);
 
     res.json({
       success: true,
@@ -184,7 +165,7 @@ advance.al - Platforma e Punës në Shqipëri
     });
 
   } catch (error) {
-    console.error('❌ Error sending verification email:', error);
+    console.error('Send verification email error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në dërgimin e email-it të verifikimit'

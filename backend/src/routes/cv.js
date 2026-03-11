@@ -1,4 +1,5 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { authenticate, requireJobSeeker } from '../middleware/auth.js';
 import { extractCVDataFromText } from '../services/openaiService.js';
 import { generateCVDocument } from '../services/cvDocumentService.js';
@@ -7,30 +8,50 @@ import File from '../models/File.js';
 
 const router = express.Router();
 
+// Rate limiting for CV generation (expensive OpenAI calls)
+const cvGenerateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // 5 requests per hour per IP
+  message: {
+    success: false,
+    message: 'Keni arritur limitin e gjenerimit të CV. Provoni përsëri pas 1 ore.'
+  }
+});
+
 // POST /api/cv/generate - Generate CV from natural language
-router.post('/generate', authenticate, requireJobSeeker, async (req, res) => {
+router.post('/generate', cvGenerateLimiter, authenticate, requireJobSeeker, async (req, res) => {
   try {
     const { naturalLanguageInput, targetLanguage = 'sq' } = req.body;
 
-    console.log(`📝 CV generation request from user: ${req.user._id}, target language: ${targetLanguage}`);
-
-    // Validate input
-    if (!naturalLanguageInput || naturalLanguageInput.trim().length < 50) {
+    // Validate input length
+    if (!naturalLanguageInput || typeof naturalLanguageInput !== 'string') {
       return res.status(400).json({
         success: false,
-        message: 'Please provide at least 50 characters of information about yourself'
+        message: 'Ju lutemi jepni informacion rreth vetes (minimumi 50 karaktere)'
+      });
+    }
+
+    const sanitizedInput = naturalLanguageInput.trim().replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+
+    if (sanitizedInput.length < 50) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ju lutemi jepni të paktën 50 karaktere informacion'
+      });
+    }
+
+    if (sanitizedInput.length > 10000) {
+      return res.status(400).json({
+        success: false,
+        message: 'Inputi nuk mund të kalojë 10,000 karaktere'
       });
     }
 
     // Extract structured data using OpenAI with target language
-    console.log('🤖 Calling OpenAI to extract CV data...');
-    const extractionResult = await extractCVDataFromText(naturalLanguageInput, targetLanguage);
+    const extractionResult = await extractCVDataFromText(sanitizedInput, targetLanguage);
     const cvData = extractionResult.data;
 
-    console.log(`✅ CV data extracted - Language: ${cvData.language}`);
-
     // Generate Word document in the target language
-    console.log('📄 Generating Word document...');
     const docBuffer = await generateCVDocument(cvData, targetLanguage);
 
     // Save file to File model
@@ -47,8 +68,6 @@ router.post('/generate', authenticate, requireJobSeeker, async (req, res) => {
     });
     await cvFile.save();
 
-    console.log(`💾 CV file saved with ID: ${cvFile._id}`);
-
     // Update user profile with CV data
     await User.findByIdAndUpdate(req.user._id, {
       'profile.jobSeekerProfile.aiGeneratedCV': cvData,
@@ -56,8 +75,6 @@ router.post('/generate', authenticate, requireJobSeeker, async (req, res) => {
       'profile.jobSeekerProfile.cvGeneratedAt': new Date(),
       'profile.jobSeekerProfile.cvLastUpdatedAt': new Date()
     });
-
-    console.log('✅ User profile updated with CV data');
 
     res.json({
       success: true,
@@ -74,11 +91,10 @@ router.post('/generate', authenticate, requireJobSeeker, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ CV Generation Error:', error);
+    console.error('CV generation error:', error.message);
     res.status(500).json({
       success: false,
-      message: 'Failed to generate CV',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      message: 'Gabim në gjenerimin e CV'
     });
   }
 });
@@ -97,15 +113,13 @@ router.get('/download/:fileId', authenticate, async (req, res) => {
       return res.status(403).json({ success: false, message: 'Unauthorized' });
     }
 
-    console.log(`⬇️ User ${req.user._id} downloading CV: ${file.fileName}`);
-
     res.setHeader('Content-Type', file.fileType);
     res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
     res.send(file.fileData);
 
   } catch (error) {
-    console.error('❌ Download error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    console.error('CV download error:', error.message);
+    res.status(500).json({ success: false, message: 'Gabim në shkarkimin e CV' });
   }
 });
 
@@ -123,15 +137,13 @@ router.get('/preview/:fileId', authenticate, async (req, res) => {
       return res.status(403).json({ success: false, message: 'Unauthorized' });
     }
 
-    console.log(`👁️ User ${req.user._id} previewing CV: ${file.fileName}`);
-
     res.setHeader('Content-Type', file.fileType);
     res.setHeader('Content-Disposition', `inline; filename="${file.fileName}"`);
     res.send(file.fileData);
 
   } catch (error) {
-    console.error('❌ Preview error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    console.error('CV preview error:', error.message);
+    res.status(500).json({ success: false, message: 'Gabim në shikimin e CV' });
   }
 });
 
@@ -158,8 +170,8 @@ router.get('/my-cv', authenticate, requireJobSeeker, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Get CV error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    console.error('Get CV error:', error.message);
+    res.status(500).json({ success: false, message: 'Gabim në marrjen e CV' });
   }
 });
 

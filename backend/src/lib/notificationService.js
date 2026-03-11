@@ -2,6 +2,7 @@ import { QuickUser, User } from '../models/index.js';
 import resendEmailService from './resendEmailService.js';
 import emailService from './emailService.js'; // kept for SMS only
 import userEmbeddingService from '../services/userEmbeddingService.js';
+import { escapeHtml } from '../utils/sanitize.js';
 
 class NotificationService {
   constructor() {
@@ -26,7 +27,16 @@ class NotificationService {
     // Extract company name from populated employerId
     const companyName = job.employerId?.profile?.employerProfile?.companyName || 'Kompani';
 
-    const subject = `Punë e re: ${job.title} në ${job.location.city}`;
+    // Sanitize user-supplied data for HTML templates
+    const safeFirstName = escapeHtml(user.firstName);
+    const safeJobTitle = escapeHtml(job.title);
+    const safeCompanyName = escapeHtml(companyName);
+    const safeCity = escapeHtml(job.location?.city);
+    const safeDescription = escapeHtml(job.description?.substring(0, 300));
+    const safeCategory = escapeHtml(job.category);
+    const safeInterests = user.allInterests ? user.allInterests.map(i => escapeHtml(i)).join(', ') : '';
+
+    const subject = `Punë e re: ${safeJobTitle} në ${safeCity}`;
 
     const textContent = `
 Përshëndetje ${user.firstName},
@@ -77,21 +87,21 @@ advance.al - Platforma #1 e Punës në Shqipëri
   <div class="container">
     <div class="header">
       <h1>🎯 Punë e re për ju!</h1>
-      <p>Përshëndetje ${user.firstName}, gjenim një mundësi të shkëlqyer!</p>
+      <p>Përshëndetje ${safeFirstName}, gjenim një mundësi të shkëlqyer!</p>
     </div>
 
     <div class="content">
       <div class="job-card">
-        <div class="job-title">${job.title}</div>
-        <div class="job-info"><strong>🏢 Kompania:</strong> ${companyName}</div>
-        <div class="job-info"><strong>📍 Vendndodhja:</strong> ${job.location.city}${job.location.remote ? ' <span style="color: #28a745;">(Punë në distancë)</span>' : ''}</div>
+        <div class="job-title">${safeJobTitle}</div>
+        <div class="job-info"><strong>🏢 Kompania:</strong> ${safeCompanyName}</div>
+        <div class="job-info"><strong>📍 Vendndodhja:</strong> ${safeCity}${job.location.remote ? ' <span style="color: #28a745;">(Punë në distancë)</span>' : ''}</div>
         ${job.salary ? `<div class="job-info"><strong>💰 Paga:</strong> ${job.salary.min}-${job.salary.max} ${job.salary.currency}</div>` : ''}
         <div class="job-info"><strong>📅 Afati:</strong> ${new Date(job.applicationDeadline).toLocaleDateString('sq-AL')}</div>
-        <div class="job-info"><strong>🎯 Kategoria:</strong> ${job.category}</div>
+        <div class="job-info"><strong>🎯 Kategoria:</strong> ${safeCategory}</div>
       </div>
 
       <p><strong>📝 Përshkrimi i shkurtër:</strong></p>
-      <p>${job.description.substring(0, 300)}${job.description.length > 300 ? '...' : ''}</p>
+      <p>${safeDescription}${job.description?.length > 300 ? '...' : ''}</p>
 
       <div style="text-align: center; margin: 30px 0;">
         <a href="https://advance.al/jobs/${job._id}?utm_source=email&utm_medium=notification&utm_campaign=job_match&token=${user.unsubscribeToken}"
@@ -102,7 +112,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
 
       <p style="font-size: 14px; color: #666;">
         💡 <strong>Përse mora këtë email?</strong><br>
-        Ky pozicion përputhet me interesat tuaja: ${user.allInterests.join(', ')}
+        Ky pozicion përputhet me interesat tuaja: ${safeInterests}
       </p>
     </div>
 
@@ -135,7 +145,16 @@ advance.al - Platforma #1 e Punës në Shqipëri
   generateFullUserJobNotificationEmail(user, job) {
     const firstName = user.profile?.firstName || 'Kandidat';
     const companyName = job.employerId?.profile?.employerProfile?.companyName || 'Kompani';
-    const subject = `Punë e re: ${job.title} në ${job.location.city}`;
+
+    // Sanitize for HTML
+    const safeFirstName = escapeHtml(firstName);
+    const safeJobTitle = escapeHtml(job.title);
+    const safeCompanyName = escapeHtml(companyName);
+    const safeCity = escapeHtml(job.location?.city);
+    const safeDescription = escapeHtml(job.description?.substring(0, 300));
+    const safeCategory = escapeHtml(job.category);
+
+    const subject = `Punë e re: ${safeJobTitle} në ${safeCity}`;
 
     const textContent = `
 Përshëndetje ${firstName},
@@ -183,19 +202,19 @@ advance.al - Platforma #1 e Punës në Shqipëri
   <div class="container">
     <div class="header">
       <h1>🎯 Punë e re për ju!</h1>
-      <p>Përshëndetje ${firstName}, gjenim një mundësi të shkëlqyer!</p>
+      <p>Përshëndetje ${safeFirstName}, gjenim një mundësi të shkëlqyer!</p>
     </div>
     <div class="content">
       <div class="job-card">
-        <div class="job-title">${job.title}</div>
-        <div class="job-info"><strong>🏢 Kompania:</strong> ${companyName}</div>
-        <div class="job-info"><strong>📍 Vendndodhja:</strong> ${job.location.city}${job.location.remote ? ' <span style="color:#28a745;">(Punë në distancë)</span>' : ''}</div>
+        <div class="job-title">${safeJobTitle}</div>
+        <div class="job-info"><strong>🏢 Kompania:</strong> ${safeCompanyName}</div>
+        <div class="job-info"><strong>📍 Vendndodhja:</strong> ${safeCity}${job.location.remote ? ' <span style="color:#28a745;">(Punë në distancë)</span>' : ''}</div>
         ${job.salary ? `<div class="job-info"><strong>💰 Paga:</strong> ${job.salary.min}-${job.salary.max} ${job.salary.currency}</div>` : ''}
         <div class="job-info"><strong>📅 Afati:</strong> ${new Date(job.applicationDeadline).toLocaleDateString('sq-AL')}</div>
-        <div class="job-info"><strong>🎯 Kategoria:</strong> ${job.category}</div>
+        <div class="job-info"><strong>🎯 Kategoria:</strong> ${safeCategory}</div>
       </div>
       <p><strong>📝 Përshkrimi i shkurtër:</strong></p>
-      <p>${job.description.substring(0, 300)}${job.description.length > 300 ? '...' : ''}</p>
+      <p>${safeDescription}${job.description?.length > 300 ? '...' : ''}</p>
       <div style="text-align: center; margin: 30px 0;">
         <a href="https://advance.al/jobs/${job._id}?utm_source=email&utm_medium=notification&utm_campaign=job_match_account"
            class="cta-button">👀 Shiko Detajet dhe Apliko</a>
@@ -464,14 +483,14 @@ Ekipi i advance.al
     </div>
 
     <div class="content">
-      <h2>Përshëndetje ${user.firstName}!</h2>
+      <h2>Përshëndetje ${escapeHtml(user.firstName)}!</h2>
 
       <p>Ju regjistruat me sukses për të marrë njoftimet e punës nga advance.al! 🎯</p>
 
       <div class="interests-box">
         <h3>🎯 Interesat tuaja:</h3>
         <ul>
-          ${user.allInterests.map(interest => `<li>${interest}</li>`).join('')}
+          ${user.allInterests.map(interest => `<li>${escapeHtml(interest)}</li>`).join('')}
         </ul>
       </div>
 
