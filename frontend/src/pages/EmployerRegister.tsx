@@ -39,7 +39,7 @@ const EmployerRegister = () => {
   // Redirect authenticated users
   useEffect(() => {
     if (user) {
-      navigate(user.userType === 'employer' ? '/employer/dashboard' : '/', { replace: true });
+      navigate(user.userType === 'employer' ? '/employer-dashboard' : '/', { replace: true });
     }
   }, [user, navigate]);
 

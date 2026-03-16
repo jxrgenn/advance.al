@@ -171,6 +171,8 @@ const EditJob = () => {
     if (!formData.category) errors.push('Kategoria është e detyrueshme');
     if (!formData.jobType) errors.push('Lloji i punës është i detyrueshem');
     if (!formData.city) errors.push('Qyteti është i detyrueshem');
+    if (formData.applicationMethod === 'external' && !formData.externalApplicationUrl?.trim()) errors.push('URL e aplikimit të jashtëm është e detyrueshme');
+    if (formData.applicationMethod === 'email' && !formData.applicationEmail?.trim()) errors.push('Email-i për aplikime është i detyrueshëm');
 
     if (errors.length > 0) {
       toast({

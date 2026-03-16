@@ -642,6 +642,19 @@ const EmployerDashboard = () => {
         return;
       }
 
+      // Validate phone/whatsapp format if provided
+      const phoneRegex = /^\+\d{8,}$/;
+      if (profileData.phone && !phoneRegex.test(profileData.phone)) {
+        toast({ title: "Numri i telefonit nuk është i vlefshëm", description: "Format: +355xxxxxxxx", variant: "destructive" });
+        setSavingProfile(false);
+        return;
+      }
+      if (profileData.whatsapp && !phoneRegex.test(profileData.whatsapp)) {
+        toast({ title: "Numri i WhatsApp nuk është i vlefshëm", description: "Format: +355xxxxxxxx", variant: "destructive" });
+        setSavingProfile(false);
+        return;
+      }
+
       const updateData = {
         employerProfile: {
           companyName: profileData.companyName,

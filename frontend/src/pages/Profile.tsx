@@ -315,6 +315,12 @@ const Profile = () => {
 
   // Save settings (salary, remote, privacy)
   const handleSaveSettings = async () => {
+    const salaryMin = parseInt(desiredSalaryMin) || 0;
+    const salaryMax = parseInt(desiredSalaryMax) || 0;
+    if (user?.userType === 'jobseeker' && salaryMin > 0 && salaryMax > 0 && salaryMin > salaryMax) {
+      toast({ title: 'Paga minimale nuk mund të jetë më e madhe se paga maksimale', variant: 'destructive' });
+      return;
+    }
     setSavingSettings(true);
     try {
       const updateData: any = {
@@ -327,8 +333,8 @@ const Profile = () => {
         updateData.jobSeekerProfile = {
           openToRemote,
           desiredSalary: {
-            min: parseInt(desiredSalaryMin) || 0,
-            max: parseInt(desiredSalaryMax) || 0,
+            min: salaryMin,
+            max: salaryMax,
             currency: desiredSalaryCurrency
           }
         };
@@ -2025,7 +2031,6 @@ const Profile = () => {
                               <SelectContent>
                                 <SelectItem value="ALL">ALL (Lekë)</SelectItem>
                                 <SelectItem value="EUR">EUR (Euro)</SelectItem>
-                                <SelectItem value="USD">USD (Dollar)</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
