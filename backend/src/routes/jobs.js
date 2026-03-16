@@ -377,7 +377,8 @@ router.get('/recommendations', authenticate, async (req, res) => {
       });
     }
 
-    const { limit = 10 } = req.query;
+    const { limit: rawLimit = 10 } = req.query;
+    const limit = sanitizeLimit(rawLimit, 50, 10);
     const userId = req.user._id;
 
     // Get user's saved jobs to analyze preferences
@@ -479,7 +480,7 @@ router.get('/recommendations', authenticate, async (req, res) => {
       { $sort: { score: -1, postedAt: -1 } },
 
       // Limit results
-      { $limit: parseInt(limit) },
+      { $limit: limit },
 
       // Clean up the result
       {
@@ -533,8 +534,8 @@ router.get('/recommendations', authenticate, async (req, res) => {
     const recommendations = await Job.aggregate(pipeline);
 
     // If we don't have enough personalized recommendations, add some popular/recent jobs
-    if (recommendations.length < parseInt(limit)) {
-      const remainingLimit = parseInt(limit) - recommendations.length;
+    if (recommendations.length < limit) {
+      const remainingLimit = limit - recommendations.length;
       const excludeIds = recommendations.map(job => job._id);
 
       const fallbackJobs = await Job.find({

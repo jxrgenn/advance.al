@@ -1,6 +1,7 @@
 import express from 'express';
 import { Location } from '../models/index.js';
 import { cacheGet, cacheSet } from '../config/redis.js';
+import { sanitizeLimit } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -54,7 +55,7 @@ router.get('/popular', async (req, res) => {
       });
     }
 
-    const locations = await Location.getPopularLocations(parseInt(limit));
+    const locations = await Location.getPopularLocations(sanitizeLimit(limit, 50, 10));
 
     // Cache for 10 minutes — popular locations change with job postings
     await cacheSet(cacheKey, locations, 600);

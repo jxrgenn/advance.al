@@ -1,7 +1,7 @@
 import express from 'express';
 import { User, Job } from '../models/index.js';
 import { authenticate, optionalAuth } from '../middleware/auth.js';
-import { escapeRegex } from '../utils/sanitize.js';
+import { escapeRegex, sanitizeLimit } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -54,7 +54,9 @@ router.get('/', optionalAuth, async (req, res) => {
     }
 
     // Pagination
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const sanitizedLimit = sanitizeLimit(limit, 50, 12);
+    const currentPage = parseInt(page) || 1;
+    const skip = (currentPage - 1) * sanitizedLimit;
 
     // Build sort options
     const sortOptions = {};
@@ -109,14 +111,14 @@ router.get('/', optionalAuth, async (req, res) => {
       },
       { $sort: sortOptions },
       { $skip: skip },
-      { $limit: parseInt(limit) }
+      { $limit: sanitizedLimit }
     ];
 
     const companies = await User.aggregate(pipeline);
 
     // Get total count for pagination
     const totalCompanies = await User.countDocuments(matchQuery);
-    const totalPages = Math.ceil(totalCompanies / parseInt(limit));
+    const totalPages = Math.ceil(totalCompanies / sanitizedLimit);
 
     // Format response
     const formattedCompanies = companies.map(company => ({
@@ -139,11 +141,11 @@ router.get('/', optionalAuth, async (req, res) => {
       data: {
         companies: formattedCompanies,
         pagination: {
-          currentPage: parseInt(page),
+          currentPage,
           totalPages,
           totalCompanies,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1
+          hasNextPage: currentPage < totalPages,
+          hasPrevPage: currentPage > 1
         },
         filters: {
           search,
@@ -311,15 +313,17 @@ router.get('/:id/jobs', optionalAuth, async (req, res) => {
     sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
     // Pagination
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const sanitizedLimit = sanitizeLimit(limit, 50, 10);
+    const currentPage = parseInt(page) || 1;
+    const skip = (currentPage - 1) * sanitizedLimit;
 
     const jobs = await Job.find(query)
       .sort(sortOptions)
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(sanitizedLimit);
 
     const totalJobs = await Job.countDocuments(query);
-    const totalPages = Math.ceil(totalJobs / parseInt(limit));
+    const totalPages = Math.ceil(totalJobs / sanitizedLimit);
 
     res.json({
       success: true,
@@ -331,11 +335,11 @@ router.get('/:id/jobs', optionalAuth, async (req, res) => {
           logo: company.profile.employerProfile.logo
         },
         pagination: {
-          currentPage: parseInt(page),
+          currentPage,
           totalPages,
           totalJobs,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1
+          hasNextPage: currentPage < totalPages,
+          hasPrevPage: currentPage > 1
         }
       }
     });

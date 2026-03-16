@@ -4,6 +4,7 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { SystemConfiguration, ConfigurationAudit, SystemHealth } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
+import { sanitizeLimit } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -267,18 +268,21 @@ router.get('/audit/:id', authenticate, requireAdmin, async (req, res) => {
     const { page = 1, limit = 10 } = req.query;
     const settingId = req.params.id;
 
+    const sanitizedLimit = sanitizeLimit(limit, 50, 10);
+    const currentPage = parseInt(page) || 1;
+
     const auditHistory = await ConfigurationAudit.getConfigurationHistory(settingId, {
-      page: parseInt(page),
-      limit: parseInt(limit)
+      page: currentPage,
+      limit: sanitizedLimit
     });
 
     const total = await ConfigurationAudit.countDocuments({ configurationId: settingId });
 
     const pagination = {
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(total / parseInt(limit)),
+      currentPage,
+      totalPages: Math.ceil(total / sanitizedLimit),
       totalItems: total,
-      itemsPerPage: parseInt(limit)
+      itemsPerPage: sanitizedLimit
     };
 
     res.json({
@@ -306,17 +310,20 @@ router.get('/audit', authenticate, requireAdmin, async (req, res) => {
   try {
     const { page = 1, limit = 20, days = 7, category, action } = req.query;
 
+    const sanitizedLimit = sanitizeLimit(limit, 100, 20);
+    const currentPage = parseInt(page) || 1;
+
     let auditHistory;
     if (category) {
       auditHistory = await ConfigurationAudit.getCategoryHistory(category, {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: currentPage,
+        limit: sanitizedLimit,
         action
       });
     } else {
       auditHistory = await ConfigurationAudit.getRecentHistory({
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: currentPage,
+        limit: sanitizedLimit,
         days: parseInt(days)
       });
     }

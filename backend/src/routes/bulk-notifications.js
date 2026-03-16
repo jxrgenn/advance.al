@@ -4,6 +4,7 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { BulkNotification, Notification, User } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { sendBulkNotificationEmail } from '../lib/resendEmailService.js';
+import { sanitizeLimit } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -174,9 +175,12 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
       type
     } = req.query;
 
+    const sanitizedLimit = sanitizeLimit(limit, 50, 10);
+    const currentPage = parseInt(page) || 1;
+
     const options = {
-      page: parseInt(page),
-      limit: parseInt(limit),
+      page: currentPage,
+      limit: sanitizedLimit,
       status,
       targetAudience,
       type,
@@ -192,10 +196,10 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
     });
 
     const pagination = {
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(total / parseInt(limit)),
+      currentPage,
+      totalPages: Math.ceil(total / sanitizedLimit),
       totalItems: total,
-      itemsPerPage: parseInt(limit)
+      itemsPerPage: sanitizedLimit
     };
 
     res.json({

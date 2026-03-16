@@ -106,7 +106,7 @@ const EmployerRegister = () => {
       });
       toast({
         title: 'Mirësevini në PunaShqip!',
-        description: 'Llogaria juaj u krijua me sukses. Mund të filloni të postoni vende pune.',
+        description: 'Llogaria juaj u krijua me sukses. Llogaria juaj po verifikohet nga administratori.',
       });
       navigate('/employer-dashboard');
     } catch (error: any) {

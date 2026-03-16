@@ -5,6 +5,7 @@ import WorkerStatus from '../../models/WorkerStatus.js';
 import jobEmbeddingService from '../../services/jobEmbeddingService.js';
 import debugLogger from '../../services/debugLogger.js';
 import { authenticate, requireAdmin } from '../../middleware/auth.js';
+import { sanitizeLimit } from '../../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -117,17 +118,19 @@ router.get('/status', async (req, res) => {
  */
 router.get('/queue', async (req, res) => {
   try {
-    const { status, limit = 50, page = 1 } = req.query;
+    const { status, limit: rawLimit = 50, page: rawPage = 1 } = req.query;
 
     const query = status ? { status } : {};
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const safeLimit = sanitizeLimit(rawLimit, 100, 50);
+    const currentPage = parseInt(rawPage) || 1;
+    const skip = (currentPage - 1) * safeLimit;
 
     const [queueItems, totalCount, stats] = await Promise.all([
       JobQueue.find(query)
         .populate('jobId', 'title status')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(parseInt(limit))
+        .limit(safeLimit)
         .lean(),
       JobQueue.countDocuments(query),
       JobQueue.getStats()
@@ -162,8 +165,8 @@ router.get('/queue', async (req, res) => {
           updatedAt: item.updatedAt
         })),
         pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(totalCount / parseInt(limit)),
+          currentPage,
+          totalPages: Math.ceil(totalCount / safeLimit),
           totalItems: totalCount
         },
         queueHealth

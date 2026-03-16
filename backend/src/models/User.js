@@ -62,7 +62,7 @@ const jobSeekerProfileSchema = new Schema({
     ref: 'File'
   },
   profilePhoto: {
-    type: Schema.Types.ObjectId,
+    type: Schema.Types.Mixed, // Allow both ObjectId (File reference) and String (direct URL)
     ref: 'File'
   },
   desiredSalary: {

@@ -3,7 +3,7 @@ import { body, query, validationResult } from 'express-validator';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { Report, ReportAction, User } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
-import { escapeRegex } from '../utils/sanitize.js';
+import { escapeRegex, sanitizeLimit } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -231,7 +231,7 @@ router.get('/',
     try {
       const userId = req.user.id;
       const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 10;
+      const limit = sanitizeLimit(req.query.limit, 50, 10);
       const skip = (page - 1) * limit;
 
       // Get user's submitted reports
@@ -314,14 +314,18 @@ router.get('/admin',
       const sortObj = {};
       sortObj[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
+      // Sanitize pagination
+      const sanitizedLimit = sanitizeLimit(limit, 100, 20);
+      const currentPage = parseInt(page) || 1;
+
       // Execute query with pagination
       const reports = await Report.find(filter)
         .populate('reportedUser', 'firstName lastName email userType profile.profilePicture accountStatus')
         .populate('reportingUser', 'firstName lastName email userType')
         .populate('assignedAdmin', 'firstName lastName email')
         .sort(sortObj)
-        .limit(parseInt(limit))
-        .skip((parseInt(page) - 1) * parseInt(limit));
+        .limit(sanitizedLimit)
+        .skip((currentPage - 1) * sanitizedLimit);
 
       const totalReports = await Report.countDocuments(filter);
 
@@ -343,16 +347,17 @@ router.get('/admin',
         }
       ]);
 
+      const totalPages = Math.ceil(totalReports / sanitizedLimit);
       res.json({
         success: true,
         data: {
           reports,
           pagination: {
-            currentPage: parseInt(page),
-            totalPages: Math.ceil(totalReports / parseInt(limit)),
+            currentPage,
+            totalPages,
             totalReports,
-            hasNext: parseInt(page) < Math.ceil(totalReports / parseInt(limit)),
-            hasPrev: parseInt(page) > 1
+            hasNext: currentPage < totalPages,
+            hasPrev: currentPage > 1
           },
           statistics: stats[0] || { statusBreakdown: [], priorityBreakdown: [], categoryBreakdown: [] }
         }

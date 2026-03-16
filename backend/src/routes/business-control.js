@@ -3,7 +3,7 @@ import { body, query, validationResult } from 'express-validator';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { BusinessCampaign, PricingRule, RevenueAnalytics, Job, User, SystemConfiguration } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
-import { escapeRegex } from '../utils/sanitize.js';
+import { escapeRegex, sanitizeLimit } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -132,11 +132,14 @@ router.get('/campaigns', authenticate, requireAdmin, async (req, res) => {
     if (type) query.type = type;
     if (active !== undefined) query.isActive = active === 'true';
 
+    const sanitizedLimit = sanitizeLimit(limit, 50, 10);
+    const currentPage = parseInt(page) || 1;
+
     const campaigns = await BusinessCampaign.find(query)
       .populate('createdBy', 'profile.firstName profile.lastName email')
       .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
+      .limit(sanitizedLimit)
+      .skip((currentPage - 1) * sanitizedLimit)
       .lean();
 
     const total = await BusinessCampaign.countDocuments(query);
@@ -149,10 +152,10 @@ router.get('/campaigns', authenticate, requireAdmin, async (req, res) => {
       data: {
         campaigns,
         pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(total / limit),
+          currentPage,
+          totalPages: Math.ceil(total / sanitizedLimit),
           totalItems: total,
-          itemsPerPage: parseInt(limit)
+          itemsPerPage: sanitizedLimit
         },
         performance: performanceSummary
       }
@@ -345,11 +348,14 @@ router.get('/pricing-rules', authenticate, requireAdmin, async (req, res) => {
     if (category) query.category = category;
     if (active !== undefined) query.isActive = active === 'true';
 
+    const sanitizedLimit = sanitizeLimit(limit, 50, 10);
+    const currentPage = parseInt(page) || 1;
+
     const rules = await PricingRule.find(query)
       .populate('createdBy', 'profile.firstName profile.lastName email')
       .sort({ priority: -1, createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
+      .limit(sanitizedLimit)
+      .skip((currentPage - 1) * sanitizedLimit)
       .lean();
 
     const total = await PricingRule.countDocuments(query);
@@ -362,10 +368,10 @@ router.get('/pricing-rules', authenticate, requireAdmin, async (req, res) => {
       data: {
         rules,
         pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(total / limit),
+          currentPage,
+          totalPages: Math.ceil(total / sanitizedLimit),
           totalItems: total,
-          itemsPerPage: parseInt(limit)
+          itemsPerPage: sanitizedLimit
         },
         analytics
       }
@@ -872,7 +878,7 @@ router.get('/employers/search', authenticate, requireAdmin, async (req, res) => 
 
     const employers = await User.find(searchQuery)
       .select('email profile.firstName profile.lastName profile.employerProfile.companyName freePostingEnabled status')
-      .limit(parseInt(limit))
+      .limit(sanitizeLimit(limit, 50, 20))
       .sort({ createdAt: -1 });
 
     res.json({

@@ -3,7 +3,7 @@ import { body, validationResult } from 'express-validator';
 import rateLimit from 'express-rate-limit';
 import crypto from 'crypto';
 import { User } from '../models/index.js';
-import emailService from '../lib/emailService.js';
+import resendEmailService from '../lib/resendEmailService.js';
 import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
 import logger from '../config/logger.js';
 
@@ -154,7 +154,8 @@ Nëse nuk keni kërkuar këtë verifikim, ju lutemi injoroni këtë email.
 © 2026 advance.al
     `;
 
-    const result = await emailService.sendEmail(email, subject, htmlContent, textContent);
+    // TODO: Change to actual recipient email in production
+    const result = await resendEmailService.sendTransactionalEmail(email, subject, htmlContent, textContent);
     return result.success;
   } catch (error) {
     console.error('❌ Error sending verification email:', error);

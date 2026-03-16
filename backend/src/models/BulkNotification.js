@@ -22,7 +22,7 @@ const bulkNotificationSchema = new Schema({
   },
   targetAudience: {
     type: String,
-    enum: ['all', 'employers', 'jobseekers', 'admins'],
+    enum: ['all', 'employers', 'jobseekers', 'admins', 'quick_users'],
     required: true,
     default: 'all'
   },
@@ -159,19 +159,20 @@ bulkNotificationSchema.methods.getTargetUsers = async function() {
     case 'admins':
       query = { userType: 'admin' };
       break;
+    case 'quick_users': {
+      // QuickUser is a separate collection
+      const QuickUser = mongoose.model('QuickUser');
+      return QuickUser.find({ isActive: true }).select('_id email firstName lastName');
+    }
     case 'all':
     default:
       query = {}; // All users
       break;
   }
 
-  // Only get active users (not suspended or banned)
-  query.status = { $ne: 'banned' };
-  query.$or = [
-    { suspendedUntil: { $exists: false } },
-    { suspendedUntil: null },
-    { suspendedUntil: { $lt: new Date() } }
-  ];
+  // Only get active users (not suspended, banned, or deleted)
+  query.status = { $nin: ['suspended', 'banned', 'deleted'] };
+  query.isDeleted = false;
 
   return User.find(query).select('_id email profile.firstName profile.lastName userType');
 };

@@ -7,14 +7,41 @@ import { body, validationResult } from 'express-validator';
 import { User } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer, requireAdmin } from '../middleware/auth.js';
 import userEmbeddingService from '../services/userEmbeddingService.js';
-import { uploadToCloudinary } from '../config/cloudinary.js';
+import { uploadToCloudinary, deleteFromCloudinary } from '../config/cloudinary.js';
 import logger from '../config/logger.js';
+import { sanitizeLimit } from '../utils/sanitize.js';
 
 const router = express.Router();
 
 // Check if Cloudinary is configured
 const isCloudinaryConfigured = () =>
   !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
+
+// Extract Cloudinary public_id from a Cloudinary URL for deletion
+const extractCloudinaryPublicId = (url) => {
+  if (!url || !url.includes('cloudinary.com')) return null;
+  try {
+    // URL format: https://res.cloudinary.com/<cloud>/image/upload/v123/advance-al/logos/logo-xxx.jpg
+    const parts = url.split('/upload/');
+    if (parts.length < 2) return null;
+    const afterUpload = parts[1].replace(/^v\d+\//, ''); // strip version
+    return afterUpload.replace(/\.[^.]+$/, ''); // strip extension
+  } catch {
+    return null;
+  }
+};
+
+// Safely delete old Cloudinary file (best-effort, don't block upload)
+const cleanupOldCloudinaryFile = async (url, resourceType = 'image') => {
+  const publicId = extractCloudinaryPublicId(url);
+  if (!publicId) return;
+  try {
+    await deleteFromCloudinary(publicId, resourceType);
+    logger.info('Old file deleted from Cloudinary', { publicId });
+  } catch (err) {
+    logger.warn('Failed to delete old Cloudinary file (non-fatal)', { publicId, error: err.message });
+  }
+};
 
 // Configure multer — use memory storage when Cloudinary is available, disk storage as fallback
 const diskStorage = multer.diskStorage({
@@ -533,6 +560,12 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
 
     let resumeUrl;
 
+    // Clean up old Cloudinary file if exists
+    const oldResumeUrl = user.profile.jobSeekerProfile?.resume;
+    if (oldResumeUrl) {
+      await cleanupOldCloudinaryFile(oldResumeUrl, 'raw');
+    }
+
     // Try Cloudinary upload first, fall back to local storage
     if (isCloudinaryConfigured() && req.file.buffer) {
       try {
@@ -630,6 +663,12 @@ router.post('/upload-logo', authenticate, requireEmployer, imageUpload.single('l
     }
 
     let logoUrl;
+
+    // Clean up old Cloudinary file if exists
+    const oldLogoUrl = user.profile.employerProfile?.logo;
+    if (oldLogoUrl) {
+      await cleanupOldCloudinaryFile(oldLogoUrl);
+    }
 
     // Try Cloudinary upload first, fall back to local storage
     if (isCloudinaryConfigured() && req.file.buffer) {
@@ -732,6 +771,12 @@ router.post('/upload-profile-photo', authenticate, requireJobSeeker, imageUpload
 
     let photoUrl;
 
+    // Clean up old Cloudinary file if exists
+    const oldPhotoUrl = user.profile.jobSeekerProfile?.profilePhoto;
+    if (oldPhotoUrl) {
+      await cleanupOldCloudinaryFile(oldPhotoUrl);
+    }
+
     // Try Cloudinary upload first, fall back to local storage
     if (isCloudinaryConfigured() && req.file.buffer) {
       try {
@@ -764,7 +809,7 @@ router.post('/upload-profile-photo', authenticate, requireJobSeeker, imageUpload
     if (!user.profile.jobSeekerProfile) {
       user.profile.jobSeekerProfile = {};
     }
-    user.profile.jobSeekerProfile.profilePhotoUrl = photoUrl;
+    user.profile.jobSeekerProfile.profilePhoto = photoUrl;
 
     await user.save();
 
@@ -887,6 +932,8 @@ router.patch('/admin/verify-employer/:id', authenticate, requireAdmin, async (re
       employer.profile.employerProfile.verificationStatus = 'approved';
       employer.profile.employerProfile.verificationDate = new Date();
     } else {
+      employer.status = 'rejected';
+      employer.profile.employerProfile.verified = false;
       employer.profile.employerProfile.verificationStatus = 'rejected';
     }
 
@@ -1267,7 +1314,9 @@ router.get('/saved-jobs', authenticate, requireJobSeeker, async (req, res) => {
     sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
     // Pagination
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const sanitizedLimit = sanitizeLimit(limit, 50, 10);
+    const currentPage = parseInt(page) || 1;
+    const skip = (currentPage - 1) * sanitizedLimit;
 
     // Get saved jobs with pagination
     const savedJobs = await Job.find({
@@ -1277,21 +1326,21 @@ router.get('/saved-jobs', authenticate, requireJobSeeker, async (req, res) => {
       .populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.location')
       .sort(sortOptions)
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(sanitizedLimit);
 
     const totalSavedJobs = user.savedJobs.length;
-    const totalPages = Math.ceil(totalSavedJobs / parseInt(limit));
+    const totalPages = Math.ceil(totalSavedJobs / sanitizedLimit);
 
     res.json({
       success: true,
       data: {
         jobs: savedJobs,
         pagination: {
-          currentPage: parseInt(page),
+          currentPage,
           totalPages,
           totalJobs: totalSavedJobs,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1
+          hasNextPage: currentPage < totalPages,
+          hasPrevPage: currentPage > 1
         }
       }
     });

@@ -3,6 +3,7 @@ import { body, validationResult } from 'express-validator';
 import { Application, Job, User, Notification } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer } from '../middleware/auth.js';
 import resendEmailService from '../lib/resendEmailService.js';
+import { sanitizeLimit } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -219,25 +220,23 @@ router.get('/my-applications', authenticate, requireJobSeeker, async (req, res) 
     const filters = {};
     if (status) filters.status = status;
 
-    const applications = await Application.getJobSeekerApplications(req.user._id, filters);
+    const safeLimit = sanitizeLimit(limit, 50, 10);
+    const safePage = Math.max(1, parseInt(page) || 1);
+    const skip = (safePage - 1) * safeLimit;
 
-    // Apply sorting and pagination
-    const sortOptions = {};
-    sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+    // Sort whitelist to prevent injection
+    const allowedSorts = ['appliedAt', 'status', 'createdAt'];
+    const safeSortBy = allowedSorts.includes(sortBy) ? sortBy : 'appliedAt';
+    const sortOptions = { [safeSortBy]: sortOrder === 'desc' ? -1 : 1 };
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    
-    const paginatedApplications = applications
-      .sort((a, b) => {
-        if (sortOrder === 'desc') {
-          return b[sortBy] - a[sortBy];
-        }
-        return a[sortBy] - b[sortBy];
-      })
-      .slice(skip, skip + parseInt(limit));
+    // DB-level pagination (not in-memory)
+    const totalApplications = await Application.countDocuments({ jobSeekerId: req.user._id, withdrawn: false, ...filters });
+    const paginatedApplications = await Application.getJobSeekerApplications(req.user._id, filters)
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(safeLimit);
 
-    const totalApplications = applications.length;
-    const totalPages = Math.ceil(totalApplications / parseInt(limit));
+    const totalPages = Math.ceil(totalApplications / safeLimit);
 
     res.json({
       success: true,
@@ -296,10 +295,13 @@ router.get('/job/:jobId', authenticate, requireEmployer, async (req, res) => {
     const applications = await Application.getEmployerApplications(req.user._id, filters);
 
     // Apply sorting and pagination
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    
+    const safeLimit2 = sanitizeLimit(limit, 50, 10);
+    const skip = (Math.max(1, parseInt(page) || 1) - 1) * safeLimit2;
+
     const sortOptions = {};
-    sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+    const allowedSorts2 = ['appliedAt', 'status', 'createdAt'];
+    const safeSortBy2 = allowedSorts2.includes(sortBy) ? sortBy : 'appliedAt';
+    sortOptions[safeSortBy2] = sortOrder === 'desc' ? -1 : 1;
 
     const paginatedApplications = await Application.find({
       jobId,
@@ -310,7 +312,7 @@ router.get('/job/:jobId', authenticate, requireEmployer, async (req, res) => {
       .populate('jobSeekerId', 'profile.firstName profile.lastName profile.jobSeekerProfile profile.location')
       .sort(sortOptions)
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(safeLimit2);
 
     const totalApplications = await Application.countDocuments({
       jobId,
@@ -319,7 +321,7 @@ router.get('/job/:jobId', authenticate, requireEmployer, async (req, res) => {
       ...(status && { status })
     });
 
-    const totalPages = Math.ceil(totalApplications / parseInt(limit));
+    const totalPages = Math.ceil(totalApplications / safeLimit2);
 
     res.json({
       success: true,
@@ -368,19 +370,23 @@ router.get('/employer/all', authenticate, requireEmployer, async (req, res) => {
     if (status) filters.status = status;
     if (jobId) filters.jobId = jobId;
 
-    const applications = await Application.getEmployerApplications(req.user._id, filters);
+    const safeLimit3 = sanitizeLimit(limit, 50, 10);
+    const safePage3 = Math.max(1, parseInt(page) || 1);
+    const skip = (safePage3 - 1) * safeLimit3;
 
-    // Apply sorting and pagination
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    
-    const sortOptions = {};
-    sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+    const allowedSorts3 = ['appliedAt', 'status', 'createdAt'];
+    const safeSortBy3 = allowedSorts3.includes(sortBy) ? sortBy : 'appliedAt';
+    const sortOptions = { [safeSortBy3]: sortOrder === 'desc' ? -1 : 1 };
 
-    const paginatedApplications = applications
-      .slice(skip, skip + parseInt(limit));
+    // DB-level pagination
+    const countQuery = { employerId: req.user._id, withdrawn: false, ...(status && { status }), ...(jobId && { jobId }) };
+    const totalApplications = await Application.countDocuments(countQuery);
+    const paginatedApplications = await Application.getEmployerApplications(req.user._id, filters)
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(safeLimit3);
 
-    const totalApplications = applications.length;
-    const totalPages = Math.ceil(totalApplications / parseInt(limit));
+    const totalPages = Math.ceil(totalApplications / safeLimit3);
 
     res.json({
       success: true,

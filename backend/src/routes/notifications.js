@@ -4,6 +4,7 @@ import rateLimit from 'express-rate-limit';
 import { Notification, Job, QuickUser } from '../models/index.js';
 import { authenticate, requireEmployer, requireAdmin } from '../middleware/auth.js';
 import notificationService from '../lib/notificationService.js';
+import { sanitizeLimit } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -43,10 +44,12 @@ router.get('/', authenticate, async (req, res) => {
       unreadOnly = false
     } = req.query;
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    
+    const sanitizedLimit = sanitizeLimit(limit, 50, 20);
+    const currentPage = parseInt(page) || 1;
+    const skip = (currentPage - 1) * sanitizedLimit;
+
     const notifications = await Notification.getUserNotifications(req.user._id, {
-      limit: parseInt(limit),
+      limit: sanitizedLimit,
       skip,
       unreadOnly: unreadOnly === 'true'
     });
@@ -58,18 +61,18 @@ router.get('/', authenticate, async (req, res) => {
 
     const unreadCount = await Notification.getUnreadCount(req.user._id);
 
-    const totalPages = Math.ceil(totalNotifications / parseInt(limit));
+    const totalPages = Math.ceil(totalNotifications / sanitizedLimit);
 
     res.json({
       success: true,
       data: {
         notifications,
         pagination: {
-          currentPage: parseInt(page),
+          currentPage,
           totalPages,
           totalNotifications,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1
+          hasNextPage: currentPage < totalPages,
+          hasPrevPage: currentPage > 1
         },
         unreadCount
       }

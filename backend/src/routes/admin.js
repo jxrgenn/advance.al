@@ -1,7 +1,7 @@
 import express from 'express';
 import { User, Job, Application, QuickUser } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
-import { escapeRegex } from '../utils/sanitize.js';
+import { escapeRegex, sanitizeLimit } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -482,26 +482,28 @@ router.get('/users', async (req, res) => {
       ];
     }
 
+    const sanitizedLimit = sanitizeLimit(limit, 100, 20);
+    const currentPage = parseInt(page) || 1;
     const totalUsers = await User.countDocuments(query);
-    const totalPages = Math.ceil(totalUsers / limit);
-    const skip = (page - 1) * limit;
+    const totalPages = Math.ceil(totalUsers / sanitizedLimit);
+    const skip = (currentPage - 1) * sanitizedLimit;
 
     const users = await User.find(query)
       .select('-password -refreshTokens')
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(sanitizedLimit);
 
     res.json({
       success: true,
       data: {
         users,
         pagination: {
-          currentPage: parseInt(page),
+          currentPage,
           totalPages,
           totalUsers,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1
+          hasNextPage: currentPage < totalPages,
+          hasPrevPage: currentPage > 1
         }
       }
     });
@@ -548,26 +550,28 @@ router.get('/jobs', async (req, res) => {
       ];
     }
 
+    const sanitizedLimit = sanitizeLimit(limit, 100, 20);
+    const currentPage = parseInt(page) || 1;
     const totalJobs = await Job.countDocuments(query);
-    const totalPages = Math.ceil(totalJobs / limit);
-    const skip = (page - 1) * limit;
+    const totalPages = Math.ceil(totalJobs / sanitizedLimit);
+    const skip = (currentPage - 1) * sanitizedLimit;
 
     const jobs = await Job.find(query)
       .populate('employerId', 'profile.employerProfile.companyName profile.location email')
       .sort({ postedAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(sanitizedLimit);
 
     res.json({
       success: true,
       data: {
         jobs,
         pagination: {
-          currentPage: parseInt(page),
+          currentPage,
           totalPages,
           totalJobs,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1
+          hasNextPage: currentPage < totalPages,
+          hasPrevPage: currentPage > 1
         }
       }
     });
@@ -587,7 +591,7 @@ router.get('/jobs', async (req, res) => {
 router.patch('/users/:userId/manage', async (req, res) => {
   try {
     const { userId } = req.params;
-    const { action, reason } = req.body;
+    const { action, reason, duration } = req.body;
 
     const user = await User.findById(userId);
     if (!user) {
@@ -599,14 +603,14 @@ router.patch('/users/:userId/manage', async (req, res) => {
 
     switch (action) {
       case 'suspend':
-        user.status = 'suspended';
-        user.suspendedAt = new Date();
-        user.suspensionReason = reason;
-        break;
+        await user.suspend(reason || 'Pezulluar nga administratori', req.user._id, duration || null);
+        return res.json({ success: true, data: { user }, message: 'Përdoruesi u pezullua me sukses' });
+      case 'ban':
+        await user.ban(reason || 'Ndaluar nga administratori', req.user._id);
+        return res.json({ success: true, data: { user }, message: 'Përdoruesi u ndalua me sukses' });
       case 'activate':
         user.status = 'active';
-        user.suspendedAt = undefined;
-        user.suspensionReason = undefined;
+        user.suspensionDetails = undefined;
         break;
       case 'delete':
         // Prevent admin from deleting themselves
