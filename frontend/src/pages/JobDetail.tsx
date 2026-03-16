@@ -24,6 +24,11 @@ const JobDetail = () => {
   const { isAuthenticated, user } = useAuth();
   const { addRecentlyViewed } = useRecentlyViewed();
 
+  // Reset scroll lock on unmount
+  useEffect(() => {
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);

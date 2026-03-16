@@ -727,9 +727,10 @@ export const usersApi = {
   },
 
   // Delete account
-  deleteAccount: async (): Promise<ApiResponse<any>> => {
+  deleteAccount: async (password: string): Promise<ApiResponse<any>> => {
     return apiRequest('/users/account', {
       method: 'DELETE',
+      body: JSON.stringify({ password }),
     });
   },
 

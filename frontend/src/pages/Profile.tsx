@@ -20,6 +20,11 @@ import { InputWithCounter, TextAreaWithCounter } from "@/components/CharacterCou
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 const Profile = () => {
+  // Reset scroll lock on unmount
+  useEffect(() => {
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
   const [uploadingCV, setUploadingCV] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [currentCV, setCurrentCV] = useState<string | null>(null);
@@ -81,6 +86,20 @@ const Profile = () => {
   const [savingEducation, setSavingEducation] = useState(false);
   const [jobAlertsEnabled, setJobAlertsEnabled] = useState(false);
   const [savingJobAlerts, setSavingJobAlerts] = useState(false);
+
+  // Settings tab state
+  const [desiredSalaryMin, setDesiredSalaryMin] = useState('');
+  const [desiredSalaryMax, setDesiredSalaryMax] = useState('');
+  const [desiredSalaryCurrency, setDesiredSalaryCurrency] = useState('ALL');
+  const [openToRemote, setOpenToRemote] = useState(false);
+  const [profileVisible, setProfileVisible] = useState(true);
+  const [showInSearch, setShowInSearch] = useState(true);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   // Unified tutorial steps with tab metadata
   const allTutorialSteps = [
@@ -244,6 +263,17 @@ const Profile = () => {
 
       // Initialize job alerts toggle
       setJobAlertsEnabled(user.profile?.jobSeekerProfile?.notifications?.jobAlerts ?? false);
+
+      // Initialize settings tab state
+      const salary = user.profile?.jobSeekerProfile?.desiredSalary;
+      if (salary) {
+        setDesiredSalaryMin(salary.min?.toString() || '');
+        setDesiredSalaryMax(salary.max?.toString() || '');
+        setDesiredSalaryCurrency(salary.currency || 'ALL');
+      }
+      setOpenToRemote(user.profile?.jobSeekerProfile?.openToRemote ?? false);
+      setProfileVisible(user.privacySettings?.profileVisible ?? true);
+      setShowInSearch(user.privacySettings?.showInSearch ?? true);
     }
   }, [user]);
 
@@ -266,6 +296,109 @@ const Profile = () => {
       setApplications([]);
     } finally {
       setLoadingApplications(false);
+    }
+  };
+
+  // Withdraw application handler
+  const handleWithdrawApplication = async (applicationId: string) => {
+    if (!window.confirm('Jeni i sigurt që dëshironi të tërhiqni këtë aplikim?')) return;
+    try {
+      const response = await applicationsApi.withdrawApplication(applicationId);
+      if (response.success) {
+        toast({ title: 'Aplikimi u tërhoq me sukses' });
+        loadApplications();
+      }
+    } catch {
+      toast({ title: 'Gabim në tërheqjen e aplikimit', variant: 'destructive' });
+    }
+  };
+
+  // Save settings (salary, remote, privacy)
+  const handleSaveSettings = async () => {
+    setSavingSettings(true);
+    try {
+      const updateData: any = {
+        privacySettings: {
+          profileVisible,
+          showInSearch
+        }
+      };
+      if (user?.userType === 'jobseeker') {
+        updateData.jobSeekerProfile = {
+          openToRemote,
+          desiredSalary: {
+            min: parseInt(desiredSalaryMin) || 0,
+            max: parseInt(desiredSalaryMax) || 0,
+            currency: desiredSalaryCurrency
+          }
+        };
+      }
+      const response = await usersApi.updateProfile(updateData);
+      if (response.success) {
+        await refreshUser();
+        toast({ title: 'Cilësimet u ruajtën me sukses' });
+      } else {
+        throw new Error(response.message);
+      }
+    } catch (error: any) {
+      toast({ title: 'Gabim në ruajtjen e cilësimeve', description: error.message, variant: 'destructive' });
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  // Delete account handler
+  const handleDeleteAccount = async () => {
+    if (!deletePassword) {
+      toast({ title: 'Shkruani fjalëkalimin', variant: 'destructive' });
+      return;
+    }
+    setDeletingAccount(true);
+    try {
+      const response = await usersApi.deleteAccount(deletePassword);
+      if (response.success) {
+        toast({ title: 'Llogaria u fshi me sukses' });
+        window.location.href = '/';
+      } else {
+        throw new Error(response.message);
+      }
+    } catch (error: any) {
+      toast({ title: 'Gabim në fshirjen e llogarisë', description: error.message, variant: 'destructive' });
+    } finally {
+      setDeletingAccount(false);
+      setShowDeleteConfirm(false);
+      setDeletePassword('');
+    }
+  };
+
+  // Upload profile photo handler
+  const handleUploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Vetëm skedarë imazhi lejohen', variant: 'destructive' });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: 'Imazhi nuk duhet të jetë më i madh se 5MB', variant: 'destructive' });
+      return;
+    }
+    setUploadingPhoto(true);
+    try {
+      const formData = new FormData();
+      formData.append('photo', file);
+      const response = await usersApi.uploadProfilePhoto(formData);
+      if (response.success) {
+        await refreshUser();
+        toast({ title: 'Foto e profilit u ngarkua me sukses' });
+      } else {
+        throw new Error(response.message);
+      }
+    } catch (error: any) {
+      toast({ title: 'Gabim në ngarkimin e fotos', description: error.message, variant: 'destructive' });
+    } finally {
+      setUploadingPhoto(false);
+      if (photoInputRef.current) photoInputRef.current.value = '';
     }
   };
 
@@ -1354,6 +1487,7 @@ const Profile = () => {
                 <TabsTrigger value="personal">Informacion Personal</TabsTrigger>
                 <TabsTrigger value="experience" data-tutorial="work-experience-tab">Përvojë Pune</TabsTrigger>
                 <TabsTrigger value="applications" data-tutorial="applications-tab">Aplikimet</TabsTrigger>
+                <TabsTrigger value="settings">Cilësimet</TabsTrigger>
               </TabsList>
 
               <TabsContent value="personal" className="space-y-6">
@@ -1806,8 +1940,167 @@ const Profile = () => {
                             <ApplicationStatusTimeline
                               key={application._id}
                               application={application}
+                              onWithdraw={handleWithdrawApplication}
                             />
                           ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Settings Tab */}
+              <TabsContent value="settings" className="space-y-6">
+                {/* Profile Photo Upload */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Foto e Profilit</CardTitle>
+                    <CardDescription>Ngarko ose ndrysho foton e profilit tënd</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-4">
+                      <div className="h-20 w-20 rounded-full bg-muted flex items-center justify-center overflow-hidden">
+                        {user?.profile?.jobSeekerProfile?.profilePhoto ? (
+                          <img src={user.profile.jobSeekerProfile.profilePhoto} alt="Profile" className="h-full w-full object-cover" />
+                        ) : (
+                          <User className="h-8 w-8 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div>
+                        <input
+                          type="file"
+                          ref={photoInputRef}
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleUploadPhoto}
+                        />
+                        <Button
+                          variant="outline"
+                          onClick={() => photoInputRef.current?.click()}
+                          disabled={uploadingPhoto}
+                        >
+                          {uploadingPhoto ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                          {uploadingPhoto ? 'Duke ngarkuar...' : 'Ngarko Foto'}
+                        </Button>
+                        <p className="text-xs text-muted-foreground mt-1">JPG, PNG deri në 5MB</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Salary & Remote (jobseeker only) */}
+                {user?.userType === 'jobseeker' && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Preferencat e Punës</CardTitle>
+                      <CardDescription>Vendos pagën e dëshiruar dhe preferencën për punë në distancë</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div>
+                        <Label className="text-sm font-medium">Paga e Dëshiruar (mujore)</Label>
+                        <div className="grid grid-cols-3 gap-3 mt-2">
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Min</Label>
+                            <Input
+                              type="number"
+                              placeholder="p.sh. 50000"
+                              value={desiredSalaryMin}
+                              onChange={(e) => setDesiredSalaryMin(e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Max</Label>
+                            <Input
+                              type="number"
+                              placeholder="p.sh. 80000"
+                              value={desiredSalaryMax}
+                              onChange={(e) => setDesiredSalaryMax(e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Monedha</Label>
+                            <Select value={desiredSalaryCurrency} onValueChange={setDesiredSalaryCurrency}>
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ALL">ALL (Lekë)</SelectItem>
+                                <SelectItem value="EUR">EUR (Euro)</SelectItem>
+                                <SelectItem value="USD">USD (Dollar)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-sm font-medium">I hapur për punë në distancë</Label>
+                          <p className="text-xs text-muted-foreground">Punëdhënësit do të shohin që pranoni punë remote</p>
+                        </div>
+                        <Switch checked={openToRemote} onCheckedChange={setOpenToRemote} />
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Privacy Settings */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Privatësia</CardTitle>
+                    <CardDescription>Kontrollo kush mund të shohë profilin tënd</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-sm font-medium">Profili i dukshëm</Label>
+                        <p className="text-xs text-muted-foreground">Punëdhënësit mund të shohin profilin tuaj</p>
+                      </div>
+                      <Switch checked={profileVisible} onCheckedChange={setProfileVisible} />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-sm font-medium">Shfaq në kërkim</Label>
+                        <p className="text-xs text-muted-foreground">Profili juaj shfaqet në rezultatet e kërkimit</p>
+                      </div>
+                      <Switch checked={showInSearch} onCheckedChange={setShowInSearch} />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Save Settings Button */}
+                <Button onClick={handleSaveSettings} disabled={savingSettings} className="w-full">
+                  {savingSettings ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  {savingSettings ? 'Duke ruajtur...' : 'Ruaj Cilësimet'}
+                </Button>
+
+                {/* Account Deletion */}
+                <Card className="border-destructive/50">
+                  <CardHeader>
+                    <CardTitle className="text-destructive">Fshi Llogarinë</CardTitle>
+                    <CardDescription>Kjo veprim është i pakthyeshëm. Të gjitha të dhënat tuaja do të fshihen.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {!showDeleteConfirm ? (
+                      <Button variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Fshi Llogarinë
+                      </Button>
+                    ) : (
+                      <div className="space-y-3">
+                        <p className="text-sm text-destructive font-medium">Shkruani fjalëkalimin tuaj për të konfirmuar fshirjen:</p>
+                        <Input
+                          type="password"
+                          placeholder="Fjalëkalimi"
+                          value={deletePassword}
+                          onChange={(e) => setDeletePassword(e.target.value)}
+                        />
+                        <div className="flex gap-2">
+                          <Button variant="destructive" onClick={handleDeleteAccount} disabled={deletingAccount || !deletePassword}>
+                            {deletingAccount ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                            {deletingAccount ? 'Duke fshirë...' : 'Konfirmo Fshirjen'}
+                          </Button>
+                          <Button variant="outline" onClick={() => { setShowDeleteConfirm(false); setDeletePassword(''); }}>
+                            Anulo
+                          </Button>
                         </div>
                       </div>
                     )}

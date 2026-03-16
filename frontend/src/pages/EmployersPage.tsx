@@ -38,6 +38,11 @@ const EmployersPage = () => {
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
 
+  // Reset scroll lock on unmount
+  useEffect(() => {
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
   // Tutorial system state
   const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);

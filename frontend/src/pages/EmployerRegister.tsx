@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,14 @@ const EmployerRegister = () => {
   const [step, setStep] = useState(1);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { register } = useAuth();
+  const { register, user } = useAuth();
+
+  // Redirect authenticated users
+  useEffect(() => {
+    if (user) {
+      navigate(user.userType === 'employer' ? '/employer/dashboard' : '/', { replace: true });
+    }
+  }, [user, navigate]);
 
   // Form state — all fields controlled
   const [companyName, setCompanyName] = useState('');

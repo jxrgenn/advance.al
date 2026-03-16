@@ -47,6 +47,11 @@ const JobSeekersPage = () => {
   const [showQuickForm, setShowQuickForm] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Reset scroll lock on unmount
+  useEffect(() => {
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
   // Check for quick=true query parameter
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);

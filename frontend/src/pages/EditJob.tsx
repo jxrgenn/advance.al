@@ -164,6 +164,23 @@ const EditJob = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Client-side validation matching PostJob rules
+    const errors: string[] = [];
+    if (!formData.title || formData.title.trim().length < 3) errors.push('Titulli duhet të ketë të paktën 3 karaktere');
+    if (!formData.description || formData.description.trim().length < 20) errors.push('Përshkrimi duhet të ketë të paktën 20 karaktere');
+    if (!formData.category) errors.push('Kategoria është e detyrueshme');
+    if (!formData.jobType) errors.push('Lloji i punës është i detyrueshem');
+    if (!formData.city) errors.push('Qyteti është i detyrueshem');
+
+    if (errors.length > 0) {
+      toast({
+        title: 'Gabime në formë',
+        description: errors.join('. '),
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
       setLoading(true);
 

@@ -38,6 +38,11 @@ const PostJob = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  // Reset scroll lock on unmount
+  useEffect(() => {
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
   const [currentStep, setCurrentStep] = useState(0); // Changed to 0-based indexing to match tutorial system
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(false);

@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, CheckCircle, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin, Play, Lightbulb, HelpCircle } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, CheckCircle, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin, Play, Lightbulb, HelpCircle, Upload } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import ReportUserModal from "@/components/ReportUserModal";
 import { useToast } from "@/hooks/use-toast";
 import { jobsApi, applicationsApi, usersApi, locationsApi, matchingApi, Job, Application, Location, CandidateMatch, User } from "@/lib/api";
@@ -22,6 +23,11 @@ import { TextAreaWithCounter } from "@/components/CharacterCounter";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 const EmployerDashboard = () => {
+  // Reset scroll lock on unmount
+  useEffect(() => {
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
   const [jobs, setJobs] = useState<Job[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [applicationStatusFilter, setApplicationStatusFilter] = useState<string>('all');
@@ -97,8 +103,16 @@ const EmployerDashboard = () => {
     industry: '',
     companySize: '',
     city: '',
-    region: ''
+    region: '',
+    phone: '',
+    whatsapp: '',
+    enablePhoneContact: true,
+    enableWhatsAppContact: true,
+    enableEmailContact: false
   });
+
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   const { toast } = useToast();
   const { user, updateUser } = useAuth();
@@ -262,7 +276,12 @@ const EmployerDashboard = () => {
         industry: user.profile.employerProfile?.industry || '',
         companySize: user.profile.employerProfile?.companySize || '',
         city: user.profile.location?.city || '',
-        region: user.profile.location?.region || ''
+        region: user.profile.location?.region || '',
+        phone: user.profile.employerProfile?.phone || '',
+        whatsapp: user.profile.employerProfile?.whatsapp || '',
+        enablePhoneContact: user.profile.employerProfile?.contactPreferences?.enablePhoneContact ?? true,
+        enableWhatsAppContact: user.profile.employerProfile?.contactPreferences?.enableWhatsAppContact ?? true,
+        enableEmailContact: user.profile.employerProfile?.contactPreferences?.enableEmailContact ?? false
       });
     }
   }, [user]);
@@ -576,6 +595,36 @@ const EmployerDashboard = () => {
   };
 
 
+  const handleUploadLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Vetëm skedarë imazhi lejohen', variant: 'destructive' });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: 'Imazhi nuk duhet të jetë më i madh se 5MB', variant: 'destructive' });
+      return;
+    }
+    setUploadingLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append('logo', file);
+      const response = await usersApi.uploadLogo(formData);
+      if (response.success) {
+        if (response.data?.user) updateUser(response.data.user);
+        toast({ title: 'Logo u ngarkua me sukses' });
+      } else {
+        throw new Error(response.message);
+      }
+    } catch (error: any) {
+      toast({ title: 'Gabim në ngarkimin e logos', description: error.message, variant: 'destructive' });
+    } finally {
+      setUploadingLogo(false);
+      if (logoInputRef.current) logoInputRef.current.value = '';
+    }
+  };
+
   const handleProfileSave = async () => {
     try {
       setSavingProfile(true);
@@ -599,7 +648,14 @@ const EmployerDashboard = () => {
           description: profileData.description,
           website: profileData.website,
           industry: profileData.industry,
-          companySize: profileData.companySize
+          companySize: profileData.companySize,
+          phone: profileData.phone || undefined,
+          whatsapp: profileData.whatsapp || undefined,
+          contactPreferences: {
+            enablePhoneContact: profileData.enablePhoneContact,
+            enableWhatsAppContact: profileData.enableWhatsAppContact,
+            enableEmailContact: profileData.enableEmailContact
+          }
         },
         location: {
           city: profileData.city,
@@ -1637,6 +1693,104 @@ const EmployerDashboard = () => {
                         readOnly
                         placeholder="Do të zgjidhet automatikisht"
                       />
+                    </div>
+                  </div>
+
+                  {/* Logo Upload */}
+                  <div>
+                    <Label>Logo e Kompanisë</Label>
+                    <div className="flex items-center gap-4 mt-2">
+                      <div className="h-16 w-16 rounded-lg bg-muted flex items-center justify-center overflow-hidden border">
+                        {user?.profile?.employerProfile?.logo ? (
+                          <img src={typeof user.profile.employerProfile.logo === 'string' ? user.profile.employerProfile.logo : ''} alt="Logo" className="h-full w-full object-contain" />
+                        ) : (
+                          <Building className="h-6 w-6 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div>
+                        <input
+                          type="file"
+                          ref={logoInputRef}
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleUploadLogo}
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => logoInputRef.current?.click()}
+                          disabled={uploadingLogo}
+                        >
+                          {uploadingLogo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                          {uploadingLogo ? 'Duke ngarkuar...' : 'Ngarko Logo'}
+                        </Button>
+                        <p className="text-xs text-muted-foreground mt-1">JPG, PNG deri në 5MB</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Contact Information */}
+                  <div>
+                    <h4 className="text-sm font-medium mb-3">Informacioni i Kontaktit</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="emp-phone">Telefon</Label>
+                        <Input
+                          id="emp-phone"
+                          value={profileData.phone}
+                          onChange={(e) => setProfileData(prev => ({ ...prev, phone: e.target.value }))}
+                          placeholder="+355xxxxxxxx"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">Format: +355xxxxxxxx</p>
+                      </div>
+                      <div>
+                        <Label htmlFor="emp-whatsapp">WhatsApp</Label>
+                        <Input
+                          id="emp-whatsapp"
+                          value={profileData.whatsapp}
+                          onChange={(e) => setProfileData(prev => ({ ...prev, whatsapp: e.target.value }))}
+                          placeholder="+355xxxxxxxx"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Contact Preferences */}
+                  <div>
+                    <h4 className="text-sm font-medium mb-3">Preferencat e Kontaktit</h4>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-sm">Kontakt me telefon</Label>
+                          <p className="text-xs text-muted-foreground">Lejo që aplikuesit të ju kontaktojnë me telefon</p>
+                        </div>
+                        <Switch
+                          checked={profileData.enablePhoneContact}
+                          onCheckedChange={(checked) => setProfileData(prev => ({ ...prev, enablePhoneContact: checked }))}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-sm">Kontakt me WhatsApp</Label>
+                          <p className="text-xs text-muted-foreground">Lejo kontaktin përmes WhatsApp</p>
+                        </div>
+                        <Switch
+                          checked={profileData.enableWhatsAppContact}
+                          onCheckedChange={(checked) => setProfileData(prev => ({ ...prev, enableWhatsAppContact: checked }))}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-sm">Kontakt me email</Label>
+                          <p className="text-xs text-muted-foreground">Shfaq email-in e kompanisë në profil</p>
+                        </div>
+                        <Switch
+                          checked={profileData.enableEmailContact}
+                          onCheckedChange={(checked) => setProfileData(prev => ({ ...prev, enableEmailContact: checked }))}
+                        />
+                      </div>
                     </div>
                   </div>
 

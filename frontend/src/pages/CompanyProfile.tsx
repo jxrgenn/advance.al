@@ -163,7 +163,7 @@ const CompanyProfile = () => {
                 <p className="text-base md:text-xl text-muted-foreground mb-3 md:mb-4">
                   {company.industry} | {company.companySize}
                 </p>
-                <Button size="lg" className="w-full md:w-auto">
+                <Button size="lg" className="w-full md:w-auto" onClick={() => document.getElementById('company-jobs')?.scrollIntoView({ behavior: 'smooth' })}>
                   Shiko pozicionet e lira
                 </Button>
               </div>
@@ -203,15 +203,27 @@ const CompanyProfile = () => {
                   <div>
                     <h3 className="text-sm font-semibold mb-2">KONTAKTET</h3>
                     <div className="flex gap-2">
-                      <Button variant="ghost" size="icon" className="h-8 w-8 border">
-                        <Mail className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 border">
-                        <Phone className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 border">
-                        <MessageCircle className="h-4 w-4" />
-                      </Button>
+                      {(company as any).email && (
+                        <Button variant="ghost" size="icon" className="h-8 w-8 border" asChild>
+                          <a href={`mailto:${(company as any).email}`}>
+                            <Mail className="h-4 w-4" />
+                          </a>
+                        </Button>
+                      )}
+                      {(company as any).profile?.employerProfile?.phone && (
+                        <Button variant="ghost" size="icon" className="h-8 w-8 border" asChild>
+                          <a href={`tel:${(company as any).profile.employerProfile.phone}`}>
+                            <Phone className="h-4 w-4" />
+                          </a>
+                        </Button>
+                      )}
+                      {(company as any).profile?.employerProfile?.whatsapp && (
+                        <Button variant="ghost" size="icon" className="h-8 w-8 border" asChild>
+                          <a href={`https://wa.me/${(company as any).profile.employerProfile.whatsapp.replace('+', '')}`} target="_blank" rel="noopener noreferrer">
+                            <MessageCircle className="h-4 w-4" />
+                          </a>
+                        </Button>
+                      )}
                       {company.website && (
                         <Button variant="ghost" size="icon" className="h-8 w-8 border" asChild>
                           <a href={company.website} target="_blank" rel="noopener noreferrer">
@@ -281,16 +293,12 @@ const CompanyProfile = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
-                  {company.description ? (
-                    <p>{company.description}</p>
-                  ) : (
-                    <p className="text-muted-foreground italic">Kjo kompani nuk ka shtuar informacione për politikat e saj.</p>
-                  )}
+                  <p className="text-muted-foreground italic">Kjo kompani nuk ka shtuar informacione për politikat e saj.</p>
                 </div>
 
                 {/* Available Jobs Section */}
                 {company.jobs.length > 0 && (
-                  <div className="mt-8 pt-8 border-t">
+                  <div id="company-jobs" className="mt-8 pt-8 border-t">
                     <h3 className="font-semibold text-foreground mb-4 text-lg">Pozicionet e Disponueshme</h3>
                     <div className="space-y-3">
                       {company.jobs.slice(0, 5).map((job) => (

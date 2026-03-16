@@ -7,6 +7,7 @@ import { body, validationResult } from 'express-validator';
 import { User, SystemConfiguration } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer, requireAdmin } from '../middleware/auth.js';
 import userEmbeddingService from '../services/userEmbeddingService.js';
+import resendEmailService from '../lib/resendEmailService.js';
 import { uploadToCloudinary, deleteFromCloudinary } from '../config/cloudinary.js';
 import logger from '../config/logger.js';
 import { sanitizeLimit } from '../utils/sanitize.js';
@@ -319,7 +320,7 @@ router.put('/profile', authenticate, async (req, res) => {
       if (user.profile.employerProfile.verified) {
         // Only allow certain fields to be updated for verified employers
         // companyName and industry are restricted to prevent fraud
-        const allowedFields = ['description', 'website', 'companySize'];
+        const allowedFields = ['description', 'website', 'companySize', 'phone', 'whatsapp', 'contactPreferences'];
         Object.keys(employerProfile).forEach(key => {
           if (allowedFields.includes(key)) {
             user.profile.employerProfile[key] = employerProfile[key];
@@ -971,6 +972,23 @@ router.patch('/admin/verify-employer/:id', authenticate, requireAdmin, async (re
     }
 
     await employer.save();
+
+    // Send verification result email
+    setImmediate(async () => {
+      try {
+        await resendEmailService.sendTransactionalEmail(
+          employer,
+          action === 'approve'
+            ? 'Llogaria juaj u verifikua - advance.al'
+            : 'Llogaria juaj nuk u aprovua - advance.al',
+          action === 'approve'
+            ? `<p>Përshëndetje ${employer.profile.firstName},</p><p>Llogaria juaj si punëdhënës në advance.al u verifikua me sukses! Tani mund të postoni punë dhe të kërkoni kandidatë.</p><p>Ekipi i advance.al</p>`
+            : `<p>Përshëndetje ${employer.profile.firstName},</p><p>Na vjen keq, por llogaria juaj si punëdhënës nuk u aprovua në këtë moment. Ju lutemi kontaktoni ekipin tonë për më shumë informacion.</p><p>Ekipi i advance.al</p>`
+        );
+      } catch (emailErr) {
+        console.error('Error sending verification email:', emailErr.message);
+      }
+    });
 
     res.json({
       success: true,

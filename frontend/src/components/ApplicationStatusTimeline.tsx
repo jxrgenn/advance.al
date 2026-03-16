@@ -22,11 +22,13 @@ import { useNavigate } from 'react-router-dom';
 interface ApplicationStatusTimelineProps {
   application: Application;
   compact?: boolean;
+  onWithdraw?: (applicationId: string) => void;
 }
 
 const ApplicationStatusTimeline: React.FC<ApplicationStatusTimelineProps> = ({
   application,
-  compact = false
+  compact = false,
+  onWithdraw
 }) => {
   const navigate = useNavigate();
 
@@ -308,6 +310,17 @@ const ApplicationStatusTimeline: React.FC<ApplicationStatusTimelineProps> = ({
             >
               <MessageSquare className="mr-2 h-4 w-4" />
               {hasUnreadMessages ? 'Lexo mesazhet' : 'Detajet'}
+            </Button>
+          )}
+
+          {onWithdraw && !application.withdrawn && ['pending', 'viewed'].includes(application.status) && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => onWithdraw(application._id)}
+            >
+              <XCircle className="mr-2 h-4 w-4" />
+              Tërhiq
             </Button>
           )}
         </div>
