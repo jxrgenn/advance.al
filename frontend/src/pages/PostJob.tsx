@@ -44,6 +44,7 @@ const PostJob = () => {
   const [requirements, setRequirements] = useState<string[]>(['']);
   const [benefits, setBenefits] = useState<string[]>(['']);
   const [tags, setTags] = useState<string[]>(['']);
+  const [customQuestions, setCustomQuestions] = useState<Array<{ question: string; required: boolean; type: string }>>([]);
   const [salaryPeriod, setSalaryPeriod] = useState<'monthly' | 'yearly'>('monthly');
 
   // Tutorial system state - same as other pages
@@ -367,7 +368,10 @@ const PostJob = () => {
           period: salaryPeriod
         } : undefined,
         platformCategories: values.platformCategories,
-        expiresAt: values.expiresAt || undefined
+        expiresAt: values.expiresAt || undefined,
+        customQuestions: customQuestions.filter(q => q.question.trim()).length > 0
+          ? customQuestions.filter(q => q.question.trim())
+          : undefined
       };
 
       const response = await jobsApi.createJob(jobData);
@@ -1287,6 +1291,81 @@ const PostJob = () => {
                   });
                 }}
               />
+            </Box>
+
+            <Divider my="lg" />
+
+            {/* Custom Questions */}
+            <Box>
+              <Text fw={500} mb="xs">Pyetje për Kandidatët (Opsionale)</Text>
+              <Text size="sm" c="dimmed" mb="md">Shtoni pyetje që kandidatët duhet t'i përgjigjen kur aplikojnë. Nëse shtoni pyetje, kandidatët nuk mund të aplikojnë pa i përgjigur ato të shënuara si të detyrueshme.</Text>
+              {customQuestions.map((q, index) => (
+                <Card key={index} withBorder mb="sm" p="sm">
+                  <Group mb="xs" justify="space-between" align="flex-start">
+                    <TextInput
+                      style={{ flex: 1 }}
+                      value={q.question}
+                      onChange={(e) => {
+                        const updated = [...customQuestions];
+                        updated[index] = { ...updated[index], question: e.target.value };
+                        setCustomQuestions(updated);
+                      }}
+                      placeholder="p.sh. Pse dëshironi të punoni tek ne?"
+                      label={`Pyetja ${index + 1}`}
+                    />
+                    <ActionIcon
+                      variant="outline"
+                      color="red"
+                      mt={24}
+                      onClick={() => setCustomQuestions(customQuestions.filter((_, i) => i !== index))}
+                    >
+                      <X size={16} />
+                    </ActionIcon>
+                  </Group>
+                  <Group gap="lg">
+                    <Select
+                      size="xs"
+                      label="Lloji"
+                      value={q.type}
+                      onChange={(value) => {
+                        const updated = [...customQuestions];
+                        updated[index] = { ...updated[index], type: value || 'text' };
+                        setCustomQuestions(updated);
+                      }}
+                      data={[
+                        { value: 'text', label: 'Tekst' },
+                        { value: 'email', label: 'Email' },
+                        { value: 'phone', label: 'Telefon' },
+                      ]}
+                      style={{ width: 120 }}
+                    />
+                    <Box mt={18}>
+                      <Group gap="xs">
+                        <Switch
+                          size="xs"
+                          checked={q.required}
+                          onChange={(e) => {
+                            const updated = [...customQuestions];
+                            updated[index] = { ...updated[index], required: e.currentTarget.checked };
+                            setCustomQuestions(updated);
+                          }}
+                        />
+                        <Text size="xs" c={q.required ? 'blue' : 'dimmed'}>
+                          {q.required ? 'E detyrueshme' : 'Opsionale'}
+                        </Text>
+                      </Group>
+                    </Box>
+                  </Group>
+                </Card>
+              ))}
+              <Button
+                variant="outline"
+                leftSection={<Plus size={16} />}
+                onClick={() => setCustomQuestions([...customQuestions, { question: '', required: false, type: 'text' }])}
+                size="sm"
+              >
+                Shto Pyetje
+              </Button>
             </Box>
           </Stack>
         );

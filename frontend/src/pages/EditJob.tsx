@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, X, Loader2, ArrowLeft, Save, Briefcase, MapPin, Euro, ListChecks, Tag, Globe, CalendarDays, LayoutGrid } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Plus, X, Loader2, ArrowLeft, Save, Briefcase, MapPin, Euro, ListChecks, Tag, Globe, CalendarDays, LayoutGrid, MessageSquare } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { locationsApi, Location, jobsApi, isAuthenticated, getUserType, Job } from "@/lib/api";
 
@@ -24,6 +25,7 @@ const EditJob = () => {
   const [requirements, setRequirements] = useState<string[]>(['']);
   const [benefits, setBenefits] = useState<string[]>(['']);
   const [tags, setTags] = useState<string[]>(['']);
+  const [customQuestions, setCustomQuestions] = useState<Array<{ question: string; required: boolean; type: string }>>([]);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -145,6 +147,11 @@ const EditJob = () => {
         setRequirements(job.requirements?.length ? job.requirements : ['']);
         setBenefits(job.benefits?.length ? job.benefits : ['']);
         setTags(job.tags?.length ? job.tags : ['']);
+        setCustomQuestions(job.customQuestions?.length ? job.customQuestions.map(q => ({
+          question: q.question,
+          required: q.required,
+          type: q.type || 'text'
+        })) : []);
 
       } else {
         throw new Error('Job not found');
@@ -261,7 +268,10 @@ const EditJob = () => {
           negotiable: false
         } : undefined,
         expiresAt: formData.expiresAt,
-        platformCategories: formData.platformCategories
+        platformCategories: formData.platformCategories,
+        customQuestions: customQuestions.filter(q => q.question.trim()).length > 0
+          ? customQuestions.filter(q => q.question.trim())
+          : []
       };
 
       const response = await jobsApi.updateJob(id!, jobData);
@@ -652,6 +662,89 @@ const EditJob = () => {
                     )}
                   </div>
                 ))}
+              </CardContent>
+            </Card>
+
+            {/* Custom Questions */}
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <MessageSquare className="h-5 w-5 text-primary" />
+                  Pyetje për Kandidatët
+                </CardTitle>
+                <CardDescription>Shtoni pyetje që kandidatët duhet t'i përgjigjen kur aplikojnë (opsionale). Nëse ka pyetje, kandidatët nuk mund të bëjnë one-click apply pa i përgjigur ato të detyrueshme.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {customQuestions.map((q, index) => (
+                  <div key={index} className="rounded-lg border p-3 space-y-3">
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <Label className="text-xs text-muted-foreground">Pyetja {index + 1}</Label>
+                        <Input
+                          value={q.question}
+                          onChange={(e) => {
+                            const updated = [...customQuestions];
+                            updated[index] = { ...updated[index], question: e.target.value };
+                            setCustomQuestions(updated);
+                          }}
+                          placeholder="p.sh. Pse dëshironi të punoni tek ne?"
+                          className="mt-1"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setCustomQuestions(customQuestions.filter((_, i) => i !== index))}
+                        className="h-9 w-9 p-0 mt-5 text-muted-foreground hover:text-destructive"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Lloji</Label>
+                        <Select
+                          value={q.type}
+                          onValueChange={(value) => {
+                            const updated = [...customQuestions];
+                            updated[index] = { ...updated[index], type: value };
+                            setCustomQuestions(updated);
+                          }}
+                        >
+                          <SelectTrigger className="mt-1 w-[120px] h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="text">Tekst</SelectItem>
+                            <SelectItem value="email">Email</SelectItem>
+                            <SelectItem value="phone">Telefon</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex items-center gap-2 mt-5">
+                        <Switch
+                          checked={q.required}
+                          onCheckedChange={(checked) => {
+                            const updated = [...customQuestions];
+                            updated[index] = { ...updated[index], required: checked };
+                            setCustomQuestions(updated);
+                          }}
+                        />
+                        <Label className="text-xs">{q.required ? 'E detyrueshme' : 'Opsionale'}</Label>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCustomQuestions([...customQuestions, { question: '', required: false, type: 'text' }])}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Shto Pyetje
+                </Button>
               </CardContent>
             </Card>
 
