@@ -282,32 +282,47 @@ class CandidateMatchingService {
         throw new Error('Job not found');
       }
 
-      // Get all job seekers
-      const candidates = await User.find({
+      // Process candidates in batches via cursor to prevent OOM at scale
+      const BATCH_SIZE = 500;
+      const topMatches = []; // running top-N list, kept sorted and capped
+
+      const candidateCursor = User.find({
         userType: 'jobseeker',
         'profile.jobSeekerProfile': { $exists: true },
         isDeleted: false,
         status: 'active'
       })
-      .select('email profile createdAt');
+      .select('email profile createdAt')
+      .batchSize(BATCH_SIZE)
+      .cursor();
 
-      // Calculate match scores for all candidates
-      const matchResults = [];
-      for (const candidate of candidates) {
+      for await (const candidate of candidateCursor) {
         const { totalScore, breakdown } = this.calculateMatchScore(candidate, job);
 
-        matchResults.push({
-          candidate,
-          matchScore: totalScore,
-          matchBreakdown: breakdown
-        });
+        // Insert into topMatches if it qualifies
+        if (topMatches.length < limit) {
+          topMatches.push({
+            candidate,
+            matchScore: totalScore,
+            matchBreakdown: breakdown
+          });
+          // Re-sort when we reach the limit to establish the threshold
+          if (topMatches.length === limit) {
+            topMatches.sort((a, b) => b.matchScore - a.matchScore);
+          }
+        } else if (totalScore > topMatches[topMatches.length - 1].matchScore) {
+          // Replace the lowest-scoring entry
+          topMatches[topMatches.length - 1] = {
+            candidate,
+            matchScore: totalScore,
+            matchBreakdown: breakdown
+          };
+          topMatches.sort((a, b) => b.matchScore - a.matchScore);
+        }
       }
 
-      // Sort by score descending
-      matchResults.sort((a, b) => b.matchScore - a.matchScore);
-
-      // Take top matches
-      const topMatches = matchResults.slice(0, limit);
+      // Final sort in case we never filled to limit
+      topMatches.sort((a, b) => b.matchScore - a.matchScore);
 
       // Store in cache with 24 hour expiration
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours from now

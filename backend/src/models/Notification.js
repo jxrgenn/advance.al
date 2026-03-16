@@ -86,6 +86,9 @@ notificationSchema.index({ userId: 1, read: 1 });
 notificationSchema.index({ type: 1 });
 notificationSchema.index({ createdAt: -1 });
 
+// TTL index: auto-delete notifications older than 90 days
+notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
+
 // Virtual for time since notification
 notificationSchema.virtual('timeAgo').get(function() {
   const now = new Date();

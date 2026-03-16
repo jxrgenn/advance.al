@@ -7,6 +7,8 @@ import rateLimit from 'express-rate-limit';
 import { mkdirSync } from 'fs';
 import path from 'path';
 import { connectDB } from './src/config/database.js';
+import mongoose from 'mongoose';
+import logger from './src/config/logger.js';
 
 // Import routes (will create these next)
 import authRoutes from './src/routes/auth.js';
@@ -131,12 +133,28 @@ app.use('/uploads', express.static('./uploads'));
 
 // Health Check Route
 app.get('/health', (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: 'PunaShqip API është aktiv',
+  const dbState = mongoose.connection.readyState;
+  const dbStates = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
+  const mem = process.memoryUsage();
+  const isHealthy = dbState === 1;
+
+  const payload = {
+    success: isHealthy,
+    message: isHealthy ? 'PunaShqip API është aktiv' : 'PunaShqip API ka probleme',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
-  });
+    environment: process.env.NODE_ENV || 'development',
+    uptime: Math.floor(process.uptime()),
+    database: {
+      status: dbStates[dbState] || 'unknown',
+      readyState: dbState
+    },
+    memory: {
+      rss: Math.round(mem.rss / 1024 / 1024 * 100) / 100,
+      heapUsed: Math.round(mem.heapUsed / 1024 / 1024 * 100) / 100
+    }
+  };
+
+  res.status(isHealthy ? 200 : 503).json(payload);
 });
 
 // API Routes
@@ -223,9 +241,9 @@ app.use((err, req, res, next) => {
 
 // Start Server
 const server = app.listen(PORT, () => {
-  console.log(`🚀 advance.al API running on port ${PORT}`);
-  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+  logger.info(`advance.al API running on port ${PORT}`);
+  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.info(`Health check: http://localhost:${PORT}/health`);
 
   // Periodic task: auto-lift expired user suspensions (every 15 minutes)
   import('./src/models/index.js').then(({ User }) => {
@@ -233,19 +251,29 @@ const server = app.listen(PORT, () => {
       try {
         await User.checkExpiredSuspensions();
       } catch (err) {
-        console.error('Error checking expired suspensions:', err.message);
+        logger.error('Error checking expired suspensions:', err.message);
       }
     }, 15 * 60 * 1000);
+  }).catch(() => {});
+
+  // Data retention: run daily
+  import('./src/services/dataRetention.js').then(({ runRetentionPolicies }) => {
+    setInterval(() => {
+      runRetentionPolicies().catch(err => console.error('Retention error:', err));
+    }, 24 * 60 * 60 * 1000);
+    // Run once on startup after a delay
+    setTimeout(() => {
+      runRetentionPolicies().catch(err => console.error('Retention error:', err));
+    }, 60000);
   }).catch(() => {});
 });
 
 // Graceful Shutdown — must be AFTER server is defined
-import mongoose from 'mongoose';
 const shutdown = async (signal) => {
-  console.log(`${signal} received, shutting down gracefully`);
+  logger.info(`${signal} received, shutting down gracefully`);
   server.close(async () => {
     await mongoose.connection.close();
-    console.log('Process terminated');
+    logger.info('Process terminated');
     process.exit(0);
   });
   // Force exit after 10s if connections don't close

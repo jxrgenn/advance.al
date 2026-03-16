@@ -230,16 +230,17 @@ class UserEmbeddingService {
 
     const jobVector = job.embedding.vector;
     const threshold = this.threshold;
+    const BATCH_SIZE = 500;
 
-    // --- QuickUsers ---
-    const quickUserDocs = await QuickUser.find({
+    // --- QuickUsers (batch processing via cursor to prevent OOM) ---
+    const matchedQuickUsers = [];
+    const quickUserCursor = QuickUser.find({
       isActive: true,
       convertedToFullUser: false,
       'embedding.status': 'completed'
-    }).select('+embedding.vector'); // vector has select:false — must explicitly include
+    }).select('+embedding.vector').batchSize(BATCH_SIZE).cursor();
 
-    const matchedQuickUsers = [];
-    for (const qu of quickUserDocs) {
+    for await (const qu of quickUserCursor) {
       const vec = qu.embedding?.vector;
       if (!vec || vec.length !== 1536) continue;
       try {
@@ -251,17 +252,17 @@ class UserEmbeddingService {
     }
     matchedQuickUsers.sort((a, b) => b.score - a.score);
 
-    // --- Jobseeker Users (opt-in only) ---
-    const jobSeekerDocs = await User.find({
+    // --- Jobseeker Users (opt-in only, batch processing via cursor) ---
+    const matchedJobSeekers = [];
+    const jobSeekerCursor = User.find({
       userType: 'jobseeker',
       isDeleted: false,
       status: 'active',
       'profile.jobSeekerProfile.notifications.jobAlerts': true,
       'profile.jobSeekerProfile.embedding.status': 'completed'
-    }).select('+profile.jobSeekerProfile.embedding.vector');
+    }).select('+profile.jobSeekerProfile.embedding.vector').batchSize(BATCH_SIZE).cursor();
 
-    const matchedJobSeekers = [];
-    for (const u of jobSeekerDocs) {
+    for await (const u of jobSeekerCursor) {
       const vec = u.profile?.jobSeekerProfile?.embedding?.vector;
       if (!vec || vec.length !== 1536) continue;
       try {
