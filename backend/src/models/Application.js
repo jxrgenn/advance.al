@@ -112,12 +112,9 @@ applicationSchema.index({ employerId: 1, status: 1 });
 applicationSchema.index({ appliedAt: -1 });
 applicationSchema.index({ status: 1 });
 
-// Compound index to prevent duplicate applications (allows re-application after withdrawal)
-// MIGRATION: Run `db.applications.dropIndex("jobId_1_jobSeekerId_1")` before deploying
-applicationSchema.index(
-  { jobId: 1, jobSeekerId: 1 },
-  { unique: true, partialFilterExpression: { withdrawn: { $ne: true } } }
-);
+// Compound index for fast lookups (uniqueness enforced at application layer in routes/applications.js)
+// Old unique index was dropped via migration script — re-application after withdrawal now works
+applicationSchema.index({ jobId: 1, jobSeekerId: 1 });
 
 // Virtual for time since applied
 applicationSchema.virtual('timeAgo').get(function() {
