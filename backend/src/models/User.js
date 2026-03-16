@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
 const { Schema } = mongoose;
 
@@ -469,24 +470,40 @@ userSchema.methods.softDelete = function() {
   return this.save();
 };
 
-// Refresh token management methods
-userSchema.methods.addRefreshToken = function(token) {
-  // Remove expired tokens (older than 7 days)
+// Hash a refresh token for secure storage
+const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+
+// Refresh token management methods — use atomic $pull/$push to avoid Mongoose change detection issues
+userSchema.methods.addRefreshToken = async function(token) {
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  this.refreshTokens = this.refreshTokens.filter(t => t.createdAt > sevenDaysAgo);
-  // Add new token
-  this.refreshTokens.push({ token });
-  return this.save();
+  // Remove expired tokens and add new one atomically
+  await this.constructor.updateOne(
+    { _id: this._id },
+    {
+      $pull: { refreshTokens: { createdAt: { $lt: sevenDaysAgo } } }
+    }
+  );
+  await this.constructor.updateOne(
+    { _id: this._id },
+    {
+      $push: { refreshTokens: { token: hashToken(token), createdAt: new Date() } }
+    }
+  );
 };
 
-userSchema.methods.removeRefreshToken = function(token) {
-  this.refreshTokens = this.refreshTokens.filter(t => t.token !== token);
-  return this.save();
+userSchema.methods.removeRefreshToken = async function(token) {
+  const hashed = hashToken(token);
+  await this.constructor.updateOne(
+    { _id: this._id },
+    { $pull: { refreshTokens: { token: hashed } } }
+  );
 };
 
-userSchema.methods.removeAllRefreshTokens = function() {
-  this.refreshTokens = [];
-  return this.save();
+userSchema.methods.removeAllRefreshTokens = async function() {
+  await this.constructor.updateOne(
+    { _id: this._id },
+    { $set: { refreshTokens: [] } }
+  );
 };
 
 // Hide sensitive data when converting to JSON

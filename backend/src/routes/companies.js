@@ -1,6 +1,7 @@
 import express from 'express';
 import { User, Job } from '../models/index.js';
 import { authenticate, optionalAuth } from '../middleware/auth.js';
+import { escapeRegex } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -30,9 +31,10 @@ router.get('/', optionalAuth, async (req, res) => {
 
     // Add search filters
     if (search) {
+      const safeSearch = escapeRegex(search);
       matchQuery.$or = [
-        { 'profile.employerProfile.companyName': { $regex: search, $options: 'i' } },
-        { 'profile.employerProfile.description': { $regex: search, $options: 'i' } }
+        { 'profile.employerProfile.companyName': { $regex: safeSearch, $options: 'i' } },
+        { 'profile.employerProfile.description': { $regex: safeSearch, $options: 'i' } }
       ];
     }
 

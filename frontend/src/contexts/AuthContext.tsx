@@ -248,7 +248,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Listen for 401 logout events from api.ts to sync React state
   useEffect(() => {
     const handleForceLogout = () => {
-      dispatch({ type: 'LOGOUT' });
+      dispatch({ type: 'AUTH_LOGOUT' });
     };
     window.addEventListener('auth:logout', handleForceLogout);
     return () => window.removeEventListener('auth:logout', handleForceLogout);

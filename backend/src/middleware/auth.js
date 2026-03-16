@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
 import { User } from '../models/index.js';
 
 // Generate JWT Token
@@ -8,9 +9,9 @@ export const generateToken = (payload) => {
   });
 };
 
-// Generate Refresh Token
+// Generate Refresh Token — includes jti (unique ID) to prevent same-second duplicates
 export const generateRefreshToken = (payload) => {
-  return jwt.sign(payload, process.env.JWT_REFRESH_SECRET, {
+  return jwt.sign({ ...payload, jti: randomUUID() }, process.env.JWT_REFRESH_SECRET, {
     expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d'
   });
 };
@@ -154,7 +155,7 @@ export const optionalAuth = async (req, res, next) => {
         const decoded = verifyToken(token);
         const user = await User.findById(decoded.id).select('-password');
         
-        if (user && !user.isDeleted && user.status !== 'deleted' && user.status !== 'suspended') {
+        if (user && !user.isDeleted && user.status !== 'deleted' && user.status !== 'suspended' && user.status !== 'banned') {
           req.user = user;
         }
       }
@@ -176,7 +177,7 @@ export const requireVerifiedEmployer = (req, res, next) => {
     });
   }
 
-  if (!req.user.profile.employerProfile.verified) {
+  if (!req.user?.profile?.employerProfile?.verified) {
     return res.status(403).json({
       success: false,
       message: 'Llogaria juaj si punëdhënës duhet të verifikohet nga administratori'

@@ -64,7 +64,7 @@ router.get('/jobs/:jobId/candidates', authenticate, async (req, res) => {
     console.error('Error fetching matching candidates:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Error fetching matching candidates'
+      message: process.env.NODE_ENV === 'production' ? 'Error fetching matching candidates' : (error.message || 'Error fetching matching candidates')
     });
   }
 });
@@ -137,7 +137,7 @@ router.post('/jobs/:jobId/purchase', authenticate, async (req, res) => {
     console.error('Error processing payment:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Error processing payment'
+      message: process.env.NODE_ENV === 'production' ? 'Error processing payment' : (error.message || 'Error processing payment')
     });
   }
 });
@@ -170,7 +170,7 @@ router.post('/track-contact', authenticate, async (req, res) => {
     console.error('Error tracking contact:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Error tracking contact'
+      message: process.env.NODE_ENV === 'production' ? 'Error tracking contact' : (error.message || 'Error tracking contact')
     });
   }
 });
@@ -198,7 +198,7 @@ router.get('/jobs/:jobId/access', authenticate, async (req, res) => {
     console.error('Error checking access:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Error checking access'
+      message: process.env.NODE_ENV === 'production' ? 'Error checking access' : (error.message || 'Error checking access')
     });
   }
 });

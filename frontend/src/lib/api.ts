@@ -240,6 +240,28 @@ const removeAuthToken = (): void => {
 };
 
 let isRefreshing = false;
+let refreshPromise: Promise<boolean> | null = null;
+
+const attemptTokenRefresh = async (): Promise<boolean> => {
+  const refreshToken = localStorage.getItem('refreshToken');
+  if (!refreshToken) return false;
+  try {
+    const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+    const refreshData = await refreshResponse.json();
+    if (refreshResponse.ok && refreshData.success) {
+      setAuthToken(refreshData.data.token);
+      localStorage.setItem('refreshToken', refreshData.data.refreshToken);
+      return true;
+    }
+  } catch {
+    // Refresh failed
+  }
+  return false;
+};
 
 const apiRequest = async <T>(
   endpoint: string,
@@ -288,29 +310,20 @@ const apiRequest = async <T>(
 
     if (!response.ok) {
       // On 401, try to refresh the token before giving up
-      if (response.status === 401 && !options._isRetry && !isRefreshing && endpoint !== '/auth/refresh' && endpoint !== '/auth/login') {
-        isRefreshing = true;
-        try {
-          const refreshToken = localStorage.getItem('refreshToken');
-          if (refreshToken) {
-            const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ refreshToken }),
-            });
-            const refreshData = await refreshResponse.json();
-            if (refreshResponse.ok && refreshData.success) {
-              setAuthToken(refreshData.data.token);
-              localStorage.setItem('refreshToken', refreshData.data.refreshToken);
-              isRefreshing = false;
-              // Retry the original request with the new token
-              return apiRequest<T>(endpoint, { ...options, _isRetry: true });
-            }
-          }
-        } catch {
-          // Refresh failed, fall through to logout
+      if (response.status === 401 && !options._isRetry && endpoint !== '/auth/refresh' && endpoint !== '/auth/login') {
+        // Use a shared promise so concurrent 401s all wait for the same refresh
+        if (!isRefreshing) {
+          isRefreshing = true;
+          refreshPromise = attemptTokenRefresh().finally(() => {
+            isRefreshing = false;
+            refreshPromise = null;
+          });
         }
-        isRefreshing = false;
+        const refreshed = await refreshPromise;
+        if (refreshed) {
+          // Retry the original request with the new token
+          return apiRequest<T>(endpoint, { ...options, _isRetry: true });
+        }
         // Refresh failed — clear tokens and notify React
         removeAuthToken();
         window.dispatchEvent(new Event('auth:logout'));

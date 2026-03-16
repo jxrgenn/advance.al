@@ -43,11 +43,11 @@ const resumeFileFilter = (req, file, cb) => {
 
 // File filter for image uploads (logos and profile photos)
 const imageFileFilter = (req, file, cb) => {
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Vetëm skedarët JPEG, PNG, WebP dhe SVG janë të lejuar'), false);
+    cb(new Error('Vetëm skedarët JPEG, PNG dhe WebP janë të lejuar'), false);
   }
 };
 
@@ -59,6 +59,19 @@ const upload = multer({
     fileSize: 5 * 1024 * 1024 // 5MB limit
   }
 });
+
+// Validate image file magic bytes to prevent mimetype spoofing
+const validateImageMagicBytes = (buffer) => {
+  if (!buffer || buffer.length < 4) return false;
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) return true;
+  // PNG: 89 50 4E 47
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) return true;
+  // WebP: RIFF....WEBP
+  if (buffer.length >= 12 && buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46
+      && buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) return true;
+  return false;
+};
 
 // Image upload multer config (for logos and profile photos)
 const imageUpload = multer({
@@ -598,6 +611,16 @@ router.post('/upload-logo', authenticate, requireEmployer, imageUpload.single('l
       });
     }
 
+    // Validate magic bytes to prevent mimetype spoofing
+    const fileBuffer = req.file.buffer || (req.file.path ? fs.readFileSync(req.file.path) : null);
+    if (!validateImageMagicBytes(fileBuffer)) {
+      if (req.file.path) fs.unlinkSync(req.file.path);
+      return res.status(400).json({
+        success: false,
+        message: 'Skedari nuk është një imazh i vlefshëm'
+      });
+    }
+
     const user = await User.findById(req.user._id);
     if (!user) {
       return res.status(404).json({
@@ -686,6 +709,16 @@ router.post('/upload-profile-photo', authenticate, requireJobSeeker, imageUpload
       return res.status(400).json({
         success: false,
         message: 'Nuk u ngarkua asnjë skedar'
+      });
+    }
+
+    // Validate magic bytes to prevent mimetype spoofing
+    const fileBuffer = req.file.buffer || (req.file.path ? fs.readFileSync(req.file.path) : null);
+    if (!validateImageMagicBytes(fileBuffer)) {
+      if (req.file.path) fs.unlinkSync(req.file.path);
+      return res.status(400).json({
+        success: false,
+        message: 'Skedari nuk është një imazh i vlefshëm'
       });
     }
 

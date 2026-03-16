@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'crypto';
 import { body, validationResult } from 'express-validator';
 import rateLimit from 'express-rate-limit';
 import { User } from '../models/index.js';
@@ -155,8 +156,8 @@ router.post('/register', authLimiter, registerValidation, handleValidationErrors
     const refreshToken = generateRefreshToken(payload);
 
     // Store refresh token and update last login
-    user.lastLoginAt = new Date();
     await user.addRefreshToken(refreshToken);
+    await User.updateOne({ _id: user._id }, { lastLoginAt: new Date() });
 
     // Send welcome email + generate embedding for job seekers (async, non-blocking)
     if (userType === 'jobseeker') {
@@ -279,12 +280,11 @@ router.post('/login', authLimiter, loginValidation, handleValidationErrors, asyn
     const refreshToken = generateRefreshToken(payload);
 
     // Store refresh token and update last login
-    user.lastLoginAt = new Date();
     await user.addRefreshToken(refreshToken);
+    await User.updateOne({ _id: user._id }, { lastLoginAt: new Date() });
 
-    // Remove password from response
-    const userResponse = user.toObject();
-    delete userResponse.password;
+    // Use toJSON() which strips password, tokens, and other sensitive fields
+    const userResponse = user.toJSON();
 
     res.json({
       success: true,
@@ -332,8 +332,9 @@ router.post('/refresh', authLimiter, async (req, res) => {
       });
     }
 
-    // Check if this refresh token is still valid (not revoked)
-    const tokenExists = user.refreshTokens.some(t => t.token === refreshToken);
+    // Check if this refresh token is still valid (not revoked) — tokens stored as SHA-256 hashes
+    const hashedToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
+    const tokenExists = user.refreshTokens.some(t => t.token === hashedToken);
     if (!tokenExists) {
       return res.status(401).json({
         success: false,

@@ -405,11 +405,18 @@ router.get('/:id', authenticate, requireAdmin, async (req, res) => {
 
 // @route   PUT /api/quickusers/:id/preferences
 // @desc    Update quick user preferences
-// @access  Public (could be secured with token later)
+// @access  Token-protected (requires unsubscribeToken for verification)
 router.put('/:id/preferences', async (req, res) => {
   try {
     const { id } = req.params;
-    const { preferences } = req.body;
+    const { preferences, token } = req.body;
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Token i verifikimit është i detyrueshëm'
+      });
+    }
 
     if (!preferences) {
       return res.status(400).json({
@@ -420,10 +427,10 @@ router.put('/:id/preferences', async (req, res) => {
 
     const quickUser = await QuickUser.findById(id);
 
-    if (!quickUser) {
+    if (!quickUser || quickUser.unsubscribeToken !== token) {
       return res.status(404).json({
         success: false,
-        message: 'Përdoruesi nuk u gjet'
+        message: 'Përdoruesi nuk u gjet ose token i pavlefshëm'
       });
     }
 

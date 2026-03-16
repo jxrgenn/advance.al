@@ -564,6 +564,71 @@ router.get('/recommendations', authenticate, async (req, res) => {
   }
 });
 
+// @route   GET /api/jobs/employer/my-jobs
+// @desc    Get employer's job postings
+// @access  Private (Employers only)
+// NOTE: Must be defined BEFORE /:id to avoid route shadowing
+router.get('/employer/my-jobs', authenticate, requireEmployer, async (req, res) => {
+  try {
+    const {
+      status = '',
+      page = 1,
+      limit = 10,
+      sortBy = 'postedAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    const query = {
+      employerId: req.user._id,
+      isDeleted: false
+    };
+
+    if (status) {
+      query.status = status;
+    }
+
+    // Build sort options
+    const sortOptions = {};
+    const employerAllowedSorts = ['postedAt', 'createdAt', 'expiresAt', 'viewCount', 'applicationCount'];
+    const safeSortBy = employerAllowedSorts.includes(sortBy) ? sortBy : 'postedAt';
+    sortOptions[safeSortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    // Pagination
+    const empLimit = sanitizeLimit(limit, 50, 10);
+    const skip = (parseInt(page) - 1) * empLimit;
+
+    const jobs = await Job.find(query)
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(empLimit)
+      .lean();
+
+    const totalJobs = await Job.countDocuments(query);
+    const totalPages = Math.ceil(totalJobs / empLimit);
+
+    res.json({
+      success: true,
+      data: {
+        jobs,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages,
+          totalJobs,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get employer jobs error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Gabim në marrjen e punëve tuaja'
+    });
+  }
+});
+
 // @route   GET /api/jobs/:id
 // @desc    Get single job by ID
 // @access  Public
@@ -1140,70 +1205,6 @@ router.delete('/:id', authenticate, requireEmployer, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Gabim në fshirjen e punës'
-    });
-  }
-});
-
-// @route   GET /api/jobs/employer/my-jobs
-// @desc    Get employer's job postings
-// @access  Private (Employers only)
-router.get('/employer/my-jobs', authenticate, requireEmployer, async (req, res) => {
-  try {
-    const {
-      status = '',
-      page = 1,
-      limit = 10,
-      sortBy = 'postedAt',
-      sortOrder = 'desc'
-    } = req.query;
-
-    const query = {
-      employerId: req.user._id,
-      isDeleted: false
-    };
-
-    if (status) {
-      query.status = status;
-    }
-
-    // Build sort options
-    const sortOptions = {};
-    const employerAllowedSorts = ['postedAt', 'createdAt', 'expiresAt', 'viewCount', 'applicationCount'];
-    const safeSortBy = employerAllowedSorts.includes(sortBy) ? sortBy : 'postedAt';
-    sortOptions[safeSortBy] = sortOrder === 'desc' ? -1 : 1;
-
-    // Pagination
-    const empLimit = sanitizeLimit(limit, 50, 10);
-    const skip = (parseInt(page) - 1) * empLimit;
-
-    const jobs = await Job.find(query)
-      .sort(sortOptions)
-      .skip(skip)
-      .limit(empLimit)
-      .lean(); // Read-only optimization
-
-    const totalJobs = await Job.countDocuments(query);
-    const totalPages = Math.ceil(totalJobs / empLimit);
-
-    res.json({
-      success: true,
-      data: {
-        jobs,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages,
-          totalJobs,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('Get employer jobs error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Gabim në marrjen e punëve tuaja'
     });
   }
 });
