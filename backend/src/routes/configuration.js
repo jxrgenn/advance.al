@@ -3,6 +3,7 @@ import { body, query, validationResult } from 'express-validator';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { SystemConfiguration, ConfigurationAudit, SystemHealth } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
 
 const router = express.Router();
 
@@ -103,6 +104,15 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
 // @access  Public
 router.get('/public', async (req, res) => {
   try {
+    // Check Redis cache first
+    const cached = await cacheGet('config:public');
+    if (cached) {
+      return res.json({
+        success: true,
+        data: { settings: typeof cached === 'string' ? JSON.parse(cached) : cached }
+      });
+    }
+
     const publicSettings = await SystemConfiguration.getPublicSettings();
 
     // Convert to key-value format for easier use
@@ -110,6 +120,9 @@ router.get('/public', async (req, res) => {
       acc[setting.key] = setting.value;
       return acc;
     }, {});
+
+    // Cache for 5 minutes
+    await cacheSet('config:public', settingsMap, 300);
 
     res.json({
       success: true,
@@ -162,6 +175,9 @@ router.put('/:id', authenticate, requireAdmin, configurationLimit, configuration
         userAgent: req.get('User-Agent')
       }
     );
+
+    // Invalidate public config cache on any config update
+    await cacheDelete('config:public');
 
     // Get updated setting with populated fields
     const updatedSetting = await SystemConfiguration.findById(settingId)
@@ -219,6 +235,9 @@ router.post('/:id/reset', authenticate, requireAdmin, configurationLimit, async 
         userAgent: req.get('User-Agent')
       }
     );
+
+    // Invalidate public config cache on reset
+    await cacheDelete('config:public');
 
     // Get updated setting with populated fields
     const updatedSetting = await SystemConfiguration.findById(settingId)
@@ -407,6 +426,9 @@ router.post('/maintenance-mode', authenticate, requireAdmin, async (req, res) =>
         userAgent: req.get('User-Agent')
       }
     );
+
+    // Invalidate public config cache on maintenance mode toggle
+    await cacheDelete('config:public');
 
     res.json({
       success: true,

@@ -1,8 +1,24 @@
+import * as Sentry from '@sentry/node';
+import dotenv from 'dotenv';
+
+// Load environment variables early so SENTRY_DSN is available
+dotenv.config();
+
+// Initialize Sentry before anything else
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.2 : 1.0,
+    // Don't send in development unless explicitly enabled
+    enabled: process.env.NODE_ENV === 'production' || process.env.SENTRY_ENABLED === 'true',
+  });
+}
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import { mkdirSync } from 'fs';
 import path from 'path';
@@ -29,9 +45,6 @@ import configurationRoutes from './src/routes/configuration.js';
 import businessControlRoutes from './src/routes/business-control.js';
 import matchingRoutes from './src/routes/matching.js';
 import cvRoutes from './src/routes/cv.js';
-
-// Load environment variables
-dotenv.config();
 
 const app = express();
 app.set('trust proxy', 1); // Trust first proxy hop (required for Render/PaaS — fixes rate limiting per real IP)
@@ -195,6 +208,11 @@ app.use((req, res) => {
     path: req.originalUrl
   });
 });
+
+// Sentry error handler (must be before other error handlers)
+if (process.env.SENTRY_DSN) {
+  Sentry.setupExpressErrorHandler(app);
+}
 
 // Global Error Handler
 app.use((err, req, res, next) => {

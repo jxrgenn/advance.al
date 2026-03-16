@@ -1,31 +1,39 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
+import fs from 'fs';
 import { randomUUID } from 'crypto';
 import { body, validationResult } from 'express-validator';
 import { User } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer, requireAdmin } from '../middleware/auth.js';
 import userEmbeddingService from '../services/userEmbeddingService.js';
+import { uploadToCloudinary } from '../config/cloudinary.js';
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
+// Check if Cloudinary is configured
+const isCloudinaryConfigured = () =>
+  !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
+
+// Configure multer — use memory storage when Cloudinary is available, disk storage as fallback
+const diskStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    // Create uploads directory if it doesn't exist
     const uploadDir = path.join(process.cwd(), 'uploads', 'resumes');
+    fs.mkdirSync(uploadDir, { recursive: true });
     cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
-    // Generate unique filename with timestamp and user ID
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     const extension = path.extname(file.originalname);
     cb(null, `resume-${req.user._id}-${uniqueSuffix}${extension}`);
   }
 });
 
-// File filter for PDF only
-const fileFilter = (req, file, cb) => {
+const memoryStorage = multer.memoryStorage();
+
+// File filter for resume uploads (PDF only)
+const resumeFileFilter = (req, file, cb) => {
   if (file.mimetype === 'application/pdf') {
     cb(null, true);
   } else {
@@ -33,12 +41,42 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// Configure multer
+// File filter for image uploads (logos and profile photos)
+const imageFileFilter = (req, file, cb) => {
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Vetëm skedarët JPEG, PNG, WebP dhe SVG janë të lejuar'), false);
+  }
+};
+
+// Resume upload multer config
 const upload = multer({
-  storage: storage,
-  fileFilter: fileFilter,
+  storage: isCloudinaryConfigured() ? memoryStorage : diskStorage,
+  fileFilter: resumeFileFilter,
   limits: {
     fileSize: 5 * 1024 * 1024 // 5MB limit
+  }
+});
+
+// Image upload multer config (for logos and profile photos)
+const imageUpload = multer({
+  storage: isCloudinaryConfigured() ? memoryStorage : multer.diskStorage({
+    destination: function (req, file, cb) {
+      const uploadDir = path.join(process.cwd(), 'uploads', 'images');
+      fs.mkdirSync(uploadDir, { recursive: true });
+      cb(null, uploadDir);
+    },
+    filename: function (req, file, cb) {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const extension = path.extname(file.originalname);
+      cb(null, `image-${req.user._id}-${uniqueSuffix}${extension}`);
+    }
+  }),
+  fileFilter: imageFileFilter,
+  limits: {
+    fileSize: 2 * 1024 * 1024 // 2MB limit for images
   }
 });
 
@@ -480,9 +518,32 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
       });
     }
 
-    // Generate the resume URL (adjust based on your file serving setup)
-    const resumeUrl = `/uploads/resumes/${req.file.filename}`;
-    
+    let resumeUrl;
+
+    // Try Cloudinary upload first, fall back to local storage
+    if (isCloudinaryConfigured() && req.file.buffer) {
+      try {
+        const cloudResult = await uploadToCloudinary(req.file.buffer, {
+          folder: 'advance-al/cvs',
+          resource_type: 'raw',
+          public_id: `resume-${req.user._id}-${Date.now()}`,
+        });
+        resumeUrl = cloudResult.secure_url;
+        logger.info('Resume uploaded to Cloudinary', { userId: req.user._id, url: resumeUrl });
+      } catch (cloudError) {
+        logger.error('Cloudinary resume upload failed, falling back to local', { error: cloudError.message });
+        // Fallback: save buffer to disk
+        const fallbackDir = path.join(process.cwd(), 'uploads', 'resumes');
+        fs.mkdirSync(fallbackDir, { recursive: true });
+        const fallbackName = `resume-${req.user._id}-${Date.now()}${path.extname(req.file.originalname)}`;
+        fs.writeFileSync(path.join(fallbackDir, fallbackName), req.file.buffer);
+        resumeUrl = `/uploads/resumes/${fallbackName}`;
+      }
+    } else {
+      // Local storage (multer already saved the file to disk)
+      resumeUrl = `/uploads/resumes/${req.file.filename}`;
+    }
+
     // Update user profile with resume URL
     if (!user.profile.jobSeekerProfile) {
       user.profile.jobSeekerProfile = {};
@@ -502,7 +563,7 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
 
   } catch (error) {
     console.error('Upload resume error:', error);
-    
+
     // Handle multer errors
     if (error.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({
@@ -510,7 +571,7 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
         message: 'Skedari është shumë i madh. Madhësia maksimale është 5MB'
       });
     }
-    
+
     if (error.message === 'Vetëm skedarët PDF janë të lejuar') {
       return res.status(400).json({
         success: false,
@@ -521,6 +582,188 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e CV-së'
+    });
+  }
+});
+
+// @route   POST /api/users/upload-logo
+// @desc    Upload company logo
+// @access  Private (Employers only)
+router.post('/upload-logo', authenticate, requireEmployer, imageUpload.single('logo'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nuk u ngarkua asnjë skedar'
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Përdoruesi nuk u gjet'
+      });
+    }
+
+    let logoUrl;
+
+    // Try Cloudinary upload first, fall back to local storage
+    if (isCloudinaryConfigured() && req.file.buffer) {
+      try {
+        const cloudResult = await uploadToCloudinary(req.file.buffer, {
+          folder: 'advance-al/logos',
+          resource_type: 'image',
+          public_id: `logo-${req.user._id}-${Date.now()}`,
+          transformation: [
+            { width: 400, height: 400, crop: 'limit' },
+            { quality: 'auto', fetch_format: 'auto' }
+          ]
+        });
+        logoUrl = cloudResult.secure_url;
+        logger.info('Logo uploaded to Cloudinary', { userId: req.user._id, url: logoUrl });
+      } catch (cloudError) {
+        logger.error('Cloudinary logo upload failed, falling back to local', { error: cloudError.message });
+        // Fallback: save buffer to disk
+        const fallbackDir = path.join(process.cwd(), 'uploads', 'images');
+        fs.mkdirSync(fallbackDir, { recursive: true });
+        const fallbackName = `logo-${req.user._id}-${Date.now()}${path.extname(req.file.originalname)}`;
+        fs.writeFileSync(path.join(fallbackDir, fallbackName), req.file.buffer);
+        logoUrl = `/uploads/images/${fallbackName}`;
+      }
+    } else {
+      // Local storage (multer already saved the file to disk)
+      logoUrl = `/uploads/images/${req.file.filename}`;
+    }
+
+    // Update employer profile with logo URL
+    if (!user.profile.employerProfile) {
+      user.profile.employerProfile = {};
+    }
+    user.profile.employerProfile.logo = logoUrl;
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Logo u ngarkua me sukses',
+      data: {
+        logoUrl: logoUrl,
+        user: user
+      }
+    });
+
+  } catch (error) {
+    console.error('Upload logo error:', error);
+
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        message: 'Skedari është shumë i madh. Madhësia maksimale është 2MB'
+      });
+    }
+
+    if (error.message?.includes('JPEG') || error.message?.includes('PNG')) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Gabim në ngarkimin e logos'
+    });
+  }
+});
+
+// @route   POST /api/users/upload-profile-photo
+// @desc    Upload profile photo
+// @access  Private (Job Seekers only)
+router.post('/upload-profile-photo', authenticate, requireJobSeeker, imageUpload.single('photo'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nuk u ngarkua asnjë skedar'
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Përdoruesi nuk u gjet'
+      });
+    }
+
+    let photoUrl;
+
+    // Try Cloudinary upload first, fall back to local storage
+    if (isCloudinaryConfigured() && req.file.buffer) {
+      try {
+        const cloudResult = await uploadToCloudinary(req.file.buffer, {
+          folder: 'advance-al/profile-photos',
+          resource_type: 'image',
+          public_id: `photo-${req.user._id}-${Date.now()}`,
+          transformation: [
+            { width: 300, height: 300, crop: 'fill', gravity: 'face' },
+            { quality: 'auto', fetch_format: 'auto' }
+          ]
+        });
+        photoUrl = cloudResult.secure_url;
+        logger.info('Profile photo uploaded to Cloudinary', { userId: req.user._id, url: photoUrl });
+      } catch (cloudError) {
+        logger.error('Cloudinary photo upload failed, falling back to local', { error: cloudError.message });
+        // Fallback: save buffer to disk
+        const fallbackDir = path.join(process.cwd(), 'uploads', 'images');
+        fs.mkdirSync(fallbackDir, { recursive: true });
+        const fallbackName = `photo-${req.user._id}-${Date.now()}${path.extname(req.file.originalname)}`;
+        fs.writeFileSync(path.join(fallbackDir, fallbackName), req.file.buffer);
+        photoUrl = `/uploads/images/${fallbackName}`;
+      }
+    } else {
+      // Local storage (multer already saved the file to disk)
+      photoUrl = `/uploads/images/${req.file.filename}`;
+    }
+
+    // Update job seeker profile with photo URL
+    if (!user.profile.jobSeekerProfile) {
+      user.profile.jobSeekerProfile = {};
+    }
+    user.profile.jobSeekerProfile.profilePhotoUrl = photoUrl;
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Foto e profilit u ngarkua me sukses',
+      data: {
+        photoUrl: photoUrl,
+        user: user
+      }
+    });
+
+  } catch (error) {
+    console.error('Upload profile photo error:', error);
+
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        message: 'Skedari është shumë i madh. Madhësia maksimale është 2MB'
+      });
+    }
+
+    if (error.message?.includes('JPEG') || error.message?.includes('PNG')) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Gabim në ngarkimin e fotos së profilit'
     });
   }
 });

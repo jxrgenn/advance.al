@@ -730,6 +730,24 @@ export const usersApi = {
     });
   },
 
+  // Upload company logo
+  uploadLogo: async (formData: FormData): Promise<ApiResponse<{ logoUrl: string; user?: User }>> => {
+    return apiRequest<{ logoUrl: string; user?: User }>('/users/upload-logo', {
+      method: 'POST',
+      body: formData,
+      isFormData: true
+    });
+  },
+
+  // Upload profile photo
+  uploadProfilePhoto: async (formData: FormData): Promise<ApiResponse<{ photoUrl: string; user?: User }>> => {
+    return apiRequest<{ photoUrl: string; user?: User }>('/users/upload-profile-photo', {
+      method: 'POST',
+      body: formData,
+      isFormData: true
+    });
+  },
+
   // Add work experience
   addWorkExperience: async (experienceData: {
     position: string;
