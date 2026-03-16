@@ -898,4 +898,91 @@ function formatTimeAgo(date) {
   return `${diffInMonths} muaj më parë`;
 }
 
+// @route   PATCH /api/admin/jobs/:id/approve
+// @desc    Approve or reject a pending job
+// @access  Private (Admin only)
+router.patch('/jobs/:id/approve', async (req, res) => {
+  try {
+    const { action } = req.body; // 'approve' or 'reject'
+
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Veprimi duhet të jetë "approve" ose "reject"'
+      });
+    }
+
+    const job = await Job.findById(req.params.id);
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: 'Puna nuk u gjet'
+      });
+    }
+
+    if (job.status !== 'pending_approval') {
+      return res.status(400).json({
+        success: false,
+        message: 'Kjo punë nuk është në pritje për aprovim'
+      });
+    }
+
+    job.status = action === 'approve' ? 'active' : 'rejected';
+    await job.save();
+
+    res.json({
+      success: true,
+      message: action === 'approve' ? 'Puna u aprovua me sukses' : 'Puna u refuzua',
+      data: { job }
+    });
+  } catch (error) {
+    console.error('Admin job approval error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Gabim në përpunimin e punës'
+    });
+  }
+});
+
+// @route   GET /api/admin/jobs/pending
+// @desc    Get all jobs pending approval
+// @access  Private (Admin only)
+router.get('/jobs/pending', async (req, res) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+    const safeLimit = sanitizeLimit(limit, 50, 10);
+    const currentPage = Math.max(1, parseInt(page) || 1);
+    const skip = (currentPage - 1) * safeLimit;
+
+    const query = { status: 'pending_approval', isDeleted: { $ne: true } };
+
+    const [jobs, totalCount] = await Promise.all([
+      Job.find(query)
+        .populate('employerId', 'email profile.firstName profile.lastName profile.employerProfile.companyName')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(safeLimit),
+      Job.countDocuments(query)
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        jobs,
+        pagination: {
+          currentPage,
+          totalPages: Math.ceil(totalCount / safeLimit),
+          totalItems: totalCount
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Admin pending jobs error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Gabim në marrjen e punëve në pritje'
+    });
+  }
+});
+
 export default router;

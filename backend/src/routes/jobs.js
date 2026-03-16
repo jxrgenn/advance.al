@@ -968,10 +968,19 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
     const employer = await User.findById(req.user._id);
     const isFreeForEmployer = employer.freePostingEnabled;
 
+    // Check if job approval is required (config-driven)
+    const requireApproval = await SystemConfiguration.getSettingValue('require_job_approval');
+
     // Mark job as pending payment initially (unless price is 0 or employer is whitelisted)
     if (job.pricing.finalPrice > 0 && !isFreeForEmployer) {
       job.status = 'pending_payment';
       job.paymentRequired = job.pricing.finalPrice;
+    } else if (requireApproval) {
+      job.status = 'pending_approval';
+      if (isFreeForEmployer) {
+        job.pricing.finalPrice = 0;
+        job.pricing.discount = job.pricing.basePrice;
+      }
     } else {
       job.status = 'active'; // Free jobs or whitelisted employers go live immediately
       if (isFreeForEmployer) {
@@ -1262,6 +1271,57 @@ router.patch('/:id/status', authenticate, requireEmployer, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Gabim në përditësimin e statusit'
+    });
+  }
+});
+
+// @route   POST /api/jobs/:id/renew
+// @desc    Renew/repost an expired or closed job with fresh dates
+// @access  Private (Employer - job owner)
+router.post('/:id/renew', authenticate, requireEmployer, async (req, res) => {
+  try {
+    const job = await Job.findOne({
+      _id: req.params.id,
+      employerId: req.user._id,
+      isDeleted: { $ne: true }
+    });
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: 'Puna nuk u gjet'
+      });
+    }
+
+    if (!['expired', 'closed'].includes(job.status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vetëm punët e skaduara ose të mbyllura mund të ripostohen'
+      });
+    }
+
+    // Check if job approval is required
+    const requireApproval = await SystemConfiguration.getSettingValue('require_job_approval');
+
+    job.status = requireApproval ? 'pending_approval' : 'active';
+    job.postedAt = new Date();
+    job.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+    job.viewCount = 0;
+
+    await job.save();
+
+    res.json({
+      success: true,
+      message: requireApproval
+        ? 'Puna u ripostua dhe është në pritje për aprovim'
+        : 'Puna u ripostua me sukses',
+      data: { job }
+    });
+  } catch (error) {
+    console.error('Job renewal error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Gabim në ripostimin e punës'
     });
   }
 });

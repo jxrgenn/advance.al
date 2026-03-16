@@ -292,10 +292,10 @@ systemConfigurationSchema.statics.createDefaultSettings = async function(adminUs
     {
       category: 'content',
       key: 'require_job_approval',
-      value: true,
+      value: false,
       dataType: 'boolean',
       description: 'Kërko aprovim për punët e reja',
-      defaultValue: true,
+      defaultValue: false,
       validation: { required: true }
     },
     {

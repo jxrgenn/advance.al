@@ -45,6 +45,7 @@ import configurationRoutes from './src/routes/configuration.js';
 import businessControlRoutes from './src/routes/business-control.js';
 import matchingRoutes from './src/routes/matching.js';
 import cvRoutes from './src/routes/cv.js';
+import { Job, SystemConfiguration } from './src/models/index.js';
 
 const app = express();
 app.set('trust proxy', 1); // Trust first proxy hop (required for Render/PaaS — fixes rate limiting per real IP)
@@ -170,6 +171,25 @@ app.get('/health', (req, res) => {
   res.status(isHealthy ? 200 : 503).json(payload);
 });
 
+// Maintenance Mode Middleware — checks config and returns 503 for non-admin routes
+app.use('/api', async (req, res, next) => {
+  if (req.path.startsWith('/auth') || req.path.startsWith('/admin') || req.path.startsWith('/configuration')) {
+    return next();
+  }
+  try {
+    const maintenanceMode = await SystemConfiguration.getSettingValue('maintenance_mode');
+    if (maintenanceMode === true) {
+      return res.status(503).json({
+        success: false,
+        message: 'Platforma është në mirëmbajtje. Ju lutemi provoni përsëri më vonë.'
+      });
+    }
+  } catch {
+    // If config check fails, allow the request through
+  }
+  next();
+});
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes); // Admin routes first to avoid conflicts
@@ -273,6 +293,21 @@ const server = app.listen(PORT, () => {
       }
     }, 15 * 60 * 1000);
   }).catch(() => {});
+
+  // Periodic task: expire active jobs past their expiresAt (every hour)
+  setInterval(async () => {
+    try {
+      const result = await Job.updateMany(
+        { status: 'active', expiresAt: { $lt: new Date() }, isDeleted: { $ne: true } },
+        { $set: { status: 'expired' } }
+      );
+      if (result.modifiedCount > 0) {
+        logger.info(`Job expiry cron: marked ${result.modifiedCount} jobs as expired`);
+      }
+    } catch (err) {
+      logger.error('Job expiry cron error:', err.message);
+    }
+  }, 60 * 60 * 1000); // Every hour
 
   // Data retention: run daily
   import('./src/services/dataRetention.js').then(({ runRetentionPolicies }) => {

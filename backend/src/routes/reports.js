@@ -1,7 +1,7 @@
 import express from 'express';
 import { body, query, validationResult } from 'express-validator';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
-import { Report, ReportAction, User } from '../models/index.js';
+import { Report, ReportAction, User, Job } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { escapeRegex, sanitizeLimit } from '../utils/sanitize.js';
 
@@ -27,10 +27,14 @@ const reportSubmissionLimit = rateLimit({
 // Validation schemas
 const reportValidation = [
   body('reportedUserId')
-    .notEmpty()
-    .withMessage('ID e përdoruesit të raportuar është e detyrueshme')
+    .optional()
     .isMongoId()
     .withMessage('ID e përdoruesit të raportuar nuk është valide'),
+
+  body('reportedJobId')
+    .optional()
+    .isMongoId()
+    .withMessage('ID e punës së raportuar nuk është valide'),
 
   body('category')
     .notEmpty()
@@ -119,44 +123,66 @@ router.post('/',
   handleValidationErrors,
   async (req, res) => {
     try {
-      const { reportedUserId, category, description, evidence = [] } = req.body;
+      const { reportedUserId, reportedJobId, category, description, evidence = [] } = req.body;
       const reportingUserId = req.user.id;
 
-      // Prevent self-reporting
-      if (reportedUserId === reportingUserId) {
+      // Must report either a user or a job
+      if (!reportedUserId && !reportedJobId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Duhet të specifikoni një përdorues ose një punë për raportim'
+        });
+      }
+
+      // Prevent self-reporting (user reports only)
+      if (reportedUserId && reportedUserId === reportingUserId) {
         return res.status(400).json({
           success: false,
           message: 'Nuk mund të raportoni veten'
         });
       }
 
-      // Check if reported user exists
-      const reportedUser = await User.findById(reportedUserId);
-      if (!reportedUser) {
-        return res.status(404).json({
-          success: false,
-          message: 'Përdoruesi i raportuar nuk u gjet'
-        });
+      // Validate reported target exists
+      if (reportedUserId) {
+        const reportedUser = await User.findById(reportedUserId);
+        if (!reportedUser) {
+          return res.status(404).json({
+            success: false,
+            message: 'Përdoruesi i raportuar nuk u gjet'
+          });
+        }
+      }
+
+      if (reportedJobId) {
+        const reportedJob = await Job.findById(reportedJobId);
+        if (!reportedJob) {
+          return res.status(404).json({
+            success: false,
+            message: 'Puna e raportuar nuk u gjet'
+          });
+        }
       }
 
       // Check for duplicate reports within 24 hours
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const existingReport = await Report.findOne({
-        reportedUser: reportedUserId,
+      const duplicateQuery = {
         reportingUser: reportingUserId,
         createdAt: { $gte: twentyFourHoursAgo }
-      });
+      };
+      if (reportedUserId) duplicateQuery.reportedUser = reportedUserId;
+      if (reportedJobId) duplicateQuery.reportedJob = reportedJobId;
+
+      const existingReport = await Report.findOne(duplicateQuery);
 
       if (existingReport) {
         return res.status(429).json({
           success: false,
-          message: 'Ju keni raportuar këtë përdorues në 24 orët e fundit. Ju lutemi prisni para se të dërgoni një raport tjetër.'
+          message: 'Ju keni raportuar këtë në 24 orët e fundit. Ju lutemi prisni para se të dërgoni një raport tjetër.'
         });
       }
 
       // Create the report
-      const report = new Report({
-        reportedUser: reportedUserId,
+      const reportData = {
         reportingUser: reportingUserId,
         category,
         description,
@@ -166,7 +192,11 @@ router.post('/',
           userAgent: req.get('User-Agent'),
           source: 'web'
         }
-      });
+      };
+      if (reportedUserId) reportData.reportedUser = reportedUserId;
+      if (reportedJobId) reportData.reportedJob = reportedJobId;
+
+      const report = new Report(reportData);
 
       await report.save();
 

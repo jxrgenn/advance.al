@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { randomUUID } from 'crypto';
 import { body, validationResult } from 'express-validator';
-import { User } from '../models/index.js';
+import { User, SystemConfiguration } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer, requireAdmin } from '../middleware/auth.js';
 import userEmbeddingService from '../services/userEmbeddingService.js';
 import { uploadToCloudinary, deleteFromCloudinary } from '../config/cloudinary.js';
@@ -552,6 +552,17 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
         message: 'Nuk u ngarkua asnjë skedar'
       });
     }
+
+    // Check config-driven max CV file size
+    try {
+      const maxSizeMB = await SystemConfiguration.getSettingValue('max_cv_file_size') || 5;
+      if (req.file.size > maxSizeMB * 1024 * 1024) {
+        return res.status(400).json({
+          success: false,
+          message: `Skedari është shumë i madh. Madhësia maksimale: ${maxSizeMB}MB`
+        });
+      }
+    } catch { /* use default multer limit if config unavailable */ }
 
     const user = await User.findById(req.user._id);
     if (!user) {

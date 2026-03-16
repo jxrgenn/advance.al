@@ -7,7 +7,12 @@ const reportSchema = new Schema({
   reportedUser: {
     type: Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
+    required: function() { return !this.reportedJob; },
+    index: true
+  },
+  reportedJob: {
+    type: Schema.Types.ObjectId,
+    ref: 'Job',
     index: true
   },
   reportingUser: {

@@ -72,135 +72,6 @@ interface Company {
   jobs: Job[];
 }
 
-// Mock company data for fallback
-const mockCompanies: { [key: string]: Company } = {
-  "mock_1": {
-    _id: "mock_1",
-    name: "TechShqip",
-    industry: "Teknologji",
-    companySize: "50-100 punonjës",
-    description: "TechShqip është një kompani teknologjie e fokusuar në zhvillimin e software-it dhe aplikacioneve mobile. Ne kemi përvojë të gjatë në krijimin e zgjidhjeve teknologjike moderne dhe inovative për bizneset shqiptare. Ekipi ynë i talentuar punon me teknologjitë më të fundit për të ofruar produkte cilësore dhe shërbime të shkëlqyeshme.",
-    website: "https://techshqip.al",
-    location: {
-      city: "Tiranë",
-      region: "Qark i Tiranës"
-    },
-    verified: true,
-    joinedAt: "2022-01-15T00:00:00.000Z",
-    stats: {
-      totalJobs: 25,
-      activeJobs: 12,
-      totalViews: 2340,
-      totalApplications: 156
-    },
-    jobs: []
-  },
-  "mock_2": {
-    _id: "mock_2",
-    name: "AlbaniaBank",
-    industry: "Financë",
-    companySize: "200-500 punonjës",
-    description: "AlbaniaBank është një bankë moderne që ofron shërbime financiare të avancuara për individë dhe biznese. Ne jemi të angazhuar për të ofruar zgjidhje bankare inovative dhe të sigurta që i përgjigjen nevojave të klientëve tanë. Me një rrjet të gjerë filialesh dhe teknologji të avancuar, ne ofrojmë shërbime cilësore dhe të besueshme.",
-    website: "https://albaniabank.al",
-    location: {
-      city: "Tiranë",
-      region: "Qark i Tiranës"
-    },
-    verified: true,
-    joinedAt: "2021-03-10T00:00:00.000Z",
-    stats: {
-      totalJobs: 18,
-      activeJobs: 8,
-      totalViews: 1890,
-      totalApplications: 134
-    },
-    jobs: []
-  },
-  "mock_3": {
-    _id: "mock_3",
-    name: "ConstructAL",
-    industry: "Ndërtim",
-    companySize: "100-200 punonjës",
-    description: "ConstructAL është një kompani ndërtimi me përvojë të gjatë në projekte të mëdha infrastrukturore në Shqipëri. Ne specializohemi në ndërtimin e objekteve rezidenciale, komerciale dhe infrastrukturore. Ekipi ynë i ekspertëve siguron cilësi të lartë dhe përmbushje të afateve në çdo projekt që ndërmarrim.",
-    location: {
-      city: "Durrës",
-      region: "Qark i Durrësit"
-    },
-    verified: false,
-    joinedAt: "2020-09-22T00:00:00.000Z",
-    stats: {
-      totalJobs: 12,
-      activeJobs: 6,
-      totalViews: 1120,
-      totalApplications: 78
-    },
-    jobs: []
-  },
-  "mock_4": {
-    _id: "mock_4",
-    name: "MarketingPro",
-    industry: "Marketing",
-    companySize: "20-50 punonjës",
-    description: "MarketingPro është një agjenci marketingu digjital që ndihmon bizneset të rriten online. Ne ofrojmë shërbime të plota të marketingut digjital, duke përfshirë strategji marketingu, menaxhim të mediave sociale, publicitet online dhe optimizim për motorët e kërkimit. Eksperienca jonë dhe qasja inovative na bën partnerë ideal për rritjen e biznesit tuaj.",
-    website: "https://marketingpro.al",
-    location: {
-      city: "Tiranë",
-      region: "Qark i Tiranës"
-    },
-    verified: true,
-    joinedAt: "2021-11-05T00:00:00.000Z",
-    stats: {
-      totalJobs: 8,
-      activeJobs: 4,
-      totalViews: 890,
-      totalApplications: 67
-    },
-    jobs: []
-  },
-  "mock_5": {
-    _id: "mock_5",
-    name: "HealthCare Plus",
-    industry: "Shëndetësi",
-    companySize: "300-500 punonjës",
-    description: "HealthCare Plus është një rrjet klinikash dhe shërbimesh shëndetësore në të gjithë vendin. Ne ofrojmë shërbime mjekësore të specializuara dhe kujdes shëndetësor të cilësisë së lartë. Misioni ynë është të sigurojmë qasje të lehtë dhe të përballueshme në shërbimet shëndetësore për të gjithë qytetarët shqiptarë.",
-    website: "https://healthcareplus.al",
-    location: {
-      city: "Vlorë",
-      region: "Qark i Vlorës"
-    },
-    verified: true,
-    joinedAt: "2019-06-18T00:00:00.000Z",
-    stats: {
-      totalJobs: 15,
-      activeJobs: 7,
-      totalViews: 1560,
-      totalApplications: 112
-    },
-    jobs: []
-  },
-  "mock_6": {
-    _id: "mock_6",
-    name: "EduFuture",
-    industry: "Arsim",
-    companySize: "50-100 punonjës",
-    description: "EduFuture është një platformë edukimi online dhe qendër trajnimi profesional që ofron kurse dhe trajnime në fusha të ndryshme. Ne besojmë në fuqinë e arsimit për të ndryshuar jetën e njerëzve dhe për të krijuar një të ardhme më të mirë. Kurset tona janë të dizajnuara për të përmbushur nevojat e tregut të punës moderne.",
-    website: "https://edufuture.al",
-    location: {
-      city: "Shkodër",
-      region: "Qark i Shkodrës"
-    },
-    verified: true,
-    joinedAt: "2022-02-28T00:00:00.000Z",
-    stats: {
-      totalJobs: 6,
-      activeJobs: 3,
-      totalViews: 720,
-      totalApplications: 45
-    },
-    jobs: []
-  }
-};
-
 const CompanyProfile = () => {
   const { id } = useParams<{ id: string }>();
   const [company, setCompany] = useState<Company | null>(null);
@@ -218,23 +89,10 @@ const CompanyProfile = () => {
         if (response.success) {
           setCompany(response.data.company);
         } else {
-          // Check if it's a mock company
-          const mockCompany = mockCompanies[id];
-          if (mockCompany) {
-            setCompany(mockCompany);
-          } else {
-            setError('Kompania nuk u gjet');
-          }
+          setError('Kompania nuk u gjet');
         }
-      } catch (error) {
-        console.error('Error fetching company:', error);
-        // Check if it's a mock company
-        const mockCompany = mockCompanies[id];
-        if (mockCompany) {
-          setCompany(mockCompany);
-        } else {
-          setError('Gabim në lidhjen me serverin');
-        }
+      } catch {
+        setError('Gabim në lidhjen me serverin');
       } finally {
         setLoading(false);
       }
