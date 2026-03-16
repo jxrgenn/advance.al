@@ -303,12 +303,15 @@ router.put('/profile', authenticate, async (req, res) => {
     if (location) user.profile.location = { ...user.profile.location, ...location };
     if (privacySettings) user.privacySettings = { ...user.privacySettings, ...privacySettings };
 
-    // Update job seeker specific fields
+    // Update job seeker specific fields (field-level to avoid overwriting arrays)
     if (user.userType === 'jobseeker' && jobSeekerProfile) {
-      user.profile.jobSeekerProfile = {
-        ...user.profile.jobSeekerProfile,
-        ...jobSeekerProfile
-      };
+      const safeFields = ['title', 'bio', 'experience', 'skills', 'availability', 'openToRemote', 'desiredSalary'];
+      for (const key of safeFields) {
+        if (jobSeekerProfile[key] !== undefined) {
+          user.profile.jobSeekerProfile[key] = jobSeekerProfile[key];
+        }
+      }
+      // Arrays (education, workHistory) managed via dedicated CRUD endpoints
     }
 
     // Update employer specific fields (only if not verified to prevent fraud)
@@ -877,17 +880,36 @@ const calculateProfileCompleteness = (user) => {
 // @access  Private (Admin only)
 router.get('/admin/pending-employers', authenticate, requireAdmin, async (req, res) => {
   try {
-    const pendingEmployers = await User.find({
+    const { page: rawPage = 1, limit: rawLimit = 10 } = req.query;
+    const safeLimit = sanitizeLimit(rawLimit, 50, 10);
+    const currentPage = Math.max(1, parseInt(rawPage) || 1);
+    const skip = (currentPage - 1) * safeLimit;
+
+    const query = {
       userType: 'employer',
       status: 'pending_verification',
-      isDeleted: false
-    })
-      .select('email profile createdAt')
-      .sort({ createdAt: -1 });
+      isDeleted: { $ne: true }
+    };
+
+    const [pendingEmployers, totalCount] = await Promise.all([
+      User.find(query)
+        .select('email profile createdAt')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(safeLimit),
+      User.countDocuments(query)
+    ]);
 
     res.json({
       success: true,
-      data: { employers: pendingEmployers }
+      data: {
+        employers: pendingEmployers,
+        pagination: {
+          currentPage,
+          totalPages: Math.ceil(totalCount / safeLimit),
+          totalItems: totalCount
+        }
+      }
     });
 
   } catch (error) {

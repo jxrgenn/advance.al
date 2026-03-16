@@ -23,7 +23,12 @@ const jobSeekerProfileSchema = new Schema({
     maxlength: 50
   }],
   education: [{
+    id: String,
     degree: {
+      type: String,
+      maxlength: 100
+    },
+    fieldOfStudy: {
       type: String,
       maxlength: 100
     },
@@ -31,13 +36,34 @@ const jobSeekerProfileSchema = new Schema({
       type: String,
       maxlength: 100
     },
+    institution: {
+      type: String,
+      maxlength: 100
+    },
+    location: {
+      type: String,
+      maxlength: 100
+    },
     year: {
       type: Number,
       min: 1950,
       max: new Date().getFullYear() + 10
-    }
+    },
+    startDate: Date,
+    endDate: Date,
+    isCurrentStudy: {
+      type: Boolean,
+      default: false
+    },
+    gpa: String,
+    description: {
+      type: String,
+      maxlength: 500
+    },
+    createdAt: Date
   }],
   workHistory: [{
+    id: String,
     company: {
       type: String,
       maxlength: 100
@@ -46,12 +72,25 @@ const jobSeekerProfileSchema = new Schema({
       type: String,
       maxlength: 100
     },
+    location: {
+      type: String,
+      maxlength: 100
+    },
     startDate: Date,
     endDate: Date,
+    isCurrentJob: {
+      type: Boolean,
+      default: false
+    },
     description: {
       type: String,
       maxlength: 500
-    }
+    },
+    achievements: {
+      type: String,
+      maxlength: 500
+    },
+    createdAt: Date
   }],
   resume: {
     type: String,

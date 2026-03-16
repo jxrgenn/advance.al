@@ -69,35 +69,22 @@ advance.al - Platforma #1 e Punës në Shqipëri
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${subject}</title>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-    .content { background: #fff; padding: 30px; border: 1px solid #e0e0e0; }
-    .job-card { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #667eea; }
-    .job-title { font-size: 20px; font-weight: bold; color: #667eea; margin-bottom: 10px; }
-    .job-info { margin: 8px 0; }
-    .job-info strong { color: #333; }
-    .cta-button { display: inline-block; background: #667eea; color: white; padding: 15px 30px; text-decoration: none; border-radius: 25px; font-weight: bold; margin: 20px 0; }
-    .footer { background: #f8f9fa; padding: 20px; border-radius: 0 0 10px 10px; font-size: 12px; color: #666; }
-    .footer a { color: #667eea; text-decoration: none; }
-  </style>
 </head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>🎯 Punë e re për ju!</h1>
-      <p>Përshëndetje ${safeFirstName}, gjenim një mundësi të shkëlqyer!</p>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+      <h1 style="margin: 0;">🎯 Punë e re për ju!</h1>
+      <p style="margin: 10px 0 0 0;">Përshëndetje ${safeFirstName}, gjenim një mundësi të shkëlqyer!</p>
     </div>
 
-    <div class="content">
-      <div class="job-card">
-        <div class="job-title">${safeJobTitle}</div>
-        <div class="job-info"><strong>🏢 Kompania:</strong> ${safeCompanyName}</div>
-        <div class="job-info"><strong>📍 Vendndodhja:</strong> ${safeCity}${job.location.remote ? ' <span style="color: #28a745;">(Punë në distancë)</span>' : ''}</div>
-        ${job.salary ? `<div class="job-info"><strong>💰 Paga:</strong> ${job.salary.min}-${job.salary.max} ${job.salary.currency}</div>` : ''}
-        <div class="job-info"><strong>📅 Afati:</strong> ${new Date(job.applicationDeadline).toLocaleDateString('sq-AL')}</div>
-        <div class="job-info"><strong>🎯 Kategoria:</strong> ${safeCategory}</div>
+    <div style="background: #fff; padding: 30px; border: 1px solid #e0e0e0;">
+      <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #667eea;">
+        <div style="font-size: 20px; font-weight: bold; color: #667eea; margin-bottom: 10px;">${safeJobTitle}</div>
+        <div style="margin: 8px 0;"><strong style="color: #333;">🏢 Kompania:</strong> ${safeCompanyName}</div>
+        <div style="margin: 8px 0;"><strong style="color: #333;">📍 Vendndodhja:</strong> ${safeCity}${job.location.remote ? ' <span style="color: #28a745;">(Punë në distancë)</span>' : ''}</div>
+        ${job.salary ? `<div style="margin: 8px 0;"><strong style="color: #333;">💰 Paga:</strong> ${job.salary.min}-${job.salary.max} ${job.salary.currency}</div>` : ''}
+        <div style="margin: 8px 0;"><strong style="color: #333;">📅 Afati:</strong> ${new Date(job.applicationDeadline).toLocaleDateString('sq-AL')}</div>
+        <div style="margin: 8px 0;"><strong style="color: #333;">🎯 Kategoria:</strong> ${safeCategory}</div>
       </div>
 
       <p><strong>📝 Përshkrimi i shkurtër:</strong></p>
@@ -105,7 +92,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
 
       <div style="text-align: center; margin: 30px 0;">
         <a href="https://advance.al/jobs/${job._id}?utm_source=email&utm_medium=notification&utm_campaign=job_match&token=${user.unsubscribeToken}"
-           class="cta-button" onclick="fetch('${trackingUrl}', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token: '${user.unsubscribeToken}'})})">
+           style="display: inline-block; background: #667eea; color: white; padding: 15px 30px; text-decoration: none; border-radius: 25px; font-weight: bold;">
           👀 Shiko Detajet dhe Apliko
         </a>
       </div>
@@ -116,11 +103,11 @@ advance.al - Platforma #1 e Punës në Shqipëri
       </p>
     </div>
 
-    <div class="footer">
+    <div style="background: #f8f9fa; padding: 20px; border-radius: 0 0 10px 10px; font-size: 12px; color: #666;">
       <p><strong>advance.al</strong> - Platforma #1 e Punës në Shqipëri</p>
       <p>
-        <a href="https://advance.al/preferences?token=${user.unsubscribeToken}">🔧 Ndrysho preferencat</a> |
-        <a href="${unsubscribeUrl}">❌ Çregjistrohu</a>
+        <a href="https://advance.al/preferences?token=${user.unsubscribeToken}" style="color: #667eea; text-decoration: none;">🔧 Ndrysho preferencat</a> |
+        <a href="${unsubscribeUrl}" style="color: #667eea; text-decoration: none;">❌ Çregjistrohu</a>
       </p>
       <p style="margin-top: 15px; font-size: 11px;">
         Ju merrni këtë email sepse jeni regjistruar për njoftimet e punës në advance.al.
@@ -185,48 +172,36 @@ advance.al - Platforma #1 e Punës në Shqipëri
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${subject}</title>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-    .content { background: #fff; padding: 30px; border: 1px solid #e0e0e0; }
-    .job-card { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #667eea; }
-    .job-title { font-size: 20px; font-weight: bold; color: #667eea; margin-bottom: 10px; }
-    .job-info { margin: 8px 0; }
-    .cta-button { display: inline-block; background: #667eea; color: white; padding: 15px 30px; text-decoration: none; border-radius: 25px; font-weight: bold; margin: 20px 0; }
-    .footer { background: #f8f9fa; padding: 20px; border-radius: 0 0 10px 10px; font-size: 12px; color: #666; }
-    .footer a { color: #667eea; text-decoration: none; }
-  </style>
 </head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>🎯 Punë e re për ju!</h1>
-      <p>Përshëndetje ${safeFirstName}, gjenim një mundësi të shkëlqyer!</p>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+      <h1 style="margin: 0;">🎯 Punë e re për ju!</h1>
+      <p style="margin: 10px 0 0 0;">Përshëndetje ${safeFirstName}, gjenim një mundësi të shkëlqyer!</p>
     </div>
-    <div class="content">
-      <div class="job-card">
-        <div class="job-title">${safeJobTitle}</div>
-        <div class="job-info"><strong>🏢 Kompania:</strong> ${safeCompanyName}</div>
-        <div class="job-info"><strong>📍 Vendndodhja:</strong> ${safeCity}${job.location.remote ? ' <span style="color:#28a745;">(Punë në distancë)</span>' : ''}</div>
-        ${job.salary ? `<div class="job-info"><strong>💰 Paga:</strong> ${job.salary.min}-${job.salary.max} ${job.salary.currency}</div>` : ''}
-        <div class="job-info"><strong>📅 Afati:</strong> ${new Date(job.applicationDeadline).toLocaleDateString('sq-AL')}</div>
-        <div class="job-info"><strong>🎯 Kategoria:</strong> ${safeCategory}</div>
+    <div style="background: #fff; padding: 30px; border: 1px solid #e0e0e0;">
+      <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #667eea;">
+        <div style="font-size: 20px; font-weight: bold; color: #667eea; margin-bottom: 10px;">${safeJobTitle}</div>
+        <div style="margin: 8px 0;"><strong>🏢 Kompania:</strong> ${safeCompanyName}</div>
+        <div style="margin: 8px 0;"><strong>📍 Vendndodhja:</strong> ${safeCity}${job.location.remote ? ' <span style="color:#28a745;">(Punë në distancë)</span>' : ''}</div>
+        ${job.salary ? `<div style="margin: 8px 0;"><strong>💰 Paga:</strong> ${job.salary.min}-${job.salary.max} ${job.salary.currency}</div>` : ''}
+        <div style="margin: 8px 0;"><strong>📅 Afati:</strong> ${new Date(job.applicationDeadline).toLocaleDateString('sq-AL')}</div>
+        <div style="margin: 8px 0;"><strong>🎯 Kategoria:</strong> ${safeCategory}</div>
       </div>
       <p><strong>📝 Përshkrimi i shkurtër:</strong></p>
       <p>${safeDescription}${job.description?.length > 300 ? '...' : ''}</p>
       <div style="text-align: center; margin: 30px 0;">
         <a href="https://advance.al/jobs/${job._id}?utm_source=email&utm_medium=notification&utm_campaign=job_match_account"
-           class="cta-button">👀 Shiko Detajet dhe Apliko</a>
+           style="display: inline-block; background: #667eea; color: white; padding: 15px 30px; text-decoration: none; border-radius: 25px; font-weight: bold;">👀 Shiko Detajet dhe Apliko</a>
       </div>
       <p style="font-size: 14px; color: #666;">
         💡 <strong>Përse mora këtë email?</strong><br>
         Keni aktivizuar njoftimet e punës në llogarinë tuaj dhe ky pozicion përputhet me profilin tuaj.
       </p>
     </div>
-    <div class="footer">
+    <div style="background: #f8f9fa; padding: 20px; border-radius: 0 0 10px 10px; font-size: 12px; color: #666;">
       <p><strong>advance.al</strong> - Platforma #1 e Punës në Shqipëri</p>
-      <p><a href="https://advance.al/profile">⚙️ Menaxho njoftimet nga profili juaj</a></p>
+      <p><a href="https://advance.al/profile" style="color: #667eea; text-decoration: none;">⚙️ Menaxho njoftimet nga profili juaj</a></p>
     </div>
   </div>
 </body>
@@ -456,29 +431,20 @@ Ekipi i advance.al
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${subject}</title>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px; text-align: center; border-radius: 10px 10px 0 0; }
-    .content { background: #fff; padding: 30px; border: 1px solid #e0e0e0; }
-    .interests-box { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }
-    .footer { background: #f8f9fa; padding: 20px; border-radius: 0 0 10px 10px; font-size: 12px; color: #666; }
-    .footer a { color: #667eea; text-decoration: none; }
-  </style>
 </head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>🎉 Mirë se vini në advance.al!</h1>
-      <p>Platforma #1 e Punës në Shqipëri</p>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px; text-align: center; border-radius: 10px 10px 0 0;">
+      <h1 style="margin: 0;">🎉 Mirë se vini në advance.al!</h1>
+      <p style="margin: 10px 0 0 0;">Platforma #1 e Punës në Shqipëri</p>
     </div>
 
-    <div class="content">
+    <div style="background: #fff; padding: 30px; border: 1px solid #e0e0e0;">
       <h2>Përshëndetje ${escapeHtml(user.firstName)}!</h2>
 
       <p>Ju regjistruat me sukses për të marrë njoftimet e punës nga advance.al! 🎯</p>
 
-      <div class="interests-box">
+      <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
         <h3>🎯 Interesat tuaja:</h3>
         <ul>
           ${user.allInterests.map(interest => `<li>${escapeHtml(interest)}</li>`).join('')}
@@ -499,11 +465,11 @@ Ekipi i advance.al
       </p>
     </div>
 
-    <div class="footer">
+    <div style="background: #f8f9fa; padding: 20px; border-radius: 0 0 10px 10px; font-size: 12px; color: #666;">
       <p><strong>advance.al</strong> - Platforma #1 e Punës në Shqipëri</p>
       <p>
-        <a href="https://advance.al/preferences?token=${user.unsubscribeToken}">🔧 Ndrysho preferencat</a> |
-        <a href="${user.getUnsubscribeUrl()}">❌ Çregjistrohu</a>
+        <a href="https://advance.al/preferences?token=${user.unsubscribeToken}" style="color: #667eea; text-decoration: none;">🔧 Ndrysho preferencat</a> |
+        <a href="${user.getUnsubscribeUrl()}" style="color: #667eea; text-decoration: none;">❌ Çregjistrohu</a>
       </p>
     </div>
   </div>

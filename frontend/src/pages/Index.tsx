@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import JobCard from "@/components/JobCard";
@@ -95,16 +95,27 @@ const Index = () => {
   const { toast } = useToast();
   const { isAuthenticated, user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Initialize filters from URL parameters
   useEffect(() => {
-    const searchParams = new URLSearchParams(location.search);
-    const companyParam = searchParams.get('company');
+    const sp = new URLSearchParams(location.search);
 
-    if (companyParam) {
-      setAdvancedFilters(prev => ({ ...prev, company: companyParam }));
-    }
-  }, [location.search]);
+    const companyParam = sp.get('company');
+    const searchParam = sp.get('search');
+    const pageParam = sp.get('page');
+    const jobTypeParam = sp.get('jobType');
+    const categoryParam = sp.get('category');
+    const cityParam = sp.get('city');
+
+    if (companyParam) setAdvancedFilters(prev => ({ ...prev, company: companyParam }));
+    if (searchParam) setSearchQuery(searchParam);
+    if (pageParam) setPagination(prev => ({ ...prev, currentPage: parseInt(pageParam) || 1 }));
+    if (jobTypeParam) setSelectedType(jobTypeParam);
+    if (categoryParam) setAdvancedFilters(prev => ({ ...prev, categories: categoryParam.split(',') }));
+    if (cityParam) setSelectedLocations(cityParam.split(','));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Load locations on mount
   useEffect(() => {
@@ -245,6 +256,20 @@ const Index = () => {
       if (response.success && response.data) {
         setJobs(response.data.jobs);
         setPagination(response.data.pagination);
+
+        // Persist active filters in URL
+        const urlParams = new URLSearchParams();
+        if (searchQuery) urlParams.set('search', searchQuery);
+        if (selectedLocations.length > 0) urlParams.set('city', selectedLocations.join(','));
+        if (selectedType) urlParams.set('jobType', selectedType);
+        if (advancedFilters.categories.length > 0) urlParams.set('category', advancedFilters.categories.join(','));
+        if (advancedFilters.company) urlParams.set('company', advancedFilters.company);
+        if (page > 1) urlParams.set('page', String(page));
+        const qs = urlParams.toString();
+        const newPath = qs ? `${location.pathname}?${qs}` : location.pathname;
+        if (newPath !== `${location.pathname}${location.search}`) {
+          navigate(newPath, { replace: true });
+        }
 
         // Bulk check saved status for all loaded jobs (non-blocking)
         if (isAuthenticated && user?.userType === 'jobseeker' && response.data.jobs.length > 0) {
@@ -429,7 +454,7 @@ const Index = () => {
       administrata: false,
       sezonale: false
     };
-    
+
     setAdvancedFilters(defaultAdvancedFilters);
     setCoreFilters(defaultCoreFilters);
     setPendingAdvancedFilters(defaultAdvancedFilters);
@@ -437,33 +462,12 @@ const Index = () => {
     setShowAllFilters(false);
     setExpandedCategory(null);
     setSelectedLocations([]);
-    setPagination(prev => ({ ...prev, currentPage: 1 }));
-    
-    // Reload jobs without filters
-    await loadJobs(1, false);
-    setAdvancedFilters({
-      salaryRange: [0, 2000],
-      currency: 'EUR',
-      experience: '',
-      company: '',
-      remote: false,
-      categories: [],
-      postedWithin: '',
-      sortBy: 'newest'
-    });
-    setCoreFilters({
-      diaspora: false,
-      ngaShtepia: false,
-      partTime: false,
-      administrata: false,
-      sezonale: false
-    });
-    setSelectedLocations([]);
     setSelectedType('');
     setSearchQuery('');
-
     setPagination(prev => ({ ...prev, currentPage: 1 }));
-    await loadJobs(1);
+
+    // Single API call with reset filters
+    await loadJobs(1, false);
 
     toast({
       title: "Filtrat u rivendosën",

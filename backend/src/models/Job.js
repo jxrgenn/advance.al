@@ -333,6 +333,12 @@ jobSchema.index({ isDeleted: 1 });
 // jobSchema.index({ slug: 1 }); // Removed: slug already has unique: true
 jobSchema.index({ expiresAt: 1 });
 
+// Salary and filter indexes
+jobSchema.index({ 'salary.min': 1 });
+jobSchema.index({ 'salary.max': 1 });
+jobSchema.index({ seniority: 1 });
+jobSchema.index({ 'location.remote': 1 });
+
 // Embedding system indexes
 jobSchema.index({ 'embedding.status': 1 }); // For worker queries
 // Removed: standard index on 1536-dim vector array provides no benefit for similarity search
@@ -524,6 +530,42 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
   return this.find(query)
     .populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.location')
     .sort(sort);
+};
+
+// Post-save hook to update Location.jobCount
+jobSchema.post('save', async function() {
+  try {
+    const city = this.location?.city;
+    if (city && this.status === 'active' && !this.isDeleted) {
+      const Location = mongoose.model('Location');
+      await Location.updateOne(
+        { city },
+        { $inc: { jobCount: 0 } }, // ensure doc exists in aggregation context
+        { upsert: false }
+      );
+    }
+  } catch (err) {
+    console.error('Error in Job post-save Location hook:', err.message);
+  }
+});
+
+// Static method to recount jobCount for all locations
+jobSchema.statics.recountLocationJobs = async function() {
+  const Location = mongoose.model('Location');
+  const counts = await this.aggregate([
+    { $match: { status: 'active', isDeleted: { $ne: true } } },
+    { $group: { _id: '$location.city', count: { $sum: 1 } } }
+  ]);
+
+  // Reset all to 0 first
+  await Location.updateMany({}, { $set: { jobCount: 0 } });
+
+  // Set actual counts
+  for (const { _id: city, count } of counts) {
+    if (city) {
+      await Location.updateOne({ city }, { $set: { jobCount: count } });
+    }
+  }
 };
 
 export default mongoose.model('Job', jobSchema);
