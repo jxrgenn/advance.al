@@ -154,9 +154,9 @@ router.post('/register', authLimiter, registerValidation, handleValidationErrors
     const token = generateToken(payload);
     const refreshToken = generateRefreshToken(payload);
 
-    // Update last login
+    // Store refresh token and update last login
     user.lastLoginAt = new Date();
-    await user.save();
+    await user.addRefreshToken(refreshToken);
 
     // Send welcome email + generate embedding for job seekers (async, non-blocking)
     if (userType === 'jobseeker') {
@@ -278,9 +278,9 @@ router.post('/login', authLimiter, loginValidation, handleValidationErrors, asyn
     const token = generateToken(payload);
     const refreshToken = generateRefreshToken(payload);
 
-    // Update last login
+    // Store refresh token and update last login
     user.lastLoginAt = new Date();
-    await user.save();
+    await user.addRefreshToken(refreshToken);
 
     // Remove password from response
     const userResponse = user.toObject();
@@ -321,14 +321,23 @@ router.post('/refresh', authLimiter, async (req, res) => {
 
     // Verify refresh token
     const decoded = verifyToken(refreshToken, process.env.JWT_REFRESH_SECRET);
-    
+
     // Get user from database
     const user = await User.findById(decoded.id);
-    
+
     if (!user || user.isDeleted || user.status === 'deleted') {
       return res.status(401).json({
         success: false,
         message: 'Përdoruesi nuk u gjet'
+      });
+    }
+
+    // Check if this refresh token is still valid (not revoked)
+    const tokenExists = user.refreshTokens.some(t => t.token === refreshToken);
+    if (!tokenExists) {
+      return res.status(401).json({
+        success: false,
+        message: 'Refresh token i revokuar'
       });
     }
 
@@ -341,6 +350,10 @@ router.post('/refresh', authLimiter, async (req, res) => {
 
     const newToken = generateToken(payload);
     const newRefreshToken = generateRefreshToken(payload);
+
+    // Rotate: remove old, add new
+    await user.removeRefreshToken(refreshToken);
+    await user.addRefreshToken(newRefreshToken);
 
     res.json({
       success: true,
@@ -400,12 +413,28 @@ router.get('/me', authenticate, async (req, res) => {
 // @desc    Logout user (client-side token removal)
 // @access  Private
 router.post('/logout', authenticate, async (req, res) => {
-  // In a stateless JWT system, logout is handled client-side by removing the token
-  // Here we just acknowledge the logout
-  res.json({
-    success: true,
-    message: 'Daljet u krye me sukses'
-  });
+  try {
+    const { refreshToken } = req.body;
+    const user = await User.findById(req.user._id);
+
+    if (user && refreshToken) {
+      await user.removeRefreshToken(refreshToken);
+    } else if (user) {
+      // If no specific token provided, revoke all
+      await user.removeAllRefreshTokens();
+    }
+
+    res.json({
+      success: true,
+      message: 'Daljet u krye me sukses'
+    });
+  } catch (error) {
+    // Even if revocation fails, acknowledge logout to avoid blocking the user
+    res.json({
+      success: true,
+      message: 'Daljet u krye me sukses'
+    });
+  }
 });
 
 export default router;

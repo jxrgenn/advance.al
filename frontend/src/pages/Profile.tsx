@@ -17,6 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { usersApi, applicationsApi } from "@/lib/api";
 import { validateForm, profileValidationRules, formatValidationErrors } from "@/lib/formValidation";
 import { InputWithCounter, TextAreaWithCounter } from "@/components/CharacterCounter";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 const Profile = () => {
   const [uploadingCV, setUploadingCV] = useState(false);
@@ -39,6 +40,13 @@ const Profile = () => {
   const [hasScrolledOnDesktop, setHasScrolledOnDesktop] = useState(false);
   // Use ref to track scroll lock state - refs can be read synchronously by event listeners
   const isScrollLockedRef = useRef(false);
+
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    action: () => void;
+  }>({ open: false, title: '', description: '', action: () => {} });
 
   // Modal states for broken buttons
   const [workExperienceModal, setWorkExperienceModal] = useState(false);
@@ -640,45 +648,45 @@ const Profile = () => {
   };
 
   const handleDeleteWorkExperience = async (experienceId: string) => {
-    try {
-      const response = await usersApi.deleteWorkExperience(experienceId);
-      if (response.success) {
-        toast({
-          title: "Përvojë u fshi",
-          description: "Përvojë e punës u fshi me sukses"
-        });
-        await refreshUser();
-      } else {
-        throw new Error('Gabim gjatë fshirjes');
+    setConfirmDialog({
+      open: true,
+      title: 'Fshi Përvojën e Punës?',
+      description: 'Jeni i sigurt që doni ta fshini këtë përvojë pune?',
+      action: async () => {
+        try {
+          const response = await usersApi.deleteWorkExperience(experienceId);
+          if (response.success) {
+            toast({ title: "Përvojë u fshi", description: "Përvojë e punës u fshi me sukses" });
+            await refreshUser();
+          } else {
+            throw new Error('Gabim gjatë fshirjes');
+          }
+        } catch (error: any) {
+          toast({ title: "Gabim", description: error.message || "Nuk mundëm të fshijmë përvojën.", variant: "destructive" });
+        }
       }
-    } catch (error: any) {
-      toast({
-        title: "Gabim",
-        description: error.message || "Nuk mundëm të fshijmë përvojën.",
-        variant: "destructive"
-      });
-    }
+    });
   };
 
   const handleDeleteEducation = async (educationId: string) => {
-    try {
-      const response = await usersApi.deleteEducation(educationId);
-      if (response.success) {
-        toast({
-          title: "Arsimimi u fshi",
-          description: "Arsimimi u fshi me sukses"
-        });
-        await refreshUser();
-      } else {
-        throw new Error('Gabim gjatë fshirjes');
+    setConfirmDialog({
+      open: true,
+      title: 'Fshi Arsimimin?',
+      description: 'Jeni i sigurt që doni ta fshini këtë arsimim?',
+      action: async () => {
+        try {
+          const response = await usersApi.deleteEducation(educationId);
+          if (response.success) {
+            toast({ title: "Arsimimi u fshi", description: "Arsimimi u fshi me sukses" });
+            await refreshUser();
+          } else {
+            throw new Error('Gabim gjatë fshirjes');
+          }
+        } catch (error: any) {
+          toast({ title: "Gabim", description: error.message || "Nuk mundëm të fshijmë arsimimin.", variant: "destructive" });
+        }
       }
-    } catch (error: any) {
-      toast({
-        title: "Gabim",
-        description: error.message || "Nuk mundëm të fshijmë arsimimin.",
-        variant: "destructive"
-      });
-    }
+    });
   };
 
   // Tutorial functions with proper fixes
@@ -2210,6 +2218,21 @@ const Profile = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={confirmDialog.open} onOpenChange={(open) => !open && setConfirmDialog(prev => ({ ...prev, open: false }))}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmDialog.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmDialog.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Anulo</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { confirmDialog.action(); setConfirmDialog(prev => ({ ...prev, open: false })); }}>
+              Konfirmo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

@@ -7,7 +7,7 @@ import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
-import { AlertTriangle, TrendingUp, TrendingDown, DollarSign, Users, Zap, Edit } from 'lucide-react';
+import { AlertTriangle, TrendingUp, TrendingDown, DollarSign, Users, Zap, Edit, Loader2, Search, Trash2, CheckCircle } from 'lucide-react';
 import { useToast } from '../components/ui/use-toast';
 import { adminApi } from '../lib/api';
 
@@ -119,9 +119,24 @@ const BusinessDashboard: React.FC = () => {
     endDate: ''
   });
 
+  // Whitelist state
+  const [whitelistSearch, setWhitelistSearch] = useState('');
+  const [whitelistReason, setWhitelistReason] = useState('');
+  const [whitelistSearchResults, setWhitelistSearchResults] = useState<any[]>([]);
+  const [selectedEmployer, setSelectedEmployer] = useState<any>(null);
+  const [whitelistedEmployers, setWhitelistedEmployers] = useState<any[]>([]);
+  const [loadingWhitelist, setLoadingWhitelist] = useState(false);
+  const [searchingEmployers, setSearchingEmployers] = useState(false);
+
   useEffect(() => {
     loadDashboardData();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'whitelist') {
+      loadWhitelistedEmployers();
+    }
+  }, [activeTab]);
 
   const loadDashboardData = async () => {
     try {
@@ -298,6 +313,70 @@ const BusinessDashboard: React.FC = () => {
         description: "Nuk mund të përditësohet kampanja",
         variant: "destructive"
       });
+    }
+  };
+
+  // Whitelist functions
+  const loadWhitelistedEmployers = async () => {
+    try {
+      setLoadingWhitelist(true);
+      const response = await adminApi.getWhitelistedEmployers();
+      if (response.success && response.data) {
+        setWhitelistedEmployers(response.data.employers || []);
+      }
+    } catch (error) {
+      console.error('Error loading whitelist:', error);
+    } finally {
+      setLoadingWhitelist(false);
+    }
+  };
+
+  const handleWhitelistSearch = async (query: string) => {
+    setWhitelistSearch(query);
+    setSelectedEmployer(null);
+    if (query.length < 2) {
+      setWhitelistSearchResults([]);
+      return;
+    }
+    try {
+      setSearchingEmployers(true);
+      const response = await adminApi.searchEmployers(query);
+      if (response.success && response.data) {
+        setWhitelistSearchResults(response.data.employers || []);
+      }
+    } catch (error) {
+      console.error('Error searching employers:', error);
+    } finally {
+      setSearchingEmployers(false);
+    }
+  };
+
+  const handleAddToWhitelist = async () => {
+    if (!selectedEmployer || !whitelistReason.trim()) return;
+    try {
+      const response = await adminApi.addToWhitelist(selectedEmployer._id, whitelistReason);
+      if (response.success) {
+        toast({ title: "Sukses", description: "Punëdhënësi u shtua në listën e bardhë" });
+        setSelectedEmployer(null);
+        setWhitelistSearch('');
+        setWhitelistReason('');
+        setWhitelistSearchResults([]);
+        loadWhitelistedEmployers();
+      }
+    } catch (error: any) {
+      toast({ title: "Gabim", description: error.message || "Nuk mund të shtohet", variant: "destructive" });
+    }
+  };
+
+  const handleRemoveFromWhitelist = async (employerId: string) => {
+    try {
+      const response = await adminApi.removeFromWhitelist(employerId);
+      if (response.success) {
+        toast({ title: "Sukses", description: "Punëdhënësi u hoq nga lista e bardhë" });
+        loadWhitelistedEmployers();
+      }
+    } catch (error: any) {
+      toast({ title: "Gabim", description: error.message || "Nuk mund të hiqet", variant: "destructive" });
     }
   };
 
@@ -810,21 +889,75 @@ const BusinessDashboard: React.FC = () => {
               <CardContent className="space-y-4">
                 <div>
                   <Label htmlFor="employer-search">Kërko Punëdhënës</Label>
-                  <Input
-                    id="employer-search"
-                    placeholder="Email ose emri i kompanisë..."
-                    onChange={() => {}}
-                  />
+                  <div className="relative">
+                    <Input
+                      id="employer-search"
+                      placeholder="Email ose emri i kompanisë..."
+                      value={whitelistSearch}
+                      onChange={(e) => handleWhitelistSearch(e.target.value)}
+                    />
+                    {searchingEmployers && (
+                      <Loader2 className="h-4 w-4 animate-spin absolute right-3 top-3 text-gray-400" />
+                    )}
+                  </div>
+                  {/* Search results dropdown */}
+                  {whitelistSearchResults.length > 0 && !selectedEmployer && (
+                    <div className="mt-1 border rounded-md bg-white shadow-sm max-h-48 overflow-y-auto">
+                      {whitelistSearchResults.map((employer) => (
+                        <button
+                          key={employer._id}
+                          className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b last:border-b-0 transition-colors"
+                          onClick={() => {
+                            setSelectedEmployer(employer);
+                            setWhitelistSearch(employer.company || employer.email);
+                            setWhitelistSearchResults([]);
+                          }}
+                        >
+                          <p className="font-medium text-sm">{employer.company || 'Pa emër kompanie'}</p>
+                          <p className="text-xs text-gray-500">{employer.email}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {whitelistSearch.length >= 2 && whitelistSearchResults.length === 0 && !searchingEmployers && !selectedEmployer && (
+                    <p className="text-xs text-gray-500 mt-1">Nuk u gjet asnjë punëdhënës</p>
+                  )}
                 </div>
+
+                {selectedEmployer && (
+                  <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-md">
+                    <CheckCircle className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{selectedEmployer.company || selectedEmployer.email}</p>
+                      <p className="text-xs text-gray-500 truncate">{selectedEmployer.email}</p>
+                    </div>
+                    <button
+                      className="text-gray-400 hover:text-gray-600"
+                      onClick={() => {
+                        setSelectedEmployer(null);
+                        setWhitelistSearch('');
+                      }}
+                    >
+                      &times;
+                    </button>
+                  </div>
+                )}
+
                 <div>
                   <Label htmlFor="whitelist-reason">Arsyeja</Label>
                   <Input
                     id="whitelist-reason"
                     placeholder="Miku, partner, sponsor..."
+                    value={whitelistReason}
+                    onChange={(e) => setWhitelistReason(e.target.value)}
                   />
                 </div>
-                <Button className="w-full" disabled>
-                  Zgjedh Punëdhënës
+                <Button
+                  className="w-full"
+                  disabled={!selectedEmployer || !whitelistReason.trim()}
+                  onClick={handleAddToWhitelist}
+                >
+                  {selectedEmployer ? 'Shto në Listën e Bardhë' : 'Zgjedh Punëdhënës'}
                 </Button>
               </CardContent>
             </Card>
@@ -836,11 +969,42 @@ const BusinessDashboard: React.FC = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <div className="text-center py-8 text-gray-500">
-                    <Users className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                    <p>Nuk ka miq të shtuar ende</p>
-                    <p className="text-sm">Përdor formën në të majtë për të shtuar miq</p>
-                  </div>
+                  {loadingWhitelist ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                    </div>
+                  ) : whitelistedEmployers.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <Users className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                      <p>Nuk ka miq të shtuar ende</p>
+                      <p className="text-sm">Përdor formën në të majtë për të shtuar miq</p>
+                    </div>
+                  ) : (
+                    whitelistedEmployers.map((entry) => (
+                      <div key={entry.employerId?._id || entry._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium">{entry.employerId?.company || entry.company || 'Pa emër'}</p>
+                          <p className="text-sm text-gray-600">{entry.employerId?.email || entry.email || ''}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-xs">{entry.reason || 'Pa arsye'}</Badge>
+                            {entry.addedAt && (
+                              <span className="text-xs text-gray-400">
+                                {new Date(entry.addedAt).toLocaleDateString('sq-AL')}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50 ml-2"
+                          onClick={() => handleRemoveFromWhitelist(entry.employerId?._id || entry._id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>

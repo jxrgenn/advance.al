@@ -419,7 +419,13 @@ const userSchema = new Schema({
   },
   freePostingGrantedAt: {
     type: Date
-  }
+  },
+
+  // Active refresh tokens (for token revocation)
+  refreshTokens: [{
+    token: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now, expires: 604800 } // 7 days TTL
+  }]
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -463,6 +469,26 @@ userSchema.methods.softDelete = function() {
   return this.save();
 };
 
+// Refresh token management methods
+userSchema.methods.addRefreshToken = function(token) {
+  // Remove expired tokens (older than 7 days)
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  this.refreshTokens = this.refreshTokens.filter(t => t.createdAt > sevenDaysAgo);
+  // Add new token
+  this.refreshTokens.push({ token });
+  return this.save();
+};
+
+userSchema.methods.removeRefreshToken = function(token) {
+  this.refreshTokens = this.refreshTokens.filter(t => t.token !== token);
+  return this.save();
+};
+
+userSchema.methods.removeAllRefreshTokens = function() {
+  this.refreshTokens = [];
+  return this.save();
+};
+
 // Hide sensitive data when converting to JSON
 userSchema.methods.toJSON = function() {
   const user = this.toObject();
@@ -470,6 +496,7 @@ userSchema.methods.toJSON = function() {
   delete user.emailVerificationToken;
   delete user.passwordResetToken;
   delete user.passwordResetExpires;
+  delete user.refreshTokens;
   return user;
 };
 

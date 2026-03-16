@@ -19,6 +19,7 @@ import { jobsApi, applicationsApi, usersApi, locationsApi, matchingApi, Job, App
 import { useAuth } from "@/contexts/AuthContext";
 import { validateForm, employerDashboardSettingsRules, formatValidationErrors } from "@/lib/formValidation";
 import { TextAreaWithCounter } from "@/components/CharacterCounter";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 const EmployerDashboard = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -40,6 +41,13 @@ const EmployerDashboard = () => {
   const [applicationModalOpen, setApplicationModalOpen] = useState(false);
   const [loadingApplicationDetails, setLoadingApplicationDetails] = useState(false);
   const [downloadingCV, setDownloadingCV] = useState(false);
+
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    action: () => void;
+  }>({ open: false, title: '', description: '', action: () => {} });
 
   // Report modal state
   const [reportModalOpen, setReportModalOpen] = useState(false);
@@ -627,20 +635,27 @@ const EmployerDashboard = () => {
       // Navigate to edit job page
       navigate(`/edit-job/${jobId}`);
     } else if (action === 'fshirë') {
-      try {
-        await jobsApi.deleteJob(jobId);
-        toast({
-          title: "Veprimi u krye!",
-          description: "Puna u fshi me sukses",
-        });
-        loadDashboardData(); // Reload data
-      } catch (error) {
-        toast({
-          title: "Gabim",
-          description: "Nuk mund të fshihet puna",
-          variant: "destructive"
-        });
-      }
+      setConfirmDialog({
+        open: true,
+        title: 'Fshi Punën?',
+        description: 'Jeni i sigurt që doni ta fshini këtë punë? Ky veprim nuk mund të zhbëhet.',
+        action: async () => {
+          try {
+            await jobsApi.deleteJob(jobId);
+            toast({
+              title: "Veprimi u krye!",
+              description: "Puna u fshi me sukses",
+            });
+            loadDashboardData();
+          } catch (error) {
+            toast({
+              title: "Gabim",
+              description: "Nuk mund të fshihet puna",
+              variant: "destructive"
+            });
+          }
+        }
+      });
     } else {
       toast({
         title: "Veprimi u krye!",
@@ -649,7 +664,7 @@ const EmployerDashboard = () => {
     }
   };
 
-  const handleApplicationStatusChange = async (applicationId: string, newStatus: string) => {
+  const executeApplicationStatusChange = async (applicationId: string, newStatus: string) => {
     try {
       // Add to updating set
       setUpdatingApplications(prev => new Set(prev).add(applicationId));
@@ -668,7 +683,7 @@ const EmployerDashboard = () => {
             : app
         ));
 
-        const statusMessages = {
+        const statusMessages: Record<string, string> = {
           'viewed': 'Aplikimi u shënua si i shikuar',
           'shortlisted': 'Aplikuesi u shtua në listën e shkurtër',
           'hired': 'Aplikuesi u punësua',
@@ -698,6 +713,29 @@ const EmployerDashboard = () => {
         return newSet;
       });
     }
+  };
+
+  const handleApplicationStatusChange = async (applicationId: string, newStatus: string) => {
+    if (newStatus === 'hired' || newStatus === 'rejected') {
+      const statusLabels: Record<string, string> = {
+        'hired': 'Punëso',
+        'rejected': 'Refuzo'
+      };
+      const statusDescriptions: Record<string, string> = {
+        'hired': 'Jeni i sigurt që doni ta punësoni këtë aplikues? Ky veprim nuk mund të zhbëhet.',
+        'rejected': 'Jeni i sigurt që doni ta refuzoni këtë aplikues? Ky veprim nuk mund të zhbëhet.'
+      };
+      setConfirmDialog({
+        open: true,
+        title: `${statusLabels[newStatus]} Aplikuesin?`,
+        description: statusDescriptions[newStatus],
+        action: () => executeApplicationStatusChange(applicationId, newStatus)
+      });
+      return;
+    }
+
+    // For non-destructive statuses, proceed directly
+    executeApplicationStatusChange(applicationId, newStatus);
   };
 
   const handleViewApplicationDetails = async (applicationId: string) => {
@@ -2407,6 +2445,21 @@ const EmployerDashboard = () => {
           )}
         </div>
       )}
+
+      <AlertDialog open={confirmDialog.open} onOpenChange={(open) => !open && setConfirmDialog(prev => ({ ...prev, open: false }))}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmDialog.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmDialog.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Anulo</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { confirmDialog.action(); setConfirmDialog(prev => ({ ...prev, open: false })); }}>
+              Konfirmo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

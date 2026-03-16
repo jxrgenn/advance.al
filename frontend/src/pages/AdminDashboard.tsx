@@ -286,6 +286,11 @@ const AdminDashboard = () => {
     sent: number;
     failed: number;
   } | null>(null);
+  // Notification history state
+  const [notificationHistory, setNotificationHistory] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyPagination, setHistoryPagination] = useState({ currentPage: 1, totalPages: 1, total: 0 });
+
   const [jobsPagination, setJobsPagination] = useState({
     currentPage: 1,
     totalPages: 1,
@@ -331,6 +336,12 @@ const AdminDashboard = () => {
     loadDashboardStats();
     loadActionsHistory();
   }, [navigate, toast]);
+
+  useEffect(() => {
+    if (activeTab === 'content') {
+      loadNotificationHistory(1);
+    }
+  }, [activeTab]);
 
   const loadPendingEmployers = async () => {
     try {
@@ -437,6 +448,21 @@ const AdminDashboard = () => {
 
   const handleBulkNotification = () => {
     setBulkNotificationModal(true);
+  };
+
+  const loadNotificationHistory = async (page = 1) => {
+    try {
+      setHistoryLoading(true);
+      const response = await adminApi.getBulkNotificationHistory({ page, limit: 10 });
+      if (response.success && response.data) {
+        setNotificationHistory(response.data.bulkNotifications || []);
+        setHistoryPagination(response.data.pagination || { currentPage: 1, totalPages: 1, total: 0 });
+      }
+    } catch (error) {
+      console.error('Error loading notification history:', error);
+    } finally {
+      setHistoryLoading(false);
+    }
   };
 
   const handleConfiguration = async () => {
@@ -586,6 +612,9 @@ const AdminDashboard = () => {
           type: 'announcement',
           targetAudience: 'all'
         });
+
+        // Reload notification history
+        loadNotificationHistory(1);
 
         // Close modal after short delay
         setTimeout(() => {
@@ -1498,6 +1527,72 @@ const AdminDashboard = () => {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Notification History */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Send className="h-5 w-5" />
+                    Historiku i Njoftimeve
+                  </CardTitle>
+                  <Button variant="outline" size="sm" onClick={() => loadNotificationHistory(1)}>
+                    Rifresko
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  {historyLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                    </div>
+                  ) : notificationHistory.length === 0 ? (
+                    <p className="text-muted-foreground text-sm text-center py-4">Nuk ka njoftime të dërguara</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {notificationHistory.map((notification: any) => (
+                        <div key={notification._id} className="border rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <h4 className="font-medium text-sm">{notification.title}</h4>
+                            <Badge variant={notification.status === 'completed' ? 'default' : notification.status === 'failed' ? 'destructive' : 'secondary'} className="text-xs">
+                              {notification.status === 'completed' ? 'Dërguar' : notification.status === 'failed' ? 'Dështoi' : notification.status === 'sending' ? 'Duke dërguar' : notification.status}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mb-1">{notification.message?.substring(0, 100)}{notification.message?.length > 100 ? '...' : ''}</p>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span>Audienca: {notification.targetAudience || 'all'}</span>
+                            <span>Marrës: {notification.recipientCount || 0}</span>
+                            <span>{new Date(notification.createdAt).toLocaleDateString('sq-AL')}</span>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Pagination */}
+                      {historyPagination.totalPages > 1 && (
+                        <div className="flex justify-center gap-2 pt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={historyPagination.currentPage <= 1}
+                            onClick={() => loadNotificationHistory(historyPagination.currentPage - 1)}
+                          >
+                            Para
+                          </Button>
+                          <span className="text-sm text-muted-foreground self-center">
+                            {historyPagination.currentPage} / {historyPagination.totalPages}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={historyPagination.currentPage >= historyPagination.totalPages}
+                            onClick={() => loadNotificationHistory(historyPagination.currentPage + 1)}
+                          >
+                            Tjetra
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </TabsContent>
 
             {/* System Tab */}

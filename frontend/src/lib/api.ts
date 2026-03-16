@@ -1430,6 +1430,28 @@ export const adminApi = {
       method: 'POST',
       body: JSON.stringify({ action }),
     });
+  },
+
+  getWhitelistedEmployers: async (): Promise<ApiResponse<{ employers: any[] }>> => {
+    return apiRequest('/business-control/whitelist');
+  },
+
+  addToWhitelist: async (employerId: string, reason: string): Promise<ApiResponse<any>> => {
+    return apiRequest(`/business-control/whitelist/${employerId}`, {
+      method: 'POST',
+      body: JSON.stringify({ reason })
+    });
+  },
+
+  removeFromWhitelist: async (employerId: string): Promise<ApiResponse<any>> => {
+    return apiRequest(`/business-control/whitelist/${employerId}`, {
+      method: 'DELETE'
+    });
+  },
+
+  searchEmployers: async (query: string, limit = 10): Promise<ApiResponse<{ employers: any[] }>> => {
+    const params = new URLSearchParams({ q: query, limit: String(limit) });
+    return apiRequest(`/business-control/employers/search?${params}`);
   }
 };
 
