@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin, Play, Lightbulb, HelpCircle } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, CheckCircle, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin, Play, Lightbulb, HelpCircle } from "lucide-react";
 import ReportUserModal from "@/components/ReportUserModal";
 import { useToast } from "@/hooks/use-toast";
 import { jobsApi, applicationsApi, usersApi, locationsApi, matchingApi, Job, Application, Location, CandidateMatch, User } from "@/lib/api";
@@ -23,6 +23,7 @@ import { TextAreaWithCounter } from "@/components/CharacterCounter";
 const EmployerDashboard = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
+  const [applicationStatusFilter, setApplicationStatusFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     activeJobs: 0,
@@ -71,7 +72,10 @@ const EmployerDashboard = () => {
   // Use ref to track scroll lock state - refs can be read synchronously by event listeners
   const isScrollLockedRef = useRef(false);
   const [currentTab, setCurrentTab] = useState<'jobs' | 'applicants' | 'settings'>('jobs');
-  
+
+  // Job status filter state
+  const [jobStatusFilter, setJobStatusFilter] = useState<string>('all');
+
   // Pagination state
   const [visibleJobsCount, setVisibleJobsCount] = useState(5);
   const [visibleApplicationsCount, setVisibleApplicationsCount] = useState(5);
@@ -211,6 +215,27 @@ const EmployerDashboard = () => {
   };
 
   const currentTutorialSteps = getCurrentTutorialSteps();
+
+  // Client-side filtered jobs based on status filter
+  const filteredJobs = jobStatusFilter === 'all'
+    ? jobs
+    : jobs.filter(job => job.status === jobStatusFilter);
+
+  // Client-side filtered applications based on status filter
+  const filteredApplications = applicationStatusFilter === 'all'
+    ? applications
+    : applications.filter(app => app.status === applicationStatusFilter);
+
+  // Reset visible count when filter changes
+  const handleJobStatusFilterChange = (value: string) => {
+    setJobStatusFilter(value);
+    setVisibleJobsCount(JOBS_PER_PAGE);
+  };
+
+  const handleApplicationStatusFilterChange = (value: string) => {
+    setApplicationStatusFilter(value);
+    setVisibleApplicationsCount(APPLICATIONS_PER_PAGE);
+  };
 
   useEffect(() => {
     if (user?.userType === 'employer') {
@@ -907,8 +932,27 @@ const EmployerDashboard = () => {
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-              <p className="text-muted-foreground mt-1">Menaxho punët dhe aplikuesit</p>
+              <div className="flex items-center gap-2">
+                <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+                {user?.profile?.employerProfile?.verified && (
+                  <CheckCircle className="h-6 w-6 text-green-600 flex-shrink-0" />
+                )}
+              </div>
+              <p className="text-muted-foreground mt-1">
+                {user?.profile?.employerProfile?.companyName ? (
+                  <span className="flex items-center gap-1.5">
+                    {user.profile.employerProfile.companyName} — Menaxho punët dhe aplikuesit
+                    {user?.profile?.employerProfile?.verified && (
+                      <Badge variant="secondary" className="text-xs ml-1">
+                        <CheckCircle className="h-3 w-3 mr-1 text-green-600" />
+                        E verifikuar
+                      </Badge>
+                    )}
+                  </span>
+                ) : (
+                  'Menaxho punët dhe aplikuesit'
+                )}
+              </p>
             </div>
             <Button onClick={() => navigate('/post-job')}>
               <Plus className="mr-2 h-4 w-4" />
@@ -1103,8 +1147,40 @@ const EmployerDashboard = () => {
                   </div>
                 ) : (
                   <>
+                    {/* Job status filter */}
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {[
+                        { value: 'all', label: 'Të gjitha', count: jobs.length },
+                        { value: 'active', label: 'Aktive', count: jobs.filter(j => j.status === 'active').length },
+                        { value: 'paused', label: 'Pezulluar', count: jobs.filter(j => j.status === 'paused').length },
+                        { value: 'closed', label: 'Mbyllur', count: jobs.filter(j => j.status === 'closed').length },
+                        { value: 'draft', label: 'Draft', count: jobs.filter(j => j.status === 'draft').length },
+                        { value: 'expired', label: 'Skaduar', count: jobs.filter(j => j.status === 'expired').length },
+                      ].filter(f => f.value === 'all' || f.count > 0).map(filter => (
+                        <Button
+                          key={filter.value}
+                          size="sm"
+                          variant={jobStatusFilter === filter.value ? 'default' : 'outline'}
+                          onClick={() => handleJobStatusFilterChange(filter.value)}
+                          className="text-xs h-8"
+                        >
+                          {filter.label}
+                          <span className={`ml-1.5 text-xs ${jobStatusFilter === filter.value ? 'opacity-80' : 'text-muted-foreground'}`}>
+                            ({filter.count})
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+
+                    {filteredJobs.length === 0 ? (
+                      <div className="text-center py-8">
+                        <Briefcase className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                        <p className="text-muted-foreground text-sm">Nuk ka punë me statusin e zgjedhur</p>
+                      </div>
+                    ) : (
+                    <>
                     <div className="space-y-4" data-tutorial="jobs-list">
-                      {jobs.slice(0, visibleJobsCount).map((job, index) => (
+                      {filteredJobs.slice(0, visibleJobsCount).map((job, index) => (
                       <div 
                         key={job._id} 
                         className="flex items-center justify-between p-3 sm:p-4 border rounded-lg"
@@ -1122,8 +1198,13 @@ const EmployerDashboard = () => {
                           <div className="text-xs sm:text-sm text-muted-foreground truncate">
                             {job.location?.city}, {job.location?.region}
                           </div>
-                          <div className="text-xs sm:text-sm text-muted-foreground">
-                            {job.jobType} • {job.applicationCount || 0} aplikues
+                          <div className="text-xs sm:text-sm text-muted-foreground flex items-center gap-2">
+                            <span>{job.jobType}</span>
+                            <span>•</span>
+                            <span className="inline-flex items-center gap-1 font-medium text-primary">
+                              <Users className="h-3 w-3" />
+                              {job.applicationCount || 0} aplikues
+                            </span>
                           </div>
                           <div className="text-xs text-muted-foreground">
                             Postuar: {new Date(job.postedAt).toLocaleDateString('sq-AL')}
@@ -1167,7 +1248,7 @@ const EmployerDashboard = () => {
                     </div>
                     
                     {/* Load More Button */}
-                    {jobs.length > visibleJobsCount && (
+                    {filteredJobs.length > visibleJobsCount && (
                       <div className="flex justify-center pt-4">
                         <Button
                           variant="outline"
@@ -1175,9 +1256,11 @@ const EmployerDashboard = () => {
                           className="gap-2"
                         >
                           <TrendingUp className="h-4 w-4" />
-                          Shfaq më shumë punë ({jobs.length - visibleJobsCount} të tjera)
+                          Shfaq më shumë punë ({filteredJobs.length - visibleJobsCount} të tjera)
                         </Button>
                       </div>
+                    )}
+                    </>
                     )}
                   </>
                 )}
@@ -1207,8 +1290,40 @@ const EmployerDashboard = () => {
                   </div>
                 ) : (
                   <>
+                    {/* Application status filter */}
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {[
+                        { value: 'all', label: 'Të gjitha', count: applications.length },
+                        { value: 'pending', label: 'Në pritje', count: applications.filter(a => a.status === 'pending').length },
+                        { value: 'viewed', label: 'Shikuar', count: applications.filter(a => a.status === 'viewed').length },
+                        { value: 'shortlisted', label: 'Në listë', count: applications.filter(a => a.status === 'shortlisted').length },
+                        { value: 'rejected', label: 'Refuzuar', count: applications.filter(a => a.status === 'rejected').length },
+                        { value: 'hired', label: 'Punësuar', count: applications.filter(a => a.status === 'hired').length },
+                      ].filter(f => f.value === 'all' || f.count > 0).map(filter => (
+                        <Button
+                          key={filter.value}
+                          size="sm"
+                          variant={applicationStatusFilter === filter.value ? 'default' : 'outline'}
+                          onClick={() => handleApplicationStatusFilterChange(filter.value)}
+                          className="text-xs h-8"
+                        >
+                          {filter.label}
+                          <span className={`ml-1.5 text-xs ${applicationStatusFilter === filter.value ? 'opacity-80' : 'text-muted-foreground'}`}>
+                            ({filter.count})
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+
+                    {filteredApplications.length === 0 ? (
+                      <div className="text-center py-8">
+                        <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                        <p className="text-muted-foreground text-sm">Nuk ka aplikime me statusin e zgjedhur</p>
+                      </div>
+                    ) : (
+                    <>
                     <div className="space-y-4">
-                      {applications.slice(0, visibleApplicationsCount).map((application, index) => (
+                      {filteredApplications.slice(0, visibleApplicationsCount).map((application, index) => (
                       <div 
                         key={application._id} 
                         className="flex items-center justify-between p-3 sm:p-4 border rounded-lg"
@@ -1308,7 +1423,7 @@ const EmployerDashboard = () => {
                     </div>
                     
                     {/* Load More Button */}
-                    {applications.length > visibleApplicationsCount && (
+                    {filteredApplications.length > visibleApplicationsCount && (
                       <div className="flex justify-center pt-4">
                         <Button
                           variant="outline"
@@ -1316,9 +1431,11 @@ const EmployerDashboard = () => {
                           className="gap-2"
                         >
                           <Users className="h-4 w-4" />
-                          Shfaq më shumë aplikantë ({applications.length - visibleApplicationsCount} të tjerë)
+                          Shfaq më shumë aplikantë ({filteredApplications.length - visibleApplicationsCount} të tjerë)
                         </Button>
                       </div>
+                    )}
+                    </>
                     )}
                   </>
                 )}
@@ -1329,7 +1446,15 @@ const EmployerDashboard = () => {
           <TabsContent value="settings" className="space-y-6">
             <Card data-tutorial="settings-card">
               <CardHeader>
-                <CardTitle>Informacioni i Kompanisë</CardTitle>
+                <div className="flex items-center gap-2">
+                  <CardTitle>Informacioni i Kompanisë</CardTitle>
+                  {user?.profile?.employerProfile?.verified && (
+                    <Badge variant="secondary" className="text-xs">
+                      <CheckCircle className="h-3 w-3 mr-1 text-green-600" />
+                      E verifikuar
+                    </Badge>
+                  )}
+                </div>
                 <CardDescription>
                   Përditëso të dhënat e profilit të kompanisë
                 </CardDescription>
