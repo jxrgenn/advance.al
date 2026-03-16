@@ -199,7 +199,7 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, init
 
             {/* Save button - top right of logo area */}
             {isAuthenticated && user?.userType === 'jobseeker' && (
-              <div className="absolute -top-1 -left-2 sm:-left-1">
+              <div className="absolute -top-1 -right-2 sm:-right-1">
                 <Button
                   variant={isSaved ? "default" : "outline"}
                   size="sm"
@@ -215,7 +215,7 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, init
 
             {/* Subtle applied status - small green checkmark icon */}
             {hasApplied && (
-              <div className="absolute -top-1 -right-1 bg-green-500 rounded-full p-0.5 shadow-sm" title="Keni aplikuar për këtë punë">
+              <div className="absolute -top-1 -left-1 bg-green-500 rounded-full p-0.5 shadow-sm" title="Keni aplikuar për këtë punë">
                 <CheckCircle className="h-3 w-3 text-white fill-current" />
               </div>
             )}
