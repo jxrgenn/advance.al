@@ -114,7 +114,7 @@ router.post('/jobs/:jobId/purchase', authenticate, async (req, res) => {
     }
 
     // MOCK PAYMENT: Always succeeds (only in test mode)
-    // TODO: Integrate real payment gateway (Stripe, PayPal, etc.)
+    // Payment gateway: Paysera integration planned
     await new Promise(resolve => setTimeout(resolve, 500));
 
     // Grant access to job

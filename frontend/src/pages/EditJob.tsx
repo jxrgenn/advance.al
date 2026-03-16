@@ -67,7 +67,7 @@ const EditJob = () => {
       loadJob();
       loadLocations();
     }
-  }, [id, navigate, toast]);
+  }, [id, navigate]);
 
   const loadJob = async () => {
     try {

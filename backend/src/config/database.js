@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import logger from './logger.js';
 
 dotenv.config();
 
@@ -13,7 +14,7 @@ export const connectDB = async (retries = 5, delay = 3000) => {
         socketTimeoutMS: 45000,
       });
 
-      console.log(`MongoDB Connected: ${conn.connection.host}`);
+      logger.info(`MongoDB Connected: ${conn.connection.host}`);
 
       // Handle connection events
       mongoose.connection.on('error', (err) => {
@@ -31,7 +32,7 @@ export const connectDB = async (retries = 5, delay = 3000) => {
         console.error('All MongoDB connection attempts failed. Exiting.');
         process.exit(1);
       }
-      console.log(`Retrying in ${delay / 1000}s...`);
+      logger.warn(`Retrying in ${delay / 1000}s...`);
       await new Promise(r => setTimeout(r, delay));
       delay *= 2; // Exponential backoff
     }

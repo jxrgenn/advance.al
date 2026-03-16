@@ -99,7 +99,7 @@ const corsOptions = {
     if (allowedOrigins.indexOf(origin) !== -1 || isVercelPreview) {
       callback(null, true);
     } else {
-      console.log('CORS blocked origin:', origin);
+      logger.warn('CORS blocked origin:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -216,7 +216,7 @@ if (process.env.SENTRY_DSN) {
 
 // Global Error Handler
 app.use((err, req, res, next) => {
-  console.error('Error:', err);
+  logger.error('Unhandled error:', err);
 
   // Mongoose validation error
   if (err.name === 'ValidationError') {

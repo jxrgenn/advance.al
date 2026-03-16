@@ -743,7 +743,6 @@ router.post('/admin/:id/reopen',
 
     } catch (error) {
       console.error('Error reopening report:', error);
-      console.error('Error stack:', error.stack);
       res.status(500).json({
         success: false,
         message: 'Gabim në rihapjen e raportit',

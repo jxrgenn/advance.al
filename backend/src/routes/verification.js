@@ -4,11 +4,13 @@ import rateLimit from 'express-rate-limit';
 import crypto from 'crypto';
 import { User } from '../models/index.js';
 import emailService from '../lib/emailService.js';
+import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
-// Storage for verification codes (in production, use Redis)
-const verificationCodes = new Map();
+// In-memory fallback when Redis is unavailable
+const verificationCodesMemory = new Map();
 
 // Rate limiting for verification requests
 const verificationLimiter = rateLimit({
@@ -35,29 +37,72 @@ const generateVerificationCode = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
-// Store verification code with expiry
-const storeVerificationCode = (identifier, code, method) => {
-  const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiry
-  verificationCodes.set(identifier, {
-    code,
-    method,
-    expiry,
-    attempts: 0
-  });
-};
+// Verification storage helpers — Redis with in-memory fallback
+const VERIFY_PREFIX = 'verify:';
 
-// Clean expired codes (run periodically)
-const cleanExpiredCodes = () => {
-  const now = new Date();
-  for (const [key, value] of verificationCodes.entries()) {
-    if (value.expiry < now) {
-      verificationCodes.delete(key);
-    }
+async function storeVerificationCode(identifier, code, method) {
+  const data = { code, method, attempts: 0, createdAt: Date.now() };
+  const key = VERIFY_PREFIX + identifier;
+  try {
+    await cacheSet(key, data, 600); // 10 minutes
+    return;
+  } catch {
+    // fallback
   }
-};
+  const expiry = new Date(Date.now() + 10 * 60 * 1000);
+  verificationCodesMemory.set(identifier, { ...data, expiry });
+}
 
-// Clean expired codes every 5 minutes
-setInterval(cleanExpiredCodes, 5 * 60 * 1000);
+async function getVerificationCode(identifier) {
+  const key = VERIFY_PREFIX + identifier;
+  try {
+    const cached = await cacheGet(key);
+    if (cached) {
+      const data = typeof cached === 'string' ? JSON.parse(cached) : cached;
+      // Convert Redis TTL-based expiry to an expiry Date for compatibility
+      data.expiry = new Date(data.createdAt + 10 * 60 * 1000);
+      return data;
+    }
+  } catch {
+    // fallback
+  }
+  const mem = verificationCodesMemory.get(identifier);
+  if (mem && mem.expiry > new Date()) return mem;
+  if (mem) verificationCodesMemory.delete(identifier);
+  return null;
+}
+
+async function updateVerificationCode(identifier, data) {
+  const key = VERIFY_PREFIX + identifier;
+  try {
+    // Re-store with remaining TTL (~10 min from creation)
+    const elapsed = Math.floor((Date.now() - data.createdAt) / 1000);
+    const remaining = Math.max(600 - elapsed, 60);
+    await cacheSet(key, { code: data.code, method: data.method, attempts: data.attempts, createdAt: data.createdAt }, remaining);
+    return;
+  } catch {
+    // fallback
+  }
+  verificationCodesMemory.set(identifier, data);
+}
+
+async function deleteVerificationCode(identifier) {
+  const key = VERIFY_PREFIX + identifier;
+  try {
+    await cacheDelete(key);
+  } catch {
+    // fallback
+  }
+  verificationCodesMemory.delete(identifier);
+}
+
+// Clean expired in-memory codes (only needed as fallback)
+setInterval(() => {
+  const now = new Date();
+  for (const [key, value] of verificationCodesMemory.entries()) {
+    if (value.expiry < now) verificationCodesMemory.delete(key);
+  }
+}, 5 * 60 * 1000);
 
 // Email sending function
 const sendEmail = async (email, code) => {
@@ -214,8 +259,8 @@ router.post('/request', verificationLimiter, verificationRequestValidation, hand
     // Generate verification code
     const code = generateVerificationCode();
 
-    // Store the code
-    storeVerificationCode(identifier, code, method);
+    // Store the code (Redis with in-memory fallback)
+    await storeVerificationCode(identifier, code, method);
 
     // Send verification code
     try {
@@ -263,7 +308,7 @@ router.post('/verify', codeVerificationLimiter, codeVerificationValidation, hand
     const { identifier, code, method } = req.body;
 
     // Get stored verification data
-    const verificationData = verificationCodes.get(identifier);
+    const verificationData = await getVerificationCode(identifier);
 
     if (!verificationData) {
       return res.status(400).json({
@@ -274,7 +319,7 @@ router.post('/verify', codeVerificationLimiter, codeVerificationValidation, hand
 
     // Check if code has expired
     if (new Date() > verificationData.expiry) {
-      verificationCodes.delete(identifier);
+      await deleteVerificationCode(identifier);
       return res.status(400).json({
         success: false,
         message: 'Kodi i verifikimit ka skaduar. Ju lutemi kërkoni një kod të ri.'
@@ -294,7 +339,7 @@ router.post('/verify', codeVerificationLimiter, codeVerificationValidation, hand
 
     // Check if too many attempts
     if (verificationData.attempts > 3) {
-      verificationCodes.delete(identifier);
+      await deleteVerificationCode(identifier);
       return res.status(400).json({
         success: false,
         message: 'Shumë tentativa të gabuara. Ju lutemi kërkoni një kod të ri.'
@@ -304,7 +349,7 @@ router.post('/verify', codeVerificationLimiter, codeVerificationValidation, hand
     // Verify the code
     if (verificationData.code !== code) {
       // Update attempts in storage
-      verificationCodes.set(identifier, verificationData);
+      await updateVerificationCode(identifier, verificationData);
       return res.status(400).json({
         success: false,
         message: `Kodi i verifikimit është i gabuar. Ju keni ${3 - verificationData.attempts} tentativa të mbetura.`
@@ -312,19 +357,20 @@ router.post('/verify', codeVerificationLimiter, codeVerificationValidation, hand
     }
 
     // Code is correct - remove from storage
-    verificationCodes.delete(identifier);
+    await deleteVerificationCode(identifier);
 
     // Generate a verification token for subsequent registration
     const verificationToken = crypto.randomBytes(32).toString('hex');
 
-    // Store verification token temporarily (30 minutes)
-    const tokenExpiry = new Date(Date.now() + 30 * 60 * 1000);
-    verificationCodes.set(`token_${verificationToken}`, {
-      identifier,
-      method,
-      verified: true,
-      expiry: tokenExpiry
-    });
+    // Store verification token temporarily (30 minutes) in Redis
+    const tokenData = { identifier, method, verified: true, createdAt: Date.now() };
+    const tokenKey = VERIFY_PREFIX + `token_${verificationToken}`;
+    try {
+      await cacheSet(tokenKey, tokenData, 1800); // 30 minutes
+    } catch {
+      const tokenExpiry = new Date(Date.now() + 30 * 60 * 1000);
+      verificationCodesMemory.set(`token_${verificationToken}`, { ...tokenData, expiry: tokenExpiry });
+    }
 
     res.json({
       success: true,
@@ -361,22 +407,25 @@ router.post('/validate-token', async (req, res) => {
       });
     }
 
-    // Get stored token data
-    const tokenData = verificationCodes.get(`token_${verificationToken}`);
+    // Get stored token data from Redis or memory
+    let tokenData = null;
+    const tokenKey = VERIFY_PREFIX + `token_${verificationToken}`;
+    try {
+      const cached = await cacheGet(tokenKey);
+      if (cached) {
+        tokenData = typeof cached === 'string' ? JSON.parse(cached) : cached;
+      }
+    } catch { /* fallback */ }
+    if (!tokenData) {
+      const mem = verificationCodesMemory.get(`token_${verificationToken}`);
+      if (mem && mem.expiry > new Date()) tokenData = mem;
+      else if (mem) verificationCodesMemory.delete(`token_${verificationToken}`);
+    }
 
     if (!tokenData) {
       return res.status(400).json({
         success: false,
         message: 'Token-i i verifikimit nuk u gjet ose ka skaduar'
-      });
-    }
-
-    // Check if token has expired
-    if (new Date() > tokenData.expiry) {
-      verificationCodes.delete(`token_${verificationToken}`);
-      return res.status(400).json({
-        success: false,
-        message: 'Token-i i verifikimit ka skaduar'
       });
     }
 
@@ -414,11 +463,11 @@ router.post('/resend', verificationLimiter, async (req, res) => {
     }
 
     // Check if there's an active verification for this identifier
-    const existingVerification = verificationCodes.get(identifier);
+    const existingVerification = await getVerificationCode(identifier);
 
     if (existingVerification) {
       // Check if last request was less than 1 minute ago
-      const timeSinceLastRequest = Date.now() - (existingVerification.expiry.getTime() - 10 * 60 * 1000);
+      const timeSinceLastRequest = Date.now() - existingVerification.createdAt;
       if (timeSinceLastRequest < 60 * 1000) {
         return res.status(400).json({
           success: false,
@@ -431,7 +480,7 @@ router.post('/resend', verificationLimiter, async (req, res) => {
     const code = generateVerificationCode();
 
     // Store the new code
-    storeVerificationCode(identifier, code, method);
+    await storeVerificationCode(identifier, code, method);
 
     // Send verification code
     try {
@@ -479,7 +528,7 @@ router.get('/status/:identifier', async (req, res) => {
     const { identifier } = req.params;
 
     // Check if there's an active verification
-    const verificationData = verificationCodes.get(identifier);
+    const verificationData = await getVerificationCode(identifier);
 
     if (!verificationData) {
       return res.json({

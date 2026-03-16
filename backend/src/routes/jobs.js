@@ -956,7 +956,7 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
           }
 
         } catch (analyticsError) {
-          console.error('❌ Error updating revenue analytics:', analyticsError);
+          console.error('Error updating revenue analytics:', analyticsError);
         }
       });
     }
@@ -970,7 +970,7 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
       try {
         await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10); // Priority 10 (normal)
       } catch (error) {
-        console.error('❌ Error queueing embedding for job:', error);
+        console.error('Error queueing embedding for job:', error);
       }
 
       // Only notify users for active jobs (not pending_payment), and after embedding is queued
@@ -1091,7 +1091,7 @@ router.put('/:id', authenticate, requireEmployer, requireVerifiedEmployer, updat
         });
         await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10);
       } catch (error) {
-        console.error('❌ Error re-queueing embedding for job:', error);
+        console.error('Error re-queueing embedding for job:', error);
       }
     });
 
