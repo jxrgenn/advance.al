@@ -335,7 +335,7 @@ jobSchema.index({ expiresAt: 1 });
 
 // Embedding system indexes
 jobSchema.index({ 'embedding.status': 1 }); // For worker queries
-jobSchema.index({ 'embedding.vector': 1 }, { sparse: true }); // Sparse index for similarity computation
+// Removed: standard index on 1536-dim vector array provides no benefit for similarity search
 jobSchema.index({ 'similarJobs.score': -1 }); // For sorting similar jobs
 jobSchema.index({ 'similarityMetadata.nextComputeAt': 1 }); // For recomputation scheduling
 

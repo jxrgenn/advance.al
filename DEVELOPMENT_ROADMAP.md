@@ -1,9 +1,9 @@
 # advance.al - DEVELOPMENT STATUS & ROADMAP
 
 **Date:** September 25-28, 2025
-**Last Updated:** March 11, 2026 (VERIFIED PRODUCTION AUDIT — cross-checked against source code)
+**Last Updated:** March 16, 2026 (Phase 5 UX Polish — 12/15 done)
 **Platform:** Premier Job Marketplace for Albania
-**CURRENT STATUS:** 🟡 **PRODUCTION FIXES IN PROGRESS — Phase 1 DONE (14/16), Phase 2 DONE (15/15), Phase 3 DONE (14/16), Phase 4 DONE (16/16), Phases 5-7 remaining**
+**CURRENT STATUS:** 🟡 **PRODUCTION FIXES IN PROGRESS — Phase 1 DONE (14/16), Phase 2 DONE (15/15), Phase 3 DONE (14/16), Phase 4 DONE (16/16), Phase 5 (12/15), Phases 6-7 remaining**
 **Phase:** Production Readiness Implementation (see `PRODUCTION_READY_IMPLEMENTATION_PLAN.md`)
 **Brand:** advance.al (formerly Albania JobFlow)
 
@@ -16,7 +16,7 @@ Full codebase audit completed across 60+ backend files, 40+ frontend files, plus
 - **Phase 2 — BROKEN FLOWS:** 15 issues — ✅ ALL DONE (route protection, 401 sync, token refresh, filter fixes, registration data, crash fixes, MutationObserver, admin dead code)
 - **Phase 3 — DATA INTEGRITY:** 16 issues — ✅ 14 DONE (password policy, email regex, application transitions, withdraw count, view count atomic, slug dedup, pagination limits, sort whitelist, ID collisions, formValidation custom, confirmPassword, phone optional, endDate message, salary zero) — 2 deferred: 3.2 index migration (requires MongoDB shell), 3.15 confirmation dialogs (UX)
 - **Phase 4 — PRODUCTION HARDENING:** 16 issues — ✅ ALL DONE (console.log cleanup 100+ removed from routes/services/models/frontend, CORS regex tightened, body limit 1mb, error sanitization in production, upload dir auto-creation, graceful shutdown, DB retry with backoff, email sender standardized to noreply@advance.al via EMAIL_FROM env, rate limit on refresh token, password required for account deletion, React ErrorBoundary, code splitting with React.lazy, N+1 bulk saved-jobs check, stats caching 5min TTL, send-verification copyright dynamic, index.html metadata correct)
-- **Phase 5 — UX POLISH:** 15 issues (pagination broken, notification polling missing, dead features, duplicate toast systems)
+- **Phase 5 — UX POLISH:** 15 issues — ✅ 12 DONE (notification polling 30s, dead digest stubs, dead "view all" link, report route conflict, login success toast, admin navbar padding, useless embedding index, Footer on SavedJobs, pagination sliding window, freeze_posting implemented, work/education delete, contact auth gate, phone intl format) — 3 deferred: 5.3 duplicate toasts (risky), 5.15 tutorial extraction (large refactor), 5.11 already done (Footer)
 - **Phase 6 — SCALABILITY:** 7 issues (files in MongoDB, OOM on semantic matching, no caching, no monitoring)
 - **Phase 7A — JOB SEEKER LOGIC:** 9 issues (-1: ~~7A.4 removed as false positive~~)
 - **Phase 7B — EMPLOYER LOGIC:** 17 issues (+3 new: backend PUT missing expiresAt/applicationMethod, EditJob missing URL/email fields, checkbox type safety)

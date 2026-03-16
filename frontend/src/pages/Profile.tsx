@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { User, Mail, Phone, MapPin, Upload, FileText, Briefcase, Award, Loader2, RefreshCw, Lightbulb, X, Play } from "lucide-react";
+import { User, Mail, Phone, MapPin, Upload, FileText, Briefcase, Award, Loader2, RefreshCw, Lightbulb, X, Play, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { usersApi, applicationsApi } from "@/lib/api";
@@ -636,6 +636,48 @@ const Profile = () => {
       });
     } finally {
       setSavingEducation(false);
+    }
+  };
+
+  const handleDeleteWorkExperience = async (experienceId: string) => {
+    try {
+      const response = await usersApi.deleteWorkExperience(experienceId);
+      if (response.success) {
+        toast({
+          title: "Përvojë u fshi",
+          description: "Përvojë e punës u fshi me sukses"
+        });
+        await refreshUser();
+      } else {
+        throw new Error('Gabim gjatë fshirjes');
+      }
+    } catch (error: any) {
+      toast({
+        title: "Gabim",
+        description: error.message || "Nuk mundëm të fshijmë përvojën.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleDeleteEducation = async (educationId: string) => {
+    try {
+      const response = await usersApi.deleteEducation(educationId);
+      if (response.success) {
+        toast({
+          title: "Arsimimi u fshi",
+          description: "Arsimimi u fshi me sukses"
+        });
+        await refreshUser();
+      } else {
+        throw new Error('Gabim gjatë fshirjes');
+      }
+    } catch (error: any) {
+      toast({
+        title: "Gabim",
+        description: error.message || "Nuk mundëm të fshijmë arsimimin.",
+        variant: "destructive"
+      });
     }
   };
 
@@ -1591,16 +1633,28 @@ const Profile = () => {
                   <CardContent className="space-y-6">
                     <div className="border-l-2 border-primary pl-6 space-y-4">
                       {user?.profile?.jobSeekerProfile?.workHistory?.map((work, index) => (
-                        <div key={index}>
-                          <div className="flex items-center gap-2 mb-2">
-                            <Briefcase className="h-4 w-4 text-primary" />
-                            <h3 className="font-semibold text-foreground">{work.position}</h3>
+                        <div key={work._id || index} className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Briefcase className="h-4 w-4 text-primary" />
+                              <h3 className="font-semibold text-foreground">{work.position}</h3>
+                            </div>
+                            <p className="text-muted-foreground text-sm">
+                              {work.company} • {new Date(work.startDate).getFullYear()} - {work.endDate ? new Date(work.endDate).getFullYear() : 'Tani'}
+                            </p>
+                            {work.description && (
+                              <p className="text-sm mt-2">{work.description}</p>
+                            )}
                           </div>
-                          <p className="text-muted-foreground text-sm">
-                            {work.company} • {new Date(work.startDate).getFullYear()} - {work.endDate ? new Date(work.endDate).getFullYear() : 'Tani'}
-                          </p>
-                          {work.description && (
-                            <p className="text-sm mt-2">{work.description}</p>
+                          {work._id && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
+                              onClick={() => handleDeleteWorkExperience(work._id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           )}
                         </div>
                       )) || (
@@ -1628,12 +1682,24 @@ const Profile = () => {
                   <CardContent className="space-y-4">
                     <div className="border-l-2 border-secondary pl-6 space-y-4">
                       {user?.profile?.jobSeekerProfile?.education?.map((edu, index) => (
-                        <div key={index}>
-                          <div className="flex items-center gap-2 mb-2">
-                            <Award className="h-4 w-4 text-secondary" />
-                            <h3 className="font-semibold text-foreground">{edu.degree}</h3>
+                        <div key={edu._id || index} className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Award className="h-4 w-4 text-secondary" />
+                              <h3 className="font-semibold text-foreground">{edu.degree}</h3>
+                            </div>
+                            <p className="text-muted-foreground text-sm">{edu.school} • {edu.year}</p>
                           </div>
-                          <p className="text-muted-foreground text-sm">{edu.school} • {edu.year}</p>
+                          {edu._id && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
+                              onClick={() => handleDeleteEducation(edu._id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       )) || (
                         <div className="text-center py-8">

@@ -369,6 +369,82 @@ router.get('/admin',
   }
 );
 
+// @route   GET /api/admin/reports/stats
+// @desc    Get reporting statistics (Admin only)
+// @access  Private (admin only)  — MUST be before /admin/:id to avoid route shadowing
+router.get('/admin/stats',
+  authenticate,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const { timeframe = 30 } = req.query;
+
+      const reportStats = await Report.getStats(parseInt(timeframe));
+      const actionStats = await ReportAction.getActionStats(parseInt(timeframe));
+
+      const totalReports = reportStats.totalReports[0]?.count || 0;
+      const resolvedReports = reportStats.resolved[0]?.count || 0;
+      const pendingReports = reportStats.pending[0]?.count || 0;
+      const resolutionRate = totalReports > 0 ? (resolvedReports / totalReports * 100).toFixed(1) : 0;
+
+      const topReportedUsers = await Report.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: new Date(Date.now() - parseInt(timeframe) * 24 * 60 * 60 * 1000) }
+          }
+        },
+        { $group: { _id: '$reportedUser', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 5 },
+        {
+          $lookup: {
+            from: 'users',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'user'
+          }
+        },
+        { $unwind: '$user' },
+        {
+          $project: {
+            userId: '$_id',
+            count: 1,
+            'user.firstName': 1,
+            'user.lastName': 1,
+            'user.email': 1,
+            'user.userType': 1
+          }
+        }
+      ]);
+
+      res.json({
+        success: true,
+        data: {
+          summary: {
+            totalReports,
+            resolvedReports,
+            pendingReports,
+            resolutionRate: `${resolutionRate}%`,
+            averageResolutionTime: '2.5 ditë'
+          },
+          reportStats,
+          actionStats,
+          topReportedUsers,
+          timeframe: parseInt(timeframe)
+        }
+      });
+
+    } catch (error) {
+      console.error('Error fetching report statistics:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Gabim në marrjen e statistikave',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+);
+
 // @route   GET /api/admin/reports/:id
 // @desc    Get specific report details (Admin only)
 // @access  Private (admin only)
@@ -609,85 +685,6 @@ router.post('/admin/:id/action',
       res.status(500).json({
         success: false,
         message: 'Gabim në marrjen e veprimit',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
-      });
-    }
-  }
-);
-
-// @route   GET /api/admin/reports/stats
-// @desc    Get reporting statistics (Admin only)
-// @access  Private (admin only)
-router.get('/admin/stats',
-  authenticate,
-  requireAdmin,
-  async (req, res) => {
-    try {
-      const { timeframe = 30 } = req.query;
-
-      // Get report statistics
-      const reportStats = await Report.getStats(parseInt(timeframe));
-      const actionStats = await ReportAction.getActionStats(parseInt(timeframe));
-
-      // Calculate additional metrics
-      const totalReports = reportStats.totalReports[0]?.count || 0;
-      const resolvedReports = reportStats.resolved[0]?.count || 0;
-      const pendingReports = reportStats.pending[0]?.count || 0;
-      const resolutionRate = totalReports > 0 ? (resolvedReports / totalReports * 100).toFixed(1) : 0;
-
-      // Get top reported users
-      const topReportedUsers = await Report.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: new Date(Date.now() - parseInt(timeframe) * 24 * 60 * 60 * 1000) }
-          }
-        },
-        { $group: { _id: '$reportedUser', count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-        { $limit: 5 },
-        {
-          $lookup: {
-            from: 'users',
-            localField: '_id',
-            foreignField: '_id',
-            as: 'user'
-          }
-        },
-        { $unwind: '$user' },
-        {
-          $project: {
-            userId: '$_id',
-            count: 1,
-            'user.firstName': 1,
-            'user.lastName': 1,
-            'user.email': 1,
-            'user.userType': 1
-          }
-        }
-      ]);
-
-      res.json({
-        success: true,
-        data: {
-          summary: {
-            totalReports,
-            resolvedReports,
-            pendingReports,
-            resolutionRate: `${resolutionRate}%`,
-            averageResolutionTime: '2.5 ditë' // TODO: Calculate actual average
-          },
-          reportStats,
-          actionStats,
-          topReportedUsers,
-          timeframe: parseInt(timeframe)
-        }
-      });
-
-    } catch (error) {
-      console.error('Error fetching report statistics:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Gabim në marrjen e statistikave',
         error: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }

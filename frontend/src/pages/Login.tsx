@@ -66,23 +66,14 @@ const Login = () => {
       setIsSubmitting(true);
       clearError();
       
-      await login(formData.email.trim(), formData.password);
-      
-      // Check the result after login attempt
-      setTimeout(() => {
-        if (isAuthenticated) {
-          toast({
-            title: "Mirësevini!",
-            description: "Jeni kyçur me sukses.",
-          });
-        } else if (error) {
-          toast({
-            title: "Gabim në kyçje",
-            description: error,
-            variant: "destructive"
-          });
-        }
-      }, 100);
+      const success = await login(formData.email.trim(), formData.password);
+
+      if (success) {
+        toast({
+          title: "Mirësevini!",
+          description: "Jeni kyçur me sukses.",
+        });
+      }
     } catch (err) {
       console.error('Login error:', err);
     } finally {

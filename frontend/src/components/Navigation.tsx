@@ -40,10 +40,12 @@ const Navigation = () => {
   // Note: DropdownMenu components use modal={false} to prevent
   // body scroll-lock and padding-right shifts from Radix UI
 
-  // Load notifications when user is authenticated
+  // Load notifications when user is authenticated + poll every 30s
   useEffect(() => {
     if (isAuthenticated && user) {
       loadUnreadCount();
+      const interval = setInterval(loadUnreadCount, 30000);
+      return () => clearInterval(interval);
     }
   }, [isAuthenticated, user]);
 
@@ -326,14 +328,14 @@ loadNotifications();
                   {notifications.length > 0 && (
                     <>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem 
+                      <DropdownMenuItem
                         className="text-center text-sm text-primary cursor-pointer"
                         onClick={() => {
+                          handleMarkAllAsRead();
                           setNotificationsOpen(false);
-                          // TODO: Navigate to full notifications page if we create one
                         }}
                       >
-                        Shiko të gjitha njoftimet
+                        Shëno të gjitha si të lexuara
                       </DropdownMenuItem>
                     </>
                   )}

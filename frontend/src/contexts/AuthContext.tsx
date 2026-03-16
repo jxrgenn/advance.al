@@ -90,7 +90,7 @@ interface AuthContextType {
   error: string | null;
   
   // Actions
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<boolean>;
   register: (userData: {
     email: string;
     password: string;
@@ -121,27 +121,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
   // Login function
-  const login = async (email: string, password: string): Promise<void> => {
+  const login = async (email: string, password: string): Promise<boolean> => {
     dispatch({ type: 'AUTH_START' });
-    
+
     try {
       const response = await authApi.login(email, password);
-      
+
       if (response.success && response.data) {
         dispatch({ type: 'AUTH_SUCCESS', payload: response.data.user });
+        return true;
       } else {
         dispatch({ type: 'AUTH_ERROR', payload: response.message || 'Gabim në kyçje' });
+        return false;
       }
     } catch (error: any) {
       let errorMessage = 'Gabim në kyçje';
-      
+
       if (error.response && error.response.message) {
         errorMessage = error.response.message;
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       dispatch({ type: 'AUTH_ERROR', payload: errorMessage });
+      return false;
     }
   };
 

@@ -304,9 +304,11 @@ Telefoni: _______________`;
         return;
       }
 
-      // Format phone
+      // Format phone: keep international (+...), convert 00xx to +xx, otherwise assume Albanian +355
       const cleanPhone = values.phone.replace(/[\s\-\(\)]/g, '');
-      const formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : '+355' + cleanPhone.replace(/^0/, '');
+      const formattedPhone = cleanPhone.startsWith('+') ? cleanPhone
+        : cleanPhone.startsWith('00') ? '+' + cleanPhone.slice(2)
+        : '+355' + cleanPhone.replace(/^0/, '');
 
       const response = await authApi.register({
         email: values.email,
@@ -374,9 +376,11 @@ Telefoni: _______________`;
         return;
       }
 
-      // Format phone
+      // Format phone: keep international (+...), convert 00xx to +xx, otherwise assume Albanian +355
       const cleanPhone = values.phone.replace(/[\s\-\(\)]/g, '');
-      const formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : '+355' + cleanPhone.replace(/^0/, '');
+      const formattedPhone = cleanPhone.startsWith('+') ? cleanPhone
+        : cleanPhone.startsWith('00') ? '+' + cleanPhone.slice(2)
+        : '+355' + cleanPhone.replace(/^0/, '');
 
       const response = await quickUsersApi.createQuickUser({
         firstName: values.firstName,

@@ -182,6 +182,17 @@ const JobDetail = () => {
   const openContactModal = (method: 'email' | 'phone' | 'whatsapp', contactInfo: string) => {
     if (!job) return;
 
+    // Require authentication to contact employers
+    if (!isAuthenticated || !user) {
+      toast({
+        title: "Duhet të kyçeni",
+        description: "Ju duhet të kyçeni për të kontaktuar punëdhënësin.",
+        variant: "destructive"
+      });
+      navigate("/login");
+      return;
+    }
+
     setContactType(method);
 
     // Set pre-filled template message

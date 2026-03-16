@@ -1131,19 +1131,27 @@ const Index = () => {
                     </Button>
 
                     <div className="flex items-center gap-2">
-                      {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
-                        const page = i + 1;
-                        return (
-                          <Button
-                            key={page}
-                            variant={pagination.currentPage === page ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => handlePageChange(page)}
-                          >
-                            {page}
-                          </Button>
-                        );
-                      })}
+                      {(() => {
+                        const maxVisible = 5;
+                        let start = Math.max(1, pagination.currentPage - Math.floor(maxVisible / 2));
+                        let end = Math.min(pagination.totalPages, start + maxVisible - 1);
+                        if (end - start + 1 < maxVisible) {
+                          start = Math.max(1, end - maxVisible + 1);
+                        }
+                        return Array.from({ length: end - start + 1 }, (_, i) => {
+                          const page = start + i;
+                          return (
+                            <Button
+                              key={page}
+                              variant={pagination.currentPage === page ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => handlePageChange(page)}
+                            >
+                              {page}
+                            </Button>
+                          );
+                        });
+                      })()}
                     </div>
 
                     <Button

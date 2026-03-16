@@ -1,7 +1,7 @@
 import express from 'express';
 import { body, query, validationResult } from 'express-validator';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
-import { BusinessCampaign, PricingRule, RevenueAnalytics, Job, User } from '../models/index.js';
+import { BusinessCampaign, PricingRule, RevenueAnalytics, Job, User, SystemConfiguration } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { escapeRegex } from '../utils/sanitize.js';
 
@@ -613,7 +613,30 @@ router.post('/platform/emergency', authenticate, requireAdmin, async (req, res) 
 
     switch (action) {
       case 'freeze_posting':
-        // This would integrate with a platform settings system
+        await SystemConfiguration.findOneAndUpdate(
+          { key: 'job_posting_frozen' },
+          {
+            category: 'platform',
+            key: 'job_posting_frozen',
+            value: true,
+            dataType: 'boolean',
+            description: 'Ndalon postimin e punëve të reja (emergjencë)',
+            lastModifiedBy: req.user._id,
+            lastModifiedAt: new Date()
+          },
+          { upsert: true, new: true }
+        );
+        break;
+
+      case 'unfreeze_posting':
+        await SystemConfiguration.findOneAndUpdate(
+          { key: 'job_posting_frozen' },
+          {
+            value: false,
+            lastModifiedBy: req.user._id,
+            lastModifiedAt: new Date()
+          }
+        );
         break;
 
       case 'pause_all_campaigns':

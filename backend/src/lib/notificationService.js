@@ -526,91 +526,14 @@ Ekipi i advance.al
     }
   }
 
-  // Daily digest of new jobs for users who prefer daily notifications
+  // Daily/weekly digests are not yet implemented.
+  // Real-time per-job notifications via notifyMatchingUsers() are the active path.
   async sendDailyDigest() {
-    try {
-      // Find users who prefer daily notifications and haven't been notified in the last 20 hours
-      const now = new Date();
-      const twentyHoursAgo = new Date(now.getTime() - 20 * 60 * 60 * 1000);
-
-      const dailyUsers = await QuickUser.find({
-        isActive: true,
-        convertedToFullUser: false,
-        'preferences.emailFrequency': 'daily',
-        $or: [
-          { lastNotifiedAt: null },
-          { lastNotifiedAt: { $lt: twentyHoursAgo } }
-        ]
-      });
-
-      // For daily digest, we would need to fetch jobs from the last 24 hours
-      // This is a simplified version - in production, you'd fetch actual recent jobs
-      const recentJobs = []; // await Job.find({ createdAt: { $gte: yesterday } });
-
-      if (recentJobs.length === 0) {
-        return { success: true, message: 'No new jobs to digest' };
-      }
-
-      // Process each user
-      let successCount = 0;
-      for (const user of dailyUsers) {
-        try {
-          // Find jobs that match this user's interests
-          const matchingJobs = recentJobs.filter(job => user.matchesJob(job));
-
-          if (matchingJobs.length > 0) {
-            // Send digest email (implementation would include multiple jobs)
-            // For now, just send the first matching job
-            await this.sendJobNotificationToUser(user, matchingJobs[0]);
-            successCount++;
-          }
-        } catch (error) {
-          console.error(`Error sending daily digest to user ${user._id}:`, error);
-        }
-      }
-
-      return {
-        success: true,
-        message: `Daily digest sent to ${successCount} users`,
-        stats: { totalUsers: dailyUsers.length, sent: successCount }
-      };
-
-    } catch (error) {
-      console.error('Error in daily digest process:', error);
-      return { success: false, error: error.message };
-    }
+    return { success: true, message: 'Daily digest not yet implemented' };
   }
 
-  // Weekly digest for users who prefer weekly notifications
   async sendWeeklyDigest() {
-    try {
-      // Find users who prefer weekly notifications and haven't been notified in the last 6 days
-      const now = new Date();
-      const sixDaysAgo = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
-
-      const weeklyUsers = await QuickUser.find({
-        isActive: true,
-        convertedToFullUser: false,
-        'preferences.emailFrequency': 'weekly',
-        $or: [
-          { lastNotifiedAt: null },
-          { lastNotifiedAt: { $lt: sixDaysAgo } }
-        ]
-      });
-
-      // Similar to daily digest but for weekly timeframe
-      // Implementation would be similar to daily digest
-
-      return {
-        success: true,
-        message: `Weekly digest process completed`,
-        stats: { totalUsers: weeklyUsers.length }
-      };
-
-    } catch (error) {
-      console.error('Error in weekly digest process:', error);
-      return { success: false, error: error.message };
-    }
+    return { success: true, message: 'Weekly digest not yet implemented' };
   }
 }
 

@@ -1,7 +1,7 @@
 import express from 'express';
 import { body, query, validationResult } from 'express-validator';
 import mongoose from 'mongoose';
-import { Job, User, Location, PricingRule, BusinessCampaign, RevenueAnalytics } from '../models/index.js';
+import { Job, User, Location, PricingRule, BusinessCampaign, RevenueAnalytics, SystemConfiguration } from '../models/index.js';
 import { authenticate, requireEmployer, requireVerifiedEmployer, optionalAuth } from '../middleware/auth.js';
 import notificationService from '../lib/notificationService.js';
 import jobEmbeddingService from '../services/jobEmbeddingService.js';
@@ -695,7 +695,23 @@ router.get('/:id/similar', async (req, res) => {
 // @route   POST /api/jobs
 // @desc    Create a new job posting
 // @access  Private (Verified Employers only)
-router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, createJobValidation, handleValidationErrors, async (req, res) => {
+// Middleware to check if job posting is frozen
+const checkPostingFrozen = async (req, res, next) => {
+  try {
+    const frozenConfig = await SystemConfiguration.findOne({ key: 'job_posting_frozen' }).lean();
+    if (frozenConfig?.value === true) {
+      return res.status(503).json({
+        success: false,
+        message: 'Postimi i punëve është pezulluar përkohësisht. Ju lutemi provoni më vonë.'
+      });
+    }
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
+router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPostingFrozen, createJobValidation, handleValidationErrors, async (req, res) => {
   try {
     const {
       title,

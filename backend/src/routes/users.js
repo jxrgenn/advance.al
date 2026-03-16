@@ -760,6 +760,74 @@ router.post('/education', authenticate, requireJobSeeker, [
   }
 });
 
+// @route   DELETE /api/users/work-experience/:experienceId
+// @desc    Delete a work experience entry
+// @access  Private (Job Seeker only)
+router.delete('/work-experience/:experienceId', authenticate, requireJobSeeker, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Përdoruesi nuk u gjet' });
+    }
+
+    const workHistory = user.profile?.jobSeekerProfile?.workHistory;
+    if (!workHistory || workHistory.length === 0) {
+      return res.status(404).json({ success: false, message: 'Përvojë e punës nuk u gjet' });
+    }
+
+    const index = workHistory.findIndex(w => w._id?.toString() === req.params.experienceId);
+    if (index === -1) {
+      return res.status(404).json({ success: false, message: 'Përvojë e punës nuk u gjet' });
+    }
+
+    workHistory.splice(index, 1);
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Përvojë e punës u fshi me sukses',
+      data: { user }
+    });
+  } catch (error) {
+    console.error('Delete work experience error:', error);
+    res.status(500).json({ success: false, message: 'Gabim në fshirjen e përvojës së punës' });
+  }
+});
+
+// @route   DELETE /api/users/education/:educationId
+// @desc    Delete an education entry
+// @access  Private (Job Seeker only)
+router.delete('/education/:educationId', authenticate, requireJobSeeker, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Përdoruesi nuk u gjet' });
+    }
+
+    const education = user.profile?.jobSeekerProfile?.education;
+    if (!education || education.length === 0) {
+      return res.status(404).json({ success: false, message: 'Arsimimi nuk u gjet' });
+    }
+
+    const index = education.findIndex(e => e._id?.toString() === req.params.educationId);
+    if (index === -1) {
+      return res.status(404).json({ success: false, message: 'Arsimimi nuk u gjet' });
+    }
+
+    education.splice(index, 1);
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Arsimimi u fshi me sukses',
+      data: { user }
+    });
+  } catch (error) {
+    console.error('Delete education error:', error);
+    res.status(500).json({ success: false, message: 'Gabim në fshirjen e arsimimit' });
+  }
+});
+
 // @route   POST /api/users/saved-jobs/check-bulk
 // @desc    Check saved status for multiple jobs at once (avoids N+1 API calls)
 // @access  Private (Job Seeker only)

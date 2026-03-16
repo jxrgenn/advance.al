@@ -41,11 +41,13 @@ export interface User {
       experience?: string;
       skills?: string[];
       education?: Array<{
+        _id?: string;
         degree: string;
         school: string;
         year: number;
       }>;
       workHistory?: Array<{
+        _id?: string;
         company: string;
         position: string;
         startDate: string;
