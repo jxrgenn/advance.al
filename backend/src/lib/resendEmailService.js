@@ -587,7 +587,7 @@ advance.al - Platforma e Punës në Shqipëri
         <!-- Footer -->
         <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-                © 2025 advance.al - Platforma e Punës në Shqipëri
+                © 2026 advance.al - Platforma e Punës në Shqipëri
             </p>
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
                 Ky email u dërgua në ${safeToEmail}
@@ -610,7 +610,7 @@ Ky njoftim u dërgua nga ekipi i advance.al për të mbajtur përdoruesit e info
 
 Shko te advance.al: https://advance.al
 
-© 2025 advance.al - Platforma e Punës në Shqipëri
+© 2026 advance.al - Platforma e Punës në Shqipëri
 Ky email u dërgua në ${toEmail}
 `;
 
@@ -754,7 +754,7 @@ Ky email u dërgua në ${toEmail}
         <!-- Footer -->
         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-                © 2025 advance.al - Platforma e Punës në Shqipëri
+                © 2026 advance.al - Platforma e Punës në Shqipëri
             </p>
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
                 Ky email u dërgua sepse keni një mesazh të ri për aplikimin tuaj.

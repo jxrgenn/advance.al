@@ -37,7 +37,14 @@ const EditJob = () => {
     salaryCurrency: 'EUR',
     showSalary: false,
     applicationMethod: 'one_click',
-    expiresAt: ''
+    expiresAt: '',
+    platformCategories: {
+      diaspora: false,
+      ngaShtepia: false,
+      partTime: false,
+      administrata: false,
+      sezonale: false
+    }
   });
 
   useEffect(() => {
@@ -122,7 +129,14 @@ const EditJob = () => {
           salaryCurrency: job.salary?.currency || 'EUR',
           showSalary: job.salary?.showPublic || false,
           applicationMethod: mapApplicationMethodFromBackend(job.applicationMethod),
-          expiresAt: job.expiresAt ? new Date(job.expiresAt).toISOString().split('T')[0] : ''
+          expiresAt: job.expiresAt ? new Date(job.expiresAt).toISOString().split('T')[0] : '',
+          platformCategories: {
+            diaspora: job.platformCategories?.diaspora || false,
+            ngaShtepia: job.platformCategories?.ngaShtepia || false,
+            partTime: job.platformCategories?.partTime || false,
+            administrata: job.platformCategories?.administrata || false,
+            sezonale: job.platformCategories?.sezonale || false
+          }
         });
 
         setRequirements(job.requirements?.length ? job.requirements : ['']);
@@ -231,7 +245,8 @@ const EditJob = () => {
           showPublic: formData.showSalary,
           negotiable: false
         } : undefined,
-        expiresAt: formData.expiresAt
+        expiresAt: formData.expiresAt,
+        platformCategories: formData.platformCategories
       };
 
       const response = await jobsApi.updateJob(id!, jobData);
@@ -598,6 +613,38 @@ const EditJob = () => {
                       )}
                     </div>
                   ))}
+                </div>
+
+                {/* Platform Categories */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Kategoritë e Platformës</h3>
+                  <p className="text-sm text-muted-foreground">Zgjidhni kategoritë speciale që përputhen me këtë pozicion</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {[
+                      { key: 'diaspora', label: 'Diaspora - Punë për shqiptarët jashtë vendit' },
+                      { key: 'ngaShtepia', label: 'Nga shtëpia - Punë në distancë' },
+                      { key: 'partTime', label: 'Part Time - Orar i reduktuar' },
+                      { key: 'administrata', label: 'Administrata - Pozicione administrative' },
+                      { key: 'sezonale', label: 'Sezonale - Punë të përkohshme' }
+                    ].map(({ key, label }) => (
+                      <div key={key} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`platform-${key}`}
+                          checked={(formData.platformCategories as Record<string, boolean>)[key] || false}
+                          onCheckedChange={(checked) => {
+                            setFormData(prev => ({
+                              ...prev,
+                              platformCategories: {
+                                ...prev.platformCategories,
+                                [key]: checked === true
+                              }
+                            }));
+                          }}
+                        />
+                        <Label htmlFor={`platform-${key}`} className="text-sm">{label}</Label>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Application Method */}

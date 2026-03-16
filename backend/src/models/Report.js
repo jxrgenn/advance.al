@@ -407,8 +407,8 @@ reportSchema.post('save', async function(doc) {
   if (doc.isNew || doc.wasNew) {
     try {
       // Import notification service (avoid circular dependency)
-      const { notifyAdmins } = await import('../lib/notificationService.js');
-      await notifyAdmins('new_report', doc);
+      const notificationService = await import('../lib/notificationService.js');
+      await notificationService.default.notifyAdmins('new_report', doc);
     } catch (error) {
       console.error('Failed to send admin notification for new report:', error);
     }

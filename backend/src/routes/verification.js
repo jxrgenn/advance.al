@@ -11,22 +11,24 @@ const router = express.Router();
 const verificationCodes = new Map();
 
 // Rate limiting for verification requests
-// const verificationLimiter = rateLimit({
-//   windowMs: 15 * 60 * 1000, // 15 minutes
-//   max: 5, // limit each IP to 5 verification requests per window
-//   message: {
-//     error: 'Shumë kërkesa për verifikim, ju lutemi provoni përsëri pas 15 minutash.',
-//   }
-// });
+const verificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit each IP to 5 verification requests per window
+  message: {
+    success: false,
+    error: 'Shumë kërkesa për verifikim, ju lutemi provoni përsëri pas 15 minutash.',
+  }
+});
 
 // Rate limiting for code verification
-// const codeVerificationLimiter = rateLimit({
-//   windowMs: 15 * 60 * 1000, // 15 minutes
-//   max: 10, // limit each IP to 10 code verification attempts per window
-//   message: {
-//     error: 'Shumë tentativa verifikimi, ju lutemi provoni përsëri pas 15 minutash.',
-//   }
-// });
+const codeVerificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // limit each IP to 10 code verification attempts per window
+  message: {
+    success: false,
+    error: 'Shumë tentativa verifikimi, ju lutemi provoni përsëri pas 15 minutash.',
+  }
+});
 
 // Generate a 6-digit verification code
 const generateVerificationCode = () => {
@@ -60,18 +62,18 @@ setInterval(cleanExpiredCodes, 5 * 60 * 1000);
 // Email sending function
 const sendEmail = async (email, code) => {
   try {
-    const subject = 'Kodi i Verifikimit - PunaShqip.al';
+    const subject = 'Kodi i Verifikimit - advance.al';
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #2563eb; margin: 0;">PunaShqip.al</h1>
+          <h1 style="color: #2563eb; margin: 0;">advance.al</h1>
           <p style="color: #6b7280; margin: 5px 0;">Platforma e Punës në Shqipëri</p>
         </div>
 
         <div style="background: #f9fafb; border-radius: 8px; padding: 30px; margin: 20px 0;">
           <h2 style="color: #1f2937; margin-top: 0;">Verifikoni Email-in Tuaj</h2>
           <p style="color: #4b5563; line-height: 1.6;">
-            Faleminderit për regjistrimin në PunaShqip.al! Ju lutemi përdorni kodin e mëposhtëm për të verifikuar adresën tuaj të email-it:
+            Faleminderit për regjistrimin në advance.al! Ju lutemi përdorni kodin e mëposhtëm për të verifikuar adresën tuaj të email-it:
           </p>
 
           <div style="text-align: center; margin: 30px 0;">
@@ -87,16 +89,16 @@ const sendEmail = async (email, code) => {
 
         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
           <p style="color: #9ca3af; font-size: 12px; margin: 0;">
-            © 2024 PunaShqip.al - Platforma e Punës në Shqipëri
+            © 2026 advance.al - Platforma e Punës në Shqipëri
           </p>
         </div>
       </div>
     `;
 
     const textContent = `
-Verifikoni Email-in Tuaj - PunaShqip.al
+Verifikoni Email-in Tuaj - advance.al
 
-Faleminderit për regjistrimin në PunaShqip.al!
+Faleminderit për regjistrimin në advance.al!
 
 Kodi juaj i verifikimit është: ${code}
 
@@ -104,7 +106,7 @@ Ky kod është i vlefshëm për 10 minuta.
 
 Nëse nuk keni kërkuar këtë verifikim, ju lutemi injoroni këtë email.
 
-© 2024 PunaShqip.al
+© 2026 advance.al
     `;
 
     const result = await emailService.sendEmail(email, subject, htmlContent, textContent);
@@ -168,7 +170,7 @@ const handleValidationErrors = (req, res, next) => {
 // @route   POST /api/verification/request
 // @desc    Request verification code (email or SMS)
 // @access  Public
-router.post('/request', verificationRequestValidation, handleValidationErrors, async (req, res) => {
+router.post('/request', verificationLimiter, verificationRequestValidation, handleValidationErrors, async (req, res) => {
   try {
     const { identifier, method, userType } = req.body;
 
@@ -256,7 +258,7 @@ router.post('/request', verificationRequestValidation, handleValidationErrors, a
 // @route   POST /api/verification/verify
 // @desc    Verify the provided code
 // @access  Public
-router.post('/verify', codeVerificationValidation, handleValidationErrors, async (req, res) => {
+router.post('/verify', codeVerificationLimiter, codeVerificationValidation, handleValidationErrors, async (req, res) => {
   try {
     const { identifier, code, method } = req.body;
 
@@ -400,7 +402,7 @@ router.post('/validate-token', async (req, res) => {
 // @route   POST /api/verification/resend
 // @desc    Resend verification code
 // @access  Public
-router.post('/resend', async (req, res) => {
+router.post('/resend', verificationLimiter, async (req, res) => {
   try {
     const { identifier, method } = req.body;
 

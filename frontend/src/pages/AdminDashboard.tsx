@@ -886,31 +886,28 @@ const AdminDashboard = () => {
     }
   };
 
-  // Load actions history from real API
+  // Load actions history from recent resolved reports
   const loadActionsHistory = async () => {
     try {
-      const actionsResponse = await adminApi.getReportActions({ limit: 10 });
-      if (actionsResponse.success && actionsResponse.data.actions) {
-        const realActions = actionsResponse.data.actions.map((action: any) => ({
-          id: action._id,
-          action: action.actionDetails.actionType === 'suspend' ? 'Pezullim' :
-                  action.actionDetails.actionType === 'activate' ? 'Aktivizim' :
-                  action.actionDetails.actionType === 'reject_report' ? 'Refuzim raporti' : 'Veprim',
-          user: action.targetUser ?
-                `${action.targetUser.firstName} ${action.targetUser.lastName}` :
+      const reportsResponse = await reportsApi.getAdminReports({ status: 'resolved', limit: 10, sortBy: 'updatedAt', sortOrder: 'desc' });
+      if (reportsResponse.success && reportsResponse.data.reports) {
+        const realActions = reportsResponse.data.reports.map((report: any) => ({
+          id: report._id,
+          action: report.status === 'resolved' ? 'Zgjidhur' : 'Veprim',
+          user: report.reportedUser ?
+                `${report.reportedUser.firstName} ${report.reportedUser.lastName}` :
                 'Përdorues i fshirë',
-          reason: action.actionDetails.actionData.reason || 'Nuk ka arsye të specifikuar',
-          date: action.createdAt,
-          status: action.actionDetails.actionType === 'suspend' ? 'destructive' :
-                  action.actionDetails.actionType === 'activate' ? 'default' : 'secondary'
+          reason: report.adminNotes || report.reason || 'Nuk ka arsye të specifikuar',
+          date: report.updatedAt || report.createdAt,
+          status: 'default'
         }));
         setActionsHistory(realActions);
       } else {
-        setActionsHistory([]); // No actions found - show empty state
+        setActionsHistory([]);
       }
     } catch (error) {
       console.error('Error loading actions history:', error);
-      setActionsHistory([]); // Fallback to empty array on error
+      setActionsHistory([]);
     }
   };
 
@@ -2556,7 +2553,7 @@ const AdminDashboard = () => {
                 </TabsContent>
 
                 {/* System Settings Tab */}
-                <TabsContent value="business" className="space-y-6">
+                <TabsContent value="system" className="space-y-6">
                   <Card>
                     <CardHeader>
                       <CardTitle>Parametrat e sistemit</CardTitle>

@@ -6,6 +6,7 @@ import Footer from "@/components/Footer";
 import RotatingContact from "@/components/RotatingContact";
 import AdvanceLanding from "@/components/about_us_actual_landing";
 import ScrollToTopButton from "@/components/ScrollToTopButton";
+import { statsApi } from "@/lib/api";
 import { useEffect, useState, useRef } from "react";
 import {
   Users,
@@ -31,6 +32,7 @@ const AboutUs = () => {
   const [scrollProgress, setScrollProgress] = useState(0);
   const [positionMode, setPositionMode] = useState<'absolute-top' | 'fixed' | 'absolute-bottom'>('absolute-top');
   const containerRef = useRef<HTMLDivElement>(null);
+  const [stats, setStats] = useState({ totalJobs: 0, totalApplications: 0, totalCompanies: 0 });
 
   useEffect(() => {
     const handleScroll = () => {
@@ -71,6 +73,19 @@ const AboutUs = () => {
     };
   }, []);
 
+  // Fetch real platform stats
+  useEffect(() => {
+    statsApi.getPublicStats().then(res => {
+      if (res.success && res.data) {
+        setStats({
+          totalJobs: res.data.totalJobs || 0,
+          totalApplications: res.data.totalApplications || 0,
+          totalCompanies: res.data.totalCompanies || 0
+        });
+      }
+    }).catch(() => {});
+  }, []);
+
   // Helper to get styles based on current mode
   const getPositionStyles = (): React.CSSProperties => {
     switch (positionMode) {
@@ -102,19 +117,19 @@ const AboutUs = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
             <Card className="text-center p-6 bg-background border-2 hover:border-primary/50 transition-colors">
               <CardContent className="space-y-3 p-0">
-                <div className="text-3xl md:text-4xl font-bold text-primary">500+</div>
+                <div className="text-3xl md:text-4xl font-bold text-primary">{stats.totalJobs || '...'}</div>
                 <div className="text-sm md:text-base text-muted-foreground">Punë të Publikuara</div>
               </CardContent>
             </Card>
             <Card className="text-center p-6 bg-background border-2 hover:border-primary/50 transition-colors">
               <CardContent className="space-y-3 p-0">
-                <div className="text-3xl md:text-4xl font-bold text-primary">1200+</div>
+                <div className="text-3xl md:text-4xl font-bold text-primary">{stats.totalApplications || '...'}</div>
                 <div className="text-sm md:text-base text-muted-foreground">Aplikime të Suksesshme</div>
               </CardContent>
             </Card>
             <Card className="text-center p-6 bg-background border-2 hover:border-primary/50 transition-colors">
               <CardContent className="space-y-3 p-0">
-                <div className="text-3xl md:text-4xl font-bold text-primary">150+</div>
+                <div className="text-3xl md:text-4xl font-bold text-primary">{stats.totalCompanies || '...'}</div>
                 <div className="text-sm md:text-base text-muted-foreground">Kompani Partnere</div>
               </CardContent>
             </Card>

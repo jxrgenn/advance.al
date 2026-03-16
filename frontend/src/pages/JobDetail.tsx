@@ -143,6 +143,25 @@ const JobDetail = () => {
   const handleSimpleApply = async () => {
     if (!job) return;
 
+    // Auth guard — same as handleQuickApply
+    if (!isAuthenticated) {
+      toast({
+        title: "Duhet të kyçeni",
+        description: "Ju duhet të kyçeni për të aplikuar për punë.",
+        variant: "destructive"
+      });
+      navigate("/login");
+      return;
+    }
+    if (user?.userType !== 'jobseeker') {
+      toast({
+        title: "Vetëm punëkërkuesit",
+        description: "Vetëm punëkërkuesit mund të aplikojnë për punë.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
       setApplying(true);
       await applicationsApi.apply({

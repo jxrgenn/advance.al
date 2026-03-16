@@ -130,7 +130,7 @@ const jobSchema = new Schema({
   // Posting Details
   status: {
     type: String,
-    enum: ['active', 'paused', 'closed', 'draft', 'expired', 'pending_payment'],
+    enum: ['active', 'paused', 'closed', 'draft', 'expired', 'pending_payment', 'rejected'],
     default: 'active'
   },
   tier: {

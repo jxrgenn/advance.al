@@ -660,6 +660,27 @@ router.post('/platform/emergency', authenticate, requireAdmin, async (req, res) 
         );
         break;
 
+      case 'pause_platform':
+        // Freeze job posting and pause all active campaigns
+        await SystemConfiguration.findOneAndUpdate(
+          { key: 'job_posting_frozen' },
+          {
+            category: 'platform',
+            key: 'job_posting_frozen',
+            value: true,
+            dataType: 'boolean',
+            description: 'Ndalon postimin e punëve të reja (emergjencë)',
+            lastModifiedBy: req.user._id,
+            lastModifiedAt: new Date()
+          },
+          { upsert: true, new: true }
+        );
+        await BusinessCampaign.updateMany(
+          { isActive: true },
+          { isActive: false, status: 'paused', lastModifiedBy: req.user._id }
+        );
+        break;
+
       default:
         return res.status(400).json({
           success: false,

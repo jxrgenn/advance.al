@@ -372,10 +372,6 @@ const CompanyProfile = () => {
               <CardContent className="p-6">
                 <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
                   <p>
-                    Kontakt sh.p.k u themelua ne vitin 1999 dhe prej me shume se dy dekada ka qene nje nga 
-                    kompanite me te rendesishme ne zhvillimin e pasurive te paluajtshme ne shqiperi
-                  </p>
-                  <p>
                     {company.description || "Nuk ka përshkrim të disponueshëm për këtë kompani."}
                   </p>
                   
@@ -427,34 +423,11 @@ const CompanyProfile = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
-                  <p>
-                    Me një fokus të veçantë tek cilësia, inovacioni dhe krijimi i komuniteteve të
-                    mirëorganizuara, Kontakt ka realizuar projekte që kanë lënë gjurmë në
-                    peizazhin e Tiranës.
-                  </p>
-                  <p>
-                    Kontakt sh.p.k është një kompani e cila nviti zhvillimin e liderave nga brenda
-                    grupit. 56% e bordit drejtues ka arritur në këtë status duke nisur si punëtorë
-                    të thjeshtë ose si praktikant në kompani. Sot ata janë në postet më të
-                    rëndësishme të kompanisë fal anyrtyeve të tyre dhe dëshires.
-                  </p>
-                  <p>
-                    Kontakt sot numëron 325 të punësuar ndër të cilët 45 janë bordi drejtues. Të
-                    gjithë punëtorët tanë të zyrave dhe të terrenit punojnë në siguri maksimale
-                    nën bashkëveprim e fjalës së fundit të teknologjisë
-                  </p>
-                  <p>
-                    Kontakt është një kompani e cila nvit zhvillimin e liderëve nga brenda
-                    grupit. 56% e bordit drejtues ka arritur në këtë status duke nisur si punëtorë
-                    të thjeshtë ose si praktikant në kompani. Sot ata janë në postet më të
-                    rëndësishme të kompanisë fal anrityeve të tyre dhe dëshires
-                  </p>
-                  <p>
-                    Kontakt realizon podhivoja cdo muaj trajnime jashte vendit me kompani të
-                    njashishme nder më të mirat në botë për punëtorët e saj. Të gjitha trajnimet
-                    jan të paguara nga kompania dhe pjesmarresit pajisen me certifikata
-                    nderkombetare
-                  </p>
+                  {company.description ? (
+                    <p>{company.description}</p>
+                  ) : (
+                    <p className="text-muted-foreground italic">Kjo kompani nuk ka shtuar informacione për politikat e saj.</p>
+                  )}
                 </div>
 
                 {/* Available Jobs Section */}

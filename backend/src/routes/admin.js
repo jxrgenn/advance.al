@@ -678,7 +678,7 @@ router.patch('/jobs/:jobId/manage', async (req, res) => {
         job.adminApproved = true;
         break;
       case 'reject':
-        job.status = 'closed';
+        job.status = 'rejected';
         job.rejectionReason = reason;
         break;
       case 'feature':

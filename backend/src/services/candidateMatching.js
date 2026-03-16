@@ -66,7 +66,8 @@ class CandidateMatchingService {
     const candidateSkills = (candidate.profile?.jobSeekerProfile?.skills || [])
       .map(skill => skill.toLowerCase());
 
-    const jobRequirements = (job.requirements || []).join(' ').toLowerCase();
+    const jobRequirementsArr = job.requirements || [];
+    const jobRequirements = jobRequirementsArr.join(' ').toLowerCase();
 
     if (candidateSkills.length === 0 || !jobRequirements) return 0;
 
@@ -78,7 +79,9 @@ class CandidateMatchingService {
       }
     });
 
-    const matchRatio = matchedSkills / candidateSkills.length;
+    // Use the max of candidate skills and job requirements count as denominator
+    // so candidates aren't rewarded for having fewer skills than the job requires
+    const matchRatio = matchedSkills / Math.max(candidateSkills.length, jobRequirementsArr.length);
     return Math.round(matchRatio * 25);
   }
 

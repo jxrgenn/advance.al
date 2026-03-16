@@ -526,6 +526,33 @@ Ekipi i advance.al
     }
   }
 
+  // Notify admin users about a new report
+  async notifyAdmins(type, report) {
+    try {
+      const admins = await User.find({ role: 'admin', isDeleted: false }).select('email profile.firstName').lean();
+      if (admins.length === 0) return { success: true, message: 'No admins to notify' };
+
+      const subject = type === 'new_report'
+        ? `Raportim i ri në advance.al — ${report.reason || 'Pa arsye'}`
+        : `Njoftim admin: ${type}`;
+
+      for (const admin of admins) {
+        const name = admin.profile?.firstName || 'Admin';
+        const html = `<p>Përshëndetje ${escapeHtml(name)},</p>
+          <p>Një raportim i ri është bërë në platformë.</p>
+          <p><strong>Arsyeja:</strong> ${escapeHtml(report.reason || 'Nuk është specifikuar')}</p>
+          <p><a href="https://advance.al/admin">Shiko në panel</a></p>`;
+        await this.sendEmail(admin.email, subject, html, `Raportim i ri: ${report.reason || 'Pa arsye'}`).catch(err =>
+          console.error(`Failed to notify admin ${admin.email}:`, err)
+        );
+      }
+      return { success: true, message: `Notified ${admins.length} admins` };
+    } catch (error) {
+      console.error('Error notifying admins:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
   // Daily/weekly digests are not yet implemented.
   // Real-time per-job notifications via notifyMatchingUsers() are the active path.
   async sendDailyDigest() {

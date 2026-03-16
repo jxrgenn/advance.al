@@ -911,74 +911,78 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
 
     await job.save();
 
-    // 3. Track revenue analytics (async)
-    setImmediate(async () => {
-      try {
-        const today = await RevenueAnalytics.getOrCreateDaily();
+    // 3. Track revenue analytics only for active jobs (not pending_payment)
+    if (job.status === 'active') {
+      setImmediate(async () => {
+        try {
+          const today = await RevenueAnalytics.getOrCreateDaily();
 
-        // Update daily metrics
-        await today.updateMetrics({
-          totalRevenue: today.metrics.totalRevenue + job.pricing.finalPrice,
-          jobsPosted: today.metrics.jobsPosted + 1,
-          averageJobPrice: (today.metrics.totalRevenue + job.pricing.finalPrice) / (today.metrics.jobsPosted + 1)
-        });
+          // Update daily metrics
+          await today.updateMetrics({
+            totalRevenue: today.metrics.totalRevenue + job.pricing.finalPrice,
+            jobsPosted: today.metrics.jobsPosted + 1,
+            averageJobPrice: (today.metrics.totalRevenue + job.pricing.finalPrice) / (today.metrics.jobsPosted + 1)
+          });
 
-        // Track campaign revenue if applicable
-        if (appliedCampaign) {
-          const campaign = await BusinessCampaign.findById(appliedCampaign);
-          if (campaign) {
-            await today.addCampaignData({
-              campaignId: appliedCampaign,
-              name: campaign.name,
-              revenue: job.pricing.finalPrice,
-              conversions: 1,
-              cost: job.pricing.discount, // Discount given is the cost
-              roi: ((job.pricing.finalPrice - job.pricing.discount) / job.pricing.discount) * 100
-            });
-          }
-        }
-
-        // Track pricing rule revenue
-        if (pricingResult.appliedRules?.length > 0) {
-          for (const ruleId of pricingResult.appliedRules) {
-            const rule = await PricingRule.findById(ruleId);
-            if (rule) {
-              await today.addPricingRuleData({
-                ruleId: ruleId,
-                name: rule.name,
+          // Track campaign revenue if applicable
+          if (appliedCampaign) {
+            const campaign = await BusinessCampaign.findById(appliedCampaign);
+            if (campaign) {
+              await today.addCampaignData({
+                campaignId: appliedCampaign,
+                name: campaign.name,
                 revenue: job.pricing.finalPrice,
-                jobsAffected: 1,
-                averageImpact: ((job.pricing.finalPrice - job.pricing.basePrice) / job.pricing.basePrice) * 100
+                conversions: 1,
+                cost: job.pricing.discount, // Discount given is the cost
+                roi: ((job.pricing.finalPrice - job.pricing.discount) / job.pricing.discount) * 100
               });
             }
           }
-        }
 
-      } catch (analyticsError) {
-        console.error('❌ Error updating revenue analytics:', analyticsError);
-      }
-    });
+          // Track pricing rule revenue
+          if (pricingResult.appliedRules?.length > 0) {
+            for (const ruleId of pricingResult.appliedRules) {
+              const rule = await PricingRule.findById(ruleId);
+              if (rule) {
+                await today.addPricingRuleData({
+                  ruleId: ruleId,
+                  name: rule.name,
+                  revenue: job.pricing.finalPrice,
+                  jobsAffected: 1,
+                  averageImpact: ((job.pricing.finalPrice - job.pricing.basePrice) / job.pricing.basePrice) * 100
+                });
+              }
+            }
+          }
+
+        } catch (analyticsError) {
+          console.error('❌ Error updating revenue analytics:', analyticsError);
+        }
+      });
+    }
 
     // Populate employer info for response
     await job.populate('employerId', 'profile.employerProfile.companyName');
 
-    // Send notifications to matching quick users (async, don't wait for completion)
-    setImmediate(async () => {
-      try {
-        // Fetch and populate job with employer data for email templates
-        const populatedJob = await Job.findById(job._id).populate('employerId', 'profile.employerProfile.companyName');
-        await notificationService.notifyMatchingUsers(populatedJob);
-      } catch (error) {
-        console.error('Error in job notification process:', error);
-      }
-    });
-
-    // Queue embedding generation (async, non-blocking)
+    // Queue embedding generation first, then notify matching users (async, non-blocking)
+    // Embedding must be generated before notifications so semantic matching works
     setImmediate(async () => {
       try {
         await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10); // Priority 10 (normal)
       } catch (error) {
         console.error('❌ Error queueing embedding for job:', error);
+      }
+
+      // Only notify users for active jobs (not pending_payment), and after embedding is queued
+      if (job.status === 'active') {
+        try {
+          // Short delay to allow embedding generation to complete
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          const populatedJob = await Job.findById(job._id).populate('employerId', 'profile.employerProfile.companyName');
+          await notificationService.notifyMatchingUsers(populatedJob);
+        } catch (error) {
+          console.error('Error in job notification process:', error);
+        }
       }
     });
 
@@ -1038,7 +1042,8 @@ router.put('/:id', authenticate, requireEmployer, requireVerifiedEmployer, updat
       expiresAt,
       applicationMethod,
       externalApplicationUrl,
-      applicationEmail
+      applicationEmail,
+      platformCategories
     } = req.body;
     // Note: `status` intentionally NOT destructured — status changes only via PATCH /api/jobs/:id/status
 
@@ -1067,6 +1072,7 @@ router.put('/:id', authenticate, requireEmployer, requireVerifiedEmployer, updat
       ...(applicationMethod !== undefined && { applicationMethod }),
       ...(externalApplicationUrl !== undefined && { externalApplicationUrl }),
       ...(applicationEmail !== undefined && { applicationEmail }),
+      ...(platformCategories !== undefined && { platformCategories }),
       updatedAt: new Date()
     };
     Object.assign(job, updates);

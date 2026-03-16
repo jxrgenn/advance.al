@@ -217,7 +217,7 @@ pricingRuleSchema.methods.evaluateCondition = function(condition, fieldValue) {
 };
 
 // Method to calculate price based on rule
-pricingRuleSchema.methods.calculatePrice = function(basePrice, jobData = {}, employerData = {}) {
+pricingRuleSchema.methods.calculatePrice = async function(basePrice, jobData = {}, employerData = {}) {
   if (!this.evaluateConditions(jobData, employerData)) {
     return basePrice;
   }
@@ -232,8 +232,7 @@ pricingRuleSchema.methods.calculatePrice = function(basePrice, jobData = {}, emp
 
   // Apply demand multiplier if enabled
   if (this.rules.demandMultiplier.enabled) {
-    // This would check actual demand - simplified for now
-    const isDemandHigh = this.checkDemand(jobData);
+    const isDemandHigh = await this.checkDemand(jobData);
     if (isDemandHigh) {
       finalPrice *= this.rules.demandMultiplier.multiplier;
     }
@@ -243,11 +242,26 @@ pricingRuleSchema.methods.calculatePrice = function(basePrice, jobData = {}, emp
   return Math.max(0, Math.round(finalPrice * 100) / 100);
 };
 
-// Method to check demand (simplified)
-pricingRuleSchema.methods.checkDemand = function(jobData) {
-  // This would integrate with actual job posting analytics
-  // For now, return random for demonstration
-  return Math.random() > 0.7;
+// Method to check demand based on actual job posting volume
+pricingRuleSchema.methods.checkDemand = async function(jobData) {
+  try {
+    const Job = mongoose.model('Job');
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // Build query to count recent jobs in the same category/location
+    const query = {
+      postedAt: { $gte: twentyFourHoursAgo },
+      isDeleted: false
+    };
+    if (jobData.category) query.category = jobData.category;
+    if (jobData.location?.city) query['location.city'] = jobData.location.city;
+
+    const recentJobCount = await Job.countDocuments(query);
+    return recentJobCount >= this.rules.demandMultiplier.threshold;
+  } catch (error) {
+    console.error('Error checking demand:', error);
+    return false; // Safe default: no surcharge on error
+  }
 };
 
 // Method to track usage
@@ -295,7 +309,7 @@ pricingRuleSchema.statics.calculateOptimalPrice = async function(basePrice, jobD
 
   // Apply highest priority rule
   const topRule = applicableRules[0];
-  const finalPrice = topRule.calculatePrice(basePrice, jobData, employerData);
+  const finalPrice = await topRule.calculatePrice(basePrice, jobData, employerData);
 
   const priceChange = finalPrice - basePrice;
 

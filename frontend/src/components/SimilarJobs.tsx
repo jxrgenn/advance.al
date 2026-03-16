@@ -74,7 +74,7 @@ const SimilarJobs = ({ currentJob, limit = 4 }: SimilarJobsProps) => {
       const filters = {
         limit: 20, // Get more to filter and score
         category: currentJob.category,
-        location: currentJob.location?.city,
+        city: currentJob.location?.city,
         excludeJobId: currentJob._id // Don't include current job
       };
 

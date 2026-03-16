@@ -43,7 +43,7 @@ import { InputWithCounter } from "@/components/CharacterCounter";
 const JobSeekersPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, register } = useAuth();
   const [showQuickForm, setShowQuickForm] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -291,7 +291,7 @@ Telefoni: _______________`;
         education: '' // Not collected in this form
       };
 
-      const validationResult = validateForm(validationData, jobSeekerSignupRules.quickForm);
+      const validationResult = validateForm(validationData, jobSeekerSignupRules.fullForm);
 
       if (!validationResult.isValid) {
         notifications.show({
@@ -310,7 +310,8 @@ Telefoni: _______________`;
         : cleanPhone.startsWith('00') ? '+' + cleanPhone.slice(2)
         : '+355' + cleanPhone.replace(/^0/, '');
 
-      const response = await authApi.register({
+      // Use register from useAuth to update auth state (not authApi.register directly)
+      const success = await register({
         email: values.email,
         password: values.password,
         userType: 'jobseeker',
@@ -320,7 +321,7 @@ Telefoni: _______________`;
         city: values.city
       });
 
-      if (response.success) {
+      if (success) {
         notifications.show({
           title: "Mirë se vini!",
           message: "Llogaria u krijua me sukses!",
@@ -331,7 +332,7 @@ Telefoni: _______________`;
     } catch (error: any) {
       notifications.show({
         title: "Gabim",
-        message: "Nuk mund të krijohet llogaria. Provoni përsëri.",
+        message: error.message || "Nuk mund të krijohet llogaria. Provoni përsëri.",
         color: "red"
       });
     } finally {
@@ -404,7 +405,7 @@ Telefoni: _______________`;
     } catch (error: any) {
       notifications.show({
         title: "Gabim",
-        message: "Nuk mund të bëhet regjistrimi. Provoni përsëri.",
+        message: error.message || "Nuk mund të bëhet regjistrimi. Provoni përsëri.",
         color: "red"
       });
     } finally {
