@@ -88,6 +88,7 @@ const Profile = () => {
   const [savingJobAlerts, setSavingJobAlerts] = useState(false);
 
   // Settings tab state
+  const [showSalaryPreference, setShowSalaryPreference] = useState(false);
   const [desiredSalaryMin, setDesiredSalaryMin] = useState('');
   const [desiredSalaryMax, setDesiredSalaryMax] = useState('');
   const [desiredSalaryCurrency, setDesiredSalaryCurrency] = useState('ALL');
@@ -266,10 +267,13 @@ const Profile = () => {
 
       // Initialize settings tab state
       const salary = user.profile?.jobSeekerProfile?.desiredSalary;
-      if (salary) {
+      if (salary && (salary.min > 0 || salary.max > 0)) {
+        setShowSalaryPreference(true);
         setDesiredSalaryMin(salary.min?.toString() || '');
         setDesiredSalaryMax(salary.max?.toString() || '');
         setDesiredSalaryCurrency(salary.currency || 'ALL');
+      } else {
+        setShowSalaryPreference(false);
       }
       setOpenToRemote(user.profile?.jobSeekerProfile?.openToRemote ?? false);
       setProfileVisible(user.privacySettings?.profileVisible ?? true);
@@ -315,10 +319,14 @@ const Profile = () => {
 
   // Save settings (salary, remote, privacy)
   const handleSaveSettings = async () => {
-    const salaryMin = parseInt(desiredSalaryMin) || 0;
-    const salaryMax = parseInt(desiredSalaryMax) || 0;
-    if (user?.userType === 'jobseeker' && salaryMin > 0 && salaryMax > 0 && salaryMin > salaryMax) {
+    const salaryMin = showSalaryPreference ? (parseInt(desiredSalaryMin) || 0) : 0;
+    const salaryMax = showSalaryPreference ? (parseInt(desiredSalaryMax) || 0) : 0;
+    if (showSalaryPreference && user?.userType === 'jobseeker' && salaryMin > 0 && salaryMax > 0 && salaryMin > salaryMax) {
       toast({ title: 'Paga minimale nuk mund të jetë më e madhe se paga maksimale', variant: 'destructive' });
+      return;
+    }
+    if (showSalaryPreference && user?.userType === 'jobseeker' && (salaryMin <= 0 || salaryMax <= 0)) {
+      toast({ title: 'Plotësoni pagën minimale dhe maksimale', variant: 'destructive' });
       return;
     }
     setSavingSettings(true);
@@ -335,7 +343,7 @@ const Profile = () => {
           desiredSalary: {
             min: salaryMin,
             max: salaryMax,
-            currency: desiredSalaryCurrency
+            currency: showSalaryPreference ? desiredSalaryCurrency : 'ALL'
           }
         };
       }
@@ -1431,8 +1439,12 @@ const Profile = () => {
           <div className="lg:col-span-1">
             <Card>
               <CardContent className="p-6 text-center">
-                <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <User className="h-12 w-12 text-primary" />
+                <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 overflow-hidden">
+                  {user?.profile?.jobSeekerProfile?.profilePhoto ? (
+                    <img src={user.profile.jobSeekerProfile.profilePhoto} alt="Profile" className="h-full w-full object-cover" />
+                  ) : (
+                    <User className="h-12 w-12 text-primary" />
+                  )}
                 </div>
                 <h2 className="text-xl font-semibold text-foreground mb-1">{user?.profile?.firstName} {user?.profile?.lastName}</h2>
                 <p className="text-muted-foreground mb-4">{user?.profile?.jobSeekerProfile?.title || 'Job Seeker'}</p>
@@ -2004,37 +2016,45 @@ const Profile = () => {
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div>
-                        <Label className="text-sm font-medium">Paga e Dëshiruar (mujore)</Label>
-                        <div className="grid grid-cols-3 gap-3 mt-2">
+                        <div className="flex items-center justify-between mb-2">
                           <div>
-                            <Label className="text-xs text-muted-foreground">Min</Label>
-                            <Input
-                              type="number"
-                              placeholder="p.sh. 50000"
-                              value={desiredSalaryMin}
-                              onChange={(e) => setDesiredSalaryMin(e.target.value)}
-                            />
+                            <Label className="text-sm font-medium">Paga e Dëshiruar (mujore)</Label>
+                            <p className="text-xs text-muted-foreground">Vendos rangon e pagës që dëshironi</p>
                           </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Max</Label>
-                            <Input
-                              type="number"
-                              placeholder="p.sh. 80000"
-                              value={desiredSalaryMax}
-                              onChange={(e) => setDesiredSalaryMax(e.target.value)}
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Monedha</Label>
-                            <Select value={desiredSalaryCurrency} onValueChange={setDesiredSalaryCurrency}>
-                              <SelectTrigger><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="ALL">ALL (Lekë)</SelectItem>
-                                <SelectItem value="EUR">EUR (Euro)</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
+                          <Switch checked={showSalaryPreference} onCheckedChange={setShowSalaryPreference} />
                         </div>
+                        {showSalaryPreference && (
+                          <div className="grid grid-cols-3 gap-3 mt-2">
+                            <div>
+                              <Label className="text-xs text-muted-foreground">Min</Label>
+                              <Input
+                                type="number"
+                                placeholder="p.sh. 50000"
+                                value={desiredSalaryMin}
+                                onChange={(e) => setDesiredSalaryMin(e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs text-muted-foreground">Max</Label>
+                              <Input
+                                type="number"
+                                placeholder="p.sh. 80000"
+                                value={desiredSalaryMax}
+                                onChange={(e) => setDesiredSalaryMax(e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs text-muted-foreground">Monedha</Label>
+                              <Select value={desiredSalaryCurrency} onValueChange={setDesiredSalaryCurrency}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="ALL">ALL (Lekë)</SelectItem>
+                                  <SelectItem value="EUR">EUR (Euro)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center justify-between">
                         <div>

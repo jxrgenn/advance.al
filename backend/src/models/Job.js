@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { cacheDelete } from '../config/redis.js';
 
 const { Schema } = mongoose;
 
@@ -536,13 +537,15 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
 jobSchema.post('save', async function() {
   try {
     const city = this.location?.city;
-    if (city && this.status === 'active' && !this.isDeleted) {
+    if (city) {
       const Location = mongoose.model('Location');
-      await Location.updateOne(
-        { city },
-        { $inc: { jobCount: 0 } }, // ensure doc exists in aggregation context
-        { upsert: false }
-      );
+      const Job = mongoose.model('Job');
+      const count = await Job.countDocuments({ 'location.city': city, status: 'active', isDeleted: { $ne: true } });
+      await Location.updateOne({ city }, { $set: { jobCount: count } });
+      // Invalidate location cache so API returns fresh data
+      await cacheDelete('locations:all').catch(() => {});
+      await cacheDelete('locations:popular:5').catch(() => {});
+      await cacheDelete('locations:popular:10').catch(() => {});
     }
   } catch (err) {
     console.error('Error in Job post-save Location hook:', err.message);

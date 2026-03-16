@@ -18,7 +18,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { notificationsApi, Notification } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -390,6 +390,11 @@ loadNotifications();
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                     <Avatar className="h-8 w-8">
+                      <AvatarImage src={
+                        user?.userType === 'jobseeker'
+                          ? user?.profile?.jobSeekerProfile?.profilePhoto
+                          : (typeof user?.profile?.employerProfile?.logo === 'string' ? user?.profile?.employerProfile?.logo : undefined)
+                      } alt="Profile" />
                       <AvatarFallback className="text-sm">
                         {getUserInitials(user?.profile?.firstName || '', user?.profile?.lastName || '')}
                       </AvatarFallback>
