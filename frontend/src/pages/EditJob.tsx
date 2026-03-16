@@ -77,28 +77,9 @@ const EditJob = () => {
       if (response.success && response.data) {
         const job = response.data.job;
 
-        const mapJobTypeFromBackend = (type: string) => {
-          const mapping: { [key: string]: string } = {
-            'full-time': 'Full-time',
-            'part-time': 'Part-time',
-            'contract': 'Contract',
-            'internship': 'Internship'
-          };
-          return mapping[type] || 'Full-time';
-        };
-
-        const mapCategoryFromBackend = (category: string) => {
-          const mapping: { [key: string]: string } = {
-            'Teknologji': 'teknologji',
-            'Marketing': 'marketing',
-            'Financë': 'financat',
-            'Shitje': 'shitjet',
-            'Burime Njerëzore': 'hr',
-            'Dizajn': 'dizajni',
-            'Tjetër': 'tjeter'
-          };
-          return mapping[category] || 'tjeter';
-        };
+        // Values now match backend directly — no mapping needed
+        const mapJobTypeFromBackend = (type: string) => type;
+        const mapCategoryFromBackend = (category: string) => category;
 
         const mapSeniorityFromBackend = (seniority: string) => {
           const mapping: { [key: string]: string } = {
@@ -198,29 +179,9 @@ const EditJob = () => {
         return;
       }
 
-      const mapJobType = (type: string) => {
-        const mapping: { [key: string]: string } = {
-          'Full-time': 'full-time',
-          'Part-time': 'part-time',
-          'Contract': 'contract',
-          'Internship': 'internship',
-          'Remote': 'full-time'
-        };
-        return mapping[type] || type.toLowerCase();
-      };
-
-      const mapCategory = (category: string) => {
-        const mapping: { [key: string]: string } = {
-          'teknologji': 'Teknologji',
-          'marketing': 'Marketing',
-          'financat': 'Financë',
-          'shitjet': 'Shitje',
-          'hr': 'Burime Njerëzore',
-          'dizajni': 'Dizajn',
-          'tjeter': 'Tjetër'
-        };
-        return mapping[category] || 'Tjetër';
-      };
+      // Values now match backend directly — no mapping needed
+      const mapJobType = (type: string) => type;
+      const mapCategory = (category: string) => category;
 
       const mapApplicationMethod = (method: string) => {
         const mapping: { [key: string]: string } = {
@@ -416,13 +377,20 @@ const EditJob = () => {
                         <SelectValue placeholder="Zgjidhni kategorinë" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="teknologji">Teknologji</SelectItem>
-                        <SelectItem value="marketing">Marketing</SelectItem>
-                        <SelectItem value="financat">Financë</SelectItem>
-                        <SelectItem value="shitjet">Shitje</SelectItem>
-                        <SelectItem value="hr">Burime Njerëzore</SelectItem>
-                        <SelectItem value="dizajni">Dizajn</SelectItem>
-                        <SelectItem value="tjeter">Tjetër</SelectItem>
+                        <SelectItem value="Teknologji">Teknologji</SelectItem>
+                        <SelectItem value="Marketing">Marketing</SelectItem>
+                        <SelectItem value="Shitje">Shitje</SelectItem>
+                        <SelectItem value="Financë">Financë</SelectItem>
+                        <SelectItem value="Burime Njerëzore">Burime Njerëzore</SelectItem>
+                        <SelectItem value="Inxhinieri">Inxhinieri</SelectItem>
+                        <SelectItem value="Dizajn">Dizajn</SelectItem>
+                        <SelectItem value="Menaxhim">Menaxhim</SelectItem>
+                        <SelectItem value="Shëndetësi">Shëndetësi</SelectItem>
+                        <SelectItem value="Arsim">Arsim</SelectItem>
+                        <SelectItem value="Turizëm">Turizëm</SelectItem>
+                        <SelectItem value="Ndërtim">Ndërtim</SelectItem>
+                        <SelectItem value="Transport">Transport</SelectItem>
+                        <SelectItem value="Tjetër">Tjetër</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -434,11 +402,10 @@ const EditJob = () => {
                         <SelectValue placeholder="Zgjidhni llojin" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Full-time">Full-time</SelectItem>
-                        <SelectItem value="Part-time">Part-time</SelectItem>
-                        <SelectItem value="Contract">Kontratë</SelectItem>
-                        <SelectItem value="Internship">Praktikë</SelectItem>
-                        <SelectItem value="Remote">Remote</SelectItem>
+                        <SelectItem value="full-time">Full-time</SelectItem>
+                        <SelectItem value="part-time">Part-time</SelectItem>
+                        <SelectItem value="contract">Kontratë</SelectItem>
+                        <SelectItem value="internship">Praktikë</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

@@ -297,30 +297,11 @@ const PostJob = () => {
         return;
       }
 
-      // Map form values to backend enum values
-      const mapJobType = (type: string) => {
-        const mapping: { [key: string]: string } = {
-          'Full-time': 'full-time',
-          'Part-time': 'part-time',
-          'Contract': 'contract',
-          'Internship': 'internship',
-          'Remote': 'full-time' // Remote jobs are typically full-time
-        };
-        return mapping[type] || type.toLowerCase();
-      };
+      // JobType values now match backend enum directly — no mapping needed
+      const mapJobType = (type: string) => type;
 
-      const mapCategory = (category: string) => {
-        const mapping: { [key: string]: string } = {
-          'teknologji': 'Teknologji',
-          'marketing': 'Marketing',
-          'financat': 'Financë',
-          'shitjet': 'Shitje',
-          'hr': 'Burime Njerëzore',
-          'dizajni': 'Dizajn',
-          'tjeter': 'Tjetër'
-        };
-        return mapping[category] || 'Tjetër';
-      };
+      // Category values now match backend enum directly — no mapping needed
+      const mapCategory = (category: string) => category;
 
       const mapApplicationMethod = (method: string) => {
         const mapping: { [key: string]: string } = {
@@ -1036,13 +1017,20 @@ const PostJob = () => {
                 placeholder="Zgjidhni kategorinë"
                 {...jobForm.getInputProps('category')}
                 data={[
-                  { value: 'teknologji', label: 'Teknologji' },
-                  { value: 'marketing', label: 'Marketing' },
-                  { value: 'financat', label: 'Financa' },
-                  { value: 'shitjet', label: 'Shitjet' },
-                  { value: 'hr', label: 'Burime Njerëzore' },
-                  { value: 'dizajni', label: 'Dizajn' },
-                  { value: 'tjeter', label: 'Tjetër' }
+                  { value: 'Teknologji', label: 'Teknologji' },
+                  { value: 'Marketing', label: 'Marketing' },
+                  { value: 'Shitje', label: 'Shitje' },
+                  { value: 'Financë', label: 'Financë' },
+                  { value: 'Burime Njerëzore', label: 'Burime Njerëzore' },
+                  { value: 'Inxhinieri', label: 'Inxhinieri' },
+                  { value: 'Dizajn', label: 'Dizajn' },
+                  { value: 'Menaxhim', label: 'Menaxhim' },
+                  { value: 'Shëndetësi', label: 'Shëndetësi' },
+                  { value: 'Arsim', label: 'Arsim' },
+                  { value: 'Turizëm', label: 'Turizëm' },
+                  { value: 'Ndërtim', label: 'Ndërtim' },
+                  { value: 'Transport', label: 'Transport' },
+                  { value: 'Tjetër', label: 'Tjetër' }
                 ]}
                 required
               />
@@ -1051,11 +1039,10 @@ const PostJob = () => {
                 placeholder="Zgjidhni llojin"
                 {...jobForm.getInputProps('jobType')}
                 data={[
-                  { value: 'Full-time', label: 'Full-time' },
-                  { value: 'Part-time', label: 'Part-time' },
-                  { value: 'Contract', label: 'Kontratë' },
-                  { value: 'Internship', label: 'Praktikë' },
-                  { value: 'Remote', label: 'Remote' }
+                  { value: 'full-time', label: 'Full-time' },
+                  { value: 'part-time', label: 'Part-time' },
+                  { value: 'contract', label: 'Kontratë' },
+                  { value: 'internship', label: 'Praktikë' }
                 ]}
                 required
               />

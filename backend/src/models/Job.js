@@ -135,7 +135,7 @@ const jobSchema = new Schema({
   },
   tier: {
     type: String,
-    enum: ['basic', 'premium'],
+    enum: ['basic', 'premium', 'featured'],
     default: 'basic'
   },
   postedAt: {
@@ -511,6 +511,11 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
         ]
       });
     }
+  }
+
+  // Currency filter
+  if (filters.currency) {
+    query['salary.currency'] = filters.currency;
   }
 
   // Sort: Premium jobs first, then by posted date

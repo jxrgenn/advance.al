@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
-import { connectDB, disconnectDB } from '../src/config/database.js';
+import { connectDB } from '../src/config/database.js';
 
 // Load environment variables
 dotenv.config();
@@ -353,7 +353,7 @@ const seedDatabase = async () => {
         // Platform Categories - intelligently set based on job characteristics
         platformCategories: {
           diaspora: job.city === 'Diaspora' || job.title.toLowerCase().includes('diaspora'),
-          ngaShtepiaα: job.city === 'Online/Remote' || job.title.toLowerCase().includes('remote'),
+          ngaShtepia: job.city === 'Online/Remote' || job.title.toLowerCase().includes('remote'),
           partTime: job.jobType === 'part-time',
           administrata: job.category === 'Burime Njerëzore' || job.title.toLowerCase().includes('admin') || job.title.toLowerCase().includes('hr'),
           sezonale: job.title.toLowerCase().includes('seasonal') || job.title.toLowerCase().includes('summer')
@@ -459,7 +459,7 @@ const seedDatabase = async () => {
     console.error('❌ Error seeding database:', error.message);
     console.error(error.stack);
   } finally {
-    await disconnectDB();
+    await mongoose.connection.close();
     process.exit(0);
   }
 };

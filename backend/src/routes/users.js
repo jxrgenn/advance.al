@@ -177,7 +177,7 @@ const employerProfileValidation = [
     .withMessage('Industria nuk mund të ketë më shumë se 50 karaktere'),
   body('employerProfile.companySize')
     .optional()
-    .isIn(['1-10', '11-50', '51-200', '201-1000', '1000+'])
+    .isIn(['1-10', '11-50', '51-200', '201-500', '501+'])
     .withMessage('Madhësia e kompanisë e zgjedhur nuk është e vlefshme'),
   body('employerProfile.description')
     .optional()

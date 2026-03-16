@@ -167,6 +167,7 @@ router.get('/', optionalAuth, async (req, res) => {
       jobType = '',
       minSalary = '',
       maxSalary = '',
+      currency = '',
       company = '',
       experience = '',
       seniority = '',
@@ -219,6 +220,7 @@ router.get('/', optionalAuth, async (req, res) => {
 
     if (minSalary) filters.minSalary = parseInt(minSalary);
     if (maxSalary) filters.maxSalary = parseInt(maxSalary);
+    if (currency && ['EUR', 'ALL'].includes(currency)) filters.currency = currency;
     // Only add company filter if it's a valid ObjectId
     if (company && mongoose.Types.ObjectId.isValid(company)) {
       filters.employerId = company;
@@ -290,7 +292,7 @@ router.get('/', optionalAuth, async (req, res) => {
       sortOptions['salary.max'] = sortOrder === 'desc' ? -1 : 1;
     } else {
       // Whitelist allowed sort fields to prevent injection
-      const allowedSorts = ['createdAt', 'postedAt', 'salary.min', 'salary.max', 'viewCount', 'applicationCount'];
+      const allowedSorts = ['createdAt', 'postedAt', 'salary.min', 'salary.max', 'viewCount', 'applicationCount', 'title'];
       const safeSortBy = allowedSorts.includes(sortBy) ? sortBy : 'postedAt';
       sortOptions[safeSortBy] = sortOrder === 'desc' ? -1 : 1;
     }
@@ -317,6 +319,9 @@ router.get('/', optionalAuth, async (req, res) => {
       ...(filters.seniority && { seniority: filters.seniority }),
       ...(filters.remote && { 'location.remote': true }),
       ...(filters.postedAfter && { postedAt: { $gte: filters.postedAfter } }),
+      ...(filters.minSalary && { 'salary.max': { $gte: parseFloat(filters.minSalary) } }),
+      ...(filters.maxSalary && { 'salary.min': { $lte: parseFloat(filters.maxSalary) } }),
+      ...(filters.currency && { 'salary.currency': filters.currency }),
       ...(diaspora === 'true' && { 'platformCategories.diaspora': true }),
       ...(ngaShtepia === 'true' && { 'platformCategories.ngaShtepia': true }),
       ...(partTime === 'true' && { 'platformCategories.partTime': true }),

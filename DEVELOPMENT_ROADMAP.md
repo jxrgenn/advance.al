@@ -12,7 +12,7 @@
 Second comprehensive audit (deeper than the first) covering every model, route, service, frontend page, form, filter, email template, and background task. 11 specialized agents examined every line. 6 verification agents confirmed each finding with exact code evidence. **136 verified issues** found (4 false positives removed). Full plan in `FINAL_AUDIT_IMPLEMENTATION_PLAN.md`.
 
 **Phase 1 — Security & Auth:** 11 issues (CRITICAL) — ✅ ALL DONE (token leak fix via toJSON, refresh token hashing with SHA-256, token rotation with jti uniqueness, auth:logout dispatch fix, crypto.randomInt for verification codes, SVG upload blocked + magic bytes validation, ReDoS fix with escapeRegex, partial unique index on applications, error message leak gating, optionalAuth banned check, requireVerifiedEmployer optional chaining)
-**Phase 2 — Broken Filters:** 11 issues (CRITICAL+HIGH) — Greek chars, param mismatches, enum mismatches
+**Phase 2 — Broken Filters:** 11 issues (CRITICAL+HIGH) — ✅ ALL DONE (Greek chars→Latin in Jobs.tsx/seed, salary params salaryMin→minSalary, Full-time→full-time case, salary+currency in countQuery+searchJobs, 'title' in allowedSorts, 'featured' tier enum, companySize 3-way alignment to 1-10/11-50/51-200/201-500/501+, all 14 categories in PostJob+EditJob+Jobs filter, jobType/category values match backend enums directly, message sender ObjectId comparison, seed disconnectDB fix)
 **Phase 3 — Broken Flows:** 11 issues (HIGH) — email consolidation, admin bugs, pagination, file cleanup
 **Phase 4 — Missing Features:** 9 issues (HIGH) — forgot password, unsubscribe, email verification, status emails
 **Phase 5 — Backend Integrity:** 12 issues (MEDIUM) — indexes, schema alignment, URL persistence, rate limits

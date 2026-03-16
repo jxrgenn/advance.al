@@ -1,5 +1,5 @@
 import React from 'react';
-import { Application } from '@/lib/api';
+import { Application, User } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -263,15 +263,18 @@ const ApplicationStatusTimeline: React.FC<ApplicationStatusTimelineProps> = ({
               </Badge>
             </div>
             <div className="space-y-2 max-h-32 overflow-y-auto">
-              {application.messages.slice(-2).map((message, index) => (
+              {application.messages.slice(-2).map((message, index) => {
+                const jobSeekerId = typeof application.jobSeekerId === 'object' ? (application.jobSeekerId as User)._id : application.jobSeekerId;
+                const isFromJobSeeker = message.from?.toString() === jobSeekerId?.toString();
+                return (
                 <div key={index} className={`p-3 rounded text-sm ${
-                  message.from === 'jobseeker'
+                  isFromJobSeeker
                     ? 'bg-blue-50 ml-4'
                     : 'bg-gray-50 mr-4'
                 }`}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-medium text-xs text-muted-foreground">
-                      {message.from === 'jobseeker' ? 'Ju' : 'Punëdhënësi'}
+                      {isFromJobSeeker ? 'Ju' : 'Punëdhënësi'}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {formatDate(message.sentAt)}
@@ -279,7 +282,8 @@ const ApplicationStatusTimeline: React.FC<ApplicationStatusTimelineProps> = ({
                   </div>
                   <p className="break-words">{message.message}</p>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

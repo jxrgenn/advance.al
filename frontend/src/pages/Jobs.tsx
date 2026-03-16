@@ -35,7 +35,7 @@ const Jobs = () => {
   // Core Platform Filters State
   const [coreFilters, setCoreFilters] = useState({
     diaspora: false,
-    ngaShtepια: false,
+    ngaShtepia: false,
     partTime: false,
     administrata: false,
     sezonale: false
@@ -120,8 +120,8 @@ const Jobs = () => {
 
       // Add advanced filters if they exist
       if (advancedFilters.salaryRange[0] > 0 || advancedFilters.salaryRange[1] < 2000) {
-        queryParams.salaryMin = advancedFilters.salaryRange[0];
-        queryParams.salaryMax = advancedFilters.salaryRange[1];
+        queryParams.minSalary = advancedFilters.salaryRange[0];
+        queryParams.maxSalary = advancedFilters.salaryRange[1];
         queryParams.currency = advancedFilters.currency;
       }
 
@@ -145,8 +145,8 @@ const Jobs = () => {
       if (coreFilters.diaspora) {
         queryParams.diaspora = 'true';
       }
-      if (coreFilters.ngaShtepια) {
-        queryParams.ngaShtepια = 'true';
+      if (coreFilters.ngaShtepia) {
+        queryParams.ngaShtepia = 'true';
       }
       if (coreFilters.partTime) {
         queryParams.partTime = 'true';
@@ -345,7 +345,7 @@ const Jobs = () => {
     setSelectedType("");
     setCoreFilters({
       diaspora: false,
-      ngaShtepια: false,
+      ngaShtepia: false,
       partTime: false,
       administrata: false,
       sezonale: false
@@ -380,7 +380,7 @@ const Jobs = () => {
     });
     setCoreFilters({
       diaspora: false,
-      ngaShtepια: false,
+      ngaShtepia: false,
       partTime: false,
       administrata: false,
       sezonale: false
@@ -461,7 +461,7 @@ const Jobs = () => {
                 <Button
                   variant={selectedType ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setSelectedType(selectedType === "Full-time" ? "" : "Full-time")}
+                  onClick={() => setSelectedType(selectedType === "full-time" ? "" : "full-time")}
                   className="flex-shrink-0"
                 >
                   <Briefcase className="mr-2 h-4 w-4" />
@@ -518,8 +518,8 @@ const Jobs = () => {
                 Diaspora ×
               </Badge>
             )}
-            {coreFilters.ngaShtepία && (
-              <Badge variant="secondary" className="cursor-pointer" onClick={() => handleCoreFilterChange('ngaShtepια', false)}>
+            {coreFilters.ngaShtepia && (
+              <Badge variant="secondary" className="cursor-pointer" onClick={() => handleCoreFilterChange('ngaShtepia', false)}>
                 Nga shtëpia ×
               </Badge>
             )}
@@ -873,7 +873,9 @@ const Jobs = () => {
                   'Shëndetësi',
                   'Arsim',
                   'Turizëm',
-                  'Ndërtim'
+                  'Ndërtim',
+                  'Transport',
+                  'Tjetër'
                 ].map((category) => (
                   <div key={category} className="flex items-center space-x-2">
                     <Checkbox

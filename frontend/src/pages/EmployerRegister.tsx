@@ -284,7 +284,8 @@ const EmployerRegister = () => {
                           <option value="1-10">1-10 punonjës</option>
                           <option value="11-50">11-50 punonjës</option>
                           <option value="51-200">51-200 punonjës</option>
-                          <option value="200+">200+ punonjës</option>
+                          <option value="201-500">201-500 punonjës</option>
+                          <option value="501+">501+ punonjës</option>
                         </select>
                       </div>
                     </div>

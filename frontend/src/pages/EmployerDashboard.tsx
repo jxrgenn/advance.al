@@ -1599,8 +1599,8 @@ const EmployerDashboard = () => {
                           <SelectItem value="1-10">1-10 punonjës</SelectItem>
                           <SelectItem value="11-50">11-50 punonjës</SelectItem>
                           <SelectItem value="51-200">51-200 punonjës</SelectItem>
-                          <SelectItem value="201-1000">201-1000 punonjës</SelectItem>
-                          <SelectItem value="1000+">1000+ punonjës</SelectItem>
+                          <SelectItem value="201-500">201-500 punonjës</SelectItem>
+                          <SelectItem value="501+">501+ punonjës</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
