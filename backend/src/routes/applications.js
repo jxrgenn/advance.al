@@ -48,6 +48,14 @@ router.post('/apply', authenticate, requireJobSeeker, applyValidation, handleVal
   try {
     const { jobId, applicationMethod, customAnswers = [], coverLetter = '' } = req.body;
 
+    // Soft gate: require verified email to apply
+    if (!req.user.emailVerified) {
+      return res.status(403).json({
+        success: false,
+        message: 'Ju duhet të verifikoni emailin tuaj përpara se të aplikoni. Shkoni te profili juaj për të dërguar kodin e verifikimit.'
+      });
+    }
+
     // Check if job exists and is active
     const job = await Job.findOne({
       _id: jobId,
@@ -129,7 +137,7 @@ router.post('/apply', authenticate, requireJobSeeker, applyValidation, handleVal
       }
     ]);
 
-    // Create application_received notification for the employer (non-blocking)
+    // Create application_received notification + email for the employer (non-blocking)
     setImmediate(async () => {
       try {
         const applicantName = `${req.user.profile?.firstName || ''} ${req.user.profile?.lastName || ''}`.trim() || 'Një kandidat';
@@ -152,6 +160,20 @@ router.post('/apply', authenticate, requireJobSeeker, applyValidation, handleVal
         });
       } catch (err) {
         console.error('Error creating application_received notification:', err);
+      }
+
+      // Send email to employer about new application
+      try {
+        const employer = await User.findById(job.employerId._id);
+        if (employer) {
+          await resendEmailService.sendNewApplicationEmail(
+            employer,
+            req.user,
+            { title: application.jobId?.title || 'një pozicion' }
+          );
+        }
+      } catch (err) {
+        console.error('Error sending new application email to employer:', err);
       }
     });
 
@@ -509,6 +531,27 @@ router.patch('/:id/status', authenticate, requireEmployer, async (req, res) => {
 
     await application.updateStatus(status, notes);
 
+    // Send email notification to applicant (non-blocking)
+    if (['shortlisted', 'rejected', 'hired'].includes(status)) {
+      setImmediate(async () => {
+        try {
+          const applicant = await User.findById(application.jobSeekerId);
+          const job = await Job.findById(application.jobId);
+          if (applicant && job) {
+            const companyName = job.companyName || '';
+            await resendEmailService.sendApplicationStatusEmail(
+              applicant,
+              { title: job.title, companyName },
+              status,
+              notes
+            );
+          }
+        } catch (err) {
+          console.error('Error sending application status email:', err);
+        }
+      });
+    }
+
     const statusMessages = {
       viewed: 'Aplikimi u shënua si i parë',
       shortlisted: 'Aplikimi u shtua në listën e shkurtër',
@@ -536,6 +579,14 @@ router.patch('/:id/status', authenticate, requireEmployer, async (req, res) => {
 // @access  Private (Application participants only)
 router.post('/:id/message', authenticate, async (req, res) => {
   try {
+    // Soft gate: require verified email to send messages
+    if (!req.user.emailVerified) {
+      return res.status(403).json({
+        success: false,
+        message: 'Ju duhet të verifikoni emailin tuaj përpara se të dërgoni mesazhe.'
+      });
+    }
+
     const { message, type = 'text' } = req.body;
 
     if (!message || message.trim().length === 0) {

@@ -17,6 +17,17 @@ class ResendEmailService {
     this.testEmail = 'advance.al123456@gmail.com'; // Your email for testing
   }
 
+  // Retry wrapper: retries once after 2s delay on failure
+  async _sendWithRetry(sendFn) {
+    try {
+      return await sendFn();
+    } catch (firstError) {
+      console.warn('Email send failed, retrying in 2s...', firstError.message);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      return await sendFn();
+    }
+  }
+
   // Helper to get recipient email (redirects to test email in test mode)
   // Checks env var at call time (not constructor time) to handle dotenv load order
   getRecipientEmail(originalEmail) {
@@ -140,13 +151,13 @@ Faleminderit që na zgjodht!
 advance.al - Platforma e Punës në Shqipëri
       `;
 
-      const emailResult = await this.resend.emails.send({
+      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(user.email),
         subject: subject,
         html: htmlContent,
         text: textContent,
-      });
+      }));
 
       if (emailResult.error) {
         console.error('❌ Resend error:', emailResult.error);
@@ -291,13 +302,13 @@ Faleminderit që na zgjodht!
 advance.al - Platforma e Punës në Shqipëri
       `;
 
-      const emailResult = await this.resend.emails.send({
+      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(user.email),
         subject: subject,
         html: htmlContent,
         text: textContent,
-      });
+      }));
 
       if (emailResult.error) {
         console.error('❌ Resend error:', emailResult.error);
@@ -482,13 +493,13 @@ Mbështetje: Nëse keni pyetje rreth këtij vendimi, na kontaktoni në support@a
 advance.al - Platforma e Punës në Shqipëri
       `;
 
-      const emailResult = await this.resend.emails.send({
+      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(user.email),
         subject: details.subject,
         html: htmlContent,
         text: textContent,
-      });
+      }));
 
       if (emailResult.error) {
         console.error('❌ Resend error:', emailResult.error);
@@ -614,7 +625,7 @@ Shko te advance.al: https://advance.al
 Ky email u dërgua në ${toEmail}
 `;
 
-      const emailResult = await this.resend.emails.send({
+      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(toEmail),
         subject: subject,
@@ -623,7 +634,7 @@ Ky email u dërgua në ${toEmail}
         headers: {
           'X-Entity-Ref-ID': `bulk-notification-${Date.now()}`
         }
-      });
+      }));
 
       if (emailResult.error) {
         console.error('❌ Resend error:', emailResult.error);
@@ -648,13 +659,13 @@ Ky email u dërgua në ${toEmail}
     }
 
     try {
-      const emailResult = await this.resend.emails.send({
+      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(to),
         subject,
         html: htmlContent,
         text: textContent,
-      });
+      }));
 
       if (emailResult.error) {
         console.error('❌ Resend transactional error:', emailResult.error);
@@ -786,13 +797,13 @@ Shiko aplikimin dhe përgjigju: https://advance.al/applications
 advance.al - Platforma e Punës në Shqipëri
       `;
 
-      const emailResult = await this.resend.emails.send({
+      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(recipient.email),
         subject,
         html: htmlContent,
         text: textContent,
-      });
+      }));
 
       if (emailResult.error) {
         console.error('❌ Resend application message error:', emailResult.error);
@@ -806,6 +817,368 @@ advance.al - Platforma e Punës në Shqipëri
 
     } catch (error) {
       console.error('❌ Error sending application message email:', error);
+      throw error;
+    }
+  }
+
+  // Send password reset email
+  async sendPasswordResetEmail(user, resetUrl) {
+    if (!this.enabled) {
+      return { success: false, message: 'Email service disabled' };
+    }
+
+    try {
+      const safeFirstName = escapeHtml(user.profile?.firstName || 'Përdorues');
+      const safeResetUrl = escapeHtml(resetUrl);
+
+      const subject = 'Rivendosni Fjalëkalimin — advance.al';
+
+      const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rivendosni Fjalëkalimin - advance.al</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: Arial, sans-serif;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 30px; padding: 20px 0; border-bottom: 2px solid #2563eb;">
+            <h1 style="color: #2563eb; margin: 0; font-size: 28px; font-weight: bold;">advance.al</h1>
+            <p style="color: #6b7280; margin: 5px 0 0 0; font-size: 16px;">Platforma e Punës në Shqipëri</p>
+        </div>
+        <div style="background: #f9fafb; border-radius: 8px; padding: 30px; margin: 20px 0;">
+            <h2 style="color: #1f2937; margin-top: 0; font-size: 24px;">🔐 Rivendosni Fjalëkalimin</h2>
+            <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 20px 0;">
+                Përshëndetje ${safeFirstName},
+            </p>
+            <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 20px 0;">
+                Kemi marrë një kërkesë për rivendosjen e fjalëkalimit të llogarisë suaj. Klikoni butonin më poshtë për të vendosur një fjalëkalim të ri.
+            </p>
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="${safeResetUrl}"
+                   style="background: #2563eb; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
+                    🔑 Rivendos Fjalëkalimin
+                </a>
+            </div>
+            <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 15px; margin: 25px 0;">
+                <p style="color: #92400e; margin: 0; font-size: 14px; font-weight: 500;">
+                    ⏰ Ky link do të skadojë pas 1 ore. Nëse nuk e keni kërkuar këtë, injoroni këtë email.
+                </p>
+            </div>
+            <p style="color: #6b7280; font-size: 13px; margin-top: 20px;">
+                Nëse butoni nuk funksionon, kopjoni dhe ngjisni këtë link në shfletuesin tuaj:<br>
+                <a href="${safeResetUrl}" style="color: #2563eb; word-break: break-all;">${safeResetUrl}</a>
+            </p>
+        </div>
+        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+            <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
+                © ${new Date().getFullYear()} advance.al - Platforma e Punës në Shqipëri
+            </p>
+        </div>
+    </div>
+</body>
+</html>`;
+
+      const textContent = `Rivendosni Fjalëkalimin — advance.al
+
+Përshëndetje ${user.profile?.firstName || 'Përdorues'},
+
+Kemi marrë një kërkesë për rivendosjen e fjalëkalimit të llogarisë suaj.
+
+Klikoni linkun më poshtë për të vendosur një fjalëkalim të ri:
+${resetUrl}
+
+Ky link do të skadojë pas 1 ore. Nëse nuk e keni kërkuar këtë, injoroni këtë email.
+
+--
+advance.al - Platforma e Punës në Shqipëri`;
+
+      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+        from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
+        to: this.getRecipientEmail(user.email),
+        subject,
+        html: htmlContent,
+        text: textContent,
+      }));
+
+      if (emailResult.error) {
+        console.error('❌ Resend password reset error:', emailResult.error);
+        throw new Error('Failed to send password reset email via Resend');
+      }
+
+      return { success: true, emailId: emailResult.data?.id };
+    } catch (error) {
+      console.error('❌ Error sending password reset email:', error);
+      throw error;
+    }
+  }
+
+  // Send welcome email for employers
+  async sendEmployerWelcomeEmail(user) {
+    if (!this.enabled) {
+      return { success: false, message: 'Email service disabled' };
+    }
+
+    try {
+      const safeFirstName = escapeHtml(user.profile?.firstName);
+      const safeLastName = escapeHtml(user.profile?.lastName);
+      const safeEmail = escapeHtml(user.email);
+      const safeCompanyName = escapeHtml(user.profile?.employerProfile?.companyName || '');
+
+      const subject = 'Mirë se vini në advance.al! 🏢 Llogaria e punëdhënësit u krijua';
+
+      const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mirë se vini Punëdhënës - advance.al</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: Arial, sans-serif;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 30px; padding: 20px 0; border-bottom: 2px solid #2563eb;">
+            <h1 style="color: #2563eb; margin: 0; font-size: 28px; font-weight: bold;">advance.al</h1>
+            <p style="color: #6b7280; margin: 5px 0 0 0; font-size: 16px;">Platforma e Punës në Shqipëri</p>
+        </div>
+        <div style="background: #f9fafb; border-radius: 8px; padding: 30px; margin: 20px 0;">
+            <h2 style="color: #1f2937; margin-top: 0; font-size: 24px;">🏢 Mirë se vini ${safeFirstName}!</h2>
+            <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 20px 0;">
+                Llogaria e punëdhënësit për <strong>${safeCompanyName}</strong> u krijua me sukses në advance.al!
+            </p>
+            <div style="background: #ffffff; border-radius: 8px; padding: 20px; margin: 25px 0; border-left: 4px solid #2563eb;">
+                <h3 style="color: #1f2937; margin-top: 0;">📋 Detajet e Llogarisë</h3>
+                <p style="margin: 8px 0; color: #4b5563;"><strong>Emri:</strong> ${safeFirstName} ${safeLastName}</p>
+                <p style="margin: 8px 0; color: #4b5563;"><strong>Email:</strong> ${safeEmail}</p>
+                <p style="margin: 8px 0; color: #4b5563;"><strong>Kompania:</strong> ${safeCompanyName}</p>
+                <p style="margin: 8px 0; color: #4b5563;"><strong>Lloji:</strong> Punëdhënës</p>
+            </div>
+            <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 15px; margin: 25px 0;">
+                <p style="color: #92400e; margin: 0; font-size: 14px; font-weight: 500;">
+                    ⏳ <strong>Hapi tjetër:</strong> Llogaria juaj do të verifikohet nga administratori ynë. Do të merrni njoftim me email kur të aprovohet.
+                </p>
+            </div>
+            <h3 style="color: #1f2937;">🚀 Pasi të aprovohet llogaria:</h3>
+            <ul style="color: #4b5563; line-height: 1.8;">
+                <li><strong>Publikoni punë</strong> - Arrini mijëra kandidatë në Shqipëri</li>
+                <li><strong>Menaxhoni aplikimet</strong> - Shikoni dhe vlerësoni kandidatët</li>
+                <li><strong>Komunikoni direkt</strong> - Dërgoni mesazhe dhe ftesa për intervistë</li>
+            </ul>
+        </div>
+        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+            <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
+                © ${new Date().getFullYear()} advance.al - Platforma e Punës në Shqipëri
+            </p>
+        </div>
+    </div>
+</body>
+</html>`;
+
+      const textContent = `Mirë se vini në advance.al! 🏢
+
+Përshëndetje ${user.profile?.firstName},
+
+Llogaria e punëdhënësit për ${user.profile?.employerProfile?.companyName || ''} u krijua me sukses!
+
+Detajet e Llogarisë:
+- Emri: ${user.profile?.firstName} ${user.profile?.lastName}
+- Email: ${user.email}
+- Kompania: ${user.profile?.employerProfile?.companyName || ''}
+
+Hapi tjetër: Llogaria juaj do të verifikohet nga administratori. Do të merrni njoftim kur të aprovohet.
+
+--
+advance.al - Platforma e Punës në Shqipëri`;
+
+      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+        from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
+        to: this.getRecipientEmail(user.email),
+        subject,
+        html: htmlContent,
+        text: textContent,
+      }));
+
+      if (emailResult.error) {
+        console.error('❌ Resend employer welcome error:', emailResult.error);
+        throw new Error('Failed to send employer welcome email via Resend');
+      }
+
+      return { success: true, emailId: emailResult.data?.id };
+    } catch (error) {
+      console.error('❌ Error sending employer welcome email:', error);
+      throw error;
+    }
+  }
+
+  // Send email notification on application status change
+  async sendApplicationStatusEmail(applicant, job, newStatus, notes) {
+    if (!this.enabled) {
+      return { success: false, message: 'Email service disabled' };
+    }
+
+    try {
+      const safeFirstName = escapeHtml(applicant.profile?.firstName || 'Përdorues');
+      const safeJobTitle = escapeHtml(job.title || '');
+      const safeCompanyName = escapeHtml(job.companyName || '');
+      const safeNotes = notes ? escapeHtml(notes) : '';
+
+      const statusLabels = {
+        viewed: { label: 'u shikua', icon: '👁️', color: '#3b82f6' },
+        shortlisted: { label: 'u shtua në listën e shkurtër', icon: '⭐', color: '#10b981' },
+        rejected: { label: 'u refuzua', icon: '❌', color: '#ef4444' },
+        hired: { label: 'u pranua', icon: '🎉', color: '#10b981' }
+      };
+
+      const statusInfo = statusLabels[newStatus] || { label: newStatus, icon: '📋', color: '#6b7280' };
+      const subject = `${statusInfo.icon} Aplikimi juaj ${statusInfo.label} — ${safeJobTitle}`;
+
+      const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: Arial, sans-serif;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 30px; padding: 20px 0; border-bottom: 2px solid #2563eb;">
+            <h1 style="color: #2563eb; margin: 0; font-size: 28px; font-weight: bold;">advance.al</h1>
+            <p style="color: #6b7280; margin: 5px 0 0 0; font-size: 16px;">Platforma e Punës në Shqipëri</p>
+        </div>
+        <div style="background: #f9fafb; border-radius: 8px; padding: 30px; margin: 20px 0;">
+            <h2 style="color: #1f2937; margin-top: 0; font-size: 24px;">${statusInfo.icon} Përditësim i Aplikimit</h2>
+            <p style="color: #4b5563; line-height: 1.6; font-size: 16px;">
+                Përshëndetje ${safeFirstName},
+            </p>
+            <p style="color: #4b5563; line-height: 1.6; font-size: 16px;">
+                Aplikimi juaj për pozicionin <strong>${safeJobTitle}</strong> tek <strong>${safeCompanyName}</strong> ${statusInfo.label}.
+            </p>
+            ${safeNotes ? `
+            <div style="background: #ffffff; border-left: 4px solid ${statusInfo.color}; border-radius: 8px; padding: 15px; margin: 20px 0;">
+                <p style="color: #4b5563; margin: 0;"><strong>Shënim:</strong> ${safeNotes}</p>
+            </div>` : ''}
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="https://advance.al/profile"
+                   style="background: #2563eb; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
+                    📋 Shiko Aplikimet e Mia
+                </a>
+            </div>
+        </div>
+        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+            <p style="color: #9ca3af; font-size: 12px;">© ${new Date().getFullYear()} advance.al</p>
+        </div>
+    </div>
+</body>
+</html>`;
+
+      const textContent = `Përditësim i Aplikimit — advance.al
+
+Përshëndetje ${applicant.profile?.firstName || 'Përdorues'},
+
+Aplikimi juaj për pozicionin "${job.title}" tek ${job.companyName || ''} ${statusInfo.label}.
+${notes ? `\nShënim: ${notes}` : ''}
+
+Shiko aplikimet tuaja: https://advance.al/profile
+
+--
+advance.al`;
+
+      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+        from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
+        to: this.getRecipientEmail(applicant.email),
+        subject,
+        html: htmlContent,
+        text: textContent,
+      }));
+
+      if (emailResult.error) {
+        console.error('❌ Resend application status error:', emailResult.error);
+        throw new Error('Failed to send application status email');
+      }
+
+      return { success: true, emailId: emailResult.data?.id };
+    } catch (error) {
+      console.error('❌ Error sending application status email:', error);
+      throw error;
+    }
+  }
+
+  // Send email to employer when they receive a new application
+  async sendNewApplicationEmail(employer, applicant, job) {
+    if (!this.enabled) {
+      return { success: false, message: 'Email service disabled' };
+    }
+
+    try {
+      const safeEmployerName = escapeHtml(employer.profile?.firstName || 'Punëdhënës');
+      const safeApplicantName = escapeHtml(`${applicant.profile?.firstName || ''} ${applicant.profile?.lastName || ''}`.trim());
+      const safeJobTitle = escapeHtml(job.title || '');
+
+      const subject = `📩 Aplikim i ri për "${safeJobTitle}" — advance.al`;
+
+      const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: Arial, sans-serif;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 30px; padding: 20px 0; border-bottom: 2px solid #2563eb;">
+            <h1 style="color: #2563eb; margin: 0; font-size: 28px; font-weight: bold;">advance.al</h1>
+            <p style="color: #6b7280; margin: 5px 0 0 0; font-size: 16px;">Platforma e Punës në Shqipëri</p>
+        </div>
+        <div style="background: #f9fafb; border-radius: 8px; padding: 30px; margin: 20px 0;">
+            <h2 style="color: #1f2937; margin-top: 0; font-size: 24px;">📩 Aplikim i Ri</h2>
+            <p style="color: #4b5563; line-height: 1.6; font-size: 16px;">
+                Përshëndetje ${safeEmployerName},
+            </p>
+            <p style="color: #4b5563; line-height: 1.6; font-size: 16px;">
+                <strong>${safeApplicantName}</strong> ka aplikuar për pozicionin <strong>${safeJobTitle}</strong>.
+            </p>
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="https://advance.al/employer-dashboard"
+                   style="background: #2563eb; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
+                    👀 Shiko Aplikimin
+                </a>
+            </div>
+        </div>
+        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+            <p style="color: #9ca3af; font-size: 12px;">© ${new Date().getFullYear()} advance.al</p>
+        </div>
+    </div>
+</body>
+</html>`;
+
+      const textContent = `Aplikim i Ri — advance.al
+
+Përshëndetje ${employer.profile?.firstName || 'Punëdhënës'},
+
+${`${applicant.profile?.firstName || ''} ${applicant.profile?.lastName || ''}`.trim()} ka aplikuar për pozicionin "${job.title}".
+
+Shiko aplikimin: https://advance.al/employer-dashboard
+
+--
+advance.al`;
+
+      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+        from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
+        to: this.getRecipientEmail(employer.email),
+        subject,
+        html: htmlContent,
+        text: textContent,
+      }));
+
+      if (emailResult.error) {
+        console.error('❌ Resend new application error:', emailResult.error);
+        throw new Error('Failed to send new application email');
+      }
+
+      return { success: true, emailId: emailResult.data?.id };
+    } catch (error) {
+      console.error('❌ Error sending new application email:', error);
       throw error;
     }
   }

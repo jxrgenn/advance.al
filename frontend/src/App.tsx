@@ -30,6 +30,12 @@ const ReportUser = lazy(() => import("./pages/ReportUser"));
 const AdminReports = lazy(() => import("./pages/AdminReports"));
 const EditJob = lazy(() => import("./pages/EditJob"));
 const SavedJobs = lazy(() => import("./pages/SavedJobs"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Terms = lazy(() => import("./pages/Terms"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const Unsubscribe = lazy(() => import("./pages/Unsubscribe"));
+const Preferences = lazy(() => import("./pages/Preferences"));
 
 const queryClient = new QueryClient();
 
@@ -102,6 +108,12 @@ const App = () => (
                     <EditJob />
                   </ProtectedRoute>
                 } />
+                <Route path="/privacy" element={<Privacy />} />
+                <Route path="/terms" element={<Terms />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/unsubscribe" element={<Unsubscribe />} />
+                <Route path="/preferences" element={<Preferences />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>

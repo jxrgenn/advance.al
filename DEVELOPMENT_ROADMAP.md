@@ -1,7 +1,7 @@
 # advance.al - DEVELOPMENT STATUS & ROADMAP
 
 **Date:** September 25-28, 2025
-**Last Updated:** March 16, 2026 (Phase 3 complete — broken flows, sanitizeLimit, file cleanup)
+**Last Updated:** March 16, 2026 (Phase 4 complete — forgot password, email verification, status emails, welcome emails, retry wrapper, static pages)
 **Platform:** Premier Job Marketplace for Albania
 **CURRENT STATUS:** 🟡 **FINAL AUDIT COMPLETE — 136 verified issues across 8 phases. Previous audit (145 issues) mostly resolved. New deep feature-level audit found critical security, broken filters, missing flows, and unfinished UI.**
 **Phase:** Final Audit Implementation (see `FINAL_AUDIT_IMPLEMENTATION_PLAN.md`)
@@ -14,7 +14,7 @@ Second comprehensive audit (deeper than the first) covering every model, route, 
 **Phase 1 — Security & Auth:** 11 issues (CRITICAL) — ✅ ALL DONE (token leak fix via toJSON, refresh token hashing with SHA-256, token rotation with jti uniqueness, auth:logout dispatch fix, crypto.randomInt for verification codes, SVG upload blocked + magic bytes validation, ReDoS fix with escapeRegex, partial unique index on applications, error message leak gating, optionalAuth banned check, requireVerifiedEmployer optional chaining)
 **Phase 2 — Broken Filters:** 11 issues (CRITICAL+HIGH) — ✅ ALL DONE (Greek chars→Latin in Jobs.tsx/seed, salary params salaryMin→minSalary, Full-time→full-time case, salary+currency in countQuery+searchJobs, 'title' in allowedSorts, 'featured' tier enum, companySize 3-way alignment to 1-10/11-50/51-200/201-500/501+, all 14 categories in PostJob+EditJob+Jobs filter, jobType/category values match backend enums directly, message sender ObjectId comparison, seed disconnectDB fix)
 **Phase 3 — Broken Flows:** 11 issues (HIGH) — ✅ ALL DONE (Resend email consolidation in verification.js, employer rejection status fix, admin suspend/ban uses model methods, BulkNotification quick_users support, profilePhoto Mixed type + field name fix, EmployerRegister toast fix, sanitizeLimit() on all 15+ routes replacing raw parseInt(limit), in-memory pagination→DB-level skip/limit on applications, old Cloudinary file cleanup on re-upload for resume/logo/photo)
-**Phase 4 — Missing Features:** 9 issues (HIGH) — forgot password, unsubscribe, email verification, status emails
+**Phase 4 — Missing Features:** 9 issues (HIGH) — ✅ ALL DONE (forgot-password with hashed token + 1hr expiry + reset-password endpoints, email verification soft gate with 6-digit hashed code + send-verification + verify-email endpoints + apply/message blocking for unverified users, employer welcome email template, application status change email to jobseeker for shortlisted/rejected/hired, new application email to employer, Resend retry wrapper with 1-retry 2s delay on all send methods, Privacy.tsx + Terms.tsx + ForgotPassword.tsx + ResetPassword.tsx + Unsubscribe.tsx + Preferences.tsx pages, App.tsx routes for all new pages)
 **Phase 5 — Backend Integrity:** 12 issues (MEDIUM) — indexes, schema alignment, URL persistence, rate limits
 **Phase 6 — Admin & Business:** 7 issues (MEDIUM) — config wiring, job approval, expiry cron, reports
 **Phase 7 — UI Polish:** 16+ issues (MEDIUM-LOW) — missing buttons, contact editing, cleanup

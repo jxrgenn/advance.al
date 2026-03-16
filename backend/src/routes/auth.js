@@ -159,7 +159,7 @@ router.post('/register', authLimiter, registerValidation, handleValidationErrors
     await user.addRefreshToken(refreshToken);
     await User.updateOne({ _id: user._id }, { lastLoginAt: new Date() });
 
-    // Send welcome email + generate embedding for job seekers (async, non-blocking)
+    // Send welcome email (async, non-blocking)
     if (userType === 'jobseeker') {
       setImmediate(async () => {
         try {
@@ -172,6 +172,14 @@ router.post('/register', authLimiter, registerValidation, handleValidationErrors
           await userEmbeddingService.generateJobSeekerEmbedding(user._id);
         } catch (error) {
           console.error('Error generating jobseeker embedding:', error);
+        }
+      });
+    } else if (userType === 'employer') {
+      setImmediate(async () => {
+        try {
+          await resendEmailService.sendEmployerWelcomeEmail(user);
+        } catch (error) {
+          console.error('Error sending employer welcome email:', error);
         }
       });
     }
@@ -407,6 +415,205 @@ router.get('/me', authenticate, async (req, res) => {
       success: false,
       message: 'Gabim në marrjen e të dhënave të përdoruesit'
     });
+  }
+});
+
+// @route   POST /api/auth/forgot-password
+// @desc    Request password reset email
+// @access  Public
+router.post('/forgot-password', authLimiter, [
+  body('email').isEmail().normalizeEmail().withMessage('Email i pavlefshëm')
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Always return success to avoid email enumeration
+    const user = await User.findOne({ email, isDeleted: { $ne: true } });
+
+    if (user) {
+      // Generate reset token
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+      user.passwordResetToken = hashedToken;
+      user.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      await user.save({ validateBeforeSave: false });
+
+      // Build reset URL
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+
+      // Send email (non-blocking)
+      setImmediate(async () => {
+        try {
+          await resendEmailService.sendPasswordResetEmail(user, resetUrl);
+        } catch (error) {
+          console.error('Error sending password reset email:', error);
+        }
+      });
+    }
+
+    // Always return same response for security
+    res.json({
+      success: true,
+      message: 'Nëse kjo adresë emaili ekziston, do të merrni një link për rivendosjen e fjalëkalimit.'
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Gabim në dërgimin e emailit për rivendosjen e fjalëkalimit'
+    });
+  }
+});
+
+// @route   POST /api/auth/reset-password
+// @desc    Reset password using token
+// @access  Public
+router.post('/reset-password', authLimiter, [
+  body('token').notEmpty().withMessage('Token-i është i detyrueshëm'),
+  body('password')
+    .isLength({ min: 8 })
+    .withMessage('Fjalëkalimi duhet të ketë të paktën 8 karaktere')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+    .withMessage('Fjalëkalimi duhet të përmbajë të paktën një shkronjë të madhe, një të vogël dhe një numër')
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    // Hash the provided token and find user
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    const user = await User.findOne({
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { $gt: new Date() },
+      isDeleted: { $ne: true }
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token-i i rivendosjes është i pavlefshëm ose ka skaduar'
+      });
+    }
+
+    // Set new password
+    user.password = password;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+
+    // Invalidate all refresh tokens for security
+    await user.removeAllRefreshTokens();
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Fjalëkalimi u rivendos me sukses. Tani mund të kyçeni me fjalëkalimin e ri.'
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Gabim në rivendosjen e fjalëkalimit'
+    });
+  }
+});
+
+// @route   POST /api/auth/send-verification
+// @desc    Send email verification code to current user
+// @access  Private
+router.post('/send-verification', authenticate, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Përdoruesi nuk u gjet' });
+    }
+
+    if (user.emailVerified) {
+      return res.status(400).json({ success: false, message: 'Email-i juaj është tashmë i verifikuar' });
+    }
+
+    // Generate 6-digit code
+    const code = crypto.randomInt(100000, 999999).toString();
+    const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
+
+    // Store hashed code with 10-minute expiry
+    user.emailVerificationToken = hashedCode;
+    user.emailVerificationExpires = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save({ validateBeforeSave: false });
+
+    // Send verification email
+    const safeFirstName = user.profile?.firstName || 'Përdorues';
+    await resendEmailService.sendTransactionalEmail(
+      user.email,
+      'Kodi i Verifikimit — advance.al',
+      `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f9fafb;font-family:Arial,sans-serif;">
+        <div style="max-width:600px;margin:0 auto;background:#fff;padding:20px;">
+          <div style="text-align:center;margin-bottom:30px;padding:20px 0;border-bottom:2px solid #2563eb;">
+            <h1 style="color:#2563eb;margin:0;font-size:28px;">advance.al</h1>
+          </div>
+          <div style="padding:30px;text-align:center;">
+            <h2 style="color:#1f2937;">Verifikoni Email-in Tuaj</h2>
+            <p style="color:#4b5563;">Përshëndetje ${safeFirstName}, kodi juaj i verifikimit është:</p>
+            <div style="background:#f0f9ff;border:2px solid #2563eb;border-radius:12px;padding:20px;margin:20px auto;display:inline-block;">
+              <span style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#2563eb;">${code}</span>
+            </div>
+            <p style="color:#6b7280;font-size:14px;">Ky kod është i vlefshëm për 10 minuta.</p>
+          </div>
+        </div>
+      </body></html>`,
+      `Kodi juaj i verifikimit: ${code}\nKy kod është i vlefshëm për 10 minuta.`
+    );
+
+    res.json({ success: true, message: 'Kodi i verifikimit u dërgua në emailin tuaj' });
+  } catch (error) {
+    console.error('Send verification error:', error);
+    res.status(500).json({ success: false, message: 'Gabim në dërgimin e kodit të verifikimit' });
+  }
+});
+
+// @route   POST /api/auth/verify-email
+// @desc    Verify email with code
+// @access  Private
+router.post('/verify-email', authenticate, [
+  body('code').isLength({ min: 6, max: 6 }).isNumeric().withMessage('Kodi duhet të jetë 6 shifra')
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { code } = req.body;
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Përdoruesi nuk u gjet' });
+    }
+
+    if (user.emailVerified) {
+      return res.status(400).json({ success: false, message: 'Email-i juaj është tashmë i verifikuar' });
+    }
+
+    if (!user.emailVerificationToken || !user.emailVerificationExpires) {
+      return res.status(400).json({ success: false, message: 'Nuk ka kod verifikimi aktiv. Kërkoni një kod të ri.' });
+    }
+
+    if (new Date() > user.emailVerificationExpires) {
+      return res.status(400).json({ success: false, message: 'Kodi i verifikimit ka skaduar. Kërkoni një kod të ri.' });
+    }
+
+    const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
+    if (hashedCode !== user.emailVerificationToken) {
+      return res.status(400).json({ success: false, message: 'Kodi i verifikimit është i gabuar' });
+    }
+
+    // Mark email as verified
+    user.emailVerified = true;
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    res.json({ success: true, message: 'Email-i juaj u verifikua me sukses!' });
+  } catch (error) {
+    console.error('Verify email error:', error);
+    res.status(500).json({ success: false, message: 'Gabim në verifikimin e emailit' });
   }
 });
 
