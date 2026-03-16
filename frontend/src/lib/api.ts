@@ -887,6 +887,7 @@ export const companiesApi = {
     search?: string;
     city?: string;
     industry?: string;
+    companySize?: string;
     page?: number;
     limit?: number;
     sortBy?: string;

@@ -22,6 +22,7 @@ interface Company {
   name: string;
   city: string;
   industry: string;
+  companySize?: string;
   activeJobs: number;
   verified: boolean;
   description?: string;
@@ -36,6 +37,7 @@ const CompaniesPageSimple = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCity, setSelectedCity] = useState("");
   const [selectedIndustry, setSelectedIndustry] = useState("");
+  const [selectedSize, setSelectedSize] = useState("");
 
   // Mock data for fallback
   const mockCompanies: Company[] = [
@@ -44,6 +46,7 @@ const CompaniesPageSimple = () => {
       name: "TechShqip",
       city: "Tiranë",
       industry: "Teknologji",
+      companySize: "51-200",
       activeJobs: 12,
       verified: true,
       description: "Kompani teknologjie e fokusuar në zhvillimin e software-it dhe aplikacioneve mobile."
@@ -53,6 +56,7 @@ const CompaniesPageSimple = () => {
       name: "AlbaniaBank",
       city: "Tiranë",
       industry: "Financë",
+      companySize: "200+",
       activeJobs: 8,
       verified: true,
       description: "Bankë moderne që ofron shërbime financiare të avancuara për individë dhe biznese."
@@ -62,6 +66,7 @@ const CompaniesPageSimple = () => {
       name: "ConstructAL",
       city: "Durrës",
       industry: "Ndërtim",
+      companySize: "11-50",
       activeJobs: 6,
       verified: false,
       description: "Kompani ndërtimi me përvojë të gjatë në projekte të mëdha infrastrukturore."
@@ -71,6 +76,7 @@ const CompaniesPageSimple = () => {
       name: "MarketingPro",
       city: "Tiranë",
       industry: "Marketing",
+      companySize: "1-10",
       activeJobs: 4,
       verified: true,
       description: "Agjenci marketingu digjital që ndihmon bizneset të rriten online."
@@ -80,6 +86,7 @@ const CompaniesPageSimple = () => {
       name: "HealthCare Plus",
       city: "Vlorë",
       industry: "Shëndetësi",
+      companySize: "51-200",
       activeJobs: 7,
       verified: true,
       description: "Rrjet klinikash dhe shërbimesh shëndetësore në të gjithë vendin."
@@ -89,6 +96,7 @@ const CompaniesPageSimple = () => {
       name: "EduFuture",
       city: "Shkodër",
       industry: "Arsim",
+      companySize: "1-10",
       activeJobs: 3,
       verified: true,
       description: "Platforma edukimi online dhe qendër trajnimi profesional."
@@ -108,6 +116,7 @@ const CompaniesPageSimple = () => {
             name: company.name,
             city: company.city,
             industry: company.industry,
+            companySize: company.companySize,
             activeJobs: company.activeJobs,
             verified: company.verified,
             description: company.description,
@@ -137,8 +146,9 @@ const CompaniesPageSimple = () => {
                          (company.description && company.description.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesCity = !selectedCity || selectedCity === "all" || company.city === selectedCity;
     const matchesIndustry = !selectedIndustry || selectedIndustry === "all" || company.industry === selectedIndustry;
+    const matchesSize = !selectedSize || selectedSize === "all" || company.companySize === selectedSize;
 
-    return matchesSearch && matchesCity && matchesIndustry;
+    return matchesSearch && matchesCity && matchesIndustry && matchesSize;
   });
 
   // Get unique cities and industries for filters
@@ -198,6 +208,18 @@ const CompaniesPageSimple = () => {
                 {industries.map((industry) => (
                   <SelectItem key={industry} value={industry}>{industry}</SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+            <Select value={selectedSize} onValueChange={setSelectedSize}>
+              <SelectTrigger className="w-full md:w-48">
+                <SelectValue placeholder="Madhësia" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Të gjitha madhësitë</SelectItem>
+                <SelectItem value="1-10">1-10 punonjës</SelectItem>
+                <SelectItem value="11-50">11-50 punonjës</SelectItem>
+                <SelectItem value="51-200">51-200 punonjës</SelectItem>
+                <SelectItem value="200+">200+ punonjës</SelectItem>
               </SelectContent>
             </Select>
           </div>

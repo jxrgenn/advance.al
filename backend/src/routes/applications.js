@@ -1,6 +1,6 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
-import { Application, Job, User } from '../models/index.js';
+import { Application, Job, User, Notification } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer } from '../middleware/auth.js';
 import resendEmailService from '../lib/resendEmailService.js';
 
@@ -127,6 +127,32 @@ router.post('/apply', authenticate, requireJobSeeker, applyValidation, handleVal
         select: 'profile.employerProfile.companyName'
       }
     ]);
+
+    // Create application_received notification for the employer (non-blocking)
+    setImmediate(async () => {
+      try {
+        const applicantName = `${req.user.profile?.firstName || ''} ${req.user.profile?.lastName || ''}`.trim() || 'Një kandidat';
+        const jobTitle = application.jobId?.title || 'një pozicion';
+
+        await Notification.create({
+          userId: job.employerId._id,
+          type: 'application_received',
+          title: 'Aplikim i ri i marrë',
+          message: `${applicantName} aplikoi për pozicionin "${jobTitle}".`,
+          data: {
+            applicationId: application._id,
+            jobId: application.jobId?._id,
+            jobTitle,
+            applicantId: req.user._id,
+            applicantName
+          },
+          relatedApplication: application._id,
+          relatedJob: application.jobId?._id
+        });
+      } catch (err) {
+        console.error('Error creating application_received notification:', err);
+      }
+    });
 
     res.status(201).json({
       success: true,
@@ -541,6 +567,32 @@ router.post('/:id/message', authenticate, async (req, res) => {
     }
 
     await application.addMessage(req.user._id, message.trim(), type);
+
+    // Create message_received in-app notification for the other party (non-blocking)
+    setImmediate(async () => {
+      try {
+        const isEmployerSending = application.employerId.equals(req.user._id);
+        const recipientId = isEmployerSending ? application.jobSeekerId : application.employerId;
+        const senderName = `${req.user.profile?.firstName || ''} ${req.user.profile?.lastName || ''}`.trim() || 'Dikush';
+
+        await Notification.create({
+          userId: recipientId,
+          type: 'message_received',
+          title: 'Mesazh i ri',
+          message: `${senderName} ju dërgoi një mesazh në lidhje me aplikimin tuaj.`,
+          data: {
+            applicationId: application._id,
+            senderId: req.user._id,
+            senderName,
+            messageType: type
+          },
+          relatedApplication: application._id,
+          relatedJob: application.jobId
+        });
+      } catch (err) {
+        console.error('Error creating message_received notification:', err);
+      }
+    });
 
     // Send email notification to the other party (non-blocking)
     setImmediate(async () => {

@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin, Play, Pause, Lightbulb, HelpCircle } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin, Play, Lightbulb, HelpCircle } from "lucide-react";
 import ReportUserModal from "@/components/ReportUserModal";
 import { useToast } from "@/hooks/use-toast";
 import { jobsApi, applicationsApi, usersApi, locationsApi, matchingApi, Job, Application, Location, CandidateMatch, User } from "@/lib/api";
@@ -624,30 +624,6 @@ const EmployerDashboard = () => {
     }
   };
 
-  const handleToggleJobStatus = async (job: Job) => {
-    const newStatus = job.status === 'active' ? 'paused' : 'active';
-    try {
-      const response = await jobsApi.updateJobStatus(job._id, newStatus);
-      if (response.success) {
-        // Update local state immediately
-        setJobs(prev => prev.map(j => j._id === job._id ? { ...j, status: newStatus } : j));
-        toast({
-          title: "Statusi u ndryshua!",
-          description: newStatus === 'paused' ? 'Puna u pezullua me sukses' : 'Puna u aktivizua me sukses',
-        });
-      } else {
-        throw new Error(response.message || 'Failed to update job status');
-      }
-    } catch (error: any) {
-      console.error('Error toggling job status:', error);
-      toast({
-        title: "Gabim",
-        description: error.message || "Nuk mund të ndryshohej statusi i punës",
-        variant: "destructive"
-      });
-    }
-  };
-
   const handleApplicationStatusChange = async (applicationId: string, newStatus: string) => {
     try {
       // Add to updating set
@@ -1175,24 +1151,6 @@ const EmployerDashboard = () => {
                             <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
                             <span className="sr-only sm:not-sr-only sm:ml-1 hidden sm:inline">Edito</span>
                           </Button>
-                          {(job.status === 'active' || job.status === 'paused') && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleToggleJobStatus(job)}
-                              className="h-8 w-8 sm:h-9 sm:w-auto sm:px-3"
-                              title={job.status === 'active' ? 'Pezullo punën' : 'Aktivizo punën'}
-                            >
-                              {job.status === 'active' ? (
-                                <Pause className="h-3 w-3 sm:h-4 sm:w-4" />
-                              ) : (
-                                <Play className="h-3 w-3 sm:h-4 sm:w-4" />
-                              )}
-                              <span className="sr-only sm:not-sr-only sm:ml-1 hidden sm:inline">
-                                {job.status === 'active' ? 'Pezullo' : 'Aktivizo'}
-                              </span>
-                            </Button>
-                          )}
                           <Button
                             size="sm"
                             variant="outline"

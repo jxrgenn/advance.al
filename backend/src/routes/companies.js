@@ -13,6 +13,7 @@ router.get('/', optionalAuth, async (req, res) => {
       search = '',
       city = '',
       industry = '',
+      companySize = '',
       page = 1,
       limit = 12,
       sortBy = 'companyName',
@@ -41,6 +42,13 @@ router.get('/', optionalAuth, async (req, res) => {
 
     if (industry) {
       matchQuery['profile.employerProfile.industry'] = industry;
+    }
+
+    if (companySize) {
+      const validSizes = ['1-10', '11-50', '51-200', '200+'];
+      if (validSizes.includes(companySize)) {
+        matchQuery['profile.employerProfile.companySize'] = companySize;
+      }
     }
 
     // Pagination
@@ -138,7 +146,8 @@ router.get('/', optionalAuth, async (req, res) => {
         filters: {
           search,
           city,
-          industry
+          industry,
+          companySize
         }
       }
     });
