@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin, Play, Lightbulb, HelpCircle } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin, Play, Pause, Lightbulb, HelpCircle } from "lucide-react";
 import ReportUserModal from "@/components/ReportUserModal";
 import { useToast } from "@/hooks/use-toast";
 import { jobsApi, applicationsApi, usersApi, locationsApi, matchingApi, Job, Application, Location, CandidateMatch, User } from "@/lib/api";
@@ -624,6 +624,30 @@ const EmployerDashboard = () => {
     }
   };
 
+  const handleToggleJobStatus = async (job: Job) => {
+    const newStatus = job.status === 'active' ? 'paused' : 'active';
+    try {
+      const response = await jobsApi.updateJobStatus(job._id, newStatus);
+      if (response.success) {
+        // Update local state immediately
+        setJobs(prev => prev.map(j => j._id === job._id ? { ...j, status: newStatus } : j));
+        toast({
+          title: "Statusi u ndryshua!",
+          description: newStatus === 'paused' ? 'Puna u pezullua me sukses' : 'Puna u aktivizua me sukses',
+        });
+      } else {
+        throw new Error(response.message || 'Failed to update job status');
+      }
+    } catch (error: any) {
+      console.error('Error toggling job status:', error);
+      toast({
+        title: "Gabim",
+        description: error.message || "Nuk mund të ndryshohej statusi i punës",
+        variant: "destructive"
+      });
+    }
+  };
+
   const handleApplicationStatusChange = async (applicationId: string, newStatus: string) => {
     try {
       // Add to updating set
@@ -1151,10 +1175,28 @@ const EmployerDashboard = () => {
                             <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
                             <span className="sr-only sm:not-sr-only sm:ml-1 hidden sm:inline">Edito</span>
                           </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
-                            onClick={() => handleJobAction('fshirë', job._id)} 
+                          {(job.status === 'active' || job.status === 'paused') && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleToggleJobStatus(job)}
+                              className="h-8 w-8 sm:h-9 sm:w-auto sm:px-3"
+                              title={job.status === 'active' ? 'Pezullo punën' : 'Aktivizo punën'}
+                            >
+                              {job.status === 'active' ? (
+                                <Pause className="h-3 w-3 sm:h-4 sm:w-4" />
+                              ) : (
+                                <Play className="h-3 w-3 sm:h-4 sm:w-4" />
+                              )}
+                              <span className="sr-only sm:not-sr-only sm:ml-1 hidden sm:inline">
+                                {job.status === 'active' ? 'Pezullo' : 'Aktivizo'}
+                              </span>
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleJobAction('fshirë', job._id)}
                             className="h-8 w-8 sm:h-9 sm:w-auto sm:px-3"
                             data-tutorial={index === 0 ? "candidate-matching" : undefined}
                           >
@@ -1397,14 +1439,22 @@ const EmployerDashboard = () => {
                           />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="teknologji">Teknologji</SelectItem>
-                          <SelectItem value="financat">Financa</SelectItem>
-                          <SelectItem value="shendeti">Shëndetësi</SelectItem>
-                          <SelectItem value="edukimi">Edukim</SelectItem>
-                          <SelectItem value="turizmi">Turizëm</SelectItem>
-                          <SelectItem value="ndertimi">Ndërtimi</SelectItem>
-                          <SelectItem value="marketing">Marketing</SelectItem>
-                          <SelectItem value="tjeter">Tjetër</SelectItem>
+                          <SelectItem value="Teknologji Informacioni">Teknologji Informacioni</SelectItem>
+                          <SelectItem value="Financë dhe Bankë">Financë dhe Bankë</SelectItem>
+                          <SelectItem value="Shëndetësi">Shëndetësi</SelectItem>
+                          <SelectItem value="Arsim">Arsim</SelectItem>
+                          <SelectItem value="Ndërtim">Ndërtim</SelectItem>
+                          <SelectItem value="Tregti">Tregti</SelectItem>
+                          <SelectItem value="Turizëm dhe Hotelieri">Turizëm dhe Hotelieri</SelectItem>
+                          <SelectItem value="Transport dhe Logjistikë">Transport dhe Logjistikë</SelectItem>
+                          <SelectItem value="Prodhim">Prodhim</SelectItem>
+                          <SelectItem value="Media dhe Komunikim">Media dhe Komunikim</SelectItem>
+                          <SelectItem value="Juridik">Juridik</SelectItem>
+                          <SelectItem value="Konsulencë">Konsulencë</SelectItem>
+                          <SelectItem value="Bujqësi">Bujqësi</SelectItem>
+                          <SelectItem value="Energji">Energji</SelectItem>
+                          <SelectItem value="Marketing dhe Reklamim">Marketing dhe Reklamim</SelectItem>
+                          <SelectItem value="Tjetër">Tjetër</SelectItem>
                         </SelectContent>
                       </Select>
                       {user?.profile?.employerProfile?.verified && profileData.industry !== '' && (
@@ -1538,6 +1588,37 @@ const EmployerDashboard = () => {
                   </p>
                 </div>
               </div>
+
+              {/* Cover Letter */}
+              {selectedApplication.coverLetter && (
+                <div className="space-y-2">
+                  <Separator />
+                  <h3 className="text-lg font-semibold">Letra Motivuese</h3>
+                  <div className="p-3 sm:p-4 bg-muted/30 rounded-lg">
+                    <p className="text-xs sm:text-sm whitespace-pre-wrap">{selectedApplication.coverLetter}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Custom Answers */}
+              {selectedApplication.customAnswers && selectedApplication.customAnswers.length > 0 && (
+                <div className="space-y-2">
+                  <Separator />
+                  <h3 className="text-lg font-semibold">Pyetjet e Personalizuara</h3>
+                  <div className="space-y-3">
+                    {selectedApplication.customAnswers.map((qa, index) => (
+                      <div key={index} className="p-3 sm:p-4 bg-muted/30 rounded-lg space-y-1">
+                        <p className="text-xs sm:text-sm font-medium text-foreground">
+                          {qa.question}
+                        </p>
+                        <p className="text-xs sm:text-sm text-muted-foreground whitespace-pre-wrap">
+                          {qa.answer}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Job Seeker Profile Details */}
               {typeof selectedApplication.jobSeekerId !== 'string' && selectedApplication.jobSeekerId?.profile?.jobSeekerProfile && (

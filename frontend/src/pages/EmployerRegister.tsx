@@ -25,6 +25,7 @@ const INDUSTRIES = [
   'Konsulencë',
   'Bujqësi',
   'Energji',
+  'Marketing dhe Reklamim',
   'Tjetër',
 ];
 

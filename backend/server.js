@@ -226,6 +226,17 @@ const server = app.listen(PORT, () => {
   console.log(`🚀 advance.al API running on port ${PORT}`);
   console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+
+  // Periodic task: auto-lift expired user suspensions (every 15 minutes)
+  import('./src/models/index.js').then(({ User }) => {
+    setInterval(async () => {
+      try {
+        await User.checkExpiredSuspensions();
+      } catch (err) {
+        console.error('Error checking expired suspensions:', err.message);
+      }
+    }, 15 * 60 * 1000);
+  }).catch(() => {});
 });
 
 // Graceful Shutdown — must be AFTER server is defined

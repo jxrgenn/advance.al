@@ -282,6 +282,20 @@ const PostJob = () => {
         return;
       }
 
+      // Validate salary: warn if only one of min/max is filled
+      const hasMin = !!values.salaryMin;
+      const hasMax = !!values.salaryMax;
+      if ((hasMin && !hasMax) || (!hasMin && hasMax)) {
+        notifications.show({
+          title: 'Paga jo e plotë',
+          message: 'Duhet të plotësoni si pagën minimale ashtu edhe atë maksimale, ose lini të dyja bosh. Paga nuk do të ruhet nëse vetëm njëra është plotësuar.',
+          color: 'orange',
+          autoClose: 6000,
+        });
+        setLoading(false);
+        return;
+      }
+
       // Map form values to backend enum values
       const mapJobType = (type: string) => {
         const mapping: { [key: string]: string } = {
@@ -352,7 +366,8 @@ const PostJob = () => {
           negotiable: false,
           period: salaryPeriod
         } : undefined,
-        platformCategories: values.platformCategories
+        platformCategories: values.platformCategories,
+        expiresAt: values.expiresAt || undefined
       };
 
       const response = await jobsApi.createJob(jobData);

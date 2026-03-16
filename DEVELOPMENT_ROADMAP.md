@@ -1,9 +1,9 @@
 # advance.al - DEVELOPMENT STATUS & ROADMAP
 
 **Date:** September 25-28, 2025
-**Last Updated:** March 16, 2026 (Phase 7 critical+high fixes — 25+ items done)
+**Last Updated:** March 16, 2026 (Phase 7 batch 2 — 40+ items done total)
 **Platform:** Premier Job Marketplace for Albania
-**CURRENT STATUS:** 🟡 **PRODUCTION FIXES IN PROGRESS — Phase 1 DONE (14/16), Phase 2 DONE (15/15), Phase 3 DONE (14/16), Phase 4 DONE (16/16), Phase 5 (12/15), Phase 7 (25+ items done), Phase 6 remaining**
+**CURRENT STATUS:** 🟡 **PRODUCTION FIXES IN PROGRESS — Phase 1 DONE (14/16), Phase 2 DONE (15/15), Phase 3 DONE (14/16), Phase 4 DONE (16/16), Phase 5 (12/15), Phase 7 (~40 items done), Phase 6 remaining**
 **Phase:** Production Readiness Implementation (see `PRODUCTION_READY_IMPLEMENTATION_PLAN.md`)
 **Brand:** advance.al (formerly Albania JobFlow)
 
@@ -18,11 +18,11 @@ Full codebase audit completed across 60+ backend files, 40+ frontend files, plus
 - **Phase 4 — PRODUCTION HARDENING:** 16 issues — ✅ ALL DONE (console.log cleanup 100+ removed from routes/services/models/frontend, CORS regex tightened, body limit 1mb, error sanitization in production, upload dir auto-creation, graceful shutdown, DB retry with backoff, email sender standardized to noreply@advance.al via EMAIL_FROM env, rate limit on refresh token, password required for account deletion, React ErrorBoundary, code splitting with React.lazy, N+1 bulk saved-jobs check, stats caching 5min TTL, send-verification copyright dynamic, index.html metadata correct)
 - **Phase 5 — UX POLISH:** 15 issues — ✅ 12 DONE (notification polling 30s, dead digest stubs, dead "view all" link, report route conflict, login success toast, admin navbar padding, useless embedding index, Footer on SavedJobs, pagination sliding window, freeze_posting implemented, work/education delete, contact auth gate, phone intl format) — 3 deferred: 5.3 duplicate toasts (risky), 5.15 tutorial extraction (large refactor), 5.11 already done (Footer)
 - **Phase 6 — SCALABILITY:** 7 issues (files in MongoDB, OOM on semantic matching, no caching, no monitoring)
-- **Phase 7A — JOB SEEKER LOGIC:** 9 issues — ✅ 4 DONE (7A.1 fullForm validation, 7A.2 auth state on register, 7A.3 1-click apply auth guard, 7A.9 specific error messages) — remaining: 7A.5 unsave UI, 7A.6 notification links, 7A.7 dead notifications link, 7A.8 save job redirect, 7A.10 already done in Phase 5
-- **Phase 7B — EMPLOYER LOGIC:** 17 issues — ✅ 2 DONE (7B.4 EditJob platformCategories, 7B.12 CompanyProfile hardcoded text) — remaining: 7B.1 employer desc/website, 7B.2/7B.3 industry inconsistency, 7B.4b/7B.4c EditJob extra fields, 7B.5-7B.11, 7B.13-7B.14
-- **Phase 7C — ADMIN LOGIC:** 12 issues — ✅ 4 DONE (7C.1 getReportActions→reportsApi, 7C.2 rejection status=rejected, 7C.3 config tab value fix, 7C.7 pause_platform action) — remaining: 7C.4-7C.6 already done in Phase 5, 7C.5 suspend reason, 7C.8-7C.12
-- **Phase 7D — BUSINESS LOGIC:** 12 issues — ✅ 5 DONE (7D.1 Math.random→real demand, 7D.2 revenue gated by active status, 7D.3 notifications gated by active status, 7D.4 embedding before notify, 7D.6 skills scoring fix, 7D.7 report admin notification) — remaining: 7D.5 frequency prefs, 7D.8 suspension auto-lift, 7D.9-7D.12
-- **Phase 7E — CROSS-CUTTING:** 10 issues — ✅ 5 DONE (7E.1 SimilarJobs city param, 7E.5 AboutUs real stats, 7E.7 NotFound Link, 7E.9 verification rate limiting, 7E.10 email branding) — remaining: 7E.2 recommendations component, 7E.3 CompaniesPage dead code, 7E.4 company size filter, 7E.6 footer social links, 7E.8 QuickUser banner
+- **Phase 7A — JOB SEEKER LOGIC:** 9 issues — ✅ 7 DONE (7A.1 fullForm validation, 7A.2 auth state on register, 7A.3 1-click apply auth guard, 7A.5 unsave UI refresh, 7A.6 notification links, 7A.8 save job login redirect, 7A.9 specific error messages, 7A.10 already done in Phase 5) — remaining: 7A.7 dead notifications link
+- **Phase 7B — EMPLOYER LOGIC:** 17 issues — ✅ 12 DONE (7B.1 employer desc/website in register payload, 7B.2 industry select uncommented, 7B.3 industry values standardized across all forms, 7B.4 EditJob platformCategories, 7B.4b EditJob external URL/email fields, 7B.5 pause/resume jobs in dashboard, 7B.7 custom answers display in applications, 7B.10 salary partial-fill validation, 7B.11 expiresAt in PostJob submit, 7B.12 CompanyProfile hardcoded text) — remaining: 7B.4c custom questions in EditJob, 7B.8-7B.9, 7B.13-7B.14
+- **Phase 7C — ADMIN LOGIC:** 12 issues — ✅ 7 DONE (7C.1 getReportActions→reportsApi, 7C.2 rejection status=rejected, 7C.3 config tab value fix, 7C.7 pause_platform action, 7C.10 revenue/conversion real data, 7C.11 loadReportsData already uses real API, 7C.12 admin reason dialog for reject/suspend) — remaining: 7C.5 suspend reason (done via 7C.12), 7C.8-7C.9
+- **Phase 7D — BUSINESS LOGIC:** 12 issues — ✅ 6 DONE (7D.1 Math.random→real demand, 7D.2 revenue gated by active status, 7D.3 notifications gated by active status, 7D.4 embedding before notify, 7D.6 skills scoring fix, 7D.7 report admin notification, 7D.8 suspension auto-lift periodic) — remaining: 7D.5 frequency prefs, 7D.9-7D.12
+- **Phase 7E — CROSS-CUTTING:** 10 issues — ✅ 7 DONE (7E.1 SimilarJobs city param, 7E.5 AboutUs real stats, 7E.6 footer social links cleanup, 7E.7 NotFound Link, 7E.8 QuickUser banner already has auth guard, 7E.9 verification rate limiting, 7E.10 email branding) — remaining: 7E.2 recommendations component, 7E.3 CompaniesPage dead code, 7E.4 company size filter
 
 **Implementation conflicts identified:** 4 (MutationObserver scoping, tier validation vs stripping, Application index migration, password minimum alignment) — all have documented mitigations.
 

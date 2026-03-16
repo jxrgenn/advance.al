@@ -222,6 +222,8 @@ const SavedJobs = () => {
                   job={job}
                   onApply={handleApply}
                   hasApplied={appliedJobIds.includes(job._id)}
+                  initialSaved={true}
+                  onUnsave={() => handleUnsaveJob(job._id)}
                 />
               ))}
             </div>

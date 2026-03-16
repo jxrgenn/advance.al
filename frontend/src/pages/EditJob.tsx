@@ -37,6 +37,8 @@ const EditJob = () => {
     salaryCurrency: 'EUR',
     showSalary: false,
     applicationMethod: 'one_click',
+    externalApplicationUrl: '',
+    applicationEmail: '',
     expiresAt: '',
     platformCategories: {
       diaspora: false,
@@ -129,6 +131,8 @@ const EditJob = () => {
           salaryCurrency: job.salary?.currency || 'EUR',
           showSalary: job.salary?.showPublic || false,
           applicationMethod: mapApplicationMethodFromBackend(job.applicationMethod),
+          externalApplicationUrl: job.externalApplicationUrl || '',
+          applicationEmail: job.applicationEmail || '',
           expiresAt: job.expiresAt ? new Date(job.expiresAt).toISOString().split('T')[0] : '',
           platformCategories: {
             diaspora: job.platformCategories?.diaspora || false,
@@ -175,6 +179,19 @@ const EditJob = () => {
 
     try {
       setLoading(true);
+
+      // Validate salary: warn if only one of min/max is filled
+      const hasMin = !!formData.salaryMin;
+      const hasMax = !!formData.salaryMax;
+      if ((hasMin && !hasMax) || (!hasMin && hasMax)) {
+        toast({
+          title: 'Paga jo e plotë',
+          description: 'Duhet të plotësoni si pagën minimale ashtu edhe atë maksimale, ose lini të dyja bosh. Paga nuk do të ruhet nëse vetëm njëra është plotësuar.',
+          variant: 'destructive',
+        });
+        setLoading(false);
+        return;
+      }
 
       // Map form values to backend enum values (same as PostJob)
       const mapJobType = (type: string) => {
@@ -235,6 +252,8 @@ const EditJob = () => {
           remoteType: formData.jobType === 'Remote' ? 'full' : 'none'
         },
         applicationMethod: mapApplicationMethod(formData.applicationMethod),
+        ...(formData.applicationMethod === 'external' && formData.externalApplicationUrl && { externalApplicationUrl: formData.externalApplicationUrl }),
+        ...(formData.applicationMethod === 'email' && formData.applicationEmail && { applicationEmail: formData.applicationEmail }),
         requirements: requirements.filter(r => r.trim()),
         benefits: benefits.filter(b => b.trim()),
         tags: tags.filter(t => t.trim()),
@@ -664,6 +683,34 @@ const EditJob = () => {
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {formData.applicationMethod === 'external' && (
+                    <div>
+                      <Label htmlFor="externalApplicationUrl">URL e aplikimit të jashtëm *</Label>
+                      <Input
+                        id="externalApplicationUrl"
+                        type="url"
+                        placeholder="https://example.com/apply"
+                        value={formData.externalApplicationUrl}
+                        onChange={(e) => handleInputChange('externalApplicationUrl', e.target.value)}
+                        required
+                      />
+                    </div>
+                  )}
+
+                  {formData.applicationMethod === 'email' && (
+                    <div>
+                      <Label htmlFor="applicationEmail">Email-i për aplikime *</Label>
+                      <Input
+                        id="applicationEmail"
+                        type="email"
+                        placeholder="hr@company.com"
+                        value={formData.applicationEmail}
+                        onChange={(e) => handleInputChange('applicationEmail', e.target.value)}
+                        required
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Expiry Date */}

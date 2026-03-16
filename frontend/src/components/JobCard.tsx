@@ -15,9 +15,10 @@ interface JobCardProps {
   isRecommended?: boolean;
   initialSaved?: boolean;
   compact?: boolean;
+  onUnsave?: () => void;
 }
 
-const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, initialSaved }: JobCardProps) => {
+const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, initialSaved, onUnsave }: JobCardProps) => {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const { toast } = useToast();
@@ -62,6 +63,7 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, init
         description: "Ju duhet të kyçeni për të ruajtur punë.",
         variant: "destructive"
       });
+      navigate("/login");
       return;
     }
 
@@ -85,6 +87,7 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, init
             title: "Puna u hoq nga të ruajturat",
             description: "Puna nuk është më në listën tuaj të punëve të ruajtura."
           });
+          onUnsave?.();
         }
       } else {
         const response = await usersApi.saveJob(job._id);

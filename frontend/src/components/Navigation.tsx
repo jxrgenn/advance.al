@@ -126,6 +126,37 @@ const Navigation = () => {
     }
   };
 
+  const handleNotificationClick = (notification: Notification) => {
+    // Mark as read if unread
+    if (!notification.read) {
+      handleMarkAsRead(notification._id);
+    }
+
+    // Navigate to related content
+    if (notification.relatedJob?._id) {
+      setNotificationsOpen(false);
+      navigate(`/jobs/${notification.relatedJob._id}`);
+    } else if (notification.relatedApplication) {
+      // For application-related notifications, navigate based on user type
+      setNotificationsOpen(false);
+      if (user?.userType === 'employer') {
+        navigate('/employer-dashboard');
+      } else {
+        navigate('/profile');
+      }
+    }
+  };
+
+  const getNotificationLink = (notification: Notification): string | null => {
+    if (notification.relatedJob?._id) {
+      return `/jobs/${notification.relatedJob._id}`;
+    }
+    if (notification.relatedApplication) {
+      return user?.userType === 'employer' ? '/employer-dashboard' : '/profile';
+    }
+    return null;
+  };
+
   const handleLogout = async () => {
     try {
       await logout();
@@ -292,6 +323,7 @@ loadNotifications();
                   ) : (
                     notifications.map((notification) => {
                       const isExpanded = expandedNotificationId === notification._id;
+                      const hasLink = getNotificationLink(notification) !== null;
                       return (
                         <DropdownMenuItem
                           key={notification._id}
@@ -316,9 +348,22 @@ loadNotifications();
                             <p className={`text-xs text-muted-foreground whitespace-pre-wrap ${isExpanded ? '' : 'line-clamp-2'}`}>
                               {notification.message}
                             </p>
-                            <p className="text-xs text-muted-foreground">
-                              {notification.timeAgo}
-                            </p>
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs text-muted-foreground">
+                                {notification.timeAgo}
+                              </p>
+                              {hasLink && (
+                                <button
+                                  className="text-xs text-primary hover:underline font-medium"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleNotificationClick(notification);
+                                  }}
+                                >
+                                  Shiko &rarr;
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </DropdownMenuItem>
                       );

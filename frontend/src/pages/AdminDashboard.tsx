@@ -248,6 +248,32 @@ const AdminDashboard = () => {
   const [systemHealth, setSystemHealth] = useState<any>(null);
   const [activeConfigTab, setActiveConfigTab] = useState('platform');
 
+  // Admin reason dialog state
+  const [reasonDialog, setReasonDialog] = useState<{
+    open: boolean;
+    title: string;
+    defaultReason: string;
+    onConfirm: (reason: string) => void;
+  }>({ open: false, title: '', defaultReason: '', onConfirm: () => {} });
+  const [reasonInput, setReasonInput] = useState('');
+
+  const openReasonDialog = (title: string, defaultReason: string, onConfirm: (reason: string) => void) => {
+    setReasonInput(defaultReason);
+    setReasonDialog({ open: true, title, defaultReason, onConfirm });
+  };
+
+  const confirmReasonDialog = () => {
+    const reason = reasonInput.trim() || reasonDialog.defaultReason;
+    reasonDialog.onConfirm(reason);
+    setReasonDialog({ open: false, title: '', defaultReason: '', onConfirm: () => {} });
+    setReasonInput('');
+  };
+
+  const cancelReasonDialog = () => {
+    setReasonDialog({ open: false, title: '', defaultReason: '', onConfirm: () => {} });
+    setReasonInput('');
+  };
+
   // Bulk notification form and stats
   const [notificationForm, setNotificationForm] = useState({
     title: '',
@@ -855,13 +881,13 @@ const AdminDashboard = () => {
   };
 
   // Handle report actions
-  const handleReportAction = async (reportId: string, action: 'approve' | 'reject', userId?: string) => {
+  const handleReportAction = async (reportId: string, action: 'approve' | 'reject', userId?: string, customReason?: string) => {
     try {
       if (action === 'approve' && userId) {
         // Take action on the report via real API
         await reportsApi.takeAction(reportId, {
           action: 'suspend',
-          reason: 'Pezulluar për shkak të raportimit',
+          reason: customReason || 'Pezulluar për shkak të raportimit',
           notifyUser: true,
         });
         // Reload reports data
@@ -1323,29 +1349,45 @@ const AdminDashboard = () => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
-                      <div>
-                        <div className="flex justify-between mb-1">
-                          <span className="text-sm">Quick → Full Account</span>
-                          <span className="text-sm font-medium">12.3%</span>
+                    {dashboardStats ? (
+                      <div className="space-y-4">
+                        <div>
+                          <div className="flex justify-between mb-1">
+                            <span className="text-sm">Quick → Full Account</span>
+                            <span className="text-sm font-medium">
+                              {dashboardStats.quickUsers > 0 && dashboardStats.totalJobSeekers > 0
+                                ? `${((dashboardStats.totalJobSeekers / (dashboardStats.totalJobSeekers + dashboardStats.quickUsers)) * 100).toFixed(1)}%`
+                                : 'N/A'}
+                            </span>
+                          </div>
+                          <Progress value={dashboardStats.quickUsers > 0 && dashboardStats.totalJobSeekers > 0
+                            ? (dashboardStats.totalJobSeekers / (dashboardStats.totalJobSeekers + dashboardStats.quickUsers)) * 100
+                            : 0} />
                         </div>
-                        <Progress value={12.3} />
-                      </div>
-                      <div>
-                        <div className="flex justify-between mb-1">
-                          <span className="text-sm">Job View → Apply</span>
-                          <span className="text-sm font-medium">8.7%</span>
+                        <div>
+                          <div className="flex justify-between mb-1">
+                            <span className="text-sm">Employer Verification</span>
+                            <span className="text-sm font-medium">
+                              {dashboardStats.totalEmployers > 0
+                                ? `${((dashboardStats.verifiedEmployers / dashboardStats.totalEmployers) * 100).toFixed(1)}%`
+                                : 'N/A'}
+                            </span>
+                          </div>
+                          <Progress value={dashboardStats.totalEmployers > 0
+                            ? (dashboardStats.verifiedEmployers / dashboardStats.totalEmployers) * 100
+                            : 0} />
                         </div>
-                        <Progress value={8.7} />
-                      </div>
-                      <div>
-                        <div className="flex justify-between mb-1">
-                          <span className="text-sm">Employer Verification</span>
-                          <span className="text-sm font-medium">85.4%</span>
+                        <div>
+                          <div className="flex justify-between mb-1">
+                            <span className="text-sm">Job View → Apply</span>
+                            <span className="text-sm font-medium text-muted-foreground">N/A</span>
+                          </div>
+                          <Progress value={0} />
                         </div>
-                        <Progress value={85.4} />
                       </div>
-                    </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">Duke ngarkuar...</div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -1392,12 +1434,12 @@ const AdminDashboard = () => {
                         </div>
                         <div className="space-y-2">
                           <div className="flex justify-between">
-                            <span className="text-sm">Normale (€28)</span>
-                            <span className="text-sm">67 punë</span>
+                            <span className="text-sm">Punë Aktive</span>
+                            <span className="text-sm">{dashboardStats.activeJobs} punë</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-sm">Sponsored (€42)</span>
-                            <span className="text-sm">89 punë</span>
+                            <span className="text-sm">Gjithsej Punë</span>
+                            <span className="text-sm">{dashboardStats.totalJobs} punë</span>
                           </div>
                         </div>
                       </div>
@@ -1559,7 +1601,11 @@ const AdminDashboard = () => {
                           <Button
                             variant="destructive"
                             size="sm"
-                            onClick={() => handleJobAction(job._id, 'reject', 'Refuzuar nga administratori')}
+                            onClick={() => openReasonDialog(
+                              'Arsyeja e Refuzimit',
+                              'Refuzuar nga administratori',
+                              (reason) => handleJobAction(job._id, 'reject', reason)
+                            )}
                           >
                             <XCircle className="h-4 w-4 mr-1" />
                             Refuzo
@@ -1992,7 +2038,11 @@ const AdminDashboard = () => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleUserAction(user._id, 'suspend', 'Pezulluar nga admin')}
+                            onClick={() => openReasonDialog(
+                              'Arsyeja e Pezullimit',
+                              'Pezulluar nga admin',
+                              (reason) => handleUserAction(user._id, 'suspend', reason)
+                            )}
                           >
                             <XCircle className="h-4 w-4 mr-1" />
                             Pezullo
@@ -2137,7 +2187,11 @@ const AdminDashboard = () => {
                               <Button
                                 size="sm"
                                 variant="destructive"
-                                onClick={() => handleReportAction(report.id, 'approve', report.reportedUser.id)}
+                                onClick={() => openReasonDialog(
+                                  'Arsyeja e Pezullimit të Përdoruesit',
+                                  'Pezulluar për shkak të raportimit',
+                                  (reason) => handleReportAction(report.id, 'approve', report.reportedUser.id, reason)
+                                )}
                               >
                                 Pezullo
                               </Button>
@@ -2714,8 +2768,14 @@ const AdminDashboard = () => {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      handleUserAction(selectedUserForDetails._id, 'suspend', 'Pezulluar nga admin');
-                      setSelectedUserForDetails(null);
+                      openReasonDialog(
+                        'Arsyeja e Pezullimit',
+                        'Pezulluar nga admin',
+                        (reason) => {
+                          handleUserAction(selectedUserForDetails._id, 'suspend', reason);
+                          setSelectedUserForDetails(null);
+                        }
+                      );
                     }}
                   >
                     <XCircle className="h-4 w-4 mr-2" />
@@ -2728,6 +2788,38 @@ const AdminDashboard = () => {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Admin Reason Dialog */}
+      <Dialog open={reasonDialog.open} onOpenChange={(open) => { if (!open) cancelReasonDialog(); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{reasonDialog.title}</DialogTitle>
+            <DialogDescription>
+              Shkruani arsyen për këtë veprim. Mund ta lini bosh për arsyen e parazgjedhur.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="admin-reason">Arsyeja</Label>
+              <Textarea
+                id="admin-reason"
+                value={reasonInput}
+                onChange={(e) => setReasonInput(e.target.value)}
+                placeholder={reasonDialog.defaultReason}
+                rows={3}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={cancelReasonDialog}>
+                Anulo
+              </Button>
+              <Button onClick={confirmReasonDialog}>
+                Konfirmo
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

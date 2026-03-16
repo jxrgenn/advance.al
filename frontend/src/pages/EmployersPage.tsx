@@ -70,6 +70,7 @@ const EmployersPage = () => {
       // Optional company fields
       website: '',
       description: '',
+      industry: '',
     },
     validate: (values) => {
       const errors: any = {};
@@ -98,6 +99,7 @@ const EmployersPage = () => {
       if (currentStep === 1) {
         if (!values.companyName) errors.companyName = 'Emri i kompanisë është i detyrueshëm';
         if (!values.companySize) errors.companySize = 'Madhësia e kompanisë është e detyrueshme';
+        if (!values.industry) errors.industry = 'Industria është e detyrueshme';
         if (!values.city) errors.city = 'Qyteti është i detyrueshëm';
       }
 
@@ -105,10 +107,24 @@ const EmployersPage = () => {
     },
   });
 
-  // const industries = [
-  //   'Teknologji', 'Marketing', 'Financë', 'Shëndetësi', 'Arsim',
-  //   'Inxhinieri', 'Dizajn', 'Turizëm', 'Ndërtim', 'Transport', 'Tjetër'
-  // ];
+  const industries = [
+    'Teknologji Informacioni',
+    'Financë dhe Bankë',
+    'Shëndetësi',
+    'Arsim',
+    'Ndërtim',
+    'Tregti',
+    'Turizëm dhe Hotelieri',
+    'Transport dhe Logjistikë',
+    'Prodhim',
+    'Media dhe Komunikim',
+    'Juridik',
+    'Konsulencë',
+    'Bujqësi',
+    'Energji',
+    'Marketing dhe Reklamim',
+    'Tjetër',
+  ];
 
   const cities = [
     'Tiranë', 'Durrës', 'Vlorë', 'Shkodër', 'Korçë', 'Elbasan',
@@ -775,6 +791,8 @@ const EmployersPage = () => {
         companyName: values.companyName.trim(),
         industry: values.industry || 'Tjetër',
         companySize: values.companySize || '1-10',
+        description: values.description?.trim() || undefined,
+        website: values.website?.trim() || undefined,
       });
 
       // Success - registration handled by AuthContext
@@ -1028,13 +1046,13 @@ const EmployersPage = () => {
                 data={companySizes}
                 required
               />
-              {/* <Select
+              <Select
                 label="Industria"
                 placeholder="Në cilën industri vepron kompania?"
                 {...employerForm.getInputProps('industry')}
                 data={industries}
                 required
-              /> */}
+              />
             </div>
 
             <SimpleGrid cols={2} spacing="md" data-tutorial="location">

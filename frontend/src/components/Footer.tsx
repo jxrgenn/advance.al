@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { Building, Users, Mail, Phone, MapPin, Facebook, Linkedin, Instagram } from "lucide-react";
+import { Mail } from "lucide-react";
 
 const Footer = () => {
   const navigate = useNavigate();
@@ -32,14 +32,8 @@ const Footer = () => {
               Platforma më moderne e punës në Shqipëri. Lidhim punëkërkuesit me punëdhënësit më të mirë.
             </p>
             <div className="flex gap-3">
-              <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
-                <Facebook className="h-5 w-5" />
-              </a>
-              <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
-                <Linkedin className="h-5 w-5" />
-              </a>
-              <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
-                <Instagram className="h-5 w-5" />
+              <a href="mailto:info@advance.al" className="text-muted-foreground hover:text-primary transition-colors">
+                <Mail className="h-5 w-5" />
               </a>
             </div>
           </div>

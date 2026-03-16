@@ -103,6 +103,7 @@ interface AuthContextType {
     industry?: string;
     companySize?: string;
     description?: string;
+    website?: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
@@ -161,6 +162,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     industry?: string;
     companySize?: string;
     description?: string;
+    website?: string;
   }): Promise<void> => {
     dispatch({ type: 'AUTH_START' });
 
