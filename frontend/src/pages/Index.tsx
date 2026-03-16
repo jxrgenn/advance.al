@@ -5,7 +5,6 @@ import Footer from "@/components/Footer";
 import JobCard from "@/components/JobCard";
 import CoreFilters from "@/components/CoreFilters";
 import RecentlyViewedJobs from "@/components/RecentlyViewedJobs";
-import JobRecommendations from "@/components/JobRecommendations";
 import PremiumJobsCarousel from "@/components/PremiumJobsCarousel";
 import { QuickUserBanner } from "@/components/QuickUserBanner";
 import ScrollToTopButton from "@/components/ScrollToTopButton";
@@ -1014,11 +1013,6 @@ const Index = () => {
             {/* Recently Viewed Jobs - Show when not filtering and user is authenticated */}
             {!loading && !searchQuery && selectedLocations.length === 0 && !selectedType && !Object.values(coreFilters).some(Boolean) && isAuthenticated && (
               <RecentlyViewedJobs className="mb-6" limit={4} />
-            )}
-
-            {/* Job Recommendations - Only renders for authenticated jobseekers */}
-            {!loading && !searchQuery && selectedLocations.length === 0 && !selectedType && !Object.values(coreFilters).some(Boolean) && (
-              <JobRecommendations className="mb-6" limit={6} />
             )}
 
             {/* Active Filters */}

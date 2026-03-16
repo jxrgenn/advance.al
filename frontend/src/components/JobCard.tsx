@@ -197,18 +197,18 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, init
               </div>
             </div>
 
-            {/* Save button positioned below the logo - responsive positioning */}
+            {/* Save button - top right of logo area */}
             {isAuthenticated && user?.userType === 'jobseeker' && (
-              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-4 sm:translate-y-6 md:translate-y-8">
+              <div className="absolute -top-1 -left-2 sm:-left-1">
                 <Button
                   variant={isSaved ? "default" : "outline"}
                   size="sm"
                   onClick={handleSaveToggle}
                   disabled={isLoading}
-                  className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 p-0"
+                  className="w-7 h-7 sm:w-8 sm:h-8 p-0 rounded-full shadow-sm"
                   title={isSaved ? "Hiq nga të ruajturat" : "Ruaj punën"}
                 >
-                  <Bookmark className={`h-3 w-3 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 ${isSaved ? 'fill-current' : ''}`} />
+                  <Bookmark className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${isSaved ? 'fill-current' : ''}`} />
                 </Button>
               </div>
             )}
