@@ -40,13 +40,14 @@ const Navigation = () => {
   // Note: DropdownMenu components use modal={false} to prevent
   // body scroll-lock and padding-right shifts from Radix UI
 
-  // Load notifications when user is authenticated + poll every 30s
+  // Load notifications when user is authenticated + poll every 60s (pauses when tab hidden)
   useEffect(() => {
-    if (isAuthenticated && user) {
-      loadUnreadCount();
-      const interval = setInterval(loadUnreadCount, 30000);
-      return () => clearInterval(interval);
-    }
+    if (!isAuthenticated || !user) return;
+    loadUnreadCount();
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') loadUnreadCount();
+    }, 60000);
+    return () => clearInterval(interval);
   }, [isAuthenticated, user]);
 
   const loadUnreadCount = async () => {

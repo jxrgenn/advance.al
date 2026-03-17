@@ -47,12 +47,23 @@ import matchingRoutes from './src/routes/matching.js';
 import cvRoutes from './src/routes/cv.js';
 import { Job, SystemConfiguration } from './src/models/index.js';
 
+// Startup validation — fail fast if critical env vars are missing
+const requiredEnvVars = ['JWT_SECRET', 'JWT_REFRESH_SECRET'];
+const missingEnvVars = requiredEnvVars.filter(v => !process.env[v]);
+if (missingEnvVars.length > 0) {
+  logger.error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
+  process.exit(1);
+}
+if (!process.env.OPENAI_API_KEY) {
+  logger.warn('OPENAI_API_KEY not set — CV generation and embeddings will be unavailable');
+}
+
 const app = express();
 app.set('trust proxy', 1); // Trust first proxy hop (required for Render/PaaS — fixes rate limiting per real IP)
 const PORT = process.env.PORT || 3001;
 
-// Connect to Database
-connectDB();
+// Connect to Database — must complete before accepting requests
+await connectDB();
 
 // Security Middleware
 app.use(helmet({
@@ -75,9 +86,9 @@ const corsOptions = {
       return callback(null, true);
     }
     
-    // Allow requests with no origin only for health checks (handled at route level)
-    // Block API requests without Origin header in production
-    if (!origin) return callback(null, true);
+    // In production, block API requests without Origin header
+    // (health check is not behind CORS, server-to-server tools don't need CORS)
+    if (!origin) return callback(new Error('Not allowed by CORS'));
     
     const allowedOrigins = [
       'http://localhost:5173', // Vite dev server
@@ -142,38 +153,43 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 // Ensure upload directories exist
 mkdirSync(path.join(process.cwd(), 'uploads', 'resumes'), { recursive: true });
 
-// Serve static files for uploads
-app.use('/uploads', express.static('./uploads'));
+// NOTE: Local uploads served through authenticated endpoint only (not static)
+// Cloudinary handles file serving in production
 
-// Health Check Route
+// Health Check Route — minimal in production, detailed in dev
 app.get('/health', (req, res) => {
   const dbState = mongoose.connection.readyState;
-  const dbStates = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
-  const mem = process.memoryUsage();
   const isHealthy = dbState === 1;
 
-  const payload = {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(isHealthy ? 200 : 503).json({
+      success: isHealthy,
+      message: isHealthy ? 'OK' : 'Degraded',
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  const dbStates = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
+  const mem = process.memoryUsage();
+  res.status(isHealthy ? 200 : 503).json({
     success: isHealthy,
     message: isHealthy ? 'PunaShqip API është aktiv' : 'PunaShqip API ka probleme',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
     uptime: Math.floor(process.uptime()),
-    database: {
-      status: dbStates[dbState] || 'unknown',
-      readyState: dbState
-    },
+    database: { status: dbStates[dbState] || 'unknown', readyState: dbState },
     memory: {
       rss: Math.round(mem.rss / 1024 / 1024 * 100) / 100,
       heapUsed: Math.round(mem.heapUsed / 1024 / 1024 * 100) / 100
     }
-  };
-
-  res.status(isHealthy ? 200 : 503).json(payload);
+  });
 });
 
 // Maintenance Mode Middleware — checks config and returns 503 for non-admin routes
 app.use('/api', async (req, res, next) => {
-  if (req.path.startsWith('/auth') || req.path.startsWith('/admin') || req.path.startsWith('/configuration')) {
+  // Only allow admin access and essential auth during maintenance
+  const maintenanceBypass = ['/auth/login', '/auth/refresh', '/auth/logout', '/admin', '/configuration'];
+  if (maintenanceBypass.some(path => req.path.startsWith(path))) {
     return next();
   }
   try {
@@ -334,5 +350,19 @@ const shutdown = async (signal) => {
 };
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+// Global safety net — prevent unhandled errors from crashing the server silently
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Promise Rejection', { reason: reason?.message || reason });
+  if (process.env.SENTRY_DSN) Sentry.captureException(reason);
+});
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught Exception — shutting down', { error: err.message, stack: err.stack });
+  if (process.env.SENTRY_DSN) Sentry.captureException(err);
+  shutdown('uncaughtException');
+});
+
+// Request-level timeout (30s default — prevents hung connections)
+server.setTimeout(30000);
 
 export default app;

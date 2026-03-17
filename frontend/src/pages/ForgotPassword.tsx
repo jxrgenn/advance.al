@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Mail } from "lucide-react";
+import { authApi } from "@/lib/api";
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState("");
@@ -27,12 +28,7 @@ const ForgotPassword = () => {
 
     try {
       setIsLoading(true);
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3001";
-      await fetch(`${apiUrl}/api/auth/forgot-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
-      });
+      await authApi.forgotPassword(email.trim());
 
       // Always show success message for security (don't reveal if email exists)
       toast({

@@ -690,7 +690,7 @@ const PostJob = () => {
     setLastScrolledFormStep(null);
     setTutorialStepsByFormStep({}); // Clear progress so tutorial restarts from beginning
     // Unlock scroll on body
-    document.body.style.overflow = 'auto';
+    document.body.style.overflow = '';
   };
 
   // Tutorial element tracking and highlighting
@@ -755,7 +755,7 @@ const PostJob = () => {
   // Cleanup scroll lock on component unmount
   useEffect(() => {
     return () => {
-      document.body.style.overflow = 'auto';
+      document.body.style.overflow = '';
     };
   }, []);
 
@@ -808,7 +808,7 @@ const PostJob = () => {
       if (isNewFormStep) {
         // New form step on desktop: scroll to show ENTIRE FORM, then mark this step as scrolled
         isScrollLockedRef.current = false; // Unlock for tutorial scroll
-        document.body.style.overflow = 'auto';
+        document.body.style.overflow = '';
 
         // Find the form container (the Paper/Card containing the form)
         const formContainer = element.closest('form') || element.closest('[class*="mantine-Paper"]') || element.closest('[class*="mantine-Card"]');
@@ -844,7 +844,7 @@ const PostJob = () => {
         if (!isVisible) {
           // Element not visible, scroll to it first
           isScrollLockedRef.current = false; // Unlock for tutorial scroll
-          document.body.style.overflow = 'auto';
+          document.body.style.overflow = '';
 
           element.scrollIntoView({
             behavior: 'smooth',
@@ -898,7 +898,7 @@ const PostJob = () => {
     // On mobile, ALWAYS scroll when form step changes
     if (isNewFormStep) {
       isScrollLockedRef.current = false; // Unlock for tutorial scroll
-      document.body.style.overflow = 'auto';
+      document.body.style.overflow = '';
 
       // Find the form container (the Paper/Card containing the form)
       const formContainer = element.closest('form') || element.closest('[class*="mantine-Paper"]') || element.closest('[class*="mantine-Card"]');
@@ -941,7 +941,7 @@ const PostJob = () => {
     // Mobile: Scroll if not visible or covered (within same form step)
     if (!isVisible) {
       isScrollLockedRef.current = false; // Unlock for tutorial scroll
-      document.body.style.overflow = 'auto';
+      document.body.style.overflow = '';
 
       element.scrollIntoView({
         behavior: 'smooth',

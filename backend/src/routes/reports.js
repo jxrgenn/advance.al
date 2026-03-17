@@ -340,9 +340,11 @@ router.get('/admin',
         ];
       }
 
-      // Build sort object
+      // Build sort object with whitelist
+      const allowedSorts = ['createdAt', 'category', 'status', 'priority'];
+      const safeSortBy = allowedSorts.includes(sortBy) ? sortBy : 'createdAt';
       const sortObj = {};
-      sortObj[sortBy] = sortOrder === 'desc' ? -1 : 1;
+      sortObj[safeSortBy] = sortOrder === 'desc' ? -1 : 1;
 
       // Sanitize pagination
       const sanitizedLimit = sanitizeLimit(limit, 100, 20);

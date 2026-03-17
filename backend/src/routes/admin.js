@@ -239,41 +239,13 @@ router.get('/analytics', async (req, res) => {
       applicationToHire: totalApplications > 0 ? Math.round((totalHired / totalApplications) * 10000) / 100 : 0
     };
 
-    // Get REAL top performing jobs with actual application counts
-    const topPerformingJobsData = await Job.aggregate([
-      { $match: { status: 'active' } },
-      {
-        $lookup: {
-          from: 'applications',
-          localField: '_id',
-          foreignField: 'jobId',
-          as: 'applications'
-        }
-      },
-      {
-        $addFields: {
-          realApplicationCount: { $size: '$applications' }
-        }
-      },
-      { $sort: { realApplicationCount: -1, viewCount: -1 } },
-      { $limit: 10 },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'employerId',
-          foreignField: '_id',
-          as: 'employer'
-        }
-      },
-      {
-        $project: {
-          title: 1,
-          viewCount: 1,
-          realApplicationCount: 1,
-          'employer.profile.employerProfile.companyName': 1
-        }
-      }
-    ]);
+    // Get top performing jobs using pre-computed applicationCount (avoids expensive $lookup)
+    const topPerformingJobsData = await Job.find({ status: 'active' })
+      .sort({ applicationCount: -1, viewCount: -1 })
+      .limit(10)
+      .populate('employerId', 'profile.employerProfile.companyName')
+      .select('title viewCount applicationCount employerId')
+      .lean();
 
     // Calculate REAL user engagement metrics
     const [
@@ -306,8 +278,8 @@ router.get('/analytics', async (req, res) => {
       topPerformingJobs: topPerformingJobsData.map(job => ({
         id: job._id,
         title: job.title,
-        company: job.employer[0]?.profile?.employerProfile?.companyName || 'N/A',
-        applicationCount: job.realApplicationCount,
+        company: job.employerId?.profile?.employerProfile?.companyName || 'N/A',
+        applicationCount: job.applicationCount || 0,
         viewCount: job.viewCount || 0
       })),
       userEngagement

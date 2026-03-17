@@ -1,6 +1,6 @@
 import express from 'express';
 import { Job, User, Application } from '../models/index.js';
-import { cacheGet, cacheSet } from '../config/redis.js';
+import { cacheGet, cacheSet, cacheGetOrSet } from '../config/redis.js';
 
 const router = express.Router();
 

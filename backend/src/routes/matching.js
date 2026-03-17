@@ -14,7 +14,7 @@ router.get('/jobs/:jobId/candidates', authenticate, async (req, res) => {
   try {
     const { jobId } = req.params;
     const employerId = req.user._id;
-    const limit = parseInt(req.query.limit) || 15;
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 15, 1), 50);
 
     // Verify job belongs to this employer
     const job = await Job.findById(jobId);

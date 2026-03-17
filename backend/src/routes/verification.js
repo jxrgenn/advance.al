@@ -49,6 +49,12 @@ async function storeVerificationCode(identifier, code, method) {
   } catch {
     // fallback
   }
+  // Cap in-memory store to prevent memory exhaustion DoS
+  if (verificationCodesMemory.size >= 10000) {
+    // Evict oldest entries
+    const firstKey = verificationCodesMemory.keys().next().value;
+    verificationCodesMemory.delete(firstKey);
+  }
   const expiry = new Date(Date.now() + 10 * 60 * 1000);
   verificationCodesMemory.set(identifier, { ...data, expiry });
 }
@@ -347,8 +353,10 @@ router.post('/verify', codeVerificationLimiter, codeVerificationValidation, hand
       });
     }
 
-    // Verify the code
-    if (verificationData.code !== code) {
+    // Verify the code (timing-safe comparison to prevent timing attacks)
+    const codeMatch = verificationData.code.length === code.length &&
+      crypto.timingSafeEqual(Buffer.from(verificationData.code), Buffer.from(code));
+    if (!codeMatch) {
       // Update attempts in storage
       await updateVerificationCode(identifier, verificationData);
       return res.status(400).json({

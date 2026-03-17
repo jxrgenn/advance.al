@@ -279,7 +279,8 @@ const jobSchema = new Schema({
   // AI-Powered Job Similarity (NEW)
   embedding: {
     vector: [{
-      type: Number
+      type: Number,
+      select: false
     }], // 1536 dimensions from text-embedding-3-small
     model: {
       type: String,
@@ -332,13 +333,17 @@ jobSchema.index({ postedAt: -1 });
 jobSchema.index({ tier: 1, status: 1 });
 jobSchema.index({ isDeleted: 1 });
 // jobSchema.index({ slug: 1 }); // Removed: slug already has unique: true
-jobSchema.index({ expiresAt: 1 });
+// jobSchema.index({ expiresAt: 1 }); // Covered by compound index below
 
 // Salary and filter indexes
 jobSchema.index({ 'salary.min': 1 });
 jobSchema.index({ 'salary.max': 1 });
 jobSchema.index({ seniority: 1 });
 jobSchema.index({ 'location.remote': 1 });
+
+// Primary listing compound index (covers the most common query pattern)
+jobSchema.index({ isDeleted: 1, status: 1, expiresAt: -1, tier: -1, postedAt: -1 });
+jobSchema.index({ jobType: 1, status: 1 });
 
 // Embedding system indexes
 jobSchema.index({ 'embedding.status': 1 }); // For worker queries
@@ -395,6 +400,8 @@ jobSchema.pre('save', function(next) {
   if (this.isNew && !this.expiresAt) {
     this.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   }
+  // Track if location-count-relevant fields changed (for post-save hook)
+  this._locationCountChanged = this.isNew || this.isModified('status') || this.isModified('isDeleted') || this.isModified('location.city');
   next();
 });
 
@@ -533,8 +540,9 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
     .sort(sort);
 };
 
-// Post-save hook to update Location.jobCount
+// Post-save hook to update Location.jobCount (only when relevant fields change)
 jobSchema.post('save', async function() {
+  if (!this._locationCountChanged) return;
   try {
     const city = this.location?.city;
     if (city) {
@@ -563,11 +571,12 @@ jobSchema.statics.recountLocationJobs = async function() {
   // Reset all to 0 first
   await Location.updateMany({}, { $set: { jobCount: 0 } });
 
-  // Set actual counts
-  for (const { _id: city, count } of counts) {
-    if (city) {
-      await Location.updateOne({ city }, { $set: { jobCount: count } });
-    }
+  // Set actual counts using bulkWrite for efficiency
+  if (counts.length > 0) {
+    const ops = counts.filter(c => c._id).map(({ _id: city, count }) => ({
+      updateOne: { filter: { city }, update: { $set: { jobCount: count } } }
+    }));
+    if (ops.length > 0) await Location.bulkWrite(ops);
   }
 };
 

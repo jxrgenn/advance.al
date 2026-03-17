@@ -9,7 +9,9 @@ import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Settings, Loader2, CheckCircle, XCircle } from "lucide-react";
 
-const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3001";
+// Construct API URL safely — handle both with and without /api suffix
+const rawApiUrl = import.meta.env.VITE_API_URL || "http://localhost:3001/api";
+const apiUrl = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`;
 
 const JOB_CATEGORIES = [
   "Teknologji",
@@ -53,7 +55,7 @@ const Preferences = () => {
   useEffect(() => {
     if (!token) return;
 
-    fetch(`${apiUrl}/api/quickusers/preferences?token=${encodeURIComponent(token)}`)
+    fetch(`${apiUrl}/quickusers/preferences?token=${encodeURIComponent(token)}`)
       .then(async (res) => {
         if (res.ok) {
           const data = await res.json();
@@ -93,7 +95,7 @@ const Preferences = () => {
     setSaving(true);
     try {
       const res = await fetch(
-        `${apiUrl}/api/quickusers/preferences?token=${encodeURIComponent(token)}`,
+        `${apiUrl}/quickusers/preferences?token=${encodeURIComponent(token)}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },

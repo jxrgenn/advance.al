@@ -422,7 +422,23 @@ export const authApi = {
     } finally {
       removeAuthToken();
     }
-  }
+  },
+
+  // Forgot password
+  forgotPassword: async (email: string): Promise<ApiResponse<any>> => {
+    return apiRequest('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  // Reset password
+  resetPassword: async (token: string, password: string): Promise<ApiResponse<any>> => {
+    return apiRequest('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    });
+  },
 };
 
 // Jobs API

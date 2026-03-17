@@ -395,7 +395,7 @@ const EmployerDashboard = () => {
     setIsSpotlightAnimating(false);
     setLastClickTime(0);
     isScrollLockedRef.current = false; // Unlock scrolling using ref
-    document.body.style.overflow = 'auto';
+    document.body.style.overflow = '';
   };
 
   // Close tutorial when switching tabs
@@ -480,7 +480,7 @@ const EmployerDashboard = () => {
   // Cleanup scroll lock on unmount
   useEffect(() => {
     return () => {
-      document.body.style.overflow = 'auto';
+      document.body.style.overflow = '';
     };
   }, []);
 
@@ -534,7 +534,7 @@ const EmployerDashboard = () => {
     if (!isVisible || step.shouldScroll) {
       // Unlock for tutorial scroll
       isScrollLockedRef.current = false;
-      document.body.style.overflow = 'auto';
+      document.body.style.overflow = '';
 
       // Special handling for mobile first step - minimal manual scroll
       if (isMobile && isFirstStep) {

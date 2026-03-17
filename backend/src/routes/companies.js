@@ -58,14 +58,16 @@ router.get('/', optionalAuth, async (req, res) => {
     const currentPage = parseInt(page) || 1;
     const skip = (currentPage - 1) * sanitizedLimit;
 
-    // Build sort options
+    // Build sort options with whitelist
+    const allowedSorts = ['companyName', 'activeJobs', 'createdAt'];
+    const safeSortBy = allowedSorts.includes(sortBy) ? sortBy : 'createdAt';
     const sortOptions = {};
-    if (sortBy === 'companyName') {
+    if (safeSortBy === 'companyName') {
       sortOptions['profile.employerProfile.companyName'] = sortOrder === 'desc' ? -1 : 1;
-    } else if (sortBy === 'activeJobs') {
+    } else if (safeSortBy === 'activeJobs') {
       sortOptions['activeJobsCount'] = sortOrder === 'desc' ? -1 : 1;
     } else {
-      sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+      sortOptions[safeSortBy] = sortOrder === 'desc' ? -1 : 1;
     }
 
     // Aggregation pipeline to get companies with job counts
@@ -308,9 +310,11 @@ router.get('/:id/jobs', optionalAuth, async (req, res) => {
       }
     }
 
-    // Build sort options
+    // Build sort options with whitelist
+    const jobAllowedSorts = ['createdAt', 'postedAt', 'title', 'viewCount', 'applicationCount'];
+    const jobSafeSortBy = jobAllowedSorts.includes(sortBy) ? sortBy : 'postedAt';
     const sortOptions = {};
-    sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+    sortOptions[jobSafeSortBy] = sortOrder === 'desc' ? -1 : 1;
 
     // Pagination
     const sanitizedLimit = sanitizeLimit(limit, 50, 10);

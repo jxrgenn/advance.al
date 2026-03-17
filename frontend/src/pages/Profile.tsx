@@ -1079,7 +1079,7 @@ const Profile = () => {
     if (!step.skipScroll && !isReasonablyVisible) {
       // Need to scroll - temporarily show scrollbar
       const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-      document.body.style.overflow = 'auto';
+      document.body.style.overflow = '';
       document.body.style.paddingRight = '0px';
 
       if (isMobile) {

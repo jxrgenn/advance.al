@@ -197,12 +197,12 @@ router.post('/', quickUserValidation, handleValidationErrors, async (req, res) =
   }
 });
 
-// @route   GET /api/quickusers/unsubscribe
-// @desc    Unsubscribe quick user using token
+// @route   POST /api/quickusers/unsubscribe
+// @desc    Unsubscribe quick user using token (POST to prevent email scanner auto-triggering)
 // @access  Public
-router.get('/unsubscribe', async (req, res) => {
+router.post('/unsubscribe', async (req, res) => {
   try {
-    const { token } = req.query;
+    const token = req.body?.token || req.query?.token;
 
     if (!token) {
       return res.status(400).json({

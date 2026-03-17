@@ -37,7 +37,19 @@ const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Unsubscribe = lazy(() => import("./pages/Unsubscribe"));
 const Preferences = lazy(() => import("./pages/Preferences"));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000, // Data considered fresh for 30s (reduces refetches)
+      retry: (failureCount, error: any) => {
+        // Don't retry client errors (401/403/404)
+        if ([401, 403, 404].includes(error?.status)) return false;
+        return failureCount < 2;
+      },
+      refetchOnWindowFocus: false, // Don't refetch on every tab switch
+    },
+  },
+});
 
 const PageLoader = () => (
   <div className="flex items-center justify-center min-h-screen">

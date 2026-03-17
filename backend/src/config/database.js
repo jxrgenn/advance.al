@@ -12,6 +12,13 @@ export const connectDB = async (retries = 5, delay = 3000) => {
       const conn = await mongoose.connect(mongoUri, {
         serverSelectionTimeoutMS: 5000,
         socketTimeoutMS: 45000,
+        maxPoolSize: 50,
+        minPoolSize: 10,
+        maxIdleTimeMS: 30000,
+        compressors: ['zstd', 'snappy'],
+        heartbeatFrequencyMS: 10000,
+        retryWrites: true,
+        w: 'majority',
       });
 
       logger.info(`MongoDB Connected: ${conn.connection.host}`);

@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Lock } from "lucide-react";
+import { authApi } from "@/lib/api";
 
 const ResetPassword = () => {
   const [password, setPassword] = useState("");
@@ -50,17 +51,10 @@ const ResetPassword = () => {
 
     try {
       setIsLoading(true);
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3001";
-      const response = await fetch(`${apiUrl}/api/auth/reset-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password }),
-      });
+      const response = await authApi.resetPassword(token, password);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Ndodhi një gabim");
+      if (!response.success) {
+        throw new Error(response.message || "Ndodhi një gabim");
       }
 
       toast({

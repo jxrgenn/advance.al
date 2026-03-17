@@ -49,13 +49,50 @@ export async function cacheDelete(key) {
 export async function cacheDeletePattern(pattern) {
   if (!redis) return;
   try {
-    const keys = await redis.keys(pattern);
-    if (keys.length > 0) {
-      await redis.del(...keys);
-    }
+    // Use SCAN instead of KEYS to avoid blocking Redis under load
+    let cursor = 0;
+    do {
+      const result = await redis.scan(cursor, { match: pattern, count: 100 });
+      cursor = result[0];
+      const keys = result[1];
+      if (keys.length > 0) {
+        await redis.del(...keys);
+      }
+    } while (cursor !== 0);
   } catch (error) {
     logger.error('Redis DEL pattern error', { pattern, error: error.message });
   }
+}
+
+// Cache-aside with stampede protection (mutex lock)
+export async function cacheGetOrSet(key, fetchFn, ttlSeconds = 300) {
+  if (!redis) return fetchFn();
+  try {
+    const cached = await cacheGet(key);
+    if (cached) return typeof cached === 'string' ? JSON.parse(cached) : cached;
+  } catch {
+    // fall through to fetch
+  }
+
+  // Try to acquire lock (NX = only set if not exists, EX = expire lock after 10s)
+  const lockKey = `lock:${key}`;
+  try {
+    const acquired = await redis.set(lockKey, '1', { nx: true, ex: 10 });
+    if (!acquired) {
+      // Another request is computing — wait briefly and try cache again
+      await new Promise(r => setTimeout(r, 200));
+      const cached = await cacheGet(key);
+      if (cached) return typeof cached === 'string' ? JSON.parse(cached) : cached;
+      // Still no cache — proceed to fetch anyway (better than returning nothing)
+    }
+  } catch {
+    // Lock failed, proceed to fetch
+  }
+
+  const data = await fetchFn();
+  await cacheSet(key, data, ttlSeconds);
+  await cacheDelete(lockKey);
+  return data;
 }
 
 export { redis };

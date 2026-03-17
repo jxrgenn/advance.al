@@ -485,45 +485,50 @@ router.get('/stats', authenticate, async (req, res) => {
     let stats = {};
 
     if (req.user.userType === 'jobseeker') {
-      // Import Application model dynamically to avoid circular dependency
       const { Application } = await import('../models/index.js');
-      
-      const applications = await Application.find({
-        jobSeekerId: req.user._id,
-        withdrawn: false
-      });
+
+      // Use aggregation instead of loading all applications into memory
+      const statusCounts = await Application.aggregate([
+        { $match: { jobSeekerId: req.user._id, withdrawn: false } },
+        { $group: { _id: '$status', count: { $sum: 1 } } }
+      ]);
+      const countMap = Object.fromEntries(statusCounts.map(s => [s._id, s.count]));
 
       stats = {
-        totalApplications: applications.length,
-        pendingApplications: applications.filter(app => app.status === 'pending').length,
-        viewedApplications: applications.filter(app => app.status === 'viewed').length,
-        shortlistedApplications: applications.filter(app => app.status === 'shortlisted').length,
-        rejectedApplications: applications.filter(app => app.status === 'rejected').length,
-        hiredApplications: applications.filter(app => app.status === 'hired').length,
+        totalApplications: Object.values(countMap).reduce((a, b) => a + b, 0),
+        pendingApplications: countMap.pending || 0,
+        viewedApplications: countMap.viewed || 0,
+        shortlistedApplications: countMap.shortlisted || 0,
+        rejectedApplications: countMap.rejected || 0,
+        hiredApplications: countMap.hired || 0,
         profileCompleteness: calculateProfileCompleteness(req.user)
       };
     } else if (req.user.userType === 'employer') {
-      // Import Job and Application models dynamically
       const { Job, Application } = await import('../models/index.js');
-      
-      const jobs = await Job.find({
-        employerId: req.user._id,
-        isDeleted: false
-      });
 
-      const applications = await Application.find({
-        employerId: req.user._id,
-        withdrawn: false
-      });
+      // Use aggregation instead of loading all records into memory
+      const [jobStats, appStats] = await Promise.all([
+        Job.aggregate([
+          { $match: { employerId: req.user._id, isDeleted: false } },
+          { $group: { _id: '$status', count: { $sum: 1 }, views: { $sum: '$viewCount' } } }
+        ]),
+        Application.aggregate([
+          { $match: { employerId: req.user._id, withdrawn: false } },
+          { $group: { _id: '$status', count: { $sum: 1 } } }
+        ])
+      ]);
+      const jobMap = Object.fromEntries(jobStats.map(s => [s._id, s]));
+      const appMap = Object.fromEntries(appStats.map(s => [s._id, s.count]));
+      const totalViews = jobStats.reduce((sum, s) => sum + (s.views || 0), 0);
 
       stats = {
-        totalJobs: jobs.length,
-        activeJobs: jobs.filter(job => job.status === 'active').length,
-        pausedJobs: jobs.filter(job => job.status === 'paused').length,
-        closedJobs: jobs.filter(job => job.status === 'closed').length,
-        totalApplications: applications.length,
-        pendingApplications: applications.filter(app => app.status === 'pending').length,
-        totalViews: jobs.reduce((sum, job) => sum + job.viewCount, 0),
+        totalJobs: jobStats.reduce((sum, s) => sum + s.count, 0),
+        activeJobs: jobMap.active?.count || 0,
+        pausedJobs: jobMap.paused?.count || 0,
+        closedJobs: jobMap.closed?.count || 0,
+        totalApplications: Object.values(appMap).reduce((a, b) => a + b, 0),
+        pendingApplications: appMap.pending || 0,
+        totalViews,
         isVerified: req.user.profile.employerProfile?.verified || false
       };
     }
@@ -1360,9 +1365,11 @@ router.get('/saved-jobs', authenticate, requireJobSeeker, async (req, res) => {
 
     const { Job } = await import('../models/index.js');
 
-    // Build sort options
+    // Build sort options with whitelist
+    const allowedSorts = ['createdAt', 'postedAt', 'title'];
+    const safeSortBy = allowedSorts.includes(sortBy) ? sortBy : 'createdAt';
     const sortOptions = {};
-    sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+    sortOptions[safeSortBy] = sortOrder === 'desc' ? -1 : 1;
 
     // Pagination
     const sanitizedLimit = sanitizeLimit(limit, 50, 10);

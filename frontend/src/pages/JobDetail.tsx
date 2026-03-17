@@ -414,7 +414,7 @@ const JobDetail = () => {
     if (shouldScroll) {
       // Temporarily unlock scroll for tutorial animation
       isScrollLockedRef.current = false;
-      document.body.style.overflow = 'auto';
+      document.body.style.overflow = '';
 
       // Mobile: scroll a bit higher by using manual scroll calculation
       if (isMobile) {

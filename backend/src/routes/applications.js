@@ -311,11 +311,6 @@ router.get('/job/:jobId', authenticate, requireEmployer, async (req, res) => {
       });
     }
 
-    const filters = { jobId };
-    if (status) filters.status = status;
-
-    const applications = await Application.getEmployerApplications(req.user._id, filters);
-
     // Apply sorting and pagination
     const safeLimit2 = sanitizeLimit(limit, 50, 10);
     const skip = (Math.max(1, parseInt(page) || 1) - 1) * safeLimit2;
@@ -593,6 +588,13 @@ router.post('/:id/message', authenticate, async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Mesazhi nuk mund të jetë bosh'
+      });
+    }
+
+    if (message.length > 5000) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mesazhi nuk mund të jetë më i gjatë se 5000 karaktere'
       });
     }
 

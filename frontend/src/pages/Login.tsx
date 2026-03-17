@@ -207,26 +207,13 @@ const Login = () => {
                     </div>
                   </div>
                   <div className="mt-3 text-center">
-                    <button
-                      type="button"
-                      onClick={() => setShowForgotPassword(true)}
+                    <Link
+                      to="/forgot-password"
                       className="text-sm text-muted-foreground hover:text-primary"
                     >
                       Ke harruar fjalëkalimin?
-                    </button>
+                    </Link>
                   </div>
-
-                  {showForgotPassword && (
-                    <Alert className="mt-4">
-                      <Mail className="h-4 w-4" />
-                      <AlertDescription>
-                        Për të rivendosur fjalëkalimin, na kontaktoni në{' '}
-                        <a href="mailto:support@advance.al" className="text-primary hover:underline font-medium">
-                          support@advance.al
-                        </a>
-                      </AlertDescription>
-                    </Alert>
-                  )}
                 </CardContent>
               </Card>
 

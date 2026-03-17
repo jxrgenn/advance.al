@@ -85,8 +85,9 @@ const campaignValidation = [
 // @access  Private (Admins only)
 router.post('/campaigns', authenticate, requireAdmin, businessControlLimit, campaignValidation, handleValidationErrors, async (req, res) => {
   try {
+    const { name, type, parameters, schedule, targetAudience, content } = req.body;
     const campaignData = {
-      ...req.body,
+      name, type, parameters, schedule, targetAudience, content,
       createdBy: req.user._id
     };
 
@@ -308,8 +309,9 @@ const pricingRuleValidation = [
 // @access  Private (Admins only)
 router.post('/pricing-rules', authenticate, requireAdmin, businessControlLimit, pricingRuleValidation, handleValidationErrors, async (req, res) => {
   try {
+    const { name, type, conditions, adjustment, priority, isActive, description } = req.body;
     const ruleData = {
-      ...req.body,
+      name, type, conditions, adjustment, priority, isActive, description,
       createdBy: req.user._id
     };
 

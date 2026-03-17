@@ -114,7 +114,8 @@ router.get('/download/:fileId', authenticate, async (req, res) => {
     }
 
     res.setHeader('Content-Type', file.fileType);
-    res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
+    const safeName = file.fileName.replace(/[^\w.-]/g, '_');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
     res.send(file.fileData);
 
   } catch (error) {
@@ -138,7 +139,8 @@ router.get('/preview/:fileId', authenticate, async (req, res) => {
     }
 
     res.setHeader('Content-Type', file.fileType);
-    res.setHeader('Content-Disposition', `inline; filename="${file.fileName}"`);
+    const safePreviewName = file.fileName.replace(/[^\w.-]/g, '_');
+    res.setHeader('Content-Disposition', `inline; filename="${safePreviewName}"`);
     res.send(file.fileData);
 
   } catch (error) {

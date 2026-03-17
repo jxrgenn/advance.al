@@ -520,7 +520,7 @@ Telefoni: _______________`;
     isScrollLockedRef.current = false; // Unlock scrolling using ref
     setHasScrolledOnDesktop(false); // Reset on close
     // Restore scroll when tutorial ends
-    document.body.style.overflow = 'auto';
+    document.body.style.overflow = '';
   };
 
   // Only track element position changes when tutorial is active (no scroll tracking needed)
@@ -588,7 +588,7 @@ Telefoni: _______________`;
   useEffect(() => {
     return () => {
       // Ensure scroll is always restored on cleanup
-      document.body.style.overflow = 'auto';
+      document.body.style.overflow = '';
     };
   }, []);
 
@@ -621,7 +621,7 @@ Telefoni: _______________`;
         // First step on desktop: scroll to center form, then mark as done
         // Temporarily allow scrolling by unlocking the ref
         isScrollLockedRef.current = false;
-        document.body.style.overflow = 'auto';
+        document.body.style.overflow = '';
 
         element.scrollIntoView({
           behavior: 'smooth',
@@ -676,7 +676,7 @@ Telefoni: _______________`;
     // On mobile, ALWAYS scroll on first step to ensure name/lastname are visible
     if (isFirstStep) {
       isScrollLockedRef.current = false; // Unlock for tutorial scroll
-      document.body.style.overflow = 'auto';
+      document.body.style.overflow = '';
 
       element.scrollIntoView({
         behavior: 'smooth',
@@ -712,7 +712,7 @@ Telefoni: _______________`;
     // Mobile: Scroll if not visible or covered
     if (!isVisible) {
       isScrollLockedRef.current = false; // Unlock for tutorial scroll
-      document.body.style.overflow = 'auto';
+      document.body.style.overflow = '';
 
       element.scrollIntoView({
         behavior: 'smooth',
