@@ -10,7 +10,7 @@ import userEmbeddingService from '../services/userEmbeddingService.js';
 import resendEmailService from '../lib/resendEmailService.js';
 import { uploadToCloudinary, deleteFromCloudinary } from '../config/cloudinary.js';
 import logger from '../config/logger.js';
-import { sanitizeLimit } from '../utils/sanitize.js';
+import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -142,11 +142,13 @@ const jobSeekerProfileValidation = [
   body('firstName')
     .optional()
     .trim()
+    .customSanitizer(v => stripHtml(v))
     .isLength({ min: 2, max: 50 })
     .withMessage('Emri duhet të ketë midis 2-50 karaktere'),
   body('lastName')
     .optional()
     .trim()
+    .customSanitizer(v => stripHtml(v))
     .isLength({ min: 2, max: 50 })
     .withMessage('Mbiemri duhet të ketë midis 2-50 karaktere'),
   body('phone')
@@ -156,11 +158,13 @@ const jobSeekerProfileValidation = [
   body('jobSeekerProfile.title')
     .optional()
     .trim()
+    .customSanitizer(v => stripHtml(v))
     .isLength({ max: 100 })
     .withMessage('Titulli nuk mund të ketë më shumë se 100 karaktere'),
   body('jobSeekerProfile.bio')
     .optional()
     .trim()
+    .customSanitizer(v => stripHtml(v))
     .isLength({ max: 500 })
     .withMessage('Biografia nuk mund të ketë më shumë se 500 karaktere'),
   body('jobSeekerProfile.experience')
@@ -182,11 +186,13 @@ const employerProfileValidation = [
   body('firstName')
     .optional()
     .trim()
+    .customSanitizer(v => stripHtml(v))
     .isLength({ min: 2, max: 50 })
     .withMessage('Emri duhet të ketë midis 2-50 karaktere'),
   body('lastName')
     .optional()
     .trim()
+    .customSanitizer(v => stripHtml(v))
     .isLength({ min: 2, max: 50 })
     .withMessage('Mbiemri duhet të ketë midis 2-50 karaktere'),
   body('phone')
@@ -196,11 +202,13 @@ const employerProfileValidation = [
   body('employerProfile.companyName')
     .optional()
     .trim()
+    .customSanitizer(v => stripHtml(v))
     .isLength({ min: 2, max: 100 })
     .withMessage('Emri i kompanisë duhet të ketë midis 2-100 karaktere'),
   body('employerProfile.industry')
     .optional()
     .trim()
+    .customSanitizer(v => stripHtml(v))
     .isLength({ max: 50 })
     .withMessage('Industria nuk mund të ketë më shumë se 50 karaktere'),
   body('employerProfile.companySize')
@@ -210,6 +218,7 @@ const employerProfileValidation = [
   body('employerProfile.description')
     .optional()
     .trim()
+    .customSanitizer(v => stripHtml(v))
     .isLength({ max: 1000 })
     .withMessage('Përshkrimi nuk mund të ketë më shumë se 1000 karaktere'),
   body('employerProfile.website')
@@ -373,7 +382,7 @@ router.put('/profile', authenticate, async (req, res) => {
 // @route   GET /api/users/public-profile/:id
 // @desc    Get public profile of a user (for employers viewing job seeker profiles)
 // @access  Private (Employers only when viewing through applications)
-router.get('/public-profile/:id', authenticate, requireEmployer, async (req, res) => {
+router.get('/public-profile/:id', validateObjectId('id'), authenticate, requireEmployer, async (req, res) => {
   try {
     const user = await User.findOne({
       _id: req.params.id,
@@ -462,6 +471,15 @@ router.delete('/account', authenticate, async (req, res) => {
     }
 
     await user.softDelete();
+
+    // Cascade: close/hide employer's jobs so they don't appear in search
+    if (user.userType === 'employer') {
+      const { Job } = await import('../models/index.js');
+      await Job.updateMany(
+        { employerId: user._id, isDeleted: false },
+        { $set: { isDeleted: true, status: 'closed' } }
+      );
+    }
 
     res.json({
       success: true,
@@ -941,7 +959,7 @@ router.get('/admin/pending-employers', authenticate, requireAdmin, async (req, r
 // @route   PATCH /api/users/admin/verify-employer/:id
 // @desc    Verify or reject employer
 // @access  Private (Admin only)
-router.patch('/admin/verify-employer/:id', authenticate, requireAdmin, async (req, res) => {
+router.patch('/admin/verify-employer/:id', validateObjectId('id'), authenticate, requireAdmin, async (req, res) => {
   try {
     const { action } = req.body; // 'approve' or 'reject'
 
@@ -971,7 +989,7 @@ router.patch('/admin/verify-employer/:id', authenticate, requireAdmin, async (re
       employer.profile.employerProfile.verificationStatus = 'approved';
       employer.profile.employerProfile.verificationDate = new Date();
     } else {
-      employer.status = 'rejected';
+      // Keep status as pending_verification (not 'rejected' which is not in the enum)
       employer.profile.employerProfile.verified = false;
       employer.profile.employerProfile.verificationStatus = 'rejected';
     }
@@ -982,7 +1000,7 @@ router.patch('/admin/verify-employer/:id', authenticate, requireAdmin, async (re
     setImmediate(async () => {
       try {
         await resendEmailService.sendTransactionalEmail(
-          employer,
+          employer.email,
           action === 'approve'
             ? 'Llogaria juaj u verifikua - advance.al'
             : 'Llogaria juaj nuk u aprovua - advance.al',
@@ -1142,7 +1160,7 @@ router.post('/education', authenticate, requireJobSeeker, [
 // @route   DELETE /api/users/work-experience/:experienceId
 // @desc    Delete a work experience entry
 // @access  Private (Job Seeker only)
-router.delete('/work-experience/:experienceId', authenticate, requireJobSeeker, async (req, res) => {
+router.delete('/work-experience/:experienceId', validateObjectId('experienceId'), authenticate, requireJobSeeker, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     if (!user) {
@@ -1176,7 +1194,7 @@ router.delete('/work-experience/:experienceId', authenticate, requireJobSeeker, 
 // @route   DELETE /api/users/education/:educationId
 // @desc    Delete an education entry
 // @access  Private (Job Seeker only)
-router.delete('/education/:educationId', authenticate, requireJobSeeker, async (req, res) => {
+router.delete('/education/:educationId', validateObjectId('educationId'), authenticate, requireJobSeeker, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     if (!user) {
@@ -1252,7 +1270,7 @@ router.post('/saved-jobs/check-bulk', authenticate, requireJobSeeker, async (req
 // @route   POST /api/users/saved-jobs/:jobId
 // @desc    Save a job
 // @access  Private (Job Seeker only)
-router.post('/saved-jobs/:jobId', authenticate, requireJobSeeker, async (req, res) => {
+router.post('/saved-jobs/:jobId', validateObjectId('jobId'), authenticate, requireJobSeeker, async (req, res) => {
   try {
     const { Job } = await import('../models/index.js');
 
@@ -1307,7 +1325,7 @@ router.post('/saved-jobs/:jobId', authenticate, requireJobSeeker, async (req, re
 // @route   DELETE /api/users/saved-jobs/:jobId
 // @desc    Unsave a job
 // @access  Private (Job Seeker only)
-router.delete('/saved-jobs/:jobId', authenticate, requireJobSeeker, async (req, res) => {
+router.delete('/saved-jobs/:jobId', validateObjectId('jobId'), authenticate, requireJobSeeker, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     if (!user) {
@@ -1373,7 +1391,7 @@ router.get('/saved-jobs', authenticate, requireJobSeeker, async (req, res) => {
 
     // Pagination
     const sanitizedLimit = sanitizeLimit(limit, 50, 10);
-    const currentPage = parseInt(page) || 1;
+    const currentPage = Math.max(1, parseInt(page) || 1);
     const skip = (currentPage - 1) * sanitizedLimit;
 
     // Get saved jobs with pagination
@@ -1415,7 +1433,7 @@ router.get('/saved-jobs', authenticate, requireJobSeeker, async (req, res) => {
 // @route   GET /api/users/saved-jobs/check/:jobId
 // @desc    Check if a job is saved
 // @access  Private (Job Seeker only)
-router.get('/saved-jobs/check/:jobId', authenticate, requireJobSeeker, async (req, res) => {
+router.get('/saved-jobs/check/:jobId', validateObjectId('jobId'), authenticate, requireJobSeeker, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     if (!user) {

@@ -1,7 +1,7 @@
 import express from 'express';
 import { User, Job } from '../models/index.js';
 import { authenticate, optionalAuth } from '../middleware/auth.js';
-import { escapeRegex, sanitizeLimit } from '../utils/sanitize.js';
+import { escapeRegex, sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -55,7 +55,7 @@ router.get('/', optionalAuth, async (req, res) => {
 
     // Pagination
     const sanitizedLimit = sanitizeLimit(limit, 50, 12);
-    const currentPage = parseInt(page) || 1;
+    const currentPage = Math.max(1, parseInt(page) || 1);
     const skip = (currentPage - 1) * sanitizedLimit;
 
     // Build sort options with whitelist
@@ -170,7 +170,7 @@ router.get('/', optionalAuth, async (req, res) => {
 // @route   GET /api/companies/:id
 // @desc    Get single company profile with jobs
 // @access  Public
-router.get('/:id', optionalAuth, async (req, res) => {
+router.get('/:id', validateObjectId('id'), optionalAuth, async (req, res) => {
   try {
     const company = await User.findOne({
       _id: req.params.id,
@@ -272,7 +272,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
 // @route   GET /api/companies/:id/jobs
 // @desc    Get company's job postings with pagination
 // @access  Public
-router.get('/:id/jobs', optionalAuth, async (req, res) => {
+router.get('/:id/jobs', validateObjectId('id'), optionalAuth, async (req, res) => {
   try {
     const {
       status = 'active',
@@ -318,7 +318,7 @@ router.get('/:id/jobs', optionalAuth, async (req, res) => {
 
     // Pagination
     const sanitizedLimit = sanitizeLimit(limit, 50, 10);
-    const currentPage = parseInt(page) || 1;
+    const currentPage = Math.max(1, parseInt(page) || 1);
     const skip = (currentPage - 1) * sanitizedLimit;
 
     const jobs = await Job.find(query)

@@ -455,7 +455,7 @@ router.get('/users', async (req, res) => {
     }
 
     const sanitizedLimit = sanitizeLimit(limit, 100, 20);
-    const currentPage = parseInt(page) || 1;
+    const currentPage = Math.max(1, parseInt(page) || 1);
     const totalUsers = await User.countDocuments(query);
     const totalPages = Math.ceil(totalUsers / sanitizedLimit);
     const skip = (currentPage - 1) * sanitizedLimit;
@@ -523,7 +523,7 @@ router.get('/jobs', async (req, res) => {
     }
 
     const sanitizedLimit = sanitizeLimit(limit, 100, 20);
-    const currentPage = parseInt(page) || 1;
+    const currentPage = Math.max(1, parseInt(page) || 1);
     const totalJobs = await Job.countDocuments(query);
     const totalPages = Math.ceil(totalJobs / sanitizedLimit);
     const skip = (currentPage - 1) * sanitizedLimit;
@@ -576,9 +576,23 @@ router.patch('/users/:userId/manage', async (req, res) => {
     switch (action) {
       case 'suspend':
         await user.suspend(reason || 'Pezulluar nga administratori', req.user._id, duration || null);
+        // Close suspended employer's jobs
+        if (user.userType === 'employer') {
+          await Job.updateMany(
+            { employerId: user._id, isDeleted: false, status: 'active' },
+            { $set: { status: 'closed' } }
+          );
+        }
         return res.json({ success: true, data: { user }, message: 'Përdoruesi u pezullua me sukses' });
       case 'ban':
         await user.ban(reason || 'Ndaluar nga administratori', req.user._id);
+        // Close banned employer's jobs
+        if (user.userType === 'employer') {
+          await Job.updateMany(
+            { employerId: user._id, isDeleted: false },
+            { $set: { isDeleted: true, status: 'closed' } }
+          );
+        }
         return res.json({ success: true, data: { user }, message: 'Përdoruesi u ndalua me sukses' });
       case 'activate':
         user.status = 'active';
@@ -604,6 +618,13 @@ router.patch('/users/:userId/manage', async (req, res) => {
         user.status = 'deleted';
         user.deletedAt = new Date();
         await user.save();
+        // Cascade: close employer's jobs so they don't appear in search
+        if (user.userType === 'employer') {
+          await Job.updateMany(
+            { employerId: user._id, isDeleted: false },
+            { $set: { isDeleted: true, status: 'closed' } }
+          );
+        }
         return res.json({
           success: true,
           message: 'Përdoruesi u fshi me sukses'

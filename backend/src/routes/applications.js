@@ -3,7 +3,7 @@ import { body, validationResult } from 'express-validator';
 import { Application, Job, User, Notification } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer } from '../middleware/auth.js';
 import resendEmailService from '../lib/resendEmailService.js';
-import { sanitizeLimit } from '../utils/sanitize.js';
+import { sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -265,11 +265,11 @@ router.get('/my-applications', authenticate, requireJobSeeker, async (req, res) 
       data: {
         applications: paginatedApplications,
         pagination: {
-          currentPage: parseInt(page),
+          currentPage: safePage,
           totalPages,
           totalApplications,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1
+          hasNextPage: safePage < totalPages,
+          hasPrevPage: safePage > 1
         }
       }
     });
@@ -286,7 +286,7 @@ router.get('/my-applications', authenticate, requireJobSeeker, async (req, res) 
 // @route   GET /api/applications/job/:jobId
 // @desc    Get applications for a specific job (employers only)
 // @access  Private (Job owner only)
-router.get('/job/:jobId', authenticate, requireEmployer, async (req, res) => {
+router.get('/job/:jobId', validateObjectId('jobId'), authenticate, requireEmployer, async (req, res) => {
   try {
     const { jobId } = req.params;
     const {
@@ -313,7 +313,8 @@ router.get('/job/:jobId', authenticate, requireEmployer, async (req, res) => {
 
     // Apply sorting and pagination
     const safeLimit2 = sanitizeLimit(limit, 50, 10);
-    const skip = (Math.max(1, parseInt(page) || 1) - 1) * safeLimit2;
+    const safePage2 = Math.max(1, parseInt(page) || 1);
+    const skip = (safePage2 - 1) * safeLimit2;
 
     const sortOptions = {};
     const allowedSorts2 = ['appliedAt', 'status', 'createdAt'];
@@ -351,11 +352,11 @@ router.get('/job/:jobId', authenticate, requireEmployer, async (req, res) => {
           category: job.category
         },
         pagination: {
-          currentPage: parseInt(page),
+          currentPage: safePage2,
           totalPages,
           totalApplications,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1
+          hasNextPage: safePage2 < totalPages,
+          hasPrevPage: safePage2 > 1
         }
       }
     });
@@ -410,11 +411,11 @@ router.get('/employer/all', authenticate, requireEmployer, async (req, res) => {
       data: {
         applications: paginatedApplications,
         pagination: {
-          currentPage: parseInt(page),
+          currentPage: safePage3,
           totalPages,
           totalApplications,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1
+          hasNextPage: safePage3 < totalPages,
+          hasPrevPage: safePage3 > 1
         }
       }
     });
@@ -431,7 +432,7 @@ router.get('/employer/all', authenticate, requireEmployer, async (req, res) => {
 // @route   GET /api/applications/:id
 // @desc    Get single application details
 // @access  Private (Application owner or job owner)
-router.get('/:id', authenticate, async (req, res) => {
+router.get('/:id', validateObjectId('id'), authenticate, async (req, res) => {
   try {
     const application = await Application.findById(req.params.id)
       .populate('jobId', 'title description requirements benefits location category salary customQuestions')
@@ -482,7 +483,7 @@ router.get('/:id', authenticate, async (req, res) => {
 // @route   PATCH /api/applications/:id/status
 // @desc    Update application status (employers only)
 // @access  Private (Job owner only)
-router.patch('/:id/status', authenticate, requireEmployer, async (req, res) => {
+router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmployer, async (req, res) => {
   try {
     const { status, notes = '' } = req.body;
 
@@ -572,7 +573,7 @@ router.patch('/:id/status', authenticate, requireEmployer, async (req, res) => {
 // @route   POST /api/applications/:id/message
 // @desc    Send message about application
 // @access  Private (Application participants only)
-router.post('/:id/message', authenticate, async (req, res) => {
+router.post('/:id/message', validateObjectId('id'), authenticate, async (req, res) => {
   try {
     // Soft gate: require verified email to send messages
     if (!req.user.emailVerified) {
@@ -712,9 +713,9 @@ router.post('/:id/message', authenticate, async (req, res) => {
 // @route   DELETE /api/applications/:id
 // @desc    Withdraw application (job seekers only)
 // @access  Private (Application owner only)
-router.delete('/:id', authenticate, requireJobSeeker, async (req, res) => {
+router.delete('/:id', validateObjectId('id'), authenticate, requireJobSeeker, async (req, res) => {
   try {
-    const { reason = '' } = req.body;
+    const { reason = '' } = req.body || {};
 
     const application = await Application.findOne({
       _id: req.params.id,

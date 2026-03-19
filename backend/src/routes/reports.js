@@ -3,7 +3,7 @@ import { body, query, validationResult } from 'express-validator';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { Report, ReportAction, User, Job } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
-import { escapeRegex, sanitizeLimit } from '../utils/sanitize.js';
+import { escapeRegex, sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -260,7 +260,7 @@ router.get('/',
   async (req, res) => {
     try {
       const userId = req.user.id;
-      const page = parseInt(req.query.page) || 1;
+      const page = Math.max(1, parseInt(req.query.page) || 1);
       const limit = sanitizeLimit(req.query.limit, 50, 10);
       const skip = (page - 1) * limit;
 
@@ -348,7 +348,7 @@ router.get('/admin',
 
       // Sanitize pagination
       const sanitizedLimit = sanitizeLimit(limit, 100, 20);
-      const currentPage = parseInt(page) || 1;
+      const currentPage = Math.max(1, parseInt(page) || 1);
 
       // Execute query with pagination
       const reports = await Report.find(filter)
@@ -486,6 +486,7 @@ router.get('/admin/stats',
 // @desc    Get specific report details (Admin only)
 // @access  Private (admin only)
 router.get('/admin/:id',
+  validateObjectId('id'),
   authenticate,
   requireAdmin,
   async (req, res) => {
@@ -509,14 +510,18 @@ router.get('/admin/:id',
       const actions = await ReportAction.getReportHistory(reportId);
 
       // Get related reports for the same user (for pattern detection)
-      const relatedReports = await Report.find({
-        reportedUser: report.reportedUser._id,
-        _id: { $ne: reportId }
-      })
-        .populate('reportingUser', 'firstName lastName email')
-        .select('category status priority createdAt')
-        .sort({ createdAt: -1 })
-        .limit(5);
+      // report.reportedUser can be null for job-only reports
+      let relatedReports = [];
+      if (report.reportedUser) {
+        relatedReports = await Report.find({
+          reportedUser: report.reportedUser._id,
+          _id: { $ne: reportId }
+        })
+          .populate('reportingUser', 'firstName lastName email')
+          .select('category status priority createdAt')
+          .sort({ createdAt: -1 })
+          .limit(5);
+      }
 
       res.json({
         success: true,
@@ -543,6 +548,7 @@ router.get('/admin/:id',
 // @desc    Update report status/assignment (Admin only)
 // @access  Private (admin only)
 router.put('/admin/:id',
+  validateObjectId('id'),
   authenticate,
   requireAdmin,
   [
@@ -639,6 +645,7 @@ router.put('/admin/:id',
 // @desc    Take action on reported user (Admin only)
 // @access  Private (admin only)
 router.post('/admin/:id/action',
+  validateObjectId('id'),
   authenticate,
   requireAdmin,
   [
@@ -732,6 +739,7 @@ router.post('/admin/:id/action',
 // @desc    Reopen a resolved report for re-evaluation (Admin only)
 // @access  Private (admin only)
 router.post('/admin/:id/reopen',
+  validateObjectId('id'),
   authenticate,
   requireAdmin,
   [

@@ -4,7 +4,7 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { BulkNotification, Notification, User } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { sendBulkNotificationEmail } from '../lib/resendEmailService.js';
-import { sanitizeLimit } from '../utils/sanitize.js';
+import { sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -176,7 +176,7 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
     } = req.query;
 
     const sanitizedLimit = sanitizeLimit(limit, 50, 10);
-    const currentPage = parseInt(page) || 1;
+    const currentPage = Math.max(1, parseInt(page) || 1);
 
     const options = {
       page: currentPage,
@@ -223,7 +223,7 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
 // @route   GET /api/bulk-notifications/:id
 // @desc    Get specific bulk notification details
 // @access  Private (Admins only)
-router.get('/:id', authenticate, requireAdmin, async (req, res) => {
+router.get('/:id', validateObjectId('id'), authenticate, requireAdmin, async (req, res) => {
   try {
     const bulkNotification = await BulkNotification.findById(req.params.id)
       .populate('createdBy', 'profile.firstName profile.lastName email');
@@ -275,7 +275,7 @@ router.get('/templates/list', authenticate, requireAdmin, async (req, res) => {
 // @route   POST /api/bulk-notifications/templates/:id/create
 // @desc    Create notification from template
 // @access  Private (Admins only)
-router.post('/templates/:id/create', authenticate, requireAdmin, async (req, res) => {
+router.post('/templates/:id/create', validateObjectId('id'), authenticate, requireAdmin, async (req, res) => {
   try {
     const newNotification = await BulkNotification.createFromTemplate(req.params.id, req.user._id);
 
@@ -298,7 +298,7 @@ router.post('/templates/:id/create', authenticate, requireAdmin, async (req, res
 // @route   DELETE /api/bulk-notifications/:id
 // @desc    Delete bulk notification (only drafts)
 // @access  Private (Admins only)
-router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
+router.delete('/:id', validateObjectId('id'), authenticate, requireAdmin, async (req, res) => {
   try {
     const bulkNotification = await BulkNotification.findById(req.params.id);
 

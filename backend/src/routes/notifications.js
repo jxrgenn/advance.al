@@ -4,7 +4,7 @@ import rateLimit from 'express-rate-limit';
 import { Notification, Job, QuickUser } from '../models/index.js';
 import { authenticate, requireEmployer, requireAdmin } from '../middleware/auth.js';
 import notificationService from '../lib/notificationService.js';
-import { sanitizeLimit } from '../utils/sanitize.js';
+import { sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -45,7 +45,7 @@ router.get('/', authenticate, async (req, res) => {
     } = req.query;
 
     const sanitizedLimit = sanitizeLimit(limit, 50, 20);
-    const currentPage = parseInt(page) || 1;
+    const currentPage = Math.max(1, parseInt(page) || 1);
     const skip = (currentPage - 1) * sanitizedLimit;
 
     const notifications = await Notification.getUserNotifications(req.user._id, {
@@ -111,7 +111,7 @@ router.get('/unread-count', authenticate, async (req, res) => {
 // @route   PATCH /api/notifications/:id/read
 // @desc    Mark single notification as read
 // @access  Private
-router.patch('/:id/read', authenticate, async (req, res) => {
+router.patch('/:id/read', validateObjectId('id'), authenticate, async (req, res) => {
   try {
     const notification = await Notification.findOne({
       _id: req.params.id,
@@ -166,7 +166,7 @@ router.patch('/mark-all-read', authenticate, async (req, res) => {
 // @route   DELETE /api/notifications/:id
 // @desc    Delete a notification
 // @access  Private
-router.delete('/:id', authenticate, async (req, res) => {
+router.delete('/:id', validateObjectId('id'), authenticate, async (req, res) => {
   try {
     const result = await Notification.findOneAndDelete({
       _id: req.params.id,
@@ -481,7 +481,7 @@ router.post('/manual-notify', authenticate, requireAdmin, [
 // @route   GET /api/notifications/eligible-users/:jobId
 // @desc    Get list of users eligible to receive notification for a specific job
 // @access  Admin
-router.get('/eligible-users/:jobId', authenticate, requireAdmin, async (req, res) => {
+router.get('/eligible-users/:jobId', validateObjectId('jobId'), authenticate, requireAdmin, async (req, res) => {
   try {
     const { jobId } = req.params;
 

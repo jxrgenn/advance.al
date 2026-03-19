@@ -3,7 +3,7 @@ import { body, query, validationResult } from 'express-validator';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { BusinessCampaign, PricingRule, RevenueAnalytics, Job, User, SystemConfiguration } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
-import { escapeRegex, sanitizeLimit } from '../utils/sanitize.js';
+import { escapeRegex, sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -134,7 +134,7 @@ router.get('/campaigns', authenticate, requireAdmin, async (req, res) => {
     if (active !== undefined) query.isActive = active === 'true';
 
     const sanitizedLimit = sanitizeLimit(limit, 50, 10);
-    const currentPage = parseInt(page) || 1;
+    const currentPage = Math.max(1, parseInt(page) || 1);
 
     const campaigns = await BusinessCampaign.find(query)
       .populate('createdBy', 'profile.firstName profile.lastName email')
@@ -175,7 +175,7 @@ router.get('/campaigns', authenticate, requireAdmin, async (req, res) => {
 // @route   PUT /api/business/campaigns/:id
 // @desc    Update campaign
 // @access  Private (Admins only)
-router.put('/campaigns/:id', authenticate, requireAdmin, businessControlLimit, async (req, res) => {
+router.put('/campaigns/:id', validateObjectId('id'), authenticate, requireAdmin, businessControlLimit, async (req, res) => {
   try {
     const campaign = await BusinessCampaign.findById(req.params.id);
 
@@ -215,7 +215,7 @@ router.put('/campaigns/:id', authenticate, requireAdmin, businessControlLimit, a
 // @route   POST /api/business/campaigns/:id/activate
 // @desc    Activate campaign
 // @access  Private (Admins only)
-router.post('/campaigns/:id/activate', authenticate, requireAdmin, async (req, res) => {
+router.post('/campaigns/:id/activate', validateObjectId('id'), authenticate, requireAdmin, async (req, res) => {
   try {
     const campaign = await BusinessCampaign.findById(req.params.id);
 
@@ -247,7 +247,7 @@ router.post('/campaigns/:id/activate', authenticate, requireAdmin, async (req, r
 // @route   POST /api/business/campaigns/:id/pause
 // @desc    Pause campaign
 // @access  Private (Admins only)
-router.post('/campaigns/:id/pause', authenticate, requireAdmin, async (req, res) => {
+router.post('/campaigns/:id/pause', validateObjectId('id'), authenticate, requireAdmin, async (req, res) => {
   try {
     const campaign = await BusinessCampaign.findById(req.params.id);
 
@@ -351,7 +351,7 @@ router.get('/pricing-rules', authenticate, requireAdmin, async (req, res) => {
     if (active !== undefined) query.isActive = active === 'true';
 
     const sanitizedLimit = sanitizeLimit(limit, 50, 10);
-    const currentPage = parseInt(page) || 1;
+    const currentPage = Math.max(1, parseInt(page) || 1);
 
     const rules = await PricingRule.find(query)
       .populate('createdBy', 'profile.firstName profile.lastName email')
@@ -392,7 +392,7 @@ router.get('/pricing-rules', authenticate, requireAdmin, async (req, res) => {
 // @route   PUT /api/business/pricing-rules/:id
 // @desc    Update pricing rule
 // @access  Private (Admins only)
-router.put('/pricing-rules/:id', authenticate, requireAdmin, businessControlLimit, async (req, res) => {
+router.put('/pricing-rules/:id', validateObjectId('id'), authenticate, requireAdmin, businessControlLimit, async (req, res) => {
   try {
     const rule = await PricingRule.findById(req.params.id);
 
@@ -432,7 +432,7 @@ router.put('/pricing-rules/:id', authenticate, requireAdmin, businessControlLimi
 // @route   POST /api/business/pricing-rules/:id/toggle
 // @desc    Toggle pricing rule active status
 // @access  Private (Admins only)
-router.post('/pricing-rules/:id/toggle', authenticate, requireAdmin, async (req, res) => {
+router.post('/pricing-rules/:id/toggle', validateObjectId('id'), authenticate, requireAdmin, async (req, res) => {
   try {
     const rule = await PricingRule.findById(req.params.id);
 
@@ -752,7 +752,7 @@ router.get('/whitelist', authenticate, requireAdmin, async (req, res) => {
 // @route   POST /api/business-control/whitelist/:employerId
 // @desc    Add employer to whitelist (free posting)
 // @access  Private (Admins only)
-router.post('/whitelist/:employerId', authenticate, requireAdmin, [
+router.post('/whitelist/:employerId', validateObjectId('employerId'), authenticate, requireAdmin, [
   body('reason').trim().isLength({ min: 1, max: 200 }).withMessage('Arsyeja duhet të jetë 1-200 karaktere')
 ], async (req, res) => {
   try {
@@ -821,7 +821,7 @@ router.post('/whitelist/:employerId', authenticate, requireAdmin, [
 // @route   DELETE /api/business-control/whitelist/:employerId
 // @desc    Remove employer from whitelist
 // @access  Private (Admins only)
-router.delete('/whitelist/:employerId', authenticate, requireAdmin, async (req, res) => {
+router.delete('/whitelist/:employerId', validateObjectId('employerId'), authenticate, requireAdmin, async (req, res) => {
   try {
     const employer = await User.findById(req.params.employerId);
     if (!employer) {

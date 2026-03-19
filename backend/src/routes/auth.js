@@ -4,6 +4,7 @@ import { body, validationResult } from 'express-validator';
 import rateLimit from 'express-rate-limit';
 import { User } from '../models/index.js';
 import { generateToken, generateRefreshToken, verifyToken, authenticate } from '../middleware/auth.js';
+import { stripHtml } from '../utils/sanitize.js';
 import resendEmailService from '../lib/resendEmailService.js';
 import userEmbeddingService from '../services/userEmbeddingService.js';
 
@@ -12,7 +13,7 @@ const router = express.Router();
 // Stricter rate limiting for auth routes
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 15, // 15 attempts per 15 min per IP (vs 100 shared on global limiter)
+  max: process.env.NODE_ENV === 'development' ? 10000 : 15, // 15 attempts per 15 min per IP in prod
   message: {
     error: 'Shumë tentativa kyçjeje, ju lutemi provoni përsëri pas 15 minutash.',
   },
@@ -36,16 +37,20 @@ const registerValidation = [
     .withMessage('Lloji i përdoruesit duhet të jetë jobseeker ose employer'),
   body('firstName')
     .trim()
+    .customSanitizer(v => stripHtml(v))
     .isLength({ min: 2, max: 50 })
     .withMessage('Emri duhet të ketë midis 2-50 karaktere'),
   body('lastName')
     .trim()
+    .customSanitizer(v => stripHtml(v))
     .isLength({ min: 2, max: 50 })
     .withMessage('Mbiemri duhet të ketë midis 2-50 karaktere'),
   body('city')
     .trim()
     .notEmpty()
-    .withMessage('Qyteti është i detyrueshëm'),
+    .withMessage('Qyteti është i detyrueshëm')
+    .isLength({ max: 100 })
+    .withMessage('Qyteti nuk mund të ketë më shumë se 100 karaktere'),
   body('phone')
     .optional()
     .matches(/^\+\d{8,}$/)
@@ -121,6 +126,14 @@ router.post('/register', authLimiter, registerValidation, handleValidationErrors
         return res.status(400).json({
           success: false,
           message: 'Emri i kompanisë, industria dhe madhësia janë të detyrueshme për punëdhënësit'
+        });
+      }
+
+      const validSizes = ['1-10', '11-50', '51-200', '201-500', '501+'];
+      if (!validSizes.includes(companySize)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Madhësia e kompanisë duhet të jetë: 1-10, 11-50, 51-200, 201-500, ose 501+'
         });
       }
 
@@ -414,6 +427,65 @@ router.get('/me', authenticate, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e të dhënave të përdoruesit'
+    });
+  }
+});
+
+// @route   PUT /api/auth/change-password
+// @desc    Change password (authenticated user)
+// @access  Private
+router.put('/change-password', authenticate, [
+  body('currentPassword')
+    .notEmpty()
+    .withMessage('Fjalëkalimi aktual është i detyrueshëm'),
+  body('newPassword')
+    .isLength({ min: 8 })
+    .withMessage('Fjalëkalimi i ri duhet të ketë të paktën 8 karaktere')
+    .matches(/[A-Z]/)
+    .withMessage('Fjalëkalimi i ri duhet të përmbajë të paktën një shkronjë të madhe')
+    .matches(/[0-9]/)
+    .withMessage('Fjalëkalimi i ri duhet të përmbajë të paktën një numër')
+    .matches(/[!@#$%^&*(),.?":{}|<>]/)
+    .withMessage('Fjalëkalimi i ri duhet të përmbajë të paktën një karakter special')
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    const user = await User.findById(req.user._id).select('+password');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Përdoruesi nuk u gjet'
+      });
+    }
+
+    const isPasswordValid = await user.comparePassword(currentPassword);
+    if (!isPasswordValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Fjalëkalimi aktual nuk është i saktë'
+      });
+    }
+
+    if (currentPassword === newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Fjalëkalimi i ri duhet të jetë i ndryshëm nga fjalëkalimi aktual'
+      });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Fjalëkalimi u ndryshua me sukses'
+    });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Gabim në ndryshimin e fjalëkalimit'
     });
   }
 });

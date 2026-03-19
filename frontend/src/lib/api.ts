@@ -439,6 +439,14 @@ export const authApi = {
       body: JSON.stringify({ token, password }),
     });
   },
+
+  // Change password (authenticated)
+  changePassword: async (currentPassword: string, newPassword: string): Promise<ApiResponse<any>> => {
+    return apiRequest('/auth/change-password', {
+      method: 'PUT',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  },
 };
 
 // Jobs API

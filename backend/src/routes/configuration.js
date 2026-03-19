@@ -4,7 +4,7 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { SystemConfiguration, ConfigurationAudit, SystemHealth } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
-import { sanitizeLimit } from '../utils/sanitize.js';
+import { sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -143,7 +143,7 @@ router.get('/public', async (req, res) => {
 // @route   PUT /api/configuration/:id
 // @desc    Update specific configuration setting
 // @access  Private (Admins only)
-router.put('/:id', authenticate, requireAdmin, configurationLimit, configurationUpdateValidation, handleValidationErrors, async (req, res) => {
+router.put('/:id', validateObjectId('id'), authenticate, requireAdmin, configurationLimit, configurationUpdateValidation, handleValidationErrors, async (req, res) => {
   try {
     const { value, reason } = req.body;
     const settingId = req.params.id;
@@ -203,7 +203,7 @@ router.put('/:id', authenticate, requireAdmin, configurationLimit, configuration
 // @route   POST /api/configuration/:id/reset
 // @desc    Reset configuration setting to default value
 // @access  Private (Admins only)
-router.post('/:id/reset', authenticate, requireAdmin, configurationLimit, async (req, res) => {
+router.post('/:id/reset', validateObjectId('id'), authenticate, requireAdmin, configurationLimit, async (req, res) => {
   try {
     const { reason } = req.body;
     const settingId = req.params.id;
@@ -263,13 +263,13 @@ router.post('/:id/reset', authenticate, requireAdmin, configurationLimit, async 
 // @route   GET /api/configuration/audit/:id
 // @desc    Get audit history for specific configuration
 // @access  Private (Admins only)
-router.get('/audit/:id', authenticate, requireAdmin, async (req, res) => {
+router.get('/audit/:id', validateObjectId('id'), authenticate, requireAdmin, async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
     const settingId = req.params.id;
 
     const sanitizedLimit = sanitizeLimit(limit, 50, 10);
-    const currentPage = parseInt(page) || 1;
+    const currentPage = Math.max(1, parseInt(page) || 1);
 
     const auditHistory = await ConfigurationAudit.getConfigurationHistory(settingId, {
       page: currentPage,
@@ -311,7 +311,7 @@ router.get('/audit', authenticate, requireAdmin, async (req, res) => {
     const { page = 1, limit = 20, days = 7, category, action } = req.query;
 
     const sanitizedLimit = sanitizeLimit(limit, 100, 20);
-    const currentPage = parseInt(page) || 1;
+    const currentPage = Math.max(1, parseInt(page) || 1);
 
     let auditHistory;
     if (category) {

@@ -5,7 +5,7 @@ import { Job, User, Location, PricingRule, BusinessCampaign, RevenueAnalytics, S
 import { authenticate, requireEmployer, requireVerifiedEmployer, optionalAuth } from '../middleware/auth.js';
 import notificationService from '../lib/notificationService.js';
 import jobEmbeddingService from '../services/jobEmbeddingService.js';
-import { sanitizeLimit } from '../utils/sanitize.js';
+import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -29,10 +29,12 @@ const handleValidationErrors = (req, res, next) => {
 const createJobValidation = [
   body('title')
     .trim()
+    .customSanitizer(v => stripHtml(v))
     .isLength({ min: 5, max: 100 })
     .withMessage('Titulli duhet të ketë midis 5-100 karaktere'),
   body('description')
     .trim()
+    .customSanitizer(v => stripHtml(v))
     .isLength({ min: 50, max: 5000 })
     .withMessage('Përshkrimi duhet të ketë midis 50-5000 karaktere'),
   body('category')
@@ -44,7 +46,9 @@ const createJobValidation = [
   body('location.city')
     .trim()
     .notEmpty()
-    .withMessage('Qyteti është i detyrueshëm'),
+    .withMessage('Qyteti është i detyrueshëm')
+    .isLength({ max: 100 })
+    .withMessage('Qyteti nuk mund të ketë më shumë se 100 karaktere'),
   body('salary.min')
     .optional()
     .isNumeric()
@@ -90,11 +94,13 @@ const updateJobValidation = [
   body('title')
     .optional()
     .trim()
+    .customSanitizer(v => stripHtml(v))
     .isLength({ min: 5, max: 100 })
     .withMessage('Titulli duhet të ketë midis 5-100 karaktere'),
   body('description')
     .optional()
     .trim()
+    .customSanitizer(v => stripHtml(v))
     .isLength({ min: 50, max: 5000 })
     .withMessage('Përshkrimi duhet të ketë midis 50-5000 karaktere'),
   body('category')
@@ -109,7 +115,9 @@ const updateJobValidation = [
     .optional()
     .trim()
     .notEmpty()
-    .withMessage('Qyteti është i detyrueshëm'),
+    .withMessage('Qyteti është i detyrueshëm')
+    .isLength({ max: 100 })
+    .withMessage('Qyteti nuk mund të ketë më shumë se 100 karaktere'),
   body('salary.min')
     .optional()
     .isNumeric()
@@ -186,6 +194,7 @@ router.get('/', optionalAuth, async (req, res) => {
     } = req.query;
 
     const safeLimit = sanitizeLimit(limit, 50, 10);
+    const safePage = Math.max(1, parseInt(page) || 1);
 
     // Build search filters
     const filters = {};
@@ -231,14 +240,14 @@ router.get('/', optionalAuth, async (req, res) => {
         data: {
           jobs: [],
           pagination: {
-            currentPage: parseInt(page),
+            currentPage: safePage,
             totalPages: 0,
             totalJobs: 0,
             hasNextPage: false,
             hasPrevPage: false
           },
           filters: {
-            search,
+            search: stripHtml(search || ''),
             city,
             category,
             jobType,
@@ -298,7 +307,7 @@ router.get('/', optionalAuth, async (req, res) => {
     }
 
     // Pagination
-    const skip = (parseInt(page) - 1) * safeLimit;
+    const skip = (safePage - 1) * safeLimit;
 
     query = query.sort(sortOptions).skip(skip).limit(safeLimit);
 
@@ -338,14 +347,14 @@ router.get('/', optionalAuth, async (req, res) => {
       data: {
         jobs,
         pagination: {
-          currentPage: parseInt(page),
+          currentPage: safePage,
           totalPages,
           totalJobs,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1
+          hasNextPage: safePage < totalPages,
+          hasPrevPage: safePage > 1
         },
         filters: {
-          search,
+          search: stripHtml(search || ''),
           city,
           category,
           jobType,
@@ -544,7 +553,7 @@ router.get('/recommendations', authenticate, async (req, res) => {
         expiresAt: { $gt: new Date() },
         _id: { $nin: excludeIds }
       })
-        .populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.location')
+        .populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.firstName profile.lastName profile.location')
         .sort({ tier: -1, viewCount: -1, postedAt: -1 }) // Popular jobs first
         .limit(remainingLimit)
         .lean(); // Read-only optimization
@@ -601,7 +610,8 @@ router.get('/employer/my-jobs', authenticate, requireEmployer, async (req, res) 
 
     // Pagination
     const empLimit = sanitizeLimit(limit, 50, 10);
-    const skip = (parseInt(page) - 1) * empLimit;
+    const empPage = Math.max(1, parseInt(page) || 1);
+    const skip = (empPage - 1) * empLimit;
 
     const jobs = await Job.find(query)
       .sort(sortOptions)
@@ -617,11 +627,11 @@ router.get('/employer/my-jobs', authenticate, requireEmployer, async (req, res) 
       data: {
         jobs,
         pagination: {
-          currentPage: parseInt(page),
+          currentPage: empPage,
           totalPages,
           totalJobs,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1
+          hasNextPage: empPage < totalPages,
+          hasPrevPage: empPage > 1
         }
       }
     });
@@ -638,7 +648,7 @@ router.get('/employer/my-jobs', authenticate, requireEmployer, async (req, res) 
 // @route   GET /api/jobs/:id
 // @desc    Get single job by ID
 // @access  Public
-router.get('/:id', optionalAuth, async (req, res) => {
+router.get('/:id', validateObjectId('id'), optionalAuth, async (req, res) => {
   try {
     const job = await Job.findOne({
       _id: req.params.id,
@@ -674,7 +684,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
 // @route   GET /api/jobs/:id/similar
 // @desc    Get similar jobs for a job
 // @access  Public
-router.get('/:id/similar', async (req, res) => {
+router.get('/:id/similar', validateObjectId('id'), async (req, res) => {
   try {
     const jobId = req.params.id;
 
@@ -705,7 +715,7 @@ router.get('/:id/similar', async (req, res) => {
         isDeleted: false,
         status: 'active'
       })
-        .populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.location')
+        .populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.firstName profile.lastName profile.location')
         .lean();
 
       // Create a map for quick lookup
@@ -1042,7 +1052,7 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
     }
 
     // Populate employer info for response
-    await job.populate('employerId', 'profile.employerProfile.companyName');
+    await job.populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.firstName profile.lastName profile.location');
 
     // Queue embedding generation first, then notify matching users (async, non-blocking)
     // Embedding must be generated before notifications so semantic matching works
@@ -1084,7 +1094,7 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
 // @route   PUT /api/jobs/:id
 // @desc    Update job posting
 // @access  Private (Job owner only)
-router.put('/:id', authenticate, requireEmployer, requireVerifiedEmployer, updateJobValidation, handleValidationErrors, async (req, res) => {
+router.put('/:id', validateObjectId('id'), authenticate, requireEmployer, requireVerifiedEmployer, updateJobValidation, handleValidationErrors, async (req, res) => {
   try {
     const job = await Job.findOne({
       _id: req.params.id,
@@ -1193,7 +1203,7 @@ router.put('/:id', authenticate, requireEmployer, requireVerifiedEmployer, updat
 // @route   DELETE /api/jobs/:id
 // @desc    Delete job posting (soft delete)
 // @access  Private (Job owner only)
-router.delete('/:id', authenticate, requireEmployer, async (req, res) => {
+router.delete('/:id', validateObjectId('id'), authenticate, requireEmployer, async (req, res) => {
   try {
     const job = await Job.findOne({
       _id: req.params.id,
@@ -1227,7 +1237,7 @@ router.delete('/:id', authenticate, requireEmployer, async (req, res) => {
 // @route   PATCH /api/jobs/:id/status
 // @desc    Update job status (pause/resume)
 // @access  Private (Job owner only)
-router.patch('/:id/status', authenticate, requireEmployer, async (req, res) => {
+router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmployer, async (req, res) => {
   try {
     const { status } = req.body;
 
@@ -1278,7 +1288,7 @@ router.patch('/:id/status', authenticate, requireEmployer, async (req, res) => {
 // @route   POST /api/jobs/:id/renew
 // @desc    Renew/repost an expired or closed job with fresh dates
 // @access  Private (Employer - job owner)
-router.post('/:id/renew', authenticate, requireEmployer, async (req, res) => {
+router.post('/:id/renew', validateObjectId('id'), authenticate, requireEmployer, async (req, res) => {
   try {
     const job = await Job.findOne({
       _id: req.params.id,

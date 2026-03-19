@@ -1,6 +1,7 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { authenticate, requireJobSeeker } from '../middleware/auth.js';
+import { validateObjectId } from '../utils/sanitize.js';
 import { extractCVDataFromText } from '../services/openaiService.js';
 import { generateCVDocument } from '../services/cvDocumentService.js';
 import User from '../models/User.js';
@@ -100,7 +101,7 @@ router.post('/generate', cvGenerateLimiter, authenticate, requireJobSeeker, asyn
 });
 
 // GET /api/cv/download/:fileId - Download CV
-router.get('/download/:fileId', authenticate, async (req, res) => {
+router.get('/download/:fileId', validateObjectId('fileId'), authenticate, async (req, res) => {
   try {
     const file = await File.findById(req.params.fileId);
 
@@ -125,7 +126,7 @@ router.get('/download/:fileId', authenticate, async (req, res) => {
 });
 
 // GET /api/cv/preview/:fileId - Preview CV (same as download but inline)
-router.get('/preview/:fileId', authenticate, async (req, res) => {
+router.get('/preview/:fileId', validateObjectId('fileId'), authenticate, async (req, res) => {
   try {
     const file = await File.findById(req.params.fileId);
 

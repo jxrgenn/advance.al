@@ -1,11 +1,56 @@
 # advance.al - DEVELOPMENT STATUS & ROADMAP
 
 **Date:** September 25-28, 2025
-**Last Updated:** March 18, 2026 (Production Readiness Audit — 6-agent deep security/scalability/resilience audit, 80+ issues found and fixed)
+**Last Updated:** March 19, 2026 (Comprehensive Runtime Audit — 6 agents + runtime API testing, 20+ new issues found and fixed, XSS/validation hardening pass)
 **Platform:** Premier Job Marketplace for Albania
-**CURRENT STATUS:** 🟢 **PRODUCTION READY — All 8 phases complete. Deep 6-agent production audit done: 0 npm vulnerabilities, security hardened, scalability optimized for 10k+ users.**
+**CURRENT STATUS:** 🟢 **PRODUCTION READY — All 8 phases complete. Two deep audits done. Runtime-tested all API flows. 0 npm vulnerabilities, security hardened, scalability optimized for 10k+ users.**
 **Phase:** Final Audit Implementation (see `FINAL_AUDIT_IMPLEMENTATION_PLAN.md`)
 **Brand:** advance.al (formerly Albania JobFlow)
+
+## 🟢 **COMPREHENSIVE RUNTIME AUDIT — MARCH 19, 2026 (COMPLETE)**
+
+6 specialized agents + runtime API testing with real HTTP requests against every endpoint. **20+ additional issues found and fixed.**
+
+**Bugs Fixed (Pass 1 — Runtime):**
+- ❌→✅ Invalid ObjectId in route params caused 500 errors → Added `validateObjectId()` middleware to ALL routes (jobs, applications, notifications, reports, companies, configuration, matching, bulk-notifications, users, cv, business-control)
+- ❌→✅ Negative/zero page params caused 500 errors → Added `Math.max(1, ...)` clamping to ALL 18 pagination locations across all routes
+- ❌→✅ No change-password endpoint existed → Added `PUT /api/auth/change-password` with validation (min 8 chars, uppercase, number, special char, different from current)
+- ❌→✅ Change-password UI missing from Profile → Added full UI section in Settings tab (current password, new password, confirm, Albanian labels)
+- ❌→✅ Employer verification email passed User object instead of email string → Fixed to `employer.email`
+- ❌→✅ Job populate missing firstName/lastName → Added to all 4 populate calls, fixing "undefined undefined" fullName
+- ❌→✅ Duplicate Mongoose index warning (CandidateMatch expiresAt) → Removed `index: true` from field, keeping TTL index
+- ❌→✅ Missing `key` prop on CompaniesPageSimple company list → Added `key={company._id}`
+- ❌→✅ Dual toast system (Toaster + Sonner both loaded) → Removed unused Sonner, saved 35KB bundle size
+- ❌→✅ Auth rate limiter accidentally set to 15 in dev by linter → Restored `NODE_ENV === 'development' ? 10000 : 15`
+- ✅ Frontend `authApi.changePassword()` method added to API layer
+
+**Bugs Fixed (Pass 2 — XSS & Validation Hardening):**
+- ❌→✅ Stored XSS via HTML in job title/description → Added `stripHtml()` sanitizer to job create + update validation chains
+- ❌→✅ Stored XSS via HTML in user firstName/lastName/bio/title → Added `stripHtml()` to registration + profile update validation chains
+- ❌→✅ Stored XSS via HTML in employer companyName/description/industry → Added `stripHtml()` to employer profile update validation
+- ❌→✅ Employer registration with invalid companySize returned 500 → Added `.isIn()` validation returning 400
+- ❌→✅ Registration with 10KB city string returned 500 → Added `.isLength({ max: 100 })` validation returning 400
+- ❌→✅ Job creation with 10KB city returned 500 → Added `.isLength({ max: 100 })` to job create + update validation
+- ❌→✅ Admin report detail crashed for job-only reports (null reportedUser) → Added null check before accessing `reportedUser._id`
+- ✅ New `stripHtml()` utility in sanitize.js — strips all HTML tags from user input as defense-in-depth
+
+**Bugs Fixed (Pass 3 — Comprehensive 304-Test Suite):**
+- ❌→✅ Employer rejection returned 500 (Mongoose enum violation: 'rejected' not in status enum) → Keep status as `pending_verification`, only change `verificationStatus` to `rejected`
+- ❌→✅ Search query echoed unsanitized in job list `data.filters.search` → Applied `stripHtml()` to both echo locations
+
+**Bugs Fixed (Pass 4 — Deep Scenario 256-Test Suite):**
+- ❌→✅ DELETE /applications/:id crashed when request body is empty (`req.body` undefined) → Added `req.body || {}` fallback
+- ❌→✅ Orphaned jobs on employer self-delete: `softDelete()` only marked user, left jobs active → Added cascade in DELETE /users/account to soft-delete all employer's jobs
+- ❌→✅ Orphaned jobs on admin delete/ban/suspend: admin manage route didn't cascade to jobs → Added cascade for delete (soft-delete jobs), ban (soft-delete jobs), suspend (close jobs)
+- ✅ Race condition in concurrent applications already handled: unique compound index on `{ jobId, jobSeekerId }` with partial filter + duplicate key error catch (11000)
+
+**Runtime Test Results (304/304 pass after fixes — 6 parallel agents):**
+AUTH (55/55): register validation×20, login×6, /me×4, change-password×8, forgot-password×3, reset-password×4, send-verification×2, verify-email×3, logout×2, refresh×3
+JOBS (58/58): create validation×16, list/search/pagination×16, get/viewCount×4, update×5, delete×5, similar×2, renew×1, setup×9
+APPLICATIONS (43/43): apply×9, applied-jobs×2, my-applications×4, job-applicants×5, employer-all×4, get-single×5, status-transitions×6, message×5, withdraw×3
+USERS (63/63): profile-get×4, jobseeker-update×16, employer-update×9, save/unsave×13, work-experience×10, education×7, account-delete×4
+ADMIN (40/40): dashboard-stats×3, employer-verify×5, user-mgmt×5, suspend/ban×5, reports-admin×13, configuration×4, bulk-notifs×4, public-stats×2
+MISC (45/45): companies×9, locations×4, notifications×9, reports-user×8, matching×3, cv×4, health×3, objectId-validation×5
 
 ## 🟢 **PRODUCTION READINESS AUDIT — MARCH 18, 2026 (COMPLETE)**
 

@@ -253,7 +253,7 @@ const CompaniesPageSimple = () => {
               </div>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {filteredCompanies.map((company) => (
-              <Link to={`/company/${company._id}`} className="block">
+              <Link key={company._id} to={`/company/${company._id}`} className="block">
                 <Card className="p-8 hover:border-primary/50 hover:shadow-lg transition-all duration-200 cursor-pointer group h-64">
                   <CardContent className="p-0 h-full">
                     <div className="flex flex-col items-center text-center space-y-6 h-full justify-center">

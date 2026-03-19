@@ -11,10 +11,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { User, Mail, Phone, MapPin, Upload, FileText, Briefcase, Award, Loader2, RefreshCw, Lightbulb, X, Play, Trash2 } from "lucide-react";
+import { User, Mail, Phone, MapPin, Upload, FileText, Briefcase, Award, Loader2, RefreshCw, Lightbulb, X, Play, Trash2, Lock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { usersApi, applicationsApi } from "@/lib/api";
+import { usersApi, applicationsApi, authApi } from "@/lib/api";
 import { validateForm, profileValidationRules, formatValidationErrors } from "@/lib/formValidation";
 import { InputWithCounter, TextAreaWithCounter } from "@/components/CharacterCounter";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -99,6 +99,10 @@ const Profile = () => {
   const [deletePassword, setDeletePassword] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -382,6 +386,38 @@ const Profile = () => {
       setDeletingAccount(false);
       setShowDeleteConfirm(false);
       setDeletePassword('');
+    }
+  };
+
+  // Change password handler
+  const handleChangePassword = async () => {
+    if (!currentPassword || !newPassword) {
+      toast({ title: 'Plotësoni të gjitha fushat', variant: 'destructive' });
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      toast({ title: 'Fjalëkalimet e reja nuk përputhen', variant: 'destructive' });
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast({ title: 'Fjalëkalimi i ri duhet të ketë të paktën 8 karaktere', variant: 'destructive' });
+      return;
+    }
+    setChangingPassword(true);
+    try {
+      const response = await authApi.changePassword(currentPassword, newPassword);
+      if (response.success) {
+        toast({ title: 'Fjalëkalimi u ndryshua me sukses' });
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmNewPassword('');
+      } else {
+        throw new Error(response.message);
+      }
+    } catch (error: any) {
+      toast({ title: 'Gabim', description: error.message || 'Nuk mundëm të ndryshojmë fjalëkalimin', variant: 'destructive' });
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -2096,6 +2132,50 @@ const Profile = () => {
                   {savingSettings ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   {savingSettings ? 'Duke ruajtur...' : 'Ruaj Cilësimet'}
                 </Button>
+
+                {/* Change Password */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Lock className="h-5 w-5" />
+                      Ndrysho Fjalëkalimin
+                    </CardTitle>
+                    <CardDescription>Ndryshoni fjalëkalimin tuaj të llogarisë</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Fjalëkalimi Aktual</Label>
+                      <Input
+                        type="password"
+                        placeholder="Shkruani fjalëkalimin aktual"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Fjalëkalimi i Ri</Label>
+                      <Input
+                        type="password"
+                        placeholder="Shkruani fjalëkalimin e ri"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Konfirmo Fjalëkalimin e Ri</Label>
+                      <Input
+                        type="password"
+                        placeholder="Konfirmoni fjalëkalimin e ri"
+                        value={confirmNewPassword}
+                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      />
+                    </div>
+                    <Button onClick={handleChangePassword} disabled={changingPassword || !currentPassword || !newPassword || !confirmNewPassword}>
+                      {changingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />}
+                      {changingPassword ? 'Duke ndryshuar...' : 'Ndrysho Fjalëkalimin'}
+                    </Button>
+                  </CardContent>
+                </Card>
 
                 {/* Account Deletion */}
                 <Card className="border-destructive/50">

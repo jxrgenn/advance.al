@@ -36,8 +36,8 @@ const candidateMatchSchema = new mongoose.Schema({
   },
   expiresAt: {
     type: Date,
-    required: true,
-    index: true // TTL index
+    required: true
+    // TTL index defined below with expireAfterSeconds
   },
   contacted: {
     type: Boolean,

@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import candidateMatchingService from '../services/candidateMatching.js';
 import { Job } from '../models/index.js';
+import { validateObjectId } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -10,7 +11,7 @@ const router = express.Router();
  * Get top matching candidates for a job
  * Requires: Employer authentication + candidate matching access for this job
  */
-router.get('/jobs/:jobId/candidates', authenticate, async (req, res) => {
+router.get('/jobs/:jobId/candidates', validateObjectId('jobId'), authenticate, async (req, res) => {
   try {
     const { jobId } = req.params;
     const employerId = req.user._id;
@@ -74,7 +75,7 @@ router.get('/jobs/:jobId/candidates', authenticate, async (req, res) => {
  * Purchase candidate matching access for a job
  * MOCK PAYMENT: Always succeeds for testing
  */
-router.post('/jobs/:jobId/purchase', authenticate, async (req, res) => {
+router.post('/jobs/:jobId/purchase', validateObjectId('jobId'), authenticate, async (req, res) => {
   try {
     const { jobId } = req.params;
     const employerId = req.user._id;
@@ -179,7 +180,7 @@ router.post('/track-contact', authenticate, async (req, res) => {
  * GET /api/matching/jobs/:jobId/access
  * Check if employer has access to candidate matching for a job
  */
-router.get('/jobs/:jobId/access', authenticate, async (req, res) => {
+router.get('/jobs/:jobId/access', validateObjectId('jobId'), authenticate, async (req, res) => {
   try {
     const { jobId } = req.params;
     const employerId = req.user._id;
