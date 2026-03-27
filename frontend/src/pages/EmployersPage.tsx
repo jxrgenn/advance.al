@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import RotatingContact from "@/components/RotatingContact";
@@ -23,25 +23,61 @@ import {
   SimpleGrid,
   ThemeIcon,
   Textarea,
+  PinInput,
+  Modal,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { Play, Building, ArrowRight, ArrowLeft, User, FileText, CheckCircle, HelpCircle, X, Lightbulb, Euro, TrendingUp, Star, Users } from "lucide-react";
+import { Play, Building, ArrowRight, ArrowLeft, User, FileText, CheckCircle, HelpCircle, X, Lightbulb, Euro, TrendingUp, Star, Users, Eye, EyeOff, Mail, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi } from "@/lib/api";
-import { validateForm, employerSignupRules, formatValidationErrors } from "@/lib/formValidation";
+import { validateForm, employerSignupRules, formatValidationErrors, normalizeAlbanianPhone } from "@/lib/formValidation";
 import { TextAreaWithCounter, InputWithCounter } from "@/components/CharacterCounter";
 
 const EmployersPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { isAuthenticated, user, register } = useAuth();
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Email verification flow state
+  const [verificationOpen, setVerificationOpen] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [verificationEmail, setVerificationEmail] = useState('');
+  const [verificationLoading, setVerificationLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  // Resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
 
   // Reset scroll lock on unmount
   useEffect(() => {
     return () => { document.body.style.overflow = ''; };
   }, []);
+
+  // Scroll to registration form when signup=true
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    if (searchParams.get('signup') === 'true') {
+      const tryScroll = (attempts = 0) => {
+        const el = document.querySelector('[data-signup-form]');
+        if (el) {
+          const y = el.getBoundingClientRect().top + window.scrollY - 140;
+          window.scrollTo({ top: y, behavior: 'smooth' });
+        } else if (attempts < 10) {
+          setTimeout(() => tryScroll(attempts + 1), 200);
+        }
+      };
+      setTimeout(() => tryScroll(), 100);
+    }
+  }, [location.search]);
 
   // Tutorial system state
   const [showTutorial, setShowTutorial] = useState(false);
@@ -222,26 +258,12 @@ const EmployersPage = () => {
 
     // Validate current step before advancing
     if (currentStep === 0) {
-      // Step 0: Personal Info - Validate using validation system
-      const step1Validation = validateForm(values, employerSignupRules.step1);
-      const step0Validation = validateForm(
-        { email: values.email, password: values.password, confirmPassword: values.confirmPassword, companyName: '' },
-        employerSignupRules.step0
-      );
-
-      if (!step1Validation.isValid) {
-        notifications.show({
-          title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
-          message: formatValidationErrors(step1Validation.errors),
-          color: 'red',
-          autoClose: 6000,
-        });
-        return;
-      }
+      // Step 0: Personal Info (firstName, lastName, email, password, phone)
+      const step0Validation = validateForm(values, employerSignupRules.step0);
 
       if (!step0Validation.isValid) {
         notifications.show({
-          title: 'Gabim në email ose fjalëkalim',
+          title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
           message: formatValidationErrors(step0Validation.errors),
           color: 'red',
           autoClose: 6000,
@@ -249,13 +271,13 @@ const EmployersPage = () => {
         return;
       }
     } else if (currentStep === 1) {
-      // Step 1: Company Info - Validate using validation system
-      const validationResult = validateForm(values, employerSignupRules.step2);
+      // Step 1: Company Info (companyName, companySize, city, description, website)
+      const step1Validation = validateForm(values, employerSignupRules.step1);
 
-      if (!validationResult.isValid) {
+      if (!step1Validation.isValid) {
         notifications.show({
           title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
-          message: formatValidationErrors(validationResult.errors),
+          message: formatValidationErrors(step1Validation.errors),
           color: 'red',
           autoClose: 6000,
         });
@@ -327,7 +349,7 @@ const EmployersPage = () => {
 
           // Additional password validation
           const passwordValidation = validateForm(
-            { email: values.email, password: values.password, confirmPassword: values.password },
+            { email: values.email, password: values.password },
             employerSignupRules.step0
           );
 
@@ -723,16 +745,12 @@ const EmployersPage = () => {
       const values = employerForm.values;
 
       // Comprehensive validation before submit
-      const step0Validation = validateForm(
-        { email: values.email, password: values.password, confirmPassword: values.confirmPassword, companyName: values.companyName },
-        employerSignupRules.step0
-      );
+      const step0Validation = validateForm(values, employerSignupRules.step0);
       const step1Validation = validateForm(values, employerSignupRules.step1);
-      const step2Validation = validateForm(values, employerSignupRules.step2);
 
       if (!step0Validation.isValid) {
         notifications.show({
-          title: 'Gabim në të dhënat e llogarisë',
+          title: 'Gabim në të dhënat personale',
           message: formatValidationErrors(step0Validation.errors),
           color: 'red',
           autoClose: 6000,
@@ -743,19 +761,8 @@ const EmployersPage = () => {
 
       if (!step1Validation.isValid) {
         notifications.show({
-          title: 'Gabim në informacionin personal',
-          message: formatValidationErrors(step1Validation.errors),
-          color: 'red',
-          autoClose: 6000,
-        });
-        setCurrentStep(0);
-        return;
-      }
-
-      if (!step2Validation.isValid) {
-        notifications.show({
           title: 'Gabim në informacionin e kompanisë',
-          message: formatValidationErrors(step2Validation.errors),
+          message: formatValidationErrors(step1Validation.errors),
           color: 'red',
           autoClose: 6000,
         });
@@ -777,21 +784,17 @@ const EmployersPage = () => {
       setLoading(true);
       const values = employerForm.values;
 
-      // Format phone (optional field)
-      let formattedPhone = '';
-      if (values.phone) {
-        const cleanPhone = values.phone.replace(/[\s\-\(\)]/g, '');
-        formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : '+355' + cleanPhone.replace(/^0/, '');
-      }
+      // Normalize phone number
+      const formattedPhone = normalizeAlbanianPhone(values.phone);
 
-      // Use AuthContext's register function for proper state management
-      await register({
+      // Step 1: Send verification code (account not created yet)
+      const response = await authApi.initiateRegistration({
         email: values.email.trim().toLowerCase(),
         password: values.password,
         userType: 'employer',
         firstName: values.firstName.trim(),
         lastName: values.lastName.trim(),
-        phone: formattedPhone,
+        ...(formattedPhone && { phone: formattedPhone }),
         city: values.city,
         companyName: values.companyName.trim(),
         industry: values.industry || 'Tjetër',
@@ -800,37 +803,85 @@ const EmployersPage = () => {
         website: values.website?.trim() || undefined,
       });
 
-      // Success - registration handled by AuthContext
+      if (response.success) {
+        setVerificationEmail(values.email.trim().toLowerCase());
+        setVerificationCode('');
+        setVerificationOpen(true);
+        setResendCooldown(60);
+        notifications.show({
+          title: "Kontrolloni email-in",
+          message: `Kemi dërguar një kod verifikimi në ${values.email}`,
+          color: "blue",
+          autoClose: 5000,
+        });
+      } else {
+        throw new Error(response.message || 'Gabim gjatë dërgimit të kodit');
+      }
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      notifications.show({
+        title: "Gabim",
+        message: error?.message || "Nuk mund të dërgohet kodi. Provoni përsëri.",
+        color: "red",
+        autoClose: 6000,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    if (verificationCode.length !== 6) {
+      notifications.show({ title: "Gabim", message: "Kodi duhet të ketë 6 shifra", color: "red" });
+      return;
+    }
+    try {
+      setVerificationLoading(true);
+      await register(verificationEmail, verificationCode);
+      setVerificationOpen(false);
       notifications.show({
         title: "Mirë se vini!",
         message: "Llogaria juaj u krijua me sukses!",
         color: "green",
         autoClose: 3000,
       });
-      
-      // Close tutorial if open
-      if (showTutorial) {
-        closeTutorial();
-      }
-      
-      // Navigate immediately - user data is now in context
+      if (showTutorial) closeTutorial();
       navigate('/employer-dashboard');
-      
     } catch (error: any) {
-      console.error('Registration error:', error);
-      
-      const errorMessage = error?.response?.data?.message 
-        || error?.message 
-        || "Nuk mund të krijohet llogaria. Provoni përsëri.";
-      
       notifications.show({
         title: "Gabim",
-        message: errorMessage,
-        color: "red",
-        autoClose: 6000,
+        message: error.message || "Kodi i gabuar. Provoni përsëri.",
+        color: "red"
       });
     } finally {
-      setLoading(false);
+      setVerificationLoading(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (resendCooldown > 0) return;
+    try {
+      const values = employerForm.values;
+      const formattedPhone = normalizeAlbanianPhone(values.phone);
+      await authApi.initiateRegistration({
+        email: values.email.trim().toLowerCase(),
+        password: values.password,
+        userType: 'employer',
+        firstName: values.firstName.trim(),
+        lastName: values.lastName.trim(),
+        ...(formattedPhone && { phone: formattedPhone }),
+        city: values.city,
+        companyName: values.companyName.trim(),
+        industry: values.industry || 'Tjetër',
+        companySize: values.companySize || '1-10',
+        description: values.description?.trim() || undefined,
+        website: values.website?.trim() || undefined,
+      });
+      setResendCooldown(60);
+      setVerificationCode('');
+      notifications.show({ title: "Kodi u ridërgua", message: "Kontrolloni email-in tuaj", color: "blue" });
+    } catch (error: any) {
+      notifications.show({ title: "Gabim", message: error.message || "Nuk mund të ridërgohet kodi", color: "red" });
     }
   };
 
@@ -968,8 +1019,7 @@ const EmployersPage = () => {
 
             <SimpleGrid cols={2} spacing="md" data-tutorial="firstName">
               <InputWithCounter
-                label="Emri"
-                placeholder="Emri juaj"
+                placeholder="Emri *"
                 value={employerForm.values.firstName}
                 onChange={(e) => employerForm.setFieldValue('firstName', e.target.value)}
                 maxLength={50}
@@ -979,8 +1029,7 @@ const EmployersPage = () => {
                 required
               />
               <InputWithCounter
-                label="Mbiemri"
-                placeholder="Mbiemri juaj"
+                placeholder="Mbiemri *"
                 value={employerForm.values.lastName}
                 onChange={(e) => employerForm.setFieldValue('lastName', e.target.value)}
                 maxLength={50}
@@ -993,8 +1042,7 @@ const EmployersPage = () => {
 
             <Box data-tutorial="email">
               <TextInput
-                label="Email"
-                placeholder="email@company.com"
+                placeholder="Email *"
                 type="email"
                 {...employerForm.getInputProps('email')}
                 required
@@ -1003,21 +1051,30 @@ const EmployersPage = () => {
 
             <Box data-tutorial="password">
               <TextInput
-                label="Fjalëkalimi"
-                placeholder="Të paktën 8 karaktere"
-                type="password"
+                placeholder="Fjalëkalimi (min. 8 karaktere, 1 e madhe, 1 numër, 1 special) *"
+                type={showPassword ? "text" : "password"}
                 {...employerForm.getInputProps('password')}
-                description="Fjalëkalimi duhet të ketë të paktën 8 karaktere"
                 required
+                rightSection={
+                  <ActionIcon variant="subtle" color="gray" onClick={() => setShowPassword(!showPassword)} tabIndex={-1}>
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </ActionIcon>
+                }
               />
             </Box>
 
             <Box data-tutorial="phone">
               <TextInput
-                label="🇦🇱 Telefoni (+355)"
                 placeholder="69 123 4567"
+                leftSection={<Text size="sm" c="dimmed" fw={500}>+355</Text>}
+                leftSectionWidth={52}
                 {...employerForm.getInputProps('phone')}
-                description="Formati: 69 123 4567 ose +355 69 123 4567"
+                onChange={(e) => {
+                  let val = e.target.value;
+                  // Strip leading 0 as user types (0 = +355 in Albanian format)
+                  if (val.startsWith('0')) val = val.replace(/^0+/, '');
+                  employerForm.setFieldValue('phone', val);
+                }}
               />
             </Box>
           </Stack>
@@ -1032,8 +1089,7 @@ const EmployersPage = () => {
 
             <Box data-tutorial="companyName">
               <InputWithCounter
-                label="Emri i Kompanisë"
-                placeholder="Kompania juaj"
+                placeholder="Emri i Kompanisë *"
                 value={employerForm.values.companyName}
                 onChange={(e) => employerForm.setFieldValue('companyName', e.target.value)}
                 maxLength={100}
@@ -1045,40 +1101,36 @@ const EmployersPage = () => {
 
             <div data-tutorial="companyInfo">
               <Select
-                label="Madhësia e Kompanisë"
-                placeholder="Sa punonjës keni?"
+                placeholder="Sa punonjës keni? *"
                 {...employerForm.getInputProps('companySize')}
                 data={companySizes}
                 required
               />
               <Select
-                label="Industria"
-                placeholder="Në cilën industri vepron kompania?"
+                placeholder="Në cilën industri vepron kompania? *"
                 {...employerForm.getInputProps('industry')}
                 data={industries}
                 required
+                mt="md"
               />
             </div>
 
             <SimpleGrid cols={2} spacing="md" data-tutorial="location">
               <Select
-                label="Qyteti"
-                placeholder="Ku ndodhet kompania?"
+                placeholder="Qyteti *"
                 {...employerForm.getInputProps('city')}
                 data={cities}
                 required
               />
               <TextInput
-                label="Website (Opsional)"
-                placeholder="https://kompania.al"
+                placeholder="Website (opsional)"
                 {...employerForm.getInputProps('website')}
               />
             </SimpleGrid>
 
             <Box data-tutorial="description">
               <TextAreaWithCounter
-                label="Përshkrimi i Kompanisë (Opsional)"
-                placeholder="Shkruani një përshkrim të shkurtër të kompanisë suaj..."
+                placeholder="Përshkrimi i kompanisë (opsional)..."
                 value={employerForm.values.description}
                 onChange={(e) => employerForm.setFieldValue('description', e.target.value)}
                 maxLength={500}
@@ -1186,67 +1238,15 @@ const EmployersPage = () => {
         {/* Two Column Layout */}
         <Grid gutter={40}>
           <Grid.Col span={{ base: 12, md: 5 }}>
-            {/* Left: Simple Stats & Benefits */}
-            <Stack gap="lg" style={{ position: 'sticky', top: 100 }}>
-              {/* Benefits Cards */}
-              <Stack gap="md">
-                <Paper p="lg" radius="md" withBorder className="hover:shadow-md transition-shadow">
-                  <Group gap="md" wrap="nowrap">
-                    <ThemeIcon size={48} radius="md" color="blue" variant="light">
-                      <CheckCircle size={24} />
-                    </ThemeIcon>
-                    <Box style={{ flex: 1 }}>
-                      <Text fw={600} size="md" mb={4}>Postim i Shpejtë</Text>
-                      <Text size="sm" c="dimmed">
-                        Krijoni një llogari dhe postoni punën tuaj në vetëm 2 minuta
-                      </Text>
-                    </Box>
-                  </Group>
-                </Paper>
-
-                <Paper p="lg" radius="md" withBorder className="hover:shadow-md transition-shadow">
-                  <Group gap="md" wrap="nowrap">
-                    <ThemeIcon size={48} radius="md" color="blue" variant="light">
-                      <Users size={24} />
-                    </ThemeIcon>
-                    <Box style={{ flex: 1 }}>
-                      <Text fw={600} size="md" mb={4}>1,000+ Kandidatë</Text>
-                      <Text size="sm" c="dimmed">
-                        Qasje në një bazë të gjerë kandidatësh të kualifikuar
-                      </Text>
-                    </Box>
-                  </Group>
-                </Paper>
-
-                <Paper p="lg" radius="md" withBorder className="hover:shadow-md transition-shadow">
-                  <Group gap="md" wrap="nowrap">
-                    <ThemeIcon size={48} radius="md" color="blue" variant="light">
-                      <Euro size={24} />
-                    </ThemeIcon>
-                    <Box style={{ flex: 1 }}>
-                      <Text fw={600} size="md" mb={4}>Çmime Fleksibël</Text>
-                      <Text size="sm" c="dimmed">
-                        28€ standard ose 50€ për promovim - zgjidhni sipas nevojave
-                      </Text>
-                    </Box>
-                  </Group>
-                </Paper>
-
-                <Paper p="lg" radius="md" withBorder className="hover:shadow-md transition-shadow">
-                  <Group gap="md" wrap="nowrap">
-                    <ThemeIcon size={48} radius="md" color="blue" variant="light">
-                      <TrendingUp size={24} />
-                    </ThemeIcon>
-                    <Box style={{ flex: 1 }}>
-                      <Text fw={600} size="md" mb={4}>Top 10 Kandidatë</Text>
-                      <Text size="sm" c="dimmed">
-                        Filtrim inteligjent për të gjetur kandidatët më të mirë (+10€)
-                      </Text>
-                    </Box>
-                  </Group>
-                </Paper>
-              </Stack>
-            </Stack>
+            {/* Left: Mascot Image */}
+            <div className="hidden md:flex md:items-center md:justify-center md:min-h-full" style={{ position: 'sticky', top: 100 }}>
+              <img
+                src="/3d_assets/triangle_people.png"
+                alt="Gjeni kandidatin ideal për ekipin tuaj"
+                className="w-full max-w-[520px] object-contain"
+                loading="eager"
+              />
+            </div>
           </Grid.Col>
 
           <Grid.Col span={{ base: 12, md: 7 }}>
@@ -1278,7 +1278,7 @@ const EmployersPage = () => {
                 </Paper>
               )}
 
-              <Paper shadow="sm" p="xl" radius="md" withBorder>
+              <Paper shadow="sm" p="xl" radius="md" withBorder data-signup-form style={{ borderColor: '#bfdbfe', borderWidth: 2 }}>
                 {/* Header with Step Progress */}
                 <Group mb="xl">
                   <ThemeIcon size={40} radius="md" color="blue" variant="light">
@@ -1396,36 +1396,36 @@ const EmployersPage = () => {
             </Text>
           </div>
 
-          {/* Upwork-style 2-column pricing cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl mx-auto">
-            {/* Basic Plan */}
-            <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm hover:shadow-md transition-shadow">
-              <div className="mb-6">
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">Bazë</h3>
+          {/* Upwork-style 2-column pricing cards — slimmer max-w-4xl */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+            {/* Standard Plan */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-10 shadow-sm hover:shadow-md transition-shadow">
+              <div className="mb-8">
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">Postim standart</h3>
                 <p className="text-sm text-gray-600 mb-4">Për të filluar</p>
                 <div className="flex items-center gap-2 mb-6">
-                  <span className="text-base font-medium text-gray-900">28€ për 28 ditë</span>
+                  <span className="text-base font-medium text-gray-900">28€ / 21 ditë</span>
                 </div>
               </div>
 
-              <button className="w-full py-3 px-6 rounded-full border-2 border-primary text-primary font-medium hover:bg-primary hover:text-primary-foreground transition-colors mb-6">
-                Fillo me këtë plan
+              <button onClick={() => navigate('/login')} className="w-full py-3 px-6 rounded-full border-2 border-primary text-primary font-medium hover:bg-primary hover:text-primary-foreground transition-colors mb-8">
+                Posto një punë
               </button>
 
-              <div className="border-t border-gray-200 pt-6">
-                <p className="font-semibold text-gray-900 mb-4">Plani Bazë përfshin:</p>
-                <div className="space-y-3">
+              <div className="border-t border-gray-200 pt-8">
+                <p className="font-semibold text-gray-900 mb-5">Postim standart përfshin:</p>
+                <div className="space-y-4">
                   <div className="flex items-start gap-3">
                     <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
-                    <p className="text-sm text-gray-700">Postimi aktiv për 28 ditë</p>
+                    <p className="text-sm text-gray-700">Postim aktiv për 21 ditë</p>
                   </div>
                   <div className="flex items-start gap-3">
                     <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
-                    <p className="text-sm text-gray-700">Shfaqje në listën e punëve</p>
+                    <p className="text-sm text-gray-700">Shfaqje në listën e punës</p>
                   </div>
                   <div className="flex items-start gap-3">
                     <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -1439,45 +1439,27 @@ const EmployersPage = () => {
                     </svg>
                     <p className="text-sm text-gray-700">Menaxhim aplikimesh</p>
                   </div>
-                  <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
-                    </svg>
-                    <p className="text-sm text-gray-700">Mbështetje standarde</p>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
-                    </svg>
-                    <p className="text-sm text-gray-700">30 ftesa për postim pune</p>
-                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Business Plus Plan */}
-            <div className="bg-white rounded-2xl border-2 border-primary p-8 shadow-md hover:shadow-lg transition-shadow relative">
-              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                <span className="bg-primary text-primary-foreground px-4 py-1 rounded-full text-sm font-medium">
-                  Rekomanduar
-                </span>
-              </div>
-
-              <div className="mb-6 pt-2">
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">Business Plus</h3>
+            {/* Promoted Plan */}
+            <div className="bg-white rounded-2xl border-2 border-primary p-10 shadow-md hover:shadow-lg transition-shadow">
+              <div className="mb-8">
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">Postim i promovuar</h3>
                 <p className="text-sm text-gray-600 mb-4">Për rritje</p>
                 <div className="flex items-center gap-2 mb-6">
-                  <span className="text-base font-medium text-gray-900">50€ për 28 ditë</span>
+                  <span className="text-base font-medium text-gray-900">45€ / 21 ditë</span>
                 </div>
               </div>
 
-              <button className="w-full py-3 px-6 rounded-full bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors mb-6">
-                Regjistrohu falas
+              <button onClick={() => navigate('/login')} className="w-full py-3 px-6 rounded-full bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors mb-8">
+                Posto një punë
               </button>
 
-              <div className="border-t border-gray-200 pt-6">
-                <p className="font-semibold text-gray-900 mb-4">Çdo gjë në Bazë, plus</p>
-                <div className="space-y-3">
+              <div className="border-t border-gray-200 pt-8">
+                <p className="font-semibold text-gray-900 mb-5">Gjithçka në Standart, plus:</p>
+                <div className="space-y-4">
                   <div className="flex items-start gap-3">
                     <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
@@ -1488,46 +1470,18 @@ const EmployersPage = () => {
                     <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
-                    <p className="text-sm text-gray-700 font-medium">Badge "E Promovuar"</p>
+                    <p className="text-sm text-gray-700 font-medium">Distinktiv 'E PROMOVUAR'</p>
                   </div>
                   <div className="flex items-start gap-3">
                     <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
-                    <p className="text-sm text-gray-700 font-medium">3x më shumë vizibilitet</p>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
-                    </svg>
-                    <p className="text-sm text-gray-700">Top 10 kandidatë (10€ extra)</p>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
-                    </svg>
-                    <p className="text-sm text-gray-700">Mbështetje prioritare 24/7</p>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
-                    </svg>
-                    <p className="text-sm text-gray-700">60 ftesa për postim pune</p>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
-                    </svg>
-                    <p className="text-sm text-gray-700">15 mesazhe të drejtpërdrejta në ditë</p>
+                    <p className="text-sm text-gray-700 font-medium">3x më shumë dukshmëri</p>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-
-          <Text c="dimmed" ta="center" size="sm" mt="xl">
-            💡 Kombinoni postimin e promovuar me Top 10 Kandidatët për rezultate më të mira
-          </Text>
         </Box>
         </Container>
       </div>
@@ -1536,6 +1490,61 @@ const EmployersPage = () => {
       <RotatingContact />
 
       <Footer />
+
+      {/* Email Verification Modal */}
+      <Modal
+        opened={verificationOpen}
+        onClose={() => setVerificationOpen(false)}
+        title=""
+        centered
+        size="sm"
+        withCloseButton={false}
+        closeOnClickOutside={false}
+      >
+        <Stack align="center" gap="md" py="md">
+          <ThemeIcon size={56} radius="xl" color="blue" variant="light">
+            <Mail className="w-6 h-6" />
+          </ThemeIcon>
+          <Title order={3} ta="center">Verifikoni Email-in</Title>
+          <Text size="sm" c="dimmed" ta="center">
+            Kemi dërguar një kod 6-shifror në{' '}
+            <Text span fw={600} c="blue">{verificationEmail}</Text>
+          </Text>
+          <PinInput
+            length={6}
+            type="number"
+            size="lg"
+            value={verificationCode}
+            onChange={setVerificationCode}
+            onComplete={handleVerifyCode}
+            autoFocus
+          />
+          <Button
+            fullWidth
+            size="md"
+            onClick={handleVerifyCode}
+            loading={verificationLoading}
+            disabled={verificationCode.length !== 6}
+          >
+            Verifiko & Krijo Llogarinë
+          </Button>
+          <Group gap="xs">
+            <Text size="xs" c="dimmed">Nuk e morët kodin?</Text>
+            <Button
+              variant="subtle"
+              size="xs"
+              onClick={handleResendCode}
+              disabled={resendCooldown > 0}
+              leftSection={<RefreshCw className="w-3 h-3" />}
+            >
+              {resendCooldown > 0 ? `Ridërgo (${resendCooldown}s)` : 'Ridërgo kodin'}
+            </Button>
+          </Group>
+          <Button variant="subtle" size="xs" c="dimmed" onClick={() => setVerificationOpen(false)}>
+            Anulo
+          </Button>
+        </Stack>
+      </Modal>
     </Box>
   );
 };

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, CheckCircle, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin, Play, Lightbulb, HelpCircle, Upload } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, CheckCircle, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin, Play, Lightbulb, HelpCircle, Upload, ChevronDown, ChevronUp } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import ReportUserModal from "@/components/ReportUserModal";
 import { useToast } from "@/hooks/use-toast";
@@ -31,6 +31,7 @@ const EmployerDashboard = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [applicationStatusFilter, setApplicationStatusFilter] = useState<string>('all');
+  const [applicationJobFilter, setApplicationJobFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     activeJobs: 0,
@@ -47,6 +48,8 @@ const EmployerDashboard = () => {
   const [applicationModalOpen, setApplicationModalOpen] = useState(false);
   const [loadingApplicationDetails, setLoadingApplicationDetails] = useState(false);
   const [downloadingCV, setDownloadingCV] = useState(false);
+  const [expandedWorkHistory, setExpandedWorkHistory] = useState(false);
+  const [expandedEducation, setExpandedEducation] = useState(false);
 
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
@@ -85,7 +88,18 @@ const EmployerDashboard = () => {
   const [lastClickTime, setLastClickTime] = useState(0);
   // Use ref to track scroll lock state - refs can be read synchronously by event listeners
   const isScrollLockedRef = useRef(false);
-  const [currentTab, setCurrentTab] = useState<'jobs' | 'applicants' | 'settings'>('jobs');
+  const [searchParams] = useSearchParams();
+  const tabFromUrl = (['jobs', 'applicants', 'settings'] as const).includes(searchParams.get('tab') as any)
+    ? (searchParams.get('tab') as 'jobs' | 'applicants' | 'settings')
+    : null;
+  const [currentTab, setCurrentTab] = useState<'jobs' | 'applicants' | 'settings'>(tabFromUrl || 'jobs');
+
+  // React to URL param changes (e.g. notification click while already on dashboard)
+  useEffect(() => {
+    if (tabFromUrl && tabFromUrl !== currentTab) {
+      setCurrentTab(tabFromUrl);
+    }
+  }, [tabFromUrl]);
 
   // Job status filter state
   const [jobStatusFilter, setJobStatusFilter] = useState<string>('all');
@@ -243,10 +257,15 @@ const EmployerDashboard = () => {
     ? jobs
     : jobs.filter(job => job.status === jobStatusFilter);
 
-  // Client-side filtered applications based on status filter
-  const filteredApplications = applicationStatusFilter === 'all'
-    ? applications
-    : applications.filter(app => app.status === applicationStatusFilter);
+  // Client-side filtered applications based on status + job filter
+  const filteredApplications = applications.filter(app => {
+    if (applicationStatusFilter !== 'all' && app.status !== applicationStatusFilter) return false;
+    if (applicationJobFilter !== 'all') {
+      const jobId = typeof app.jobId === 'string' ? app.jobId : app.jobId?._id;
+      if (jobId !== applicationJobFilter) return false;
+    }
+    return true;
+  });
 
   // Reset visible count when filter changes
   const handleJobStatusFilterChange = (value: string) => {
@@ -292,8 +311,8 @@ const EmployerDashboard = () => {
 
       // Load both jobs and applications in parallel
       const [jobsResponse, applicationsResponse] = await Promise.all([
-        jobsApi.getEmployerJobs({}),
-        applicationsApi.getEmployerApplications({})
+        jobsApi.getEmployerJobs({ limit: 200 }),
+        applicationsApi.getEmployerApplications({ limit: 200 })
       ]);
 
       let employerJobs: Job[] = [];
@@ -643,13 +662,14 @@ const EmployerDashboard = () => {
       }
 
       // Validate phone/whatsapp format if provided
+      const normalizePhone = (p: string) => p.replace(/[\s\-\(\)]/g, '');
       const phoneRegex = /^\+\d{8,}$/;
-      if (profileData.phone && !phoneRegex.test(profileData.phone)) {
+      if (profileData.phone && !phoneRegex.test(normalizePhone(profileData.phone))) {
         toast({ title: "Numri i telefonit nuk është i vlefshëm", description: "Format: +355xxxxxxxx", variant: "destructive" });
         setSavingProfile(false);
         return;
       }
-      if (profileData.whatsapp && !phoneRegex.test(profileData.whatsapp)) {
+      if (profileData.whatsapp && !phoneRegex.test(normalizePhone(profileData.whatsapp))) {
         toast({ title: "Numri i WhatsApp nuk është i vlefshëm", description: "Format: +355xxxxxxxx", variant: "destructive" });
         setSavingProfile(false);
         return;
@@ -662,8 +682,8 @@ const EmployerDashboard = () => {
           website: profileData.website,
           industry: profileData.industry,
           companySize: profileData.companySize,
-          phone: profileData.phone || undefined,
-          whatsapp: profileData.whatsapp || undefined,
+          phone: profileData.phone ? profileData.phone.replace(/[\s\-\(\)]/g, '') : undefined,
+          whatsapp: profileData.whatsapp ? profileData.whatsapp.replace(/[\s\-\(\)]/g, '') : undefined,
           contactPreferences: {
             enablePhoneContact: profileData.enablePhoneContact,
             enableWhatsAppContact: profileData.enableWhatsAppContact,
@@ -784,20 +804,32 @@ const EmployerDashboard = () => {
     }
   };
 
-  const handleApplicationStatusChange = async (applicationId: string, newStatus: string) => {
+  const handleApplicationStatusChange = async (applicationId: string, newStatus: string, currentStatus?: string) => {
+    // Confirm for hire, reject, and reverting from hired
     if (newStatus === 'hired' || newStatus === 'rejected') {
       const statusLabels: Record<string, string> = {
         'hired': 'Punëso',
         'rejected': 'Refuzo'
       };
       const statusDescriptions: Record<string, string> = {
-        'hired': 'Jeni i sigurt që doni ta punësoni këtë aplikues? Ky veprim nuk mund të zhbëhet.',
-        'rejected': 'Jeni i sigurt që doni ta refuzoni këtë aplikues? Ky veprim nuk mund të zhbëhet.'
+        'hired': 'Jeni i sigurt që doni ta punësoni këtë aplikues?',
+        'rejected': 'Jeni i sigurt që doni ta refuzoni këtë aplikues?'
       };
       setConfirmDialog({
         open: true,
         title: `${statusLabels[newStatus]} Aplikuesin?`,
         description: statusDescriptions[newStatus],
+        action: () => executeApplicationStatusChange(applicationId, newStatus)
+      });
+      return;
+    }
+
+    // Confirm when reverting from hired back to shortlisted
+    if (currentStatus === 'hired' && newStatus === 'shortlisted') {
+      setConfirmDialog({
+        open: true,
+        title: 'Anullo Punësimin?',
+        description: 'Jeni i sigurt që doni ta ktheni këtë aplikues në listën e shkurtër? Statusi "Punësuar" do të hiqet.',
         action: () => executeApplicationStatusChange(applicationId, newStatus)
       });
       return;
@@ -810,6 +842,8 @@ const EmployerDashboard = () => {
   const handleViewApplicationDetails = async (applicationId: string) => {
     try {
       setLoadingApplicationDetails(true);
+      setExpandedWorkHistory(false);
+      setExpandedEducation(false);
 
       // Find the application in current list first (for immediate display)
       const currentApp = applications.find(app => app._id === applicationId);
@@ -838,49 +872,43 @@ const EmployerDashboard = () => {
     }
   };
 
+  const getResumeUrl = (cvUrl: string): string => {
+    if (cvUrl.startsWith('http')) return cvUrl;
+    const filename = cvUrl.split('/').pop();
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+    return `${apiUrl}/users/resume/${filename}`;
+  };
+
   const handleDownloadCV = async (cvUrl: string, applicantName: string) => {
     try {
       setDownloadingCV(true);
+      if (!cvUrl) throw new Error('CV URL not found');
 
-      // Check if CV URL exists
-      if (!cvUrl) {
-        throw new Error('CV URL not found');
-      }
-
-      // Create full URL if it's a relative path
-      const baseUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
-      const fullUrl = cvUrl.startsWith('http') ? cvUrl : `${baseUrl}${cvUrl}`;
-      // Try to fetch the CV to check if it exists
+      const fullUrl = getResumeUrl(cvUrl);
       const response = await fetch(fullUrl, {
-        method: 'HEAD', // Just check if the file exists
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-        }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
       });
+      if (!response.ok) throw new Error(`CV nuk u gjet (${response.status})`);
 
-      if (!response.ok) {
-        throw new Error(`CV file not accessible (Status: ${response.status})`);
-      }
-
-      // Create a temporary link to trigger download
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      // Detect extension from URL or content-type
+      const ct = response.headers.get('content-type') || '';
+      const ext = ct.includes('word') || cvUrl.endsWith('.docx') ? '.docx' : ct.includes('msword') || cvUrl.endsWith('.doc') ? '.doc' : '.pdf';
       const link = document.createElement('a');
-      link.href = fullUrl;
-      link.download = `CV_${applicantName.replace(/\s+/g, '_')}.pdf`;
-      link.target = '_blank';
-
-      // Add to DOM, click, then remove
+      link.href = blobUrl;
+      link.download = `CV_${applicantName.replace(/\s+/g, '_')}${ext}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
 
       toast({
         title: "CV në proces shkarkimi",
         description: `CV-ja e ${applicantName} po shkarkohet`,
       });
-
     } catch (error: any) {
       console.error('❌ Error downloading CV:', error);
-
       toast({
         title: "Gabim në shkarkimin e CV-së",
         description: error.message || "CV-ja nuk është e disponueshme për shkarkım",
@@ -888,6 +916,30 @@ const EmployerDashboard = () => {
       });
     } finally {
       setDownloadingCV(false);
+    }
+  };
+
+  const handleViewCV = async (cvUrl: string) => {
+    try {
+      if (!cvUrl) throw new Error('CV URL not found');
+      const fullUrl = getResumeUrl(cvUrl);
+      const response = await fetch(fullUrl, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
+      });
+      if (!response.ok) throw new Error(`CV nuk u gjet (${response.status})`);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const win = window.open(blobUrl, '_blank');
+      if (win) {
+        setTimeout(() => { URL.revokeObjectURL(blobUrl); }, 10000);
+      }
+    } catch (error: any) {
+      console.error('❌ Error viewing CV:', error);
+      toast({
+        title: "Gabim",
+        description: error.message || "CV nuk mund të hapet",
+        variant: "destructive"
+      });
     }
   };
 
@@ -1049,12 +1101,6 @@ const EmployerDashboard = () => {
                 {user?.profile?.employerProfile?.companyName ? (
                   <span className="flex items-center gap-1.5">
                     {user.profile.employerProfile.companyName} — Menaxho punët dhe aplikuesit
-                    {user?.profile?.employerProfile?.verified && (
-                      <Badge variant="secondary" className="text-xs ml-1">
-                        <CheckCircle className="h-3 w-3 mr-1 text-green-600" />
-                        E verifikuar
-                      </Badge>
-                    )}
                   </span>
                 ) : (
                   'Menaxho punët dhe aplikuesit'
@@ -1135,7 +1181,7 @@ const EmployerDashboard = () => {
           </Card>
         </div>
 
-        <Tabs defaultValue="jobs" className="space-y-6" onValueChange={(value) => setCurrentTab(value as 'jobs' | 'applicants' | 'settings')}>
+        <Tabs value={currentTab} className="space-y-6" onValueChange={(value) => setCurrentTab(value as 'jobs' | 'applicants' | 'settings')}>
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="jobs" className="text-xs sm:text-sm">Punët e Mia</TabsTrigger>
             <TabsTrigger value="applicants" className="text-xs sm:text-sm">Aplikuesit</TabsTrigger>
@@ -1397,29 +1443,50 @@ const EmployerDashboard = () => {
                   </div>
                 ) : (
                   <>
-                    {/* Application status filter */}
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      {[
-                        { value: 'all', label: 'Të gjitha', count: applications.length },
-                        { value: 'pending', label: 'Në pritje', count: applications.filter(a => a.status === 'pending').length },
-                        { value: 'viewed', label: 'Shikuar', count: applications.filter(a => a.status === 'viewed').length },
-                        { value: 'shortlisted', label: 'Në listë', count: applications.filter(a => a.status === 'shortlisted').length },
-                        { value: 'rejected', label: 'Refuzuar', count: applications.filter(a => a.status === 'rejected').length },
-                        { value: 'hired', label: 'Punësuar', count: applications.filter(a => a.status === 'hired').length },
-                      ].filter(f => f.value === 'all' || f.count > 0).map(filter => (
-                        <Button
-                          key={filter.value}
-                          size="sm"
-                          variant={applicationStatusFilter === filter.value ? 'default' : 'outline'}
-                          onClick={() => handleApplicationStatusFilterChange(filter.value)}
-                          className="text-xs h-8"
-                        >
-                          {filter.label}
-                          <span className={`ml-1.5 text-xs ${applicationStatusFilter === filter.value ? 'opacity-80' : 'text-muted-foreground'}`}>
-                            ({filter.count})
-                          </span>
-                        </Button>
-                      ))}
+                    {/* Application filters: status + job */}
+                    <div className="flex flex-col gap-3 mb-4">
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { value: 'all', label: 'Të gjitha', count: applications.length },
+                          { value: 'pending', label: 'Në pritje', count: applications.filter(a => a.status === 'pending').length },
+                          { value: 'viewed', label: 'Shikuar', count: applications.filter(a => a.status === 'viewed').length },
+                          { value: 'shortlisted', label: 'Në listë', count: applications.filter(a => a.status === 'shortlisted').length },
+                          { value: 'rejected', label: 'Refuzuar', count: applications.filter(a => a.status === 'rejected').length },
+                          { value: 'hired', label: 'Punësuar', count: applications.filter(a => a.status === 'hired').length },
+                        ].filter(f => f.value === 'all' || f.count > 0).map(filter => (
+                          <Button
+                            key={filter.value}
+                            size="sm"
+                            variant={applicationStatusFilter === filter.value ? 'default' : 'outline'}
+                            onClick={() => handleApplicationStatusFilterChange(filter.value)}
+                            className="text-xs h-8"
+                          >
+                            {filter.label}
+                            <span className={`ml-1.5 text-xs ${applicationStatusFilter === filter.value ? 'opacity-80' : 'text-muted-foreground'}`}>
+                              ({filter.count})
+                            </span>
+                          </Button>
+                        ))}
+                      </div>
+                      {/* Job filter dropdown */}
+                      {jobs.length > 1 && (
+                        <div className="flex items-center gap-2">
+                          <Briefcase className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <Select value={applicationJobFilter} onValueChange={(v) => { setApplicationJobFilter(v); setVisibleApplicationsCount(APPLICATIONS_PER_PAGE); }}>
+                            <SelectTrigger className="h-8 text-xs w-auto min-w-[180px] max-w-[300px]">
+                              <SelectValue placeholder="Filtro sipas punës" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Të gjitha punët</SelectItem>
+                              {jobs.map(job => (
+                                <SelectItem key={job._id} value={job._id}>
+                                  {job.title} ({applications.filter(a => (typeof a.jobId === 'string' ? a.jobId : a.jobId?._id) === job._id).length})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
                     </div>
 
                     {filteredApplications.length === 0 ? (
@@ -1448,7 +1515,14 @@ const EmployerDashboard = () => {
                               : 'Email i fshehur'}
                           </div>
                           <div className="text-xs sm:text-sm text-muted-foreground truncate">
-                            {typeof application.jobId === 'string' ? 'Pozicion i fshirë' : application.jobId?.title}
+                            Për: {typeof application.jobId === 'string' ? 'Pozicion i fshirë' : (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); navigate(`/jobs/${application.jobId._id}`); }}
+                                className="text-primary hover:underline font-medium"
+                              >
+                                {application.jobId?.title}
+                              </button>
+                            )}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             Aplikoi: {new Date(application.appliedAt).toLocaleDateString('sq-AL')}
@@ -1498,18 +1572,38 @@ const EmployerDashboard = () => {
                                       Shto në listë të shkurtër
                                     </DropdownMenuItem>
                                   )}
-                                  <DropdownMenuSeparator />
-                                  {(application.status !== 'hired' && application.status !== 'rejected') && (
+                                  {(application.status === 'pending' || application.status === 'viewed') && (
                                     <>
+                                      <DropdownMenuSeparator />
+                                      <div className="px-2 py-1.5 text-xs text-muted-foreground italic">
+                                        <Lightbulb className="inline mr-1 h-3 w-3" />
+                                        Shtoni në listë të shkurtër para punësimit
+                                      </div>
+                                    </>
+                                  )}
+                                  {application.status === 'shortlisted' && (
+                                    <>
+                                      <DropdownMenuSeparator />
                                       <DropdownMenuItem onClick={() => handleApplicationStatusChange(application._id, 'hired')}>
                                         <UserCheck className="mr-2 h-4 w-4" />
                                         Punëso
                                       </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => handleApplicationStatusChange(application._id, 'rejected')}>
-                                        <UserX className="mr-2 h-4 w-4" />
-                                        Refuzo
+                                    </>
+                                  )}
+                                  {application.status === 'hired' && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem onClick={() => handleApplicationStatusChange(application._id, 'shortlisted', 'hired')}>
+                                        <Star className="mr-2 h-4 w-4" />
+                                        Kthe në listë të shkurtër
                                       </DropdownMenuItem>
                                     </>
+                                  )}
+                                  {(application.status !== 'hired' && application.status !== 'rejected') && (
+                                    <DropdownMenuItem onClick={() => handleApplicationStatusChange(application._id, 'rejected')}>
+                                      <UserX className="mr-2 h-4 w-4" />
+                                      Refuzo
+                                    </DropdownMenuItem>
                                   )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -1872,7 +1966,14 @@ const EmployerDashboard = () => {
                     Aplikoi: {new Date(selectedApplication.appliedAt).toLocaleDateString('sq-AL')}
                   </p>
                   <p className="text-xs sm:text-sm text-muted-foreground">
-                    Për: {typeof selectedApplication.jobId === 'string' ? 'Pozicion i fshirë' : selectedApplication.jobId?.title}
+                    Për: {typeof selectedApplication.jobId === 'string' ? 'Pozicion i fshirë' : (
+                      <button
+                        onClick={() => navigate(`/jobs/${selectedApplication.jobId._id}`)}
+                        className="text-primary hover:underline font-medium"
+                      >
+                        {selectedApplication.jobId?.title}
+                      </button>
+                    )}
                   </p>
                 </div>
               </div>
@@ -1978,6 +2079,65 @@ const EmployerDashboard = () => {
                         </div>
                       )}
 
+                      {/* Work Experience — compact */}
+                      {selectedApplication.jobSeekerId.profile.jobSeekerProfile?.workHistory?.length > 0 && (() => {
+                        const workItems = selectedApplication.jobSeekerId.profile.jobSeekerProfile.workHistory;
+                        const visibleWork = expandedWorkHistory ? workItems : workItems.slice(0, 2);
+                        return (
+                          <div>
+                            <Label className="text-xs sm:text-sm font-medium">Përvojë Pune ({workItems.length})</Label>
+                            <div className="mt-1 space-y-1">
+                              {visibleWork.map((work: any, i: number) => (
+                                <div key={i} className="flex items-center gap-2 text-xs py-1 px-2 bg-muted/30 rounded">
+                                  <Briefcase className="h-3 w-3 text-muted-foreground shrink-0" />
+                                  <span className="font-medium truncate">{work.position}</span>
+                                  <span className="text-muted-foreground shrink-0">@ {work.company}</span>
+                                  <span className="text-muted-foreground ml-auto shrink-0">
+                                    {new Date(work.startDate).getFullYear()}–{work.endDate ? new Date(work.endDate).getFullYear() : 'Tani'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                            {workItems.length > 2 && (
+                              <button
+                                onClick={() => setExpandedWorkHistory(!expandedWorkHistory)}
+                                className="text-xs text-primary hover:underline mt-1 flex items-center gap-1"
+                              >
+                                {expandedWorkHistory ? <><ChevronUp className="h-3 w-3" /> Mbyll</> : <><ChevronDown className="h-3 w-3" /> +{workItems.length - 2} të tjera</>}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      {/* Education — compact */}
+                      {selectedApplication.jobSeekerId.profile.jobSeekerProfile?.education?.length > 0 && (() => {
+                        const eduItems = selectedApplication.jobSeekerId.profile.jobSeekerProfile.education;
+                        const visibleEdu = expandedEducation ? eduItems : eduItems.slice(0, 2);
+                        return (
+                          <div>
+                            <Label className="text-xs sm:text-sm font-medium">Arsimimi ({eduItems.length})</Label>
+                            <div className="mt-1 space-y-1">
+                              {visibleEdu.map((edu: any, i: number) => (
+                                <div key={i} className="flex items-center gap-2 text-xs py-1 px-2 bg-muted/30 rounded">
+                                  <span className="font-medium truncate">{edu.degree}{edu.fieldOfStudy ? ` — ${edu.fieldOfStudy}` : ''}</span>
+                                  <span className="text-muted-foreground shrink-0">@ {edu.school || edu.institution}</span>
+                                  <span className="text-muted-foreground ml-auto shrink-0">{edu.year}</span>
+                                </div>
+                              ))}
+                            </div>
+                            {eduItems.length > 2 && (
+                              <button
+                                onClick={() => setExpandedEducation(!expandedEducation)}
+                                className="text-xs text-primary hover:underline mt-1 flex items-center gap-1"
+                              >
+                                {expandedEducation ? <><ChevronUp className="h-3 w-3" /> Mbyll</> : <><ChevronDown className="h-3 w-3" /> +{eduItems.length - 2} të tjera</>}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       {selectedApplication.jobSeekerId.profile.jobSeekerProfile.resume && (
                         <div>
                           <Label className="text-xs sm:text-sm font-medium">CV</Label>
@@ -2005,15 +2165,9 @@ const EmployerDashboard = () => {
                             <Button
                               variant="ghost"
                               size="sm"
-                              disabled={downloadingCV}
                               onClick={() => {
                                 const jobSeeker = selectedApplication.jobSeekerId as User;
-                                const resumeUrl = jobSeeker.profile.jobSeekerProfile?.resume || '';
-                                const resumeBaseUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
-                                const fullUrl = resumeUrl.startsWith('http')
-                                  ? resumeUrl
-                                  : `${resumeBaseUrl}${resumeUrl}`;
-                                window.open(fullUrl, '_blank');
+                                handleViewCV(jobSeeker.profile.jobSeekerProfile?.resume || '');
                               }}
                               className="text-xs"
                             >
@@ -2066,18 +2220,38 @@ const EmployerDashboard = () => {
                               Shto në listë të shkurtër
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuSeparator />
-                          {(selectedApplication.status !== 'hired' && selectedApplication.status !== 'rejected') && (
+                          {(selectedApplication.status === 'pending' || selectedApplication.status === 'viewed') && (
                             <>
+                              <DropdownMenuSeparator />
+                              <div className="px-2 py-1.5 text-xs text-muted-foreground italic">
+                                <Lightbulb className="inline mr-1 h-3 w-3" />
+                                Shtoni në listë të shkurtër para punësimit
+                              </div>
+                            </>
+                          )}
+                          {selectedApplication.status === 'shortlisted' && (
+                            <>
+                              <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => handleApplicationStatusChange(selectedApplication._id, 'hired')}>
                                 <UserCheck className="mr-2 h-4 w-4" />
                                 Punëso
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleApplicationStatusChange(selectedApplication._id, 'rejected')}>
-                                <UserX className="mr-2 h-4 w-4" />
-                                Refuzo
+                            </>
+                          )}
+                          {selectedApplication.status === 'hired' && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleApplicationStatusChange(selectedApplication._id, 'shortlisted', 'hired')}>
+                                <Star className="mr-2 h-4 w-4" />
+                                Kthe në listë të shkurtër
                               </DropdownMenuItem>
                             </>
+                          )}
+                          {(selectedApplication.status !== 'hired' && selectedApplication.status !== 'rejected') && (
+                            <DropdownMenuItem onClick={() => handleApplicationStatusChange(selectedApplication._id, 'rejected')}>
+                              <UserX className="mr-2 h-4 w-4" />
+                              Refuzo
+                            </DropdownMenuItem>
                           )}
                         </DropdownMenuContent>
                       </DropdownMenu>

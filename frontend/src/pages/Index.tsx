@@ -7,7 +7,7 @@ import CoreFilters from "@/components/CoreFilters";
 import RecentlyViewedJobs from "@/components/RecentlyViewedJobs";
 import PremiumJobsCarousel from "@/components/PremiumJobsCarousel";
 import { QuickUserBanner } from "@/components/QuickUserBanner";
-import ScrollToTopButton from "@/components/ScrollToTopButton";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 // import { Card, CardContent } from "@/components/ui/card"; // Temporarily disabled with right sidebar
@@ -73,11 +73,11 @@ const Index = () => {
                         JSON.stringify(pendingCoreFilters) !== JSON.stringify(coreFilters);
       
       if (hasChanges) {
-        // Auto-apply filters
+        // Auto-apply filters — pass overrides to avoid stale closure
         setAdvancedFilters(pendingAdvancedFilters);
         setCoreFilters(pendingCoreFilters);
         setPagination(prev => ({ ...prev, currentPage: 1 }));
-        loadJobs(1, false);
+        loadJobs(1, false, { advancedFilters: pendingAdvancedFilters, coreFilters: pendingCoreFilters });
       }
     }
     previousExpandedCategoryRef.current = expandedCategory;
@@ -146,7 +146,7 @@ const Index = () => {
     return () => clearTimeout(debounceTimeout);
   }, [searchQuery, selectedLocations, selectedType, coreFilters]);
 
-  const loadJobs = async (page = 1, isSearch = false) => {
+  const loadJobs = async (page = 1, isSearch = false, filterOverrides?: { advancedFilters?: typeof advancedFilters; coreFilters?: typeof coreFilters }) => {
     try {
       // Use different loading states for search vs general loading
       if (isSearch) {
@@ -154,6 +154,10 @@ const Index = () => {
       } else {
         setLoading(true);
       }
+
+      // Use overrides if provided (to avoid stale closure from React state batching)
+      const activeAdvancedFilters = filterOverrides?.advancedFilters ?? advancedFilters;
+      const activeCoreFilters = filterOverrides?.coreFilters ?? coreFilters;
 
       // Build query params with advanced filters
       const queryParams: any = {
@@ -165,53 +169,53 @@ const Index = () => {
       };
 
       // Add advanced filters if they exist
-      // Salary range - only send if user has modified from defaults
-      if (advancedFilters.salaryRange[0] > 0 || advancedFilters.salaryRange[1] < 5000) {
-        queryParams.minSalary = advancedFilters.salaryRange[0];
-        queryParams.maxSalary = advancedFilters.salaryRange[1];
-        queryParams.currency = advancedFilters.currency;
+      // Salary range - only send if user has moved slider away from defaults (0-2000)
+      if (activeAdvancedFilters.salaryRange[0] > 0 || activeAdvancedFilters.salaryRange[1] < 2000) {
+        queryParams.minSalary = activeAdvancedFilters.salaryRange[0];
+        queryParams.maxSalary = activeAdvancedFilters.salaryRange[1];
+        queryParams.currency = activeAdvancedFilters.currency;
       }
 
-      if (advancedFilters.company) {
-        queryParams.company = advancedFilters.company;
+      if (activeAdvancedFilters.company) {
+        queryParams.company = activeAdvancedFilters.company;
       }
 
-      if (advancedFilters.remote) {
+      if (activeAdvancedFilters.remote) {
         queryParams.remote = 'true';
       }
 
       // Categories - send as comma-separated for OR logic
-      if (advancedFilters.categories && advancedFilters.categories.length > 0) {
-        queryParams.categories = advancedFilters.categories.join(',');
+      if (activeAdvancedFilters.categories && activeAdvancedFilters.categories.length > 0) {
+        queryParams.categories = activeAdvancedFilters.categories.join(',');
       }
 
       // Experience - map to backend seniority
-      if (advancedFilters.experience) {
-        queryParams.experience = advancedFilters.experience;
+      if (activeAdvancedFilters.experience) {
+        queryParams.experience = activeAdvancedFilters.experience;
       }
 
       // Add core platform filters
-      if (coreFilters.diaspora) {
+      if (activeCoreFilters.diaspora) {
         queryParams.diaspora = 'true';
       }
-      if (coreFilters.ngaShtepia) {
+      if (activeCoreFilters.ngaShtepia) {
         queryParams.ngaShtepia = 'true';
       }
-      if (coreFilters.partTime) {
+      if (activeCoreFilters.partTime) {
         queryParams.partTime = 'true';
       }
-      if (coreFilters.administrata) {
+      if (activeCoreFilters.administrata) {
         queryParams.administrata = 'true';
       }
-      if (coreFilters.sezonale) {
+      if (activeCoreFilters.sezonale) {
         queryParams.sezonale = 'true';
       }
 
-      if (advancedFilters.postedWithin) {
+      if (activeAdvancedFilters.postedWithin) {
         const now = new Date();
         let dateFrom;
 
-        switch (advancedFilters.postedWithin) {
+        switch (activeAdvancedFilters.postedWithin) {
           case 'today':
             dateFrom = new Date(now.getTime() - 24 * 60 * 60 * 1000);
             break;
@@ -229,7 +233,7 @@ const Index = () => {
       }
 
       // Set sorting
-      switch (advancedFilters.sortBy) {
+      switch (activeAdvancedFilters.sortBy) {
         case 'newest':
           queryParams.sortBy = 'postedAt';
           queryParams.sortOrder = 'desc';
@@ -321,7 +325,12 @@ const Index = () => {
     }
   };
 
+  const [applyingJobId, setApplyingJobId] = useState<string | null>(null);
+
   const handleApply = async (jobId: string) => {
+    // Prevent double-submit from rapid clicks
+    if (applyingJobId) return;
+
     // Check if user is authenticated
     if (!isAuthenticated) {
       toast({
@@ -342,6 +351,7 @@ const Index = () => {
       return;
     }
 
+    setApplyingJobId(jobId);
     try {
       await applicationsApi.apply({
         jobId,
@@ -359,6 +369,8 @@ const Index = () => {
         description: error.message || "Gabim në dërgimin e aplikimit",
         variant: "destructive"
       });
+    } finally {
+      setApplyingJobId(null);
     }
   };
 
@@ -412,10 +424,15 @@ const Index = () => {
   };
 
   const handleShowFilters = () => {
-    // When opening filters, sync pending filters with current active filters
-    setPendingAdvancedFilters(advancedFilters);
-    setPendingCoreFilters(coreFilters);
-    setShowAllFilters(true);
+    if (showAllFilters) {
+      // Closing filters — just hide the panel
+      setShowAllFilters(false);
+    } else {
+      // Opening filters — sync pending filters with current active filters
+      setPendingAdvancedFilters(advancedFilters);
+      setPendingCoreFilters(coreFilters);
+      setShowAllFilters(true);
+    }
   };
 
   const handleApplyFilters = async () => {
@@ -425,9 +442,9 @@ const Index = () => {
     setShowAllFilters(false);
     setExpandedCategory(null);
     setPagination(prev => ({ ...prev, currentPage: 1 }));
-    
-    // Reload jobs with new filters
-    await loadJobs(1, false);
+
+    // Pass overrides to avoid stale closure — React batches setState, so loadJobs would read old values
+    await loadJobs(1, false, { advancedFilters: pendingAdvancedFilters, coreFilters: pendingCoreFilters });
 
     toast({
       title: "Filtrat u aplikuan",
@@ -466,8 +483,8 @@ const Index = () => {
     setSearchQuery('');
     setPagination(prev => ({ ...prev, currentPage: 1 }));
 
-    // Single API call with reset filters
-    await loadJobs(1, false);
+    // Pass reset filters as overrides to avoid stale closure
+    await loadJobs(1, false, { advancedFilters: defaultAdvancedFilters, coreFilters: defaultCoreFilters });
 
     toast({
       title: "Filtrat u rivendosën",
@@ -1092,14 +1109,18 @@ const Index = () => {
                     acc.push(
                       <JobCard key={job._id} job={job} onApply={handleApply} isRecommended={job.isRecommended} initialSaved={savedJobsMap[job._id]} />
                     );
-                    
-                    // Add banner every 4 jobs (after 4th, 8th, 12th, etc.) for non-authenticated users
-                    if (!isAuthenticated && (index + 1) % 4 === 0) {
-                      acc.push(
-                        <QuickUserBanner key={`banner-${index}`} />
-                      );
+
+                    // Add banner every 4 jobs for all users
+                    if ((index + 1) % 4 === 0) {
+                      if (!isAuthenticated) {
+                        acc.push(<QuickUserBanner key={`banner-${index}`} />);
+                      } else {
+                        acc.push(
+                          <QuickUserBanner key={`banner-${index}`} variant="cv" />
+                        );
+                      }
                     }
-                    
+
                     return acc;
                   }, [])}
                 </div>
@@ -1299,8 +1320,6 @@ const Index = () => {
         </div>
       </div>
       
-      <ScrollToTopButton />
-
       <Footer />
     </div>
   );

@@ -37,7 +37,8 @@ import statsRoutes from './src/routes/stats.js';
 import verificationRoutes from './src/routes/verification.js';
 import quickUserRoutes from './src/routes/quickusers.js';
 import companiesRoutes from './src/routes/companies.js';
-import sendVerificationRoutes from './src/routes/send-verification.js';
+// send-verification route REMOVED — legacy unauthenticated email endpoint (security risk).
+// Authenticated version lives at /api/auth/send-verification in auth.js.
 import adminRoutes from './src/routes/admin.js';
 import reportRoutes from './src/routes/reports.js';
 import bulkNotificationRoutes from './src/routes/bulk-notifications.js';
@@ -45,7 +46,9 @@ import configurationRoutes from './src/routes/configuration.js';
 import businessControlRoutes from './src/routes/business-control.js';
 import matchingRoutes from './src/routes/matching.js';
 import cvRoutes from './src/routes/cv.js';
+import adminEmbeddingsRoutes from './src/routes/admin/embeddings.js';
 import { Job, SystemConfiguration } from './src/models/index.js';
+import { redis } from './src/config/redis.js';
 
 // Startup validation — fail fast if critical env vars are missing
 const requiredEnvVars = ['JWT_SECRET', 'JWT_REFRESH_SECRET'];
@@ -54,8 +57,25 @@ if (missingEnvVars.length > 0) {
   logger.error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
   process.exit(1);
 }
+// FRONTEND_URL is critical in production — password reset links default to localhost without it
+if (process.env.NODE_ENV === 'production' && !process.env.FRONTEND_URL) {
+  logger.error('FRONTEND_URL is required in production (used for password reset links, email URLs)');
+  process.exit(1);
+} else if (!process.env.FRONTEND_URL) {
+  logger.warn('FRONTEND_URL not set — defaulting to http://localhost:5173 for email links');
+}
 if (!process.env.OPENAI_API_KEY) {
   logger.warn('OPENAI_API_KEY not set — CV generation and embeddings will be unavailable');
+}
+// Production safety: warn about debug flags and missing Cloudinary
+if (process.env.NODE_ENV === 'production') {
+  const debugFlags = ['DEBUG_EMBEDDINGS', 'DEBUG_WORKER', 'DEBUG_QUEUE'].filter(f => process.env[f] === 'true');
+  if (debugFlags.length > 0) {
+    logger.warn(`Debug logging enabled in production (${debugFlags.join(', ')}) — may leak sensitive data. Set to false.`);
+  }
+  if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+    logger.error('Cloudinary not configured in production — file uploads will be rejected (ephemeral disk storage is not safe)');
+  }
 }
 
 const app = express();
@@ -95,8 +115,10 @@ const corsOptions = {
       'http://localhost:3000', // Alternative dev port
       'http://127.0.0.1:5173',
       'http://127.0.0.1:3000',
-      'https://advance-al-frontend.vercel.app', // Production frontend
-      'https://advance-al.vercel.app',           // Alternative Vercel URL
+      'https://advance.al',                      // Production custom domain
+      'https://www.advance.al',                   // Production www subdomain
+      'https://advance-al-frontend.vercel.app',   // Production Vercel URL
+      'https://advance-al.vercel.app',            // Alternative Vercel URL
     ];
 
     // Allow additional origin from env var (e.g. custom domain later)
@@ -132,8 +154,8 @@ const limiter = rateLimit({
   },
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
-  // Skip rate limiting in development if needed
-  skip: (req) => process.env.NODE_ENV === 'development' && process.env.SKIP_RATE_LIMIT === 'true'
+  // Skip rate limiting in development
+  skip: (req) => process.env.NODE_ENV === 'development'
 });
 
 // Apply rate limiting to all API routes
@@ -157,15 +179,27 @@ mkdirSync(path.join(process.cwd(), 'uploads', 'resumes'), { recursive: true });
 // Cloudinary handles file serving in production
 
 // Health Check Route — minimal in production, detailed in dev
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
   const dbState = mongoose.connection.readyState;
   const isHealthy = dbState === 1;
+
+  // Check Redis status (non-blocking, app works without it)
+  let redisStatus = 'not_configured';
+  if (redis) {
+    try {
+      await redis.ping();
+      redisStatus = 'connected';
+    } catch {
+      redisStatus = 'error';
+    }
+  }
 
   if (process.env.NODE_ENV === 'production') {
     return res.status(isHealthy ? 200 : 503).json({
       success: isHealthy,
       message: isHealthy ? 'OK' : 'Degraded',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      redis: redisStatus
     });
   }
 
@@ -178,6 +212,7 @@ app.get('/health', (req, res) => {
     environment: process.env.NODE_ENV || 'development',
     uptime: Math.floor(process.uptime()),
     database: { status: dbStates[dbState] || 'unknown', readyState: dbState },
+    redis: redisStatus,
     memory: {
       rss: Math.round(mem.rss / 1024 / 1024 * 100) / 100,
       heapUsed: Math.round(mem.heapUsed / 1024 / 1024 * 100) / 100
@@ -209,6 +244,7 @@ app.use('/api', async (req, res, next) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes); // Admin routes first to avoid conflicts
+app.use('/api/admin/embeddings', adminEmbeddingsRoutes); // Admin embeddings management
 app.use('/api/reports', reportRoutes); // Reports routes (includes admin endpoints)
 app.use('/api/bulk-notifications', bulkNotificationRoutes); // Bulk notification routes
 app.use('/api/configuration', configurationRoutes); // Configuration management routes
@@ -222,7 +258,6 @@ app.use('/api/stats', statsRoutes);
 app.use('/api/verification', verificationRoutes);
 app.use('/api/quickusers', quickUserRoutes);
 app.use('/api/companies', companiesRoutes);
-app.use('/api/send-verification', sendVerificationRoutes);
 app.use('/api/matching', matchingRoutes);
 app.use('/api/cv', cvRoutes);
 
@@ -293,6 +328,9 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Track intervals for graceful shutdown cleanup
+const activeIntervals = [];
+
 // Start Server
 const server = app.listen(PORT, () => {
   logger.info(`advance.al API running on port ${PORT}`);
@@ -301,17 +339,17 @@ const server = app.listen(PORT, () => {
 
   // Periodic task: auto-lift expired user suspensions (every 15 minutes)
   import('./src/models/index.js').then(({ User }) => {
-    setInterval(async () => {
+    activeIntervals.push(setInterval(async () => {
       try {
         await User.checkExpiredSuspensions();
       } catch (err) {
         logger.error('Error checking expired suspensions:', err.message);
       }
-    }, 15 * 60 * 1000);
+    }, 15 * 60 * 1000));
   }).catch(() => {});
 
   // Periodic task: expire active jobs past their expiresAt (every hour)
-  setInterval(async () => {
+  activeIntervals.push(setInterval(async () => {
     try {
       const result = await Job.updateMany(
         { status: 'active', expiresAt: { $lt: new Date() }, isDeleted: { $ne: true } },
@@ -323,23 +361,55 @@ const server = app.listen(PORT, () => {
     } catch (err) {
       logger.error('Job expiry cron error:', err.message);
     }
-  }, 60 * 60 * 1000); // Every hour
+  }, 60 * 60 * 1000)); // Every hour
 
   // Data retention: run daily
   import('./src/services/dataRetention.js').then(({ runRetentionPolicies }) => {
-    setInterval(() => {
-      runRetentionPolicies().catch(err => console.error('Retention error:', err));
-    }, 24 * 60 * 60 * 1000);
+    activeIntervals.push(setInterval(() => {
+      runRetentionPolicies().catch(err => logger.error('Retention error:', err.message));
+    }, 24 * 60 * 60 * 1000));
     // Run once on startup after a delay
     setTimeout(() => {
-      runRetentionPolicies().catch(err => console.error('Retention error:', err));
+      runRetentionPolicies().catch(err => logger.error('Retention error:', err.message));
     }, 60000);
+  }).catch(() => {});
+
+  // Account cleanup: permanently delete soft-deleted accounts after 30-day retention (privacy policy)
+  import('./src/services/accountCleanup.js').then(({ purgeDeletedAccounts }) => {
+    // Run daily
+    activeIntervals.push(setInterval(async () => {
+      try {
+        const count = await purgeDeletedAccounts();
+        if (count > 0) {
+          logger.info(`Account cleanup: ${count} accounts permanently deleted`);
+        } else {
+          logger.info('Account cleanup: no accounts to purge');
+        }
+      } catch (err) {
+        logger.error('Account cleanup error:', err.message);
+      }
+    }, 24 * 60 * 60 * 1000));
+    // Run once on startup after a 30-second delay (don't block startup)
+    setTimeout(async () => {
+      try {
+        const count = await purgeDeletedAccounts();
+        if (count > 0) {
+          logger.info(`Account cleanup: ${count} accounts permanently deleted`);
+        } else {
+          logger.info('Account cleanup: no accounts to purge');
+        }
+      } catch (err) {
+        logger.error('Account cleanup error:', err.message);
+      }
+    }, 30000);
   }).catch(() => {});
 });
 
 // Graceful Shutdown — must be AFTER server is defined
 const shutdown = async (signal) => {
   logger.info(`${signal} received, shutting down gracefully`);
+  // Clear all periodic intervals
+  activeIntervals.forEach(id => clearInterval(id));
   server.close(async () => {
     await mongoose.connection.close();
     logger.info('Process terminated');

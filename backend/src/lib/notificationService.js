@@ -1,8 +1,9 @@
-import { QuickUser, User } from '../models/index.js';
+import { QuickUser, User, Job } from '../models/index.js';
 import resendEmailService from './resendEmailService.js';
 import emailService from './emailService.js'; // kept for SMS only
 import userEmbeddingService from '../services/userEmbeddingService.js';
 import { escapeHtml } from '../utils/sanitize.js';
+import logger from '../config/logger.js';
 
 class NotificationService {
   constructor() {
@@ -229,7 +230,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
         messageId: emailResult.messageId
       };
     } catch (error) {
-      console.error(`Error sending notification to full user ${user._id}:`, error);
+      logger.error(`Error sending notification to full user ${user._id}:`, error.message);
       return { success: false, error: error.message, userId: user._id };
     }
   }
@@ -276,7 +277,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
       };
 
     } catch (error) {
-      console.error(`Error sending notification to user ${user._id}:`, error);
+      logger.error(`Error sending notification to user ${user._id}:`, error.message);
       return {
         success: false,
         error: error.message,
@@ -290,17 +291,17 @@ advance.al - Platforma #1 e Punës në Shqipëri
   // Also notifies full jobseeker accounts that have opted into alerts (semantic only).
   async notifyMatchingUsers(job) {
     try {
+      // Load job with embedding vector (select: false by default)
+      const jobWithVector = await Job.findById(job._id).select('+embedding.vector');
+      const jobForSemantic = jobWithVector || job;
+
       // ── 1. Semantic matching (QuickUsers + full jobseekers) ──────────────────
       const { quickUsers: semanticQuickUsers, jobSeekers: semanticJobSeekers } =
-        await userEmbeddingService.findSemanticMatchesForJob(job);
+        await userEmbeddingService.findSemanticMatchesForJob(jobForSemantic);
 
-      // ── 2. Keyword fallback for QuickUsers (when job has no embedding) ───────
+      // ── 2. Keyword fallback for QuickUsers (always run, deduplicated later) ──
       let keywordQuickUsers = [];
-      const jobHasEmbedding = job.embedding?.vector?.length === 1536;
-
-      if (!jobHasEmbedding) {
-        keywordQuickUsers = await QuickUser.findMatchesForJob(job);
-      }
+      keywordQuickUsers = await QuickUser.findMatchesForJob(job);
 
       // ── 3. Merge & deduplicate QuickUser lists ───────────────────────────────
       const semanticQuickUserIds = new Set(semanticQuickUsers.map(e => e.user._id.toString()));
@@ -327,7 +328,9 @@ advance.al - Platforma #1 e Punës në Shqipëri
       let errorCount = 0;
 
       // ── 4. Notify QuickUsers ─────────────────────────────────────────────────
-      const batchSize = 10;
+      // Resend rate limit: 5 req/sec. Batch of 4 + 1.2s delay gives safe margin.
+      const batchSize = 4;
+      const batchDelay = 1200;
       for (let i = 0; i < allQuickUsers.length; i += batchSize) {
         const batch = allQuickUsers.slice(i, i + batchSize);
         const batchResults = await Promise.allSettled(
@@ -339,13 +342,13 @@ advance.al - Platforma #1 e Punës në Shqipëri
             results.push(result.value);
             result.value.success ? successCount++ : errorCount++;
           } else {
-            console.error(`QuickUser batch error for ${batch[index]._id}:`, result.reason);
+            logger.error(`QuickUser batch error for ${batch[index]._id}:`, result.reason?.message || result.reason);
             errorCount++;
           }
         });
 
         if (i + batchSize < allQuickUsers.length) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, batchDelay));
         }
       }
 
@@ -361,13 +364,13 @@ advance.al - Platforma #1 e Punës në Shqipëri
             results.push(result.value);
             result.value.success ? successCount++ : errorCount++;
           } else {
-            console.error(`JobSeeker batch error for ${batch[index]._id}:`, result.reason);
+            logger.error(`JobSeeker batch error for ${batch[index]._id}:`, result.reason?.message || result.reason);
             errorCount++;
           }
         });
 
         if (i + batchSize < allJobSeekers.length) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, batchDelay));
         }
       }
 
@@ -389,12 +392,127 @@ advance.al - Platforma #1 e Punës në Shqipëri
       };
 
     } catch (error) {
-      console.error('Error notifying matching users:', error);
+      logger.error('Error notifying matching users:', error.message);
       return {
         success: false,
         error: error.message,
         stats: { totalUsers: 0, notificationsSent: 0, errors: 1 }
       };
+    }
+  }
+
+  /**
+   * Notify a user about existing jobs that match their profile.
+   * Called after a QuickUser signs up or a jobseeker registers/updates their profile.
+   * Finds matching jobs via semantic embedding, then sends a single digest email.
+   *
+   * @param {Object} params
+   * @param {string} params.type - 'quickuser' or 'jobseeker'
+   * @param {string} params.userId - The user's _id
+   * @returns {Promise<Object>} Result with matchCount and email status
+   */
+  async notifyUserAboutMatchingJobs({ type, userId }) {
+    try {
+      let userVector = null;
+      let userEmail = null;
+      let firstName = null;
+      let city = null;
+
+      if (type === 'quickuser') {
+        const qu = await QuickUser.findById(userId).select('+embedding.vector');
+        if (!qu || qu.embedding?.status !== 'completed' || !qu.embedding?.vector) {
+          return { success: true, matchCount: 0, message: 'No embedding available yet' };
+        }
+        userVector = qu.embedding.vector;
+        userEmail = qu.email;
+        firstName = qu.firstName;
+        city = qu.location;
+      } else {
+        const user = await User.findById(userId).select('+profile.jobSeekerProfile.embedding.vector');
+        if (!user || user.profile?.jobSeekerProfile?.embedding?.status !== 'completed') {
+          return { success: true, matchCount: 0, message: 'No embedding available yet' };
+        }
+        userVector = user.profile.jobSeekerProfile.embedding.vector;
+        userEmail = user.email;
+        firstName = user.profile?.firstName;
+        city = user.profile?.location?.city;
+      }
+
+      // Find matching jobs
+      const matches = await userEmbeddingService.findMatchingJobsForUser(userVector, { limit: 5, city });
+
+      if (matches.length === 0) {
+        logger.info(`No matching jobs found for ${type} ${userId}`);
+        return { success: true, matchCount: 0, message: 'No matching jobs found' };
+      }
+
+      // Build digest email with top matches
+      const safeFirstName = escapeHtml(firstName || 'Kandidat');
+      const jobListHtml = matches.map(({ job, score }) => {
+        const safeTitle = escapeHtml(job.title);
+        const safeCompany = escapeHtml(job.employerId?.profile?.employerProfile?.companyName || 'Kompani');
+        const safeCity = escapeHtml(job.location?.city || '');
+        const salaryText = job.salary ? `${job.salary.min}-${job.salary.max} ${job.salary.currency}` : '';
+        return `
+          <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 10px 0; border-left: 4px solid #667eea;">
+            <div style="font-weight: bold; color: #333; margin-bottom: 5px;">${safeTitle}</div>
+            <div style="font-size: 13px; color: #666;">🏢 ${safeCompany} &nbsp; 📍 ${safeCity}${salaryText ? ` &nbsp; 💰 ${salaryText}` : ''}</div>
+            <div style="margin-top: 10px;">
+              <a href="https://advance.al/jobs/${job._id}?utm_source=email&utm_medium=welcome_match&utm_campaign=new_user_jobs"
+                 style="display: inline-block; background: #667eea; color: white; padding: 8px 16px; text-decoration: none; border-radius: 20px; font-size: 13px; font-weight: bold;">Shiko Detajet</a>
+            </div>
+          </div>`;
+      }).join('');
+
+      const jobListText = matches.map(({ job }) => {
+        const company = job.employerId?.profile?.employerProfile?.companyName || 'Kompani';
+        return `- ${job.title} (${company}, ${job.location?.city || ''}) → https://advance.al/jobs/${job._id}`;
+      }).join('\n');
+
+      const subject = `🎯 Gjenim ${matches.length} punë që përputhen me profilin tuaj!`;
+
+      const htmlContent = `
+<!DOCTYPE html>
+<html lang="sq">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+      <h1 style="margin: 0;">🎯 Punë që përputhen me ju!</h1>
+      <p style="margin: 10px 0 0 0;">Përshëndetje ${safeFirstName}, gjenim ${matches.length} mundësi bazuar në profilin tuaj</p>
+    </div>
+    <div style="background: #fff; padding: 30px; border: 1px solid #e0e0e0;">
+      <p>Bazuar në aftësitë dhe interesat tuaja, këto punë mund t'ju interesojnë:</p>
+      ${jobListHtml}
+      <div style="text-align: center; margin: 25px 0;">
+        <a href="https://advance.al?utm_source=email&utm_medium=welcome_match"
+           style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 25px; font-weight: bold;">🔍 Shiko të gjitha punët</a>
+      </div>
+      <p style="font-size: 13px; color: #888;">Do të vazhdoni të merrni njoftime kur postohen punë të reja që përputhen me profilin tuaj.</p>
+    </div>
+    <div style="background: #f8f9fa; padding: 15px; border-radius: 0 0 10px 10px; font-size: 12px; color: #666; text-align: center;">
+      <p><strong>advance.al</strong> — Platforma #1 e Punës në Shqipëri</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+      const textContent = `Përshëndetje ${firstName || 'Kandidat'},\n\nGjenim ${matches.length} punë që përputhen me profilin tuaj:\n\n${jobListText}\n\nShiko të gjitha punët: https://advance.al\n\nadvance.al — Platforma #1 e Punës në Shqipëri`;
+
+      // Send the digest email
+      const emailResult = await this.sendEmail(userEmail, subject, htmlContent, textContent);
+
+      logger.info(`Sent ${matches.length} matching jobs to ${type} ${userId} (${userEmail})`);
+
+      return {
+        success: emailResult.success,
+        matchCount: matches.length,
+        email: userEmail,
+        messageId: emailResult.messageId
+      };
+    } catch (error) {
+      logger.error(`Error notifying ${type} ${userId} about matching jobs:`, error.message);
+      return { success: false, matchCount: 0, error: error.message };
     }
   }
 
@@ -487,7 +605,7 @@ Ekipi i advance.al
       return result;
 
     } catch (error) {
-      console.error('Error sending welcome email:', error);
+      logger.error('Error sending welcome email:', error.message);
       throw error;
     }
   }
@@ -495,7 +613,7 @@ Ekipi i advance.al
   // Notify admin users about a new report
   async notifyAdmins(type, report) {
     try {
-      const admins = await User.find({ role: 'admin', isDeleted: false }).select('email profile.firstName').lean();
+      const admins = await User.find({ userType: 'admin', isDeleted: false }).select('email profile.firstName').lean();
       if (admins.length === 0) return { success: true, message: 'No admins to notify' };
 
       const subject = type === 'new_report'
@@ -509,12 +627,12 @@ Ekipi i advance.al
           <p><strong>Arsyeja:</strong> ${escapeHtml(report.reason || 'Nuk është specifikuar')}</p>
           <p><a href="https://advance.al/admin">Shiko në panel</a></p>`;
         await this.sendEmail(admin.email, subject, html, `Raportim i ri: ${report.reason || 'Pa arsye'}`).catch(err =>
-          console.error(`Failed to notify admin ${admin.email}:`, err)
+          logger.error(`Failed to notify admin ${admin.email}:`, err.message)
         );
       }
       return { success: true, message: `Notified ${admins.length} admins` };
     } catch (error) {
-      console.error('Error notifying admins:', error);
+      logger.error('Error notifying admins:', error.message);
       return { success: false, error: error.message };
     }
   }

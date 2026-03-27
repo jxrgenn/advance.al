@@ -8,6 +8,16 @@ import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import { useRecentlyViewed } from "@/hooks/useRecentlyViewed";
 
+// Client-side salary formatter — Mongoose virtuals are stripped by .lean()
+const formatSalary = (salary: { min?: number; max?: number; currency: string; negotiable?: boolean }) => {
+  if (!salary.min && !salary.max) return salary.negotiable !== false ? 'Pagë për t\'u negociuar' : null;
+  if (salary.min && salary.max && salary.min === salary.max) return `${salary.min} ${salary.currency}`;
+  if (salary.min && salary.max) return `${salary.min}-${salary.max} ${salary.currency}`;
+  if (salary.min) return `Nga ${salary.min} ${salary.currency}`;
+  if (salary.max) return `Deri në ${salary.max} ${salary.currency}`;
+  return null;
+};
+
 interface JobCardProps {
   job: Job;
   onApply?: (jobId: string) => void;
@@ -162,11 +172,11 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, init
 
             {/* Row 4: Salary */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 md:gap-6 text-sm sm:text-base text-muted-foreground">
-              {job.salary?.showPublic && job.formattedSalary && (
+              {job.salary?.showPublic && (job.formattedSalary || job.salary.min || job.salary.max) && (
                 <div className="flex items-center gap-1.5 sm:gap-2">
                   <Euro className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 flex-shrink-0" />
                   <span className="font-semibold text-green-700 text-sm sm:text-base">
-                    {job.formattedSalary}
+                    {job.formattedSalary || formatSalary(job.salary)}
                   </span>
                 </div>
               )}

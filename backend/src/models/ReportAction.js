@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import logger from '../config/logger.js';
 
 const { Schema } = mongoose;
 
@@ -422,7 +423,7 @@ reportActionSchema.post('save', async function(doc) {
       const { notifyRelevantParties } = await import('../lib/notificationService.js');
       await notifyRelevantParties('report_action', doc);
     } catch (error) {
-      console.error('Failed to send notifications for report action:', error);
+      logger.error('Failed to send notifications for report action:', error.message);
     }
 
     // Update report status if needed
@@ -435,7 +436,7 @@ reportActionSchema.post('save', async function(doc) {
           'resolution.resolvedAt': doc.createdAt
         });
       } catch (error) {
-        console.error('Failed to update report status:', error);
+        logger.error('Failed to update report status:', error.message);
       }
     }
   }

@@ -1,12 +1,13 @@
 import { Resend } from 'resend';
 import { escapeHtml } from '../utils/sanitize.js';
+import logger from '../config/logger.js';
 
 class ResendEmailService {
   constructor() {
     const apiKey = process.env.RESEND_API_KEY;
 
     if (!apiKey) {
-      console.warn('⚠️  RESEND_API_KEY not set - email sending disabled');
+      logger.warn('RESEND_API_KEY not set — email sending disabled');
       this.enabled = false;
       this.resend = null;
     } else {
@@ -14,7 +15,18 @@ class ResendEmailService {
       this.enabled = true;
     }
 
-    this.testEmail = 'advance.al123456@gmail.com'; // Your email for testing
+    this.testEmail = 'advance.al123456@gmail.com'; // TODO: Remove in production — only for development testing
+
+    // Production safety: warn loudly if test mode is on or FROM address is sandbox
+    if (process.env.NODE_ENV === 'production') {
+      if (process.env.EMAIL_TEST_MODE === 'true') {
+        logger.error('EMAIL_TEST_MODE is TRUE in production — all emails will go to test address instead of real users!');
+      }
+      const emailFrom = process.env.EMAIL_FROM || '';
+      if (emailFrom.includes('resend.dev')) {
+        logger.error('EMAIL_FROM uses Resend sandbox domain (resend.dev) — emails will be spam-filtered. Set to noreply@advance.al');
+      }
+    }
   }
 
   // Retry wrapper: retries once after 2s delay on failure
@@ -22,7 +34,7 @@ class ResendEmailService {
     try {
       return await sendFn();
     } catch (firstError) {
-      console.warn('Email send failed, retrying in 2s...', firstError.message);
+      logger.warn('Email send failed, retrying in 2s...', { error: firstError.message });
       await new Promise(resolve => setTimeout(resolve, 2000));
       return await sendFn();
     }
@@ -160,7 +172,7 @@ advance.al - Platforma e Punës në Shqipëri
       }));
 
       if (emailResult.error) {
-        console.error('❌ Resend error:', emailResult.error);
+        logger.error('Resend error:', emailResult.error);
         throw new Error('Failed to send email via Resend');
       }
 
@@ -170,7 +182,7 @@ advance.al - Platforma e Punës në Shqipëri
       };
 
     } catch (error) {
-      console.error('❌ Error sending full account welcome email:', error);
+      logger.error('Error sending full account welcome email:', error.message);
       throw error;
     }
   }
@@ -239,11 +251,11 @@ advance.al - Platforma e Punës në Shqipëri
 
             <!-- CTA Buttons -->
             <div style="text-align: center; margin: 30px 0;">
-                <a href="https://advance.al/register"
+                <a href="https://advance.al/jobseekers"
                    style="background: #2563eb; color: white; padding: 15px 25px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; margin: 0 10px;">
                     🚀 Krijo Llogari të Plotë
                 </a>
-                <a href="https://advance.al/jobs"
+                <a href="https://advance.al/"
                    style="background: #10b981; color: white; padding: 15px 25px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; margin: 0 10px;">
                     👀 Shiko Punët
                 </a>
@@ -291,8 +303,8 @@ ${user.customInterests && user.customInterests.length > 0 ? `- Interesat e tjera
 • Mund të ndryshoni preferencat ose të çregjistroheni në çdo kohë
 • Krijoni llogari të plotë për më shumë veçori
 
-Krijoni llogari të plotë: https://advance.al/register
-Shikoni punët: https://advance.al/jobs
+Krijoni llogari të plotë: https://advance.al/jobseekers
+Shikoni punët: https://advance.al/
 
 Çregjistrohu: ${user.getUnsubscribeUrl()}
 
@@ -311,7 +323,7 @@ advance.al - Platforma e Punës në Shqipëri
       }));
 
       if (emailResult.error) {
-        console.error('❌ Resend error:', emailResult.error);
+        logger.error('Resend error:', emailResult.error);
         throw new Error('Failed to send email via Resend');
       }
 
@@ -321,7 +333,7 @@ advance.al - Platforma e Punës në Shqipëri
       };
 
     } catch (error) {
-      console.error('❌ Error sending quick user welcome email:', error);
+      logger.error('Error sending quick user welcome email:', error.message);
       throw error;
     }
   }
@@ -502,7 +514,7 @@ advance.al - Platforma e Punës në Shqipëri
       }));
 
       if (emailResult.error) {
-        console.error('❌ Resend error:', emailResult.error);
+        logger.error('Resend error:', emailResult.error);
         throw new Error('Failed to send account action email via Resend');
       }
 
@@ -512,7 +524,7 @@ advance.al - Platforma e Punës në Shqipëri
       };
 
     } catch (error) {
-      console.error('❌ Error sending account action email:', error);
+      logger.error('Error sending account action email:', error.message);
       throw error;
     }
   }
@@ -637,7 +649,7 @@ Ky email u dërgua në ${toEmail}
       }));
 
       if (emailResult.error) {
-        console.error('❌ Resend error:', emailResult.error);
+        logger.error('Resend error:', emailResult.error);
         throw new Error('Failed to send bulk notification email via Resend');
       }
 
@@ -647,7 +659,7 @@ Ky email u dërgua në ${toEmail}
       };
 
     } catch (error) {
-      console.error('❌ Error sending bulk notification email:', error);
+      logger.error('Error sending bulk notification email:', error.message);
       throw error;
     }
   }
@@ -668,13 +680,13 @@ Ky email u dërgua në ${toEmail}
       }));
 
       if (emailResult.error) {
-        console.error('❌ Resend transactional error:', emailResult.error);
+        logger.error('Resend transactional error:', emailResult.error);
         throw new Error('Failed to send transactional email via Resend');
       }
 
       return { success: true, messageId: emailResult.data?.id };
     } catch (error) {
-      console.error('❌ Error sending transactional email:', error);
+      logger.error('Error sending transactional email:', error.message);
       return { success: false, error: error.message };
     }
   }
@@ -806,7 +818,7 @@ advance.al - Platforma e Punës në Shqipëri
       }));
 
       if (emailResult.error) {
-        console.error('❌ Resend application message error:', emailResult.error);
+        logger.error('Resend application message error:', emailResult.error);
         throw new Error('Failed to send application message email via Resend');
       }
 
@@ -816,7 +828,7 @@ advance.al - Platforma e Punës në Shqipëri
       };
 
     } catch (error) {
-      console.error('❌ Error sending application message email:', error);
+      logger.error('Error sending application message email:', error.message);
       throw error;
     }
   }
@@ -903,13 +915,13 @@ advance.al - Platforma e Punës në Shqipëri`;
       }));
 
       if (emailResult.error) {
-        console.error('❌ Resend password reset error:', emailResult.error);
+        logger.error('Resend password reset error:', emailResult.error);
         throw new Error('Failed to send password reset email via Resend');
       }
 
       return { success: true, emailId: emailResult.data?.id };
     } catch (error) {
-      console.error('❌ Error sending password reset email:', error);
+      logger.error('Error sending password reset email:', error.message);
       throw error;
     }
   }
@@ -1000,13 +1012,13 @@ advance.al - Platforma e Punës në Shqipëri`;
       }));
 
       if (emailResult.error) {
-        console.error('❌ Resend employer welcome error:', emailResult.error);
+        logger.error('Resend employer welcome error:', emailResult.error);
         throw new Error('Failed to send employer welcome email via Resend');
       }
 
       return { success: true, emailId: emailResult.data?.id };
     } catch (error) {
-      console.error('❌ Error sending employer welcome email:', error);
+      logger.error('Error sending employer welcome email:', error.message);
       throw error;
     }
   }
@@ -1093,13 +1105,13 @@ advance.al`;
       }));
 
       if (emailResult.error) {
-        console.error('❌ Resend application status error:', emailResult.error);
+        logger.error('Resend application status error:', emailResult.error);
         throw new Error('Failed to send application status email');
       }
 
       return { success: true, emailId: emailResult.data?.id };
     } catch (error) {
-      console.error('❌ Error sending application status email:', error);
+      logger.error('Error sending application status email:', error.message);
       throw error;
     }
   }
@@ -1172,13 +1184,13 @@ advance.al`;
       }));
 
       if (emailResult.error) {
-        console.error('❌ Resend new application error:', emailResult.error);
+        logger.error('Resend new application error:', emailResult.error);
         throw new Error('Failed to send new application email');
       }
 
       return { success: true, emailId: emailResult.data?.id };
     } catch (error) {
-      console.error('❌ Error sending new application email:', error);
+      logger.error('Error sending new application email:', error.message);
       throw error;
     }
   }

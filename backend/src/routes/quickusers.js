@@ -1,4 +1,7 @@
 import express from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import { body, validationResult } from 'express-validator';
 import rateLimit from 'express-rate-limit';
 import { QuickUser } from '../models/index.js';
@@ -6,13 +9,57 @@ import notificationService from '../lib/notificationService.js';
 import resendEmailService from '../lib/resendEmailService.js';
 import userEmbeddingService from '../services/userEmbeddingService.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { uploadToCloudinary } from '../config/cloudinary.js';
+import { parseQuickUserCV } from '../services/cvParsingService.js';
+import { stripHtml } from '../utils/sanitize.js';
+import logger from '../config/logger.js';
+
+// Check if Cloudinary is configured
+const isCloudinaryConfigured = () =>
+  !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
+
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Multer config for optional CV upload (memory storage for Cloudinary, disk fallback)
+const resumeDiskStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(process.cwd(), 'uploads', 'resumes');
+    fs.mkdirSync(uploadDir, { recursive: true });
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const extension = path.extname(file.originalname);
+    cb(null, `quickuser-resume-${uniqueSuffix}${extension}`);
+  }
+});
+
+const resumeUpload = multer({
+  storage: isCloudinaryConfigured() ? multer.memoryStorage() : (isProduction ? multer.memoryStorage() : resumeDiskStorage),
+  fileFilter: (req, file, cb) => {
+    if (isProduction && !isCloudinaryConfigured()) {
+      return cb(new Error('Ngarkimi i skedarëve nuk është i disponueshëm momentalisht'), false);
+    }
+    const allowedTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+      'application/msword' // .doc
+    ];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Vetëm skedarët PDF dhe Word (DOCX) janë të lejuar'), false);
+    }
+  },
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+});
 
 const router = express.Router();
 
 // Rate limiting for quick user operations
 const quickUserLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // limit each IP to 10 requests per window
+  max: process.env.NODE_ENV === 'development' ? 10000 : 20, // 20 requests per window in prod
   message: {
     error: 'Shumë kërkesa për regjistrimin e shpejtë, ju lutemi provoni përsëri pas 15 minutash.',
   }
@@ -22,10 +69,12 @@ const quickUserLimiter = rateLimit({
 const quickUserValidation = [
   body('firstName')
     .trim()
+    .customSanitizer(v => stripHtml(v))
     .isLength({ min: 2, max: 50 })
     .withMessage('Emri duhet të ketë midis 2-50 karaktere'),
   body('lastName')
     .trim()
+    .customSanitizer(v => stripHtml(v))
     .isLength({ min: 2, max: 50 })
     .withMessage('Mbiemri duhet të ketë midis 2-50 karaktere'),
   body('email')
@@ -34,6 +83,7 @@ const quickUserValidation = [
     .withMessage('Email i pavlefshëm'),
   body('location')
     .trim()
+    .customSanitizer(v => stripHtml(v))
     .isLength({ min: 2, max: 50 })
     .withMessage('Qyteti duhet të ketë midis 2-50 karaktere'),
   body('interests')
@@ -57,7 +107,8 @@ const quickUserValidation = [
   body('customInterests.*')
     .optional()
     .isLength({ max: 50 })
-    .withMessage('Çdo interes i personalizuar duhet të jetë më pak se 50 karaktere'),
+    .withMessage('Çdo interes i personalizuar duhet të jetë më pak se 50 karaktere')
+    .customSanitizer(v => stripHtml(v)),
   body('preferences.emailFrequency')
     .optional()
     .isIn(['immediate', 'daily', 'weekly'])
@@ -104,10 +155,40 @@ const handleValidationErrors = (req, res, next) => {
   next();
 };
 
+// Middleware: conditionally apply multer for multipart, then parse JSON array fields
+const handleMultipart = (req, res, next) => {
+  if (req.is('multipart/form-data')) {
+    resumeUpload.single('resume')(req, res, (err) => {
+      if (err) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ success: false, message: 'Skedari është shumë i madh. Madhësia maksimale është 5MB' });
+        }
+        if (err.message === 'Vetëm skedarët PDF dhe Word (DOCX) janë të lejuar') {
+          return res.status(400).json({ success: false, message: err.message });
+        }
+        return res.status(400).json({ success: false, message: 'Gabim në ngarkimin e skedarit' });
+      }
+      // Parse JSON array fields that arrive as strings via FormData
+      for (const field of ['interests', 'customInterests']) {
+        if (typeof req.body[field] === 'string') {
+          try { req.body[field] = JSON.parse(req.body[field]); } catch { /* leave as-is */ }
+        }
+      }
+      // Parse nested preferences object
+      if (typeof req.body.preferences === 'string') {
+        try { req.body.preferences = JSON.parse(req.body.preferences); } catch { /* leave as-is */ }
+      }
+      next();
+    });
+  } else {
+    next();
+  }
+};
+
 // @route   POST /api/quickusers
-// @desc    Create a new quick user for notifications
+// @desc    Create a new quick user for notifications (supports optional CV upload via multipart/form-data)
 // @access  Public
-router.post('/', quickUserValidation, handleValidationErrors, async (req, res) => {
+router.post('/', handleMultipart, quickUserValidation, handleValidationErrors, async (req, res) => {
   try {
     const {
       firstName,
@@ -158,18 +239,62 @@ router.post('/', quickUserValidation, handleValidationErrors, async (req, res) =
     const quickUser = new QuickUser(userData);
     await quickUser.save();
 
-    // Send welcome email + generate embedding (async, non-blocking)
+    // Handle CV file upload if present
+    if (req.file) {
+      let resumeUrl;
+      if (isCloudinaryConfigured() && req.file.buffer) {
+        try {
+          const cloudResult = await uploadToCloudinary(req.file.buffer, {
+            folder: 'advance-al/quickuser-cvs',
+            resource_type: 'raw',
+            public_id: `quickuser-resume-${quickUser._id}-${Date.now()}`,
+          });
+          resumeUrl = cloudResult.secure_url;
+          logger.info('QuickUser resume uploaded to Cloudinary', { quickUserId: quickUser._id });
+        } catch (cloudError) {
+          logger.error('Cloudinary upload failed, falling back to local', { error: cloudError.message });
+          const fallbackDir = path.join(process.cwd(), 'uploads', 'resumes');
+          fs.mkdirSync(fallbackDir, { recursive: true });
+          const fallbackName = `quickuser-resume-${quickUser._id}-${Date.now()}${path.extname(req.file.originalname)}`;
+          fs.writeFileSync(path.join(fallbackDir, fallbackName), req.file.buffer);
+          resumeUrl = `/uploads/resumes/${fallbackName}`;
+        }
+      } else if (req.file.filename) {
+        resumeUrl = `/uploads/resumes/${req.file.filename}`;
+      }
+
+      if (resumeUrl) {
+        quickUser.resume = resumeUrl;
+        await quickUser.save();
+      }
+    }
+
+    // Capture the PDF buffer before multer cleans up (needed for CV parsing)
+    const pdfBuffer = req.file?.buffer || null;
+
+    // Send welcome email, parse CV, then generate embedding (async, non-blocking)
     setImmediate(async () => {
       try {
         await resendEmailService.sendQuickUserWelcomeEmail(quickUser);
       } catch (error) {
-        console.error('Error sending welcome email:', error);
+        logger.error('Error sending welcome email:', error.message);
+      }
+
+      // Parse CV first (if uploaded) — so embedding can include parsed data
+      if (pdfBuffer) {
+        try {
+          await parseQuickUserCV(quickUser._id, pdfBuffer);
+        } catch (error) {
+          logger.error('Error parsing QuickUser CV:', error.message);
+        }
       }
 
       try {
         await userEmbeddingService.generateQuickUserEmbedding(quickUser._id);
+        // After embedding is ready, find and notify about matching existing jobs
+        await notificationService.notifyUserAboutMatchingJobs({ type: 'quickuser', userId: quickUser._id });
       } catch (error) {
-        console.error('Error generating QuickUser embedding:', error);
+        logger.error('Error generating QuickUser embedding or matching jobs:', error.message);
       }
     });
 
@@ -184,12 +309,13 @@ router.post('/', quickUserValidation, handleValidationErrors, async (req, res) =
         location: quickUser.location,
         interests: quickUser.allInterests,
         preferences: quickUser.preferences,
+        resume: quickUser.resume,
         unsubscribeUrl: quickUser.getUnsubscribeUrl()
       }
     });
 
   } catch (error) {
-    console.error('Quick user creation error:', error);
+    logger.error('Quick user creation error:', { message: error.message, name: error.name, ...(error.errors && { fields: Object.keys(error.errors) }) });
     res.status(500).json({
       success: false,
       message: 'Gabim në regjistrimin për njoftimet'
@@ -237,7 +363,7 @@ router.post('/unsubscribe', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Unsubscribe error:', error);
+    logger.error('Unsubscribe error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në çregjistrim'
@@ -278,7 +404,7 @@ router.post('/track-click', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Track click error:', error);
+    logger.error('Track click error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në regjistrimin e click-ut'
@@ -309,7 +435,7 @@ router.get('/analytics/overview', authenticate, requireAdmin, async (req, res) =
     });
 
   } catch (error) {
-    console.error('Analytics error:', error);
+    logger.error('Analytics error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e analizave'
@@ -350,7 +476,7 @@ router.post('/find-matches', authenticate, requireAdmin, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Find matches error:', error);
+    logger.error('Find matches error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në gjetjen e përputhjes'
@@ -395,7 +521,7 @@ router.get('/:id', authenticate, requireAdmin, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get quick user error:', error);
+    logger.error('Get quick user error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e të dhënave të përdoruesit'
@@ -462,7 +588,7 @@ router.put('/:id/preferences', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Update preferences error:', error);
+    logger.error('Update preferences error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në përditësimin e preferencave'

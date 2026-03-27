@@ -72,7 +72,7 @@ const systemConfigurationSchema = new Schema({
 
 // Indexes for performance
 systemConfigurationSchema.index({ category: 1, isActive: 1 });
-systemConfigurationSchema.index({ key: 1 }, { unique: true });
+// key already has unique: true in schema definition — no duplicate index needed
 systemConfigurationSchema.index({ lastModifiedAt: -1 });
 systemConfigurationSchema.index({ isPublic: 1 });
 

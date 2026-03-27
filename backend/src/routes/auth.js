@@ -2,13 +2,108 @@ import express from 'express';
 import crypto from 'crypto';
 import { body, validationResult } from 'express-validator';
 import rateLimit from 'express-rate-limit';
-import { User } from '../models/index.js';
+import { User, QuickUser } from '../models/index.js';
 import { generateToken, generateRefreshToken, verifyToken, authenticate } from '../middleware/auth.js';
 import { stripHtml } from '../utils/sanitize.js';
 import resendEmailService from '../lib/resendEmailService.js';
 import userEmbeddingService from '../services/userEmbeddingService.js';
+import notificationService from '../lib/notificationService.js';
+import { redis, cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
+import logger from '../config/logger.js';
 
 const router = express.Router();
+
+// Pending registrations: Redis in production (survives deploys), Map fallback for dev without Redis
+const pendingRegistrationsMap = new Map();
+const PENDING_REG_MAX_SIZE = 10000;
+const PENDING_REG_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
+// Periodic cleanup of expired entries from in-memory map
+setInterval(() => {
+  if (pendingRegistrationsMap.size === 0) return;
+  const now = Date.now();
+  for (const [key, entry] of pendingRegistrationsMap) {
+    if (entry.expiresAt < now) {
+      pendingRegistrationsMap.delete(key);
+    }
+  }
+}, PENDING_REG_CLEANUP_INTERVAL).unref();
+
+async function getPendingRegistration(email) {
+  if (redis) {
+    return await cacheGet(`pending_reg:${email}`);
+  }
+  const entry = pendingRegistrationsMap.get(email);
+  if (entry && entry.expiresAt < Date.now()) {
+    pendingRegistrationsMap.delete(email);
+    return null;
+  }
+  return entry || null;
+}
+
+async function setPendingRegistration(email, data) {
+  if (redis) {
+    await cacheSet(`pending_reg:${email}`, data, 600); // 10 min TTL
+  } else {
+    // Evict oldest expired entries if at capacity
+    if (pendingRegistrationsMap.size >= PENDING_REG_MAX_SIZE) {
+      const now = Date.now();
+      for (const [key, entry] of pendingRegistrationsMap) {
+        if (entry.expiresAt < now) pendingRegistrationsMap.delete(key);
+        if (pendingRegistrationsMap.size < PENDING_REG_MAX_SIZE) break;
+      }
+    }
+    // If still at capacity after cleanup, reject to prevent memory exhaustion
+    if (pendingRegistrationsMap.size >= PENDING_REG_MAX_SIZE) {
+      throw new Error('Registration system temporarily at capacity. Please try again later.');
+    }
+    pendingRegistrationsMap.set(email, { ...data, expiresAt: Date.now() + 10 * 60 * 1000 });
+  }
+}
+
+async function deletePendingRegistration(email) {
+  if (redis) {
+    await cacheDelete(`pending_reg:${email}`);
+  } else {
+    pendingRegistrationsMap.delete(email);
+  }
+}
+
+// Helper: send verification code email (standalone, no user object needed)
+async function sendVerificationCodeEmail(email, firstName, code) {
+  const safeFirstName = stripHtml(firstName) || 'Përdorues';
+  await resendEmailService.sendTransactionalEmail(
+    email,
+    'Kodi i Verifikimit — advance.al',
+    `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f9fafb;font-family:Arial,sans-serif;">
+      <div style="max-width:600px;margin:0 auto;background:#fff;padding:20px;">
+        <div style="text-align:center;margin-bottom:30px;padding:20px 0;border-bottom:2px solid #2563eb;">
+          <h1 style="color:#2563eb;margin:0;font-size:28px;">advance.al</h1>
+        </div>
+        <div style="padding:30px;text-align:center;">
+          <h2 style="color:#1f2937;">Verifikoni Email-in Tuaj</h2>
+          <p style="color:#4b5563;">Përshëndetje ${safeFirstName}, kodi juaj i verifikimit është:</p>
+          <div style="background:#f0f9ff;border:2px solid #2563eb;border-radius:12px;padding:20px;margin:20px auto;display:inline-block;">
+            <span style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#2563eb;">${code}</span>
+          </div>
+          <p style="color:#6b7280;font-size:14px;">Ky kod është i vlefshëm për 10 minuta.</p>
+        </div>
+      </div>
+    </body></html>`,
+    `Kodi juaj i verifikimit: ${code}\nKy kod është i vlefshëm për 10 minuta.`
+  );
+}
+
+// Legacy helper for existing verified users who need a new code (e.g. resend from profile)
+async function sendVerificationCode(user) {
+  if (user.emailVerified) return;
+  const code = crypto.randomInt(100000, 999999).toString();
+  const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
+  user.emailVerificationToken = hashedCode;
+  user.emailVerificationExpires = new Date(Date.now() + 10 * 60 * 1000);
+  await user.save({ validateBeforeSave: false });
+  await sendVerificationCodeEmail(user.email, user.profile?.firstName, code);
+}
 
 // Stricter rate limiting for auth routes
 const authLimiter = rateLimit({
@@ -84,14 +179,17 @@ const handleValidationErrors = (req, res, next) => {
   next();
 };
 
-// @route   POST /api/auth/register
-// @desc    Register a new user
+// @route   POST /api/auth/initiate-registration
+// @desc    Step 1: Validate data, cache it, send verification code
 // @access  Public
-router.post('/register', authLimiter, registerValidation, handleValidationErrors, async (req, res) => {
+router.post('/initiate-registration', authLimiter, registerValidation, handleValidationErrors, async (req, res) => {
   try {
-    const { email, password, userType, firstName, lastName, city, phone, companyName, industry, companySize, description, website } = req.body;
+    const { email: rawEmail, password, userType, firstName, lastName, city, phone, companyName, industry, companySize, description, website } = req.body;
 
-    // Check if user already exists
+    // Normalize email for consistent duplicate checking
+    const email = rawEmail?.trim().toLowerCase();
+
+    // Check if user already exists (use normalized email for accurate matching)
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({
@@ -100,27 +198,7 @@ router.post('/register', authLimiter, registerValidation, handleValidationErrors
       });
     }
 
-    // Prepare user data
-    const userData = {
-      email,
-      password,
-      userType,
-      profile: {
-        firstName,
-        lastName,
-        location: {
-          city,
-          region: city // For now, region = city
-        }
-      }
-    };
-
-    // Add phone if provided
-    if (phone) {
-      userData.profile.phone = phone;
-    }
-
-    // Add employer-specific data
+    // Employer-specific validation
     if (userType === 'employer') {
       if (!companyName || !industry || !companySize) {
         return res.status(400).json({
@@ -128,7 +206,6 @@ router.post('/register', authLimiter, registerValidation, handleValidationErrors
           message: 'Emri i kompanisë, industria dhe madhësia janë të detyrueshme për punëdhënësit'
         });
       }
-
       const validSizes = ['1-10', '11-50', '51-200', '201-500', '501+'];
       if (!validSizes.includes(companySize)) {
         return res.status(400).json({
@@ -136,70 +213,191 @@ router.post('/register', authLimiter, registerValidation, handleValidationErrors
           message: 'Madhësia e kompanisë duhet të jetë: 1-10, 11-50, 51-200, 201-500, ose 501+'
         });
       }
+    }
 
+    // Generate 6-digit code
+    const code = crypto.randomInt(100000, 999999).toString();
+    const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[DEV] Verification code for ${email}: ${code}`);
+    }
+
+    // Normalize website: auto-prepend https:// for bare domains
+    const normalizedWebsite = website?.trim()
+      ? (website.trim().match(/^https?:\/\//) ? website.trim() : `https://${website.trim()}`)
+      : undefined;
+
+    // Cache registration data with 10-minute TTL
+    await setPendingRegistration(email, {
+      data: { email, password, userType, firstName, lastName, city, phone, companyName, industry, companySize, description, website: normalizedWebsite },
+      hashedCode,
+      attempts: 0
+    });
+
+    // Send verification code (don't fail registration if email fails)
+    try {
+      await sendVerificationCodeEmail(email, firstName, code);
+    } catch (emailErr) {
+      logger.error('Failed to send verification email:', emailErr.message);
+      // In dev, log the code so testing still works
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[DEV] Verification code for ${email}: ${code}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Kodi i verifikimit u dërgua në email-in tuaj'
+    });
+  } catch (error) {
+    logger.error('Initiate registration error:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Ndodhi një gabim. Ju lutemi provoni përsëri.'
+    });
+  }
+});
+
+// @route   POST /api/auth/register
+// @desc    Step 2: Verify code and create account from cached data
+// @access  Public
+router.post('/register', authLimiter, async (req, res) => {
+  try {
+    const { email, verificationCode } = req.body;
+
+    if (!email || !verificationCode) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email dhe kodi i verifikimit janë të detyrueshëm'
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Look up pending registration
+    const pending = await getPendingRegistration(normalizedEmail);
+    if (!pending) {
+      return res.status(400).json({
+        success: false,
+        message: 'Kodi ka skaduar. Ju lutemi filloni regjistrimin përsëri.'
+      });
+    }
+
+    // Verify code
+    const hashedInput = crypto.createHash('sha256').update(verificationCode).digest('hex');
+    if (hashedInput !== pending.hashedCode) {
+      pending.attempts = (pending.attempts || 0) + 1;
+      if (pending.attempts >= 5) {
+        await deletePendingRegistration(normalizedEmail);
+        return res.status(400).json({
+          success: false,
+          message: 'Shumë tentativa të gabuara. Ju lutemi filloni regjistrimin përsëri.'
+        });
+      }
+      // Save updated attempts count
+      await setPendingRegistration(normalizedEmail, pending);
+      return res.status(400).json({
+        success: false,
+        message: `Kodi i gabuar. Ju kanë mbetur ${5 - pending.attempts} tentativa.`
+      });
+    }
+
+    // Code verified — create user from cached data
+    const { data } = pending;
+
+    // Race condition check
+    const existingUser = await User.findOne({ email: data.email });
+    if (existingUser) {
+      await deletePendingRegistration(normalizedEmail);
+      return res.status(400).json({
+        success: false,
+        message: 'Një përdorues me këtë email tashmë ekziston'
+      });
+    }
+
+    // Build user object
+    const userData = {
+      email: data.email,
+      password: data.password,
+      userType: data.userType,
+      emailVerified: true, // Already verified via code
+      consentTracking: {
+        tosAcceptedAt: new Date(),
+        privacyAcceptedAt: new Date(),
+        tosVersion: '2026-03',
+        privacyVersion: '2026-03',
+        ipAtConsent: req.ip || req.headers['x-forwarded-for']
+      },
+      profile: {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        location: { city: data.city, region: data.city }
+      }
+    };
+
+    if (data.phone) userData.profile.phone = data.phone;
+
+    if (data.userType === 'employer') {
       userData.profile.employerProfile = {
-        companyName,
-        industry,
-        companySize,
-        ...(description && { description }),
-        ...(website && { website }),
+        companyName: data.companyName,
+        industry: data.industry,
+        companySize: data.companySize,
+        ...(data.description && { description: data.description }),
+        ...(data.website && { website: data.website }),
         verified: false,
         verificationStatus: 'pending'
       };
     } else {
-      // Initialize job seeker profile
       userData.profile.jobSeekerProfile = {
         openToRemote: false,
         availability: 'immediately'
       };
     }
 
-    // Create user
     const user = new User(userData);
     await user.save();
+    await deletePendingRegistration(normalizedEmail);
 
     // Generate tokens
-    const payload = {
-      id: user._id,
-      email: user.email,
-      userType: user.userType
-    };
-
+    const payload = { id: user._id, email: user.email, userType: user.userType };
     const token = generateToken(payload);
     const refreshToken = generateRefreshToken(payload);
 
-    // Store refresh token and update last login
     await user.addRefreshToken(refreshToken);
     await User.updateOne({ _id: user._id }, { lastLoginAt: new Date() });
 
-    // Send welcome email (async, non-blocking)
-    if (userType === 'jobseeker') {
-      setImmediate(async () => {
-        try {
-          await resendEmailService.sendFullAccountWelcomeEmail(user);
-        } catch (error) {
-          console.error('Error sending welcome email:', error);
+    // Convert QuickUser if one exists with this email (async, non-blocking)
+    setImmediate(async () => {
+      try {
+        const existingQuickUser = await QuickUser.findOne({ email: normalizedEmail, convertedToFullUser: false });
+        if (existingQuickUser) {
+          await existingQuickUser.convertToFullUser(user._id);
+          logger.info('QuickUser converted to full user', { quickUserId: existingQuickUser._id, userId: user._id, email: normalizedEmail });
         }
+      } catch (err) {
+        logger.error('QuickUser conversion error:', err.message);
+      }
 
-        try {
-          await userEmbeddingService.generateJobSeekerEmbedding(user._id);
-        } catch (error) {
-          console.error('Error generating jobseeker embedding:', error);
-        }
-      });
-    } else if (userType === 'employer') {
-      setImmediate(async () => {
-        try {
+      // Send welcome email
+      try {
+        if (data.userType === 'jobseeker') {
+          await resendEmailService.sendFullAccountWelcomeEmail(user);
+          await userEmbeddingService.generateJobSeekerEmbedding(user._id).catch(() => {});
+          // After embedding, find and notify about matching existing jobs
+          await notificationService.notifyUserAboutMatchingJobs({ type: 'jobseeker', userId: user._id }).catch(err => {
+            logger.error('Jobseeker matching jobs notification error:', err.message);
+          });
+        } else {
           await resendEmailService.sendEmployerWelcomeEmail(user);
-        } catch (error) {
-          console.error('Error sending employer welcome email:', error);
         }
-      });
-    }
+      } catch (err) {
+        logger.error('Welcome email error:', err.message);
+      }
+    });
 
     res.status(201).json({
       success: true,
-      message: userType === 'employer'
+      message: data.userType === 'employer'
         ? 'Llogaria u krijua me sukses. Ju lutemi prisni verifikimin nga administratori.'
         : 'Llogaria u krijua me sukses.',
       data: {
@@ -216,7 +414,7 @@ router.post('/register', authLimiter, registerValidation, handleValidationErrors
     });
 
   } catch (error) {
-    console.error('Registration error:', error);
+    logger.error('Registration error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në krijimin e llogarisë'
@@ -318,7 +516,7 @@ router.post('/login', authLimiter, loginValidation, handleValidationErrors, asyn
     });
 
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error('Login error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në kyçje'
@@ -393,7 +591,7 @@ router.post('/refresh', authLimiter, async (req, res) => {
       });
     }
 
-    console.error('Token refresh error:', error);
+    logger.error('Token refresh error:', error.message);
     res.status(401).json({
       success: false,
       message: 'Refresh token i pavlefshëm'
@@ -423,7 +621,7 @@ router.get('/me', authenticate, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get current user error:', error);
+    logger.error('Get current user error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e të dhënave të përdoruesit'
@@ -441,12 +639,8 @@ router.put('/change-password', authenticate, [
   body('newPassword')
     .isLength({ min: 8 })
     .withMessage('Fjalëkalimi i ri duhet të ketë të paktën 8 karaktere')
-    .matches(/[A-Z]/)
-    .withMessage('Fjalëkalimi i ri duhet të përmbajë të paktën një shkronjë të madhe')
-    .matches(/[0-9]/)
-    .withMessage('Fjalëkalimi i ri duhet të përmbajë të paktën një numër')
-    .matches(/[!@#$%^&*(),.?":{}|<>]/)
-    .withMessage('Fjalëkalimi i ri duhet të përmbajë të paktën një karakter special')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+    .withMessage('Fjalëkalimi i ri duhet të përmbajë të paktën një shkronjë të madhe, një të vogël dhe një numër')
 ], handleValidationErrors, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -482,7 +676,7 @@ router.put('/change-password', authenticate, [
       message: 'Fjalëkalimi u ndryshua me sukses'
     });
   } catch (error) {
-    console.error('Change password error:', error);
+    logger.error('Change password error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në ndryshimin e fjalëkalimit'
@@ -498,6 +692,19 @@ router.post('/forgot-password', authLimiter, [
 ], handleValidationErrors, async (req, res) => {
   try {
     const { email } = req.body;
+
+    // Per-email rate limit: max 3 password reset requests per email per hour
+    // Prevents inbox flooding and brute-force token enumeration
+    const resetKey = `pwd_reset:${email}`;
+    const resetCount = await cacheGet(resetKey);
+    if (resetCount && resetCount >= 3) {
+      // Still return success to avoid email enumeration
+      return res.json({
+        success: true,
+        message: 'Nëse kjo adresë emaili ekziston, do të merrni një link për rivendosjen e fjalëkalimit.'
+      });
+    }
+    await cacheSet(resetKey, (resetCount || 0) + 1, 3600); // 1 hour TTL
 
     // Always return success to avoid email enumeration
     const user = await User.findOne({ email, isDeleted: { $ne: true } });
@@ -520,7 +727,7 @@ router.post('/forgot-password', authLimiter, [
         try {
           await resendEmailService.sendPasswordResetEmail(user, resetUrl);
         } catch (error) {
-          console.error('Error sending password reset email:', error);
+          logger.error('Error sending password reset email:', error.message);
         }
       });
     }
@@ -531,7 +738,7 @@ router.post('/forgot-password', authLimiter, [
       message: 'Nëse kjo adresë emaili ekziston, do të merrni një link për rivendosjen e fjalëkalimit.'
     });
   } catch (error) {
-    console.error('Forgot password error:', error);
+    logger.error('Forgot password error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në dërgimin e emailit për rivendosjen e fjalëkalimit'
@@ -583,7 +790,7 @@ router.post('/reset-password', authLimiter, [
       message: 'Fjalëkalimi u rivendos me sukses. Tani mund të kyçeni me fjalëkalimin e ri.'
     });
   } catch (error) {
-    console.error('Reset password error:', error);
+    logger.error('Reset password error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në rivendosjen e fjalëkalimit'
@@ -606,41 +813,11 @@ router.post('/send-verification', authenticate, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email-i juaj është tashmë i verifikuar' });
     }
 
-    // Generate 6-digit code
-    const code = crypto.randomInt(100000, 999999).toString();
-    const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
-
-    // Store hashed code with 10-minute expiry
-    user.emailVerificationToken = hashedCode;
-    user.emailVerificationExpires = new Date(Date.now() + 10 * 60 * 1000);
-    await user.save({ validateBeforeSave: false });
-
-    // Send verification email
-    const safeFirstName = user.profile?.firstName || 'Përdorues';
-    await resendEmailService.sendTransactionalEmail(
-      user.email,
-      'Kodi i Verifikimit — advance.al',
-      `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f9fafb;font-family:Arial,sans-serif;">
-        <div style="max-width:600px;margin:0 auto;background:#fff;padding:20px;">
-          <div style="text-align:center;margin-bottom:30px;padding:20px 0;border-bottom:2px solid #2563eb;">
-            <h1 style="color:#2563eb;margin:0;font-size:28px;">advance.al</h1>
-          </div>
-          <div style="padding:30px;text-align:center;">
-            <h2 style="color:#1f2937;">Verifikoni Email-in Tuaj</h2>
-            <p style="color:#4b5563;">Përshëndetje ${safeFirstName}, kodi juaj i verifikimit është:</p>
-            <div style="background:#f0f9ff;border:2px solid #2563eb;border-radius:12px;padding:20px;margin:20px auto;display:inline-block;">
-              <span style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#2563eb;">${code}</span>
-            </div>
-            <p style="color:#6b7280;font-size:14px;">Ky kod është i vlefshëm për 10 minuta.</p>
-          </div>
-        </div>
-      </body></html>`,
-      `Kodi juaj i verifikimit: ${code}\nKy kod është i vlefshëm për 10 minuta.`
-    );
+    await sendVerificationCode(user);
 
     res.json({ success: true, message: 'Kodi i verifikimit u dërgua në emailin tuaj' });
   } catch (error) {
-    console.error('Send verification error:', error);
+    logger.error('Send verification error:', error.message);
     res.status(500).json({ success: false, message: 'Gabim në dërgimin e kodit të verifikimit' });
   }
 });
@@ -684,7 +861,7 @@ router.post('/verify-email', authenticate, [
 
     res.json({ success: true, message: 'Email-i juaj u verifikua me sukses!' });
   } catch (error) {
-    console.error('Verify email error:', error);
+    logger.error('Verify email error:', error.message);
     res.status(500).json({ success: false, message: 'Gabim në verifikimin e emailit' });
   }
 });

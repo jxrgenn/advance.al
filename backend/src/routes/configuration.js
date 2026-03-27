@@ -4,7 +4,8 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { SystemConfiguration, ConfigurationAudit, SystemHealth } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
-import { sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
+import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
@@ -52,6 +53,7 @@ const configurationUpdateValidation = [
     .isLength({ max: 500 })
     .withMessage('Arsyeja nuk mund të ketë më shumë se 500 karaktere')
     .trim()
+    .customSanitizer(v => stripHtml(v))
 ];
 
 // @route   GET /api/configuration
@@ -91,7 +93,7 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error fetching configuration:', error);
+    logger.error('Error fetching configuration:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e konfigurimit',
@@ -131,11 +133,110 @@ router.get('/public', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error fetching public settings:', error);
+    logger.error('Error fetching public settings:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e rregullimeve publike',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// @route   GET /api/configuration/pricing
+// @desc    Get pricing configuration (standard, promoted, candidate viewing)
+// @access  Private (Admins only)
+router.get('/pricing', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const standardPosting = await SystemConfiguration.getSettingValue('pricing_standard_posting', 28);
+    const promotedPosting = await SystemConfiguration.getSettingValue('pricing_promoted_posting', 45);
+    const candidateViewing = await SystemConfiguration.getSettingValue('pricing_candidate_viewing', 15);
+    const paymentEnabled = await SystemConfiguration.getSettingValue('payment_enabled', false);
+
+    // Get setting IDs for editing
+    const settings = await SystemConfiguration.find({
+      key: { $in: ['pricing_standard_posting', 'pricing_promoted_posting', 'pricing_candidate_viewing', 'payment_enabled'] },
+      isActive: true
+    });
+
+    const settingsMap = {};
+    for (const s of settings) {
+      settingsMap[s.key] = { _id: s._id, value: s.value, key: s.key, description: s.description };
+    }
+
+    res.json({
+      success: true,
+      data: {
+        pricing: {
+          standardPosting,
+          promotedPosting,
+          candidateViewing,
+          paymentEnabled
+        },
+        settings: settingsMap
+      }
+    });
+  } catch (error) {
+    logger.error('Error fetching pricing:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Gabim në ngarkimin e çmimeve'
+    });
+  }
+});
+
+// @route   PUT /api/configuration/pricing
+// @desc    Update pricing configuration
+// @access  Private (Admins only)
+router.put('/pricing', authenticate, requireAdmin, configurationLimit, async (req, res) => {
+  try {
+    const { standardPosting, promotedPosting, candidateViewing, paymentEnabled } = req.body;
+    const updates = [];
+
+    if (standardPosting !== undefined) {
+      const setting = await SystemConfiguration.getSetting('pricing_standard_posting');
+      if (setting) {
+        await setting.updateValue(Number(standardPosting), req.user._id);
+        updates.push('pricing_standard_posting');
+      }
+    }
+
+    if (promotedPosting !== undefined) {
+      const setting = await SystemConfiguration.getSetting('pricing_promoted_posting');
+      if (setting) {
+        await setting.updateValue(Number(promotedPosting), req.user._id);
+        updates.push('pricing_promoted_posting');
+      }
+    }
+
+    if (candidateViewing !== undefined) {
+      const setting = await SystemConfiguration.getSetting('pricing_candidate_viewing');
+      if (setting) {
+        await setting.updateValue(Number(candidateViewing), req.user._id);
+        updates.push('pricing_candidate_viewing');
+      }
+    }
+
+    if (paymentEnabled !== undefined) {
+      const setting = await SystemConfiguration.getSetting('payment_enabled');
+      if (setting) {
+        await setting.updateValue(Boolean(paymentEnabled), req.user._id);
+        updates.push('payment_enabled');
+      }
+    }
+
+    // Invalidate cache
+    await cacheDelete('config:public');
+
+    res.json({
+      success: true,
+      message: `${updates.length} çmime u përditësuan me sukses`,
+      data: { updatedKeys: updates }
+    });
+  } catch (error) {
+    logger.error('Error updating pricing:', error.message);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Gabim në përditësimin e çmimeve'
     });
   }
 });
@@ -191,7 +292,7 @@ router.put('/:id', validateObjectId('id'), authenticate, requireAdmin, configura
     });
 
   } catch (error) {
-    console.error('❌ Error updating configuration:', error);
+    logger.error('Error updating configuration:', error.message);
     res.status(400).json({
       success: false,
       message: error.message || 'Gabim në përditësimin e rregullimit',
@@ -251,7 +352,7 @@ router.post('/:id/reset', validateObjectId('id'), authenticate, requireAdmin, co
     });
 
   } catch (error) {
-    console.error('❌ Error resetting configuration:', error);
+    logger.error('Error resetting configuration:', error.message);
     res.status(400).json({
       success: false,
       message: error.message || 'Gabim në rikthimin e rregullimit',
@@ -294,7 +395,7 @@ router.get('/audit/:id', validateObjectId('id'), authenticate, requireAdmin, asy
     });
 
   } catch (error) {
-    console.error('❌ Error fetching audit history:', error);
+    logger.error('Error fetching audit history:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e historisë së ndryshimeve',
@@ -334,7 +435,7 @@ router.get('/audit', authenticate, requireAdmin, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error fetching audit history:', error);
+    logger.error('Error fetching audit history:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e historisë së ndryshimeve',
@@ -368,7 +469,7 @@ router.get('/system-health', authenticate, requireAdmin, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error fetching system health:', error);
+    logger.error('Error fetching system health:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e statusit të sistemit',
@@ -391,7 +492,7 @@ router.post('/initialize-defaults', authenticate, requireAdmin, async (req, res)
     });
 
   } catch (error) {
-    console.error('❌ Error initializing defaults:', error);
+    logger.error('Error initializing defaults:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në krijimin e rregullimeve të paracaktuara',
@@ -444,7 +545,7 @@ router.post('/maintenance-mode', authenticate, requireAdmin, async (req, res) =>
     });
 
   } catch (error) {
-    console.error('❌ Error toggling maintenance mode:', error);
+    logger.error('Error toggling maintenance mode:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në ndryshimin e modalitetit të mirëmbajtjes',

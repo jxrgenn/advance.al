@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import logger from '../config/logger.js';
 
 const { Schema } = mongoose;
 
@@ -43,7 +44,7 @@ const applicationSchema = new Schema({
     },
     answer: {
       type: String,
-      required: true
+      default: ''
     }
   }],
   
@@ -113,9 +114,10 @@ applicationSchema.index({ appliedAt: -1 });
 applicationSchema.index({ status: 1 });
 
 // Partial unique index: prevents duplicate active applications while allowing re-application after withdrawal
+// Note: MongoDB partial indexes don't support $ne. Use { withdrawn: false } — apps must always have withdrawn: false (default)
 applicationSchema.index(
   { jobId: 1, jobSeekerId: 1 },
-  { unique: true, partialFilterExpression: { withdrawn: { $ne: true } } }
+  { unique: true, partialFilterExpression: { withdrawn: false } }
 );
 
 // Virtual for time since applied
@@ -163,7 +165,7 @@ applicationSchema.methods.updateStatus = async function(newStatus, notes = '') {
       const Notification = mongoose.model('Notification');
       await Notification.createApplicationStatusNotification(this, oldStatus, newStatus);
     } catch (error) {
-      console.error('❌ Error creating status change notification:', error);
+      logger.error('Error creating status change notification:', error.message);
       // Don't fail the status update if notification fails
     }
   }
@@ -261,7 +263,7 @@ applicationSchema.statics.getJobSeekerApplications = function(jobSeekerId, filte
       select: 'title location category salary employerId',
       populate: {
         path: 'employerId',
-        select: 'profile.employerProfile.companyName'
+        select: 'email profile.employerProfile.companyName profile.employerProfile.phone profile.employerProfile.whatsapp profile.employerProfile.contactPreferences'
       }
     })
     .sort({ appliedAt: -1 });
@@ -274,7 +276,7 @@ applicationSchema.pre('save', async function(next) {
       const Job = mongoose.model('Job');
       await Job.findByIdAndUpdate(this.jobId, { $inc: { applicationCount: 1 } });
     } catch (error) {
-      console.error('Error incrementing job application count:', error);
+      logger.error('Error incrementing job application count:', error.message);
     }
   }
   next();

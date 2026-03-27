@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
 import { User } from '../models/index.js';
+import logger from '../config/logger.js';
 
 // Generate JWT Token
 export const generateToken = (payload) => {
@@ -102,7 +103,7 @@ export const authenticate = async (req, res, next) => {
       });
     }
 
-    console.error('Auth middleware error:', error);
+    logger.error('Auth middleware error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në autentifikim'

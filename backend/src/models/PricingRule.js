@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import logger from '../config/logger.js';
 
 const { Schema } = mongoose;
 
@@ -259,7 +260,7 @@ pricingRuleSchema.methods.checkDemand = async function(jobData) {
     const recentJobCount = await Job.countDocuments(query);
     return recentJobCount >= this.rules.demandMultiplier.threshold;
   } catch (error) {
-    console.error('Error checking demand:', error);
+    logger.error('Error checking demand:', error.message);
     return false; // Safe default: no surcharge on error
   }
 };

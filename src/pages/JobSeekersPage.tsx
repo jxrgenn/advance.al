@@ -314,7 +314,7 @@ const JobSeekersPage = () => {
             </div>
             <div className="text-center p-3">
               <Zap className="h-8 w-8 text-blue-600 mx-auto mb-2" />
-              <h3 className="font-semibold text-sm">Aplikim i Shpejtë</h3>
+              <h3 className="font-semibold text-sm">Aplikim i Lehtë</h3>
             </div>
             <div className="text-center p-3">
               <Bell className="h-8 w-8 text-purple-600 mx-auto mb-2" />

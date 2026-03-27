@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { zodResponseFormat } from 'openai/helpers/zod';
 import { cvSchema } from '../schemas/cvSchema.js';
+import logger from '../config/logger.js';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -194,7 +195,7 @@ Now, read the user's input 3 times, understand their intent deeply, and craft an
       usage: completion.usage
     };
   } catch (error) {
-    console.error('❌ OpenAI API Error:', error);
+    logger.error('OpenAI API Error:', error.message);
     throw new Error(`Failed to extract CV data: ${error.message}`);
   }
 }

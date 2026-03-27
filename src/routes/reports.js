@@ -1,6 +1,6 @@
 import express from 'express';
 import { body, query, validationResult } from 'express-validator';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { Report, ReportAction, User } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 
@@ -14,8 +14,12 @@ const reportSubmissionLimit = rateLimit({
     success: false,
     message: 'Shumë raporte të dërguara. Ju lutemi provoni pas 15 minutash.'
   },
-  keyGenerator: (req) => `report_submit_${req.user?.id || req.ip}`,
-  skip: (req) => req.user?.userType === 'admin' // Skip for admins
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.user?.userType === 'admin', // Skip for admins
+  keyGenerator: (req) => {
+    return req.user?.id || ipKeyGenerator(req);
+  }
 });
 
 // Validation schemas

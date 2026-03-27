@@ -2,6 +2,9 @@ import express from 'express';
 import { User, Job, Application, QuickUser } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { escapeRegex, sanitizeLimit } from '../utils/sanitize.js';
+import notificationService from '../lib/notificationService.js';
+import jobEmbeddingService from '../services/jobEmbeddingService.js';
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
@@ -157,7 +160,7 @@ router.get('/dashboard-stats', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Dashboard stats error:', error);
+    logger.error('Dashboard stats error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e statistikave të dashboard-it'
@@ -291,7 +294,7 @@ router.get('/analytics', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Analytics error:', error);
+    logger.error('Analytics error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e analizave'
@@ -320,7 +323,7 @@ router.get('/system-health', async (req, res) => {
       }
     } catch (dbError) {
       databaseStatus = 'disconnected';
-      console.error('Database health check failed:', dbError);
+      logger.error('Database health check failed:', dbError);
     }
 
     // Get real database collection sizes and counts for storage estimation
@@ -406,7 +409,7 @@ router.get('/system-health', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('System health error:', error);
+    logger.error('System health error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e shëndetit të sistemit',
@@ -481,7 +484,7 @@ router.get('/users', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get users error:', error);
+    logger.error('Get users error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e përdoruesve'
@@ -549,7 +552,7 @@ router.get('/jobs', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get jobs error:', error);
+    logger.error('Get jobs error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e punëve'
@@ -598,6 +601,20 @@ router.patch('/users/:userId/manage', async (req, res) => {
         user.status = 'active';
         user.suspensionDetails = undefined;
         break;
+      case 'set_administrata':
+        if (user.userType !== 'employer') {
+          return res.status(400).json({ success: false, message: 'Vetëm punëdhënësit mund të shënohen si administrata' });
+        }
+        user.profile.employerProfile.isAdministrataAccount = true;
+        await user.save();
+        return res.json({ success: true, data: { user }, message: 'Llogaria u shënua si administrata' });
+      case 'remove_administrata':
+        if (user.userType !== 'employer') {
+          return res.status(400).json({ success: false, message: 'Vetëm punëdhënësit mund të kenë statusin administrata' });
+        }
+        user.profile.employerProfile.isAdministrataAccount = false;
+        await user.save();
+        return res.json({ success: true, data: { user }, message: 'Statusi administrata u hoq' });
       case 'delete':
         // Prevent admin from deleting themselves
         if (userId === req.user._id.toString()) {
@@ -645,7 +662,7 @@ router.patch('/users/:userId/manage', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Manage user error:', error);
+    logger.error('Manage user error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në menaxhimin e përdoruesit'
@@ -702,6 +719,20 @@ router.patch('/jobs/:jobId/manage', async (req, res) => {
 
     await job.save();
 
+    // Notify matching users when job is approved (async, non-blocking)
+    if (action === 'approve') {
+      setImmediate(async () => {
+        try {
+          await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          const populatedJob = await Job.findById(job._id).populate('employerId', 'profile.employerProfile.companyName');
+          await notificationService.notifyMatchingUsers(populatedJob);
+        } catch (err) {
+          logger.error('Error in post-approval notification:', err.message);
+        }
+      });
+    }
+
     res.json({
       success: true,
       data: { job },
@@ -709,7 +740,7 @@ router.patch('/jobs/:jobId/manage', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Manage job error:', error);
+    logger.error('Manage job error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në menaxhimin e punës'
@@ -865,7 +896,7 @@ router.get('/user-insights', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('User insights error:', error);
+    logger.error('User insights error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e analizave të përdoruesve'
@@ -923,13 +954,27 @@ router.patch('/jobs/:id/approve', async (req, res) => {
     job.status = action === 'approve' ? 'active' : 'rejected';
     await job.save();
 
+    // Notify matching users when job is approved (async, non-blocking)
+    if (action === 'approve') {
+      setImmediate(async () => {
+        try {
+          await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          const populatedJob = await Job.findById(job._id).populate('employerId', 'profile.employerProfile.companyName');
+          await notificationService.notifyMatchingUsers(populatedJob);
+        } catch (err) {
+          logger.error('Error in post-approval notification:', err.message);
+        }
+      });
+    }
+
     res.json({
       success: true,
       message: action === 'approve' ? 'Puna u aprovua me sukses' : 'Puna u refuzua',
       data: { job }
     });
   } catch (error) {
-    console.error('Admin job approval error:', error);
+    logger.error('Admin job approval error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në përpunimin e punës'
@@ -970,7 +1015,7 @@ router.get('/jobs/pending', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Admin pending jobs error:', error);
+    logger.error('Admin pending jobs error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e punëve në pritje'

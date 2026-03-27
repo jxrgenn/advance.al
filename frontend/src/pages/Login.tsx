@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Mail, Lock, AlertCircle, Briefcase, User } from "lucide-react";
+import { Mail, Lock, AlertCircle, Briefcase, User, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -17,6 +17,7 @@ const Login = () => {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -95,7 +96,7 @@ const Login = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Link to="/jobseekers" className="block">
+                <Link to="/jobseekers?signup=true" className="block">
                   <Card className="hover:border-primary transition-colors cursor-pointer">
                     <CardContent className="flex items-center gap-4 p-6">
                       <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
@@ -108,7 +109,7 @@ const Login = () => {
                     </CardContent>
                   </Card>
                 </Link>
-                <Link to="/employer-register" className="block">
+                <Link to="/employers?signup=true" className="block">
                   <Card className="hover:border-primary transition-colors cursor-pointer">
                     <CardContent className="flex items-center gap-4 p-6">
                       <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
@@ -181,13 +182,21 @@ const Login = () => {
                         <Input
                           id="password"
                           name="password"
-                          type="password"
-                          className="pl-10"
+                          type={showPassword ? "text" : "password"}
+                          className="pl-10 pr-10"
                           value={formData.password}
                           onChange={handleInputChange}
                           required
                           autoComplete="current-password"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          tabIndex={-1}
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
                       </div>
                     </div>
                     <Button type="submit" className="w-full" disabled={isSubmitting || isLoading}>
@@ -197,11 +206,11 @@ const Login = () => {
                   <div className="mt-4 text-center text-sm space-y-2">
                     <p className="text-muted-foreground">Nuk ke llogari? Regjistrohu si:</p>
                     <div className="flex items-center justify-center gap-4">
-                      <Link to="/jobseekers" className="text-primary hover:underline font-medium">
+                      <Link to="/jobseekers?signup=true" className="text-primary hover:underline font-medium">
                         Punëkërkues
                       </Link>
                       <span className="text-muted-foreground">|</span>
-                      <Link to="/employers" className="text-primary hover:underline font-medium">
+                      <Link to="/employers?signup=true" className="text-primary hover:underline font-medium">
                         Punëdhënës
                       </Link>
                     </div>

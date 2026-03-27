@@ -27,6 +27,10 @@ frontend/.env.local
 frontend/.env.development
 frontend/.env.production
 
+# Test files with credentials
+test-mongodb*
+test-*.js
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

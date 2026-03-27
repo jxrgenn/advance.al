@@ -3,7 +3,8 @@ import { body, query, validationResult } from 'express-validator';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { Report, ReportAction, User, Job } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
-import { escapeRegex, sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
+import { escapeRegex, sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
@@ -56,7 +57,8 @@ const reportValidation = [
     .optional()
     .isLength({ max: 1000 })
     .withMessage('Përshkrimi nuk mund të ketë më shumë se 1000 karaktere')
-    .trim(),
+    .trim()
+    .customSanitizer(v => stripHtml(v)),
 
   body('evidence')
     .optional()
@@ -239,7 +241,7 @@ router.post('/',
       });
 
     } catch (error) {
-      console.error('Error submitting report:', error);
+      logger.error('Error submitting report:', error.message);
       res.status(500).json({
         success: false,
         message: 'Gabim në server. Ju lutemi provoni më vonë.',
@@ -289,7 +291,7 @@ router.get('/',
       });
 
     } catch (error) {
-      console.error('Error fetching user reports:', error);
+      logger.error('Error fetching user reports:', error.message);
       res.status(500).json({
         success: false,
         message: 'Gabim në marrjen e raportimeve',
@@ -396,7 +398,7 @@ router.get('/admin',
       });
 
     } catch (error) {
-      console.error('Error fetching admin reports:', error);
+      logger.error('Error fetching admin reports:', error.message);
       res.status(500).json({
         success: false,
         message: 'Gabim në marrjen e raportimeve',
@@ -472,7 +474,7 @@ router.get('/admin/stats',
       });
 
     } catch (error) {
-      console.error('Error fetching report statistics:', error);
+      logger.error('Error fetching report statistics:', error.message);
       res.status(500).json({
         success: false,
         message: 'Gabim në marrjen e statistikave',
@@ -534,7 +536,7 @@ router.get('/admin/:id',
       });
 
     } catch (error) {
-      console.error('Error fetching report details:', error);
+      logger.error('Error fetching report details:', error.message);
       res.status(500).json({
         success: false,
         message: 'Gabim në marrjen e detajeve të raportimit',
@@ -631,7 +633,7 @@ router.put('/admin/:id',
       });
 
     } catch (error) {
-      console.error('Error updating report:', error);
+      logger.error('Error updating report:', error.message);
       res.status(500).json({
         success: false,
         message: 'Gabim në përditësimin e raportimit',
@@ -725,7 +727,7 @@ router.post('/admin/:id/action',
       });
 
     } catch (error) {
-      console.error('Error taking action on report:', error);
+      logger.error('Error taking action on report:', error.message);
       res.status(500).json({
         success: false,
         message: 'Gabim në marrjen e veprimit',
@@ -787,7 +789,7 @@ router.post('/admin/:id/reopen',
       });
 
     } catch (error) {
-      console.error('Error reopening report:', error);
+      logger.error('Error reopening report:', error.message);
       res.status(500).json({
         success: false,
         message: 'Gabim në rihapjen e raportit',

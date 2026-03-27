@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
-import QuickApplyModal from "@/components/QuickApplyModal";
+import ApplyModal from "@/components/ApplyModal";
 import SimilarJobs from "@/components/SimilarJobs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,11 +11,21 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { MapPin, Clock, Euro, Building, ArrowLeft, CheckCircle, Users, Calendar, Loader2, Zap, MessageCircle, Phone, Mail, Lightbulb, X } from "lucide-react";
+import { MapPin, Clock, Euro, Building, ArrowLeft, CheckCircle, Users, Calendar, Loader2, Zap, MessageCircle, Phone, Mail, Lightbulb, X, Wifi, Bookmark } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { jobsApi, applicationsApi, Job } from "@/lib/api";
+import { jobsApi, applicationsApi, usersApi, Job } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import useRecentlyViewed from "@/hooks/useRecentlyViewed";
+
+// Client-side salary formatter — Mongoose virtuals are stripped by .lean()
+const formatSalaryDisplay = (salary: { min?: number; max?: number; currency: string; negotiable?: boolean }) => {
+  if (!salary.min && !salary.max) return salary.negotiable !== false ? 'Pagë për t\'u negociuar' : null;
+  if (salary.min && salary.max && salary.min === salary.max) return `${salary.min} ${salary.currency}`;
+  if (salary.min && salary.max) return `${salary.min}-${salary.max} ${salary.currency}`;
+  if (salary.min) return `Nga ${salary.min} ${salary.currency}`;
+  if (salary.max) return `Deri në ${salary.max} ${salary.currency}`;
+  return null;
+};
 
 const JobDetail = () => {
   const { id } = useParams();
@@ -33,7 +43,11 @@ const JobDetail = () => {
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
   const [hasApplied, setHasApplied] = useState(false);
-  const [showQuickApply, setShowQuickApply] = useState(false);
+  const [showApplyModal, setShowApplyModal] = useState(false);
+
+  // Save/bookmark state
+  const [isSaved, setIsSaved] = useState(false);
+  const [savingJob, setSavingJob] = useState(false);
 
   // Contact modal state
   const [contactModalOpen, setContactModalOpen] = useState(false);
@@ -56,6 +70,7 @@ const JobDetail = () => {
       loadJob(id);
       if (user && user.userType === 'jobseeker') {
         checkIfApplied(id);
+        checkIfSaved(id);
       }
     }
   }, [id, user]);
@@ -69,6 +84,51 @@ const JobDetail = () => {
       }
     } catch (error) {
       console.error('❌ Error checking application status:', error);
+    }
+  };
+
+  const checkIfSaved = async (jobId: string) => {
+    try {
+      const response = await usersApi.isJobSaved(jobId);
+      if (response.success && response.data) {
+        setIsSaved(response.data.isSaved);
+      }
+    } catch {
+      // Non-critical
+    }
+  };
+
+  const handleToggleSave = async () => {
+    if (!isAuthenticated) {
+      toast({ title: "Duhet të kyçeni", description: "Ju duhet të kyçeni për të ruajtur punë.", variant: "destructive" });
+      navigate("/login");
+      return;
+    }
+    if (user?.userType !== 'jobseeker') {
+      toast({ title: "Gabim", description: "Vetëm kërkuesit e punës mund të ruajnë punë.", variant: "destructive" });
+      return;
+    }
+    if (!job) return;
+
+    setSavingJob(true);
+    try {
+      if (isSaved) {
+        const res = await usersApi.unsaveJob(job._id);
+        if (res.success) {
+          setIsSaved(false);
+          toast({ title: "Puna u hoq nga të ruajturat" });
+        }
+      } else {
+        const res = await usersApi.saveJob(job._id);
+        if (res.success) {
+          setIsSaved(true);
+          toast({ title: "Puna u ruajt!" });
+        }
+      }
+    } catch (error: any) {
+      toast({ title: "Gabim", description: error.message || "Gabim në ruajtjen e punës", variant: "destructive" });
+    } finally {
+      setSavingJob(false);
     }
   };
 
@@ -112,94 +172,61 @@ const JobDetail = () => {
     });
   };
 
-  const handleQuickApply = () => {
-    if (!job) return;
+  // Whether user has a CV/resume uploaded to their profile
+  const userHasCV = !!user?.profile?.jobSeekerProfile?.resume;
+  // Whether this job has custom questions that need answering
+  const hasCustomQuestions = job ? (job.customQuestions && job.customQuestions.length > 0) : false;
 
-    // Check if user is authenticated
+  // Auth guard shared by all apply flows
+  const checkApplyEligibility = (): boolean => {
     if (!isAuthenticated) {
-      toast({
-        title: "Duhet të kyçeni",
-        description: "Ju duhet të kyçeni për të aplikuar për punë.",
-        variant: "destructive"
-      });
+      toast({ title: "Duhet të kyçeni", description: "Ju duhet të kyçeni për të aplikuar për punë.", variant: "destructive" });
       navigate("/login");
-      return;
-    }
-
-    // Check if user is a job seeker
-    if (user?.userType !== 'jobseeker') {
-      toast({
-        title: "Gabim",
-        description: "Vetëm kërkuesit e punës mund të aplikojnë për punë.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setShowQuickApply(true);
-  };
-
-  const handleApplicationSuccess = () => {
-    setHasApplied(true);
-    setShowQuickApply(false);
-  };
-
-  // Legacy simple apply function for fallback
-  const handleSimpleApply = async () => {
-    if (!job) return;
-
-    // Auth guard — same as handleQuickApply
-    if (!isAuthenticated) {
-      toast({
-        title: "Duhet të kyçeni",
-        description: "Ju duhet të kyçeni për të aplikuar për punë.",
-        variant: "destructive"
-      });
-      navigate("/login");
-      return;
+      return false;
     }
     if (user?.userType !== 'jobseeker') {
-      toast({
-        title: "Vetëm punëkërkuesit",
-        description: "Vetëm punëkërkuesit mund të aplikojnë për punë.",
-        variant: "destructive"
-      });
+      toast({ title: "Gabim", description: "Vetëm kërkuesit e punës mund të aplikojnë për punë.", variant: "destructive" });
+      return false;
+    }
+    return true;
+  };
+
+  // 1-Click Apply: only available if user has CV; if custom questions → open modal to answer them first
+  const handleOneClickApply = async () => {
+    if (!job || !checkApplyEligibility()) return;
+
+    // If there are custom questions, we must show the modal first
+    if (hasCustomQuestions) {
+      setShowApplyModal(true);
       return;
     }
 
+    // No questions → submit directly
     try {
       setApplying(true);
-      await applicationsApi.apply({
-        jobId: job._id,
-        applicationMethod: 'one_click'
-      });
-
+      await applicationsApi.apply({ jobId: job._id, applicationMethod: 'one_click' });
       setHasApplied(true);
-      toast({
-        title: "Aplikimi u dërgua!",
-        description: "Aplikimi juaj u dërgua me sukses. Do të kontaktoheni së shpejti.",
-      });
+      toast({ title: "Aplikimi u dërgua!", description: "Aplikimi juaj u dërgua me sukses." });
     } catch (error: any) {
-      console.error('Error applying for job:', error);
-
-      // Special handling for duplicate application error
-      if (error.message.includes('aplikuar tashmë') || error.message.includes('already applied')) {
-        toast({
-          title: "⚠️ Keni aplikuar tashmë!",
-          description: "Ju keni aplikuar tashmë për këtë punë. Mund të kontrolloni statusin e aplikimit në profilin tuaj.",
-          variant: "destructive",
-          duration: 8000,
-        });
+      if (error.message?.includes('aplikuar tashmë') || error.message?.includes('already applied')) {
+        toast({ title: "Keni aplikuar tashmë!", description: "Kontrolloni statusin e aplikimit në profilin tuaj.", variant: "destructive", duration: 8000 });
       } else {
-        toast({
-          title: "Gabim",
-          description: error.message || "Gabim në dërgimin e aplikimit",
-          variant: "destructive"
-        });
+        toast({ title: "Gabim", description: error.message || "Gabim në dërgimin e aplikimit", variant: "destructive" });
       }
     } finally {
       setApplying(false);
     }
+  };
+
+  // Apply: always available — opens modal with CV upload + questions
+  const handleApply = () => {
+    if (!job || !checkApplyEligibility()) return;
+    setShowApplyModal(true);
+  };
+
+  const handleApplicationSuccess = () => {
+    setHasApplied(true);
+    setShowApplyModal(false);
   };
 
   // Open contact modal with pre-filled template
@@ -240,13 +267,25 @@ const JobDetail = () => {
     const phoneNumber = job.employerId?.profile?.employerProfile?.phone || job.employerId?.profile?.employerProfile?.whatsapp;
     const employerEmail = job.employerId?.email;
 
-    if (contactType === 'email' && employerEmail) {
+    if (contactType === 'email') {
+      if (!employerEmail) {
+        toast({ title: "Gabim", description: "Email-i i punëdhënësit nuk është i disponueshëm.", variant: "destructive" });
+        return;
+      }
       const subject = encodeURIComponent(`Rreth pozicionit: ${job.title}`);
       const body = encodeURIComponent(contactMessage);
       window.location.href = `mailto:${employerEmail}?subject=${subject}&body=${body}`;
-    } else if (contactType === 'phone' && phoneNumber) {
+    } else if (contactType === 'phone') {
+      if (!phoneNumber) {
+        toast({ title: "Gabim", description: "Numri i telefonit nuk është i disponueshëm.", variant: "destructive" });
+        return;
+      }
       window.location.href = `tel:${phoneNumber}`;
-    } else if (contactType === 'whatsapp' && phoneNumber) {
+    } else if (contactType === 'whatsapp') {
+      if (!phoneNumber) {
+        toast({ title: "Gabim", description: "Numri i telefonit nuk është i disponueshëm.", variant: "destructive" });
+        return;
+      }
       const cleanPhone = phoneNumber.replace(/[\s\-\(\)]/g, '');
       const encodedMessage = encodeURIComponent(contactMessage);
       window.open(`https://wa.me/${cleanPhone}?text=${encodedMessage}`, '_blank');
@@ -290,7 +329,7 @@ const JobDetail = () => {
     {
       selector: '[data-tutorial="apply-buttons"]',
       title: "Butonat e Aplikimit",
-      content: "Këtu mund të aplikoni për punë. 'Quick Apply' kërkon që të keni CV në profil (mund të ngarkoni ose gjeneroni me AI). '1-klik' aplikon menjëherë pa CV.",
+      content: "Këtu mund të aplikoni për punë. 'Apliko' hap formularin e aplikimit ku mund të ngarkoni CV dhe të plotësoni pyetje. '1-klik' aplikon menjëherë pa hapa shtesë.",
       position: "right" as const
     },
     {
@@ -641,7 +680,7 @@ const JobDetail = () => {
     return (
       <div className="min-h-screen bg-background">
         <Navigation />
-        <div className="container py-8">
+        <div className="container py-8 pt-24">
           <div className="text-center">
             <h1 className="text-2xl font-bold text-foreground mb-4">Pozicioni nuk u gjet</h1>
             <Button onClick={() => navigate("/jobs")}>Kthehu te lista e vendeve të punës</Button>
@@ -702,7 +741,21 @@ const JobDetail = () => {
                       {job.employerId?.profile?.employerProfile?.companyName || 'Kompani e panjohur'}
                     </div>
                   </div>
-                  <Badge variant="secondary">{job.jobType}</Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary">{job.jobType}</Badge>
+                    {isAuthenticated && user?.userType === 'jobseeker' && (
+                      <Button
+                        variant={isSaved ? "default" : "outline"}
+                        size="sm"
+                        onClick={handleToggleSave}
+                        disabled={savingJob}
+                        className="rounded-full w-9 h-9 p-0"
+                        title={isSaved ? "Hiq nga të ruajturat" : "Ruaj punën"}
+                      >
+                        <Bookmark className={`h-4 w-4 ${isSaved ? 'fill-current' : ''}`} />
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mb-4">
@@ -710,12 +763,18 @@ const JobDetail = () => {
                     <MapPin className="h-4 w-4 mr-1" />
                     {job.location?.city || 'Vendndodhje e panjohur'}{job.location?.region ? `, ${job.location.region}` : ''}
                   </div>
-                  {job.salary?.showPublic && job.formattedSalary && (
+                  {job.location?.remoteType && job.location.remoteType !== 'none' && (
                     <div className="flex items-center">
-                      <Euro className="h-4 w-4 mr-1" />
-                      {job.formattedSalary}
+                      <Wifi className="h-4 w-4 mr-1" />
+                      {job.location.remoteType === 'full' ? 'Nga distanca' : 'Hibride'}
                     </div>
                   )}
+                  <div className="flex items-center">
+                    <Euro className="h-4 w-4 mr-1" />
+                    {job.salary?.showPublic !== false && (job.formattedSalary || job.salary?.min || job.salary?.max)
+                      ? (job.formattedSalary || formatSalaryDisplay(job.salary!))
+                      : "Pagë për t'u negociuar"}
+                  </div>
                   <div className="flex items-center">
                     <Clock className="h-4 w-4 mr-1" />
                     {formatPostedDate(job.postedAt)}
@@ -797,43 +856,87 @@ const JobDetail = () => {
                       Ju keni aplikuar tashmë për këtë pozicion.
                     </p>
                   </div>
-                ) : (
-                  <>
-                    {/* Application Buttons */}
-                    <div className="grid md:grid-cols-2 gap-4">
+                ) : !isAuthenticated || user?.userType !== 'jobseeker' ? (
+                  /* Not logged in or not a jobseeker — simple apply buttons that redirect to login */
+                  <div className="grid md:grid-cols-2 gap-4">
                     <Button
-                      onClick={handleQuickApply}
+                      onClick={handleOneClickApply}
                       size="lg"
                       className="text-lg py-6"
-                      disabled={applying}
                     >
                       <Zap className="mr-2 h-5 w-5" />
-                      Quick Apply
+                      Apliko me 1-klik
                     </Button>
+                    <Button
+                      onClick={handleApply}
+                      variant="outline"
+                      size="lg"
+                      className="text-lg py-6"
+                    >
+                      <Zap className="mr-2 h-5 w-5" />
+                      Apliko
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    {/* Authenticated jobseeker — show CV-aware apply buttons */}
+                    <div className="grid md:grid-cols-2 gap-4">
+                      {/* 1-Click Apply: only if user has CV */}
+                      {userHasCV ? (
+                        <Button
+                          onClick={handleOneClickApply}
+                          size="lg"
+                          className="text-lg py-6"
+                          disabled={applying}
+                        >
+                          {applying ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Duke aplikuar...
+                            </>
+                          ) : (
+                            <>
+                              <Zap className="mr-2 h-5 w-5" />
+                              Apliko me 1-klik
+                            </>
+                          )}
+                        </Button>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-muted rounded-lg">
+                          <p className="text-sm text-muted-foreground text-center">
+                            Ngarko CV-në në profil për aplikim me 1-klik
+                          </p>
+                          <Button
+                            variant="link"
+                            size="sm"
+                            onClick={() => navigate('/profile')}
+                            className="mt-1"
+                          >
+                            Shko te profili
+                          </Button>
+                        </div>
+                      )}
 
-                    {!job.customQuestions || job.customQuestions.length === 0 ? (
+                      {/* Apply: always available */}
                       <Button
-                        onClick={handleSimpleApply}
+                        onClick={handleApply}
                         variant="outline"
                         size="lg"
                         className="text-lg py-6"
                         disabled={applying}
                       >
-                        {applying ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Duke aplikuar...
-                          </>
-                        ) : (
-                          "Aplikim 1-klik"
-                        )}
+                        <Zap className="mr-2 h-5 w-5" />
+                        Apliko
                       </Button>
-                    ) : (
-                      <div></div>
+                    </div>
+
+                    {hasCustomQuestions && (
+                      <p className="text-xs text-muted-foreground mt-3 text-center">
+                        Kjo punë ka pyetje shtesë — do t'ju kërkohen para dërgimit të aplikimit.
+                      </p>
                     )}
-                  </div>
-                </>
-              )}
+                  </>
+                )}
               </CardContent>
             </Card>
 
@@ -965,11 +1068,11 @@ const JobDetail = () => {
           </div>
         </div>
 
-        {/* Quick Apply Modal */}
-        <QuickApplyModal
+        {/* Apply Modal */}
+        <ApplyModal
           job={job}
-          isOpen={showQuickApply}
-          onClose={() => setShowQuickApply(false)}
+          isOpen={showApplyModal}
+          onClose={() => setShowApplyModal(false)}
           onSuccess={handleApplicationSuccess}
         />
 
@@ -996,6 +1099,25 @@ const JobDetail = () => {
                   </p>
                 </div>
 
+                {/* Email address display */}
+                {contactType === 'email' && job.employerId?.email && (
+                  <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <Mail className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                    <span className="text-sm font-medium text-blue-800 select-all">{job.employerId.email}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="ml-auto h-7 px-2 text-xs"
+                      onClick={() => {
+                        navigator.clipboard.writeText(job.employerId.email);
+                        toast({ title: "Email u kopjua!" });
+                      }}
+                    >
+                      Kopjo
+                    </Button>
+                  </div>
+                )}
+
                 {/* Message Input (for email and whatsapp) */}
                 {(contactType === 'email' || contactType === 'whatsapp') && (
                   <div className="space-y-3">
@@ -1009,7 +1131,9 @@ const JobDetail = () => {
                       placeholder="Shkruani mesazhin tuaj këtu..."
                     />
                     <p className="text-xs text-muted-foreground">
-                      Mund ta ndryshoni mesazhin përpara se ta dërgoni.
+                      {contactType === 'email'
+                        ? 'Butoni "Hap Email" do të hapë aplikacionin tuaj të email-it. Nëse nuk funksionon, kopjoni email-in më lart.'
+                        : 'Mund ta ndryshoni mesazhin përpara se ta dërgoni.'}
                     </p>
                   </div>
                 )}

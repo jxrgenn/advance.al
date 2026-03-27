@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { User, Mail, Phone, MapPin, Upload, FileText, Briefcase, Award, Loader2, RefreshCw, Lightbulb, X, Play, Trash2, Lock } from "lucide-react";
+import { User, Mail, Phone, MapPin, Upload, FileText, Briefcase, Award, Loader2, RefreshCw, Lightbulb, X, Play, Trash2, Lock, Sparkles, Check, AlertTriangle, Globe } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { usersApi, applicationsApi, authApi } from "@/lib/api";
@@ -84,8 +84,22 @@ const Profile = () => {
 
   const [savingWorkExperience, setSavingWorkExperience] = useState(false);
   const [savingEducation, setSavingEducation] = useState(false);
+  const [editingWorkId, setEditingWorkId] = useState<string | null>(null);
+  const [editingEducationId, setEditingEducationId] = useState<string | null>(null);
   const [jobAlertsEnabled, setJobAlertsEnabled] = useState(false);
   const [savingJobAlerts, setSavingJobAlerts] = useState(false);
+
+  // CV Parse & Auto-fill state
+  const [parsingCV, setParsingCV] = useState(false);
+  const [parsedCVData, setParsedCVData] = useState<any>(null);
+  const [showCVPreviewModal, setShowCVPreviewModal] = useState(false);
+  const [applyingParsedData, setApplyingParsedData] = useState(false);
+  const [selectedProfileFields, setSelectedProfileFields] = useState({
+    title: true, bio: true, experience: true, skills: true
+  });
+  const [selectedWorkEntries, setSelectedWorkEntries] = useState<boolean[]>([]);
+  const [selectedEducationEntries, setSelectedEducationEntries] = useState<boolean[]>([]);
+  const parseFileInputRef = useRef<HTMLInputElement>(null);
 
   // Settings tab state
   const [showSalaryPreference, setShowSalaryPreference] = useState(false);
@@ -155,7 +169,7 @@ const Profile = () => {
     {
       selector: '[data-tutorial="cv-upload"]',
       title: "Ngarkimi i CV-së",
-      content: "Ngarkoni CV-në tuaj në format PDF (max 5MB). Kjo është e rëndësishme për Quick Apply - pa CV nuk mund të aplikoni me 1-klik.",
+      content: "Ngarkoni CV-në tuaj në format PDF ose DOCX (max 5MB). Kjo është e rëndësishme për aplikimin - pa CV nuk mund të aplikoni me 1-klik.",
       position: "right" as const,
       tab: "personal",
       requiresTab: "personal",
@@ -302,6 +316,7 @@ const Profile = () => {
     } catch (error) {
       console.error('Error loading applications:', error);
       setApplications([]);
+      toast({ title: 'Gabim', description: 'Nuk mundën të ngarkoheshin aplikimet', variant: 'destructive' });
     } finally {
       setLoadingApplications(false);
     }
@@ -401,6 +416,18 @@ const Profile = () => {
     }
     if (newPassword.length < 8) {
       toast({ title: 'Fjalëkalimi i ri duhet të ketë të paktën 8 karaktere', variant: 'destructive' });
+      return;
+    }
+    if (!/[A-Z]/.test(newPassword)) {
+      toast({ title: 'Fjalëkalimi i ri duhet të përmbajë të paktën një shkronjë të madhe', variant: 'destructive' });
+      return;
+    }
+    if (!/[0-9]/.test(newPassword)) {
+      toast({ title: 'Fjalëkalimi i ri duhet të përmbajë të paktën një numër', variant: 'destructive' });
+      return;
+    }
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(newPassword)) {
+      toast({ title: 'Fjalëkalimi i ri duhet të përmbajë të paktën një karakter special (!@#$%...)', variant: 'destructive' });
       return;
     }
     setChangingPassword(true);
@@ -610,11 +637,12 @@ const Profile = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
-    if (file.type !== 'application/pdf') {
+    // Validate file type (PDF + DOCX/DOC)
+    const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword'];
+    if (!allowedTypes.includes(file.type)) {
       toast({
         title: "Gabim",
-        description: "Ju lutem ngarkoni vetëm skedarë PDF",
+        description: "Ju lutem ngarkoni vetëm skedarë PDF ose Word (DOCX)",
         variant: "destructive"
       });
       return;
@@ -668,12 +696,247 @@ const Profile = () => {
     }
   };
 
+  // CV Parse & Auto-fill handlers
+  const handleParseCV = () => {
+    parseFileInputRef.current?.click();
+  };
+
+  const handleParseFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword'];
+    if (!allowedTypes.includes(file.type)) {
+      toast({ title: "Gabim", description: "Ju lutem ngarkoni vetëm skedarë PDF ose Word (DOCX)", variant: "destructive" });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "Gabim", description: "Skedari është shumë i madh. Madhësia maksimale është 5MB", variant: "destructive" });
+      return;
+    }
+
+    try {
+      setParsingCV(true);
+      const formData = new FormData();
+      formData.append('resume', file);
+
+      const response = await usersApi.parseResume(formData);
+
+      if (response.success && response.data) {
+        setCurrentCV(response.data.resumeUrl);
+        await refreshUser();
+
+        if (response.data.parsedData) {
+          setParsedCVData(response.data.parsedData);
+          // Initialize selection states
+          setSelectedProfileFields({ title: true, bio: true, experience: true, skills: true });
+          setSelectedWorkEntries((response.data.parsedData.workExperience || []).map(() => true));
+          setSelectedEducationEntries((response.data.parsedData.education || []).map(() => true));
+          setShowCVPreviewModal(true);
+        } else {
+          toast({
+            title: "CV u ngarkua",
+            description: "CV-ja u ngarkua por nuk mund të analizohej automatikisht. Provoni përsëri më vonë.",
+          });
+        }
+      } else {
+        throw new Error(response.message || 'Failed to parse CV');
+      }
+    } catch (error: any) {
+      console.error('Error parsing CV:', error);
+      // Friendly error for OpenAI failures vs other errors
+      const msg = error.message?.includes('OpenAI') || error.message?.includes('429') || error.message?.includes('quota')
+        ? "Shërbimi i analizës nuk është i disponueshëm momentalisht. CV-ja u ngarkua — provoni analizën përsëri më vonë."
+        : (error.message || "Nuk mund të ngarkohet CV-ja. Provoni përsëri.");
+      toast({
+        title: "Gabim",
+        description: msg,
+        variant: "destructive"
+      });
+    } finally {
+      setParsingCV(false);
+      if (parseFileInputRef.current) parseFileInputRef.current.value = '';
+    }
+  };
+
+  const isDuplicateWork = (entry: any) => {
+    const existing = user?.profile?.jobSeekerProfile?.workHistory || [];
+    return existing.some((w: any) =>
+      w.company?.toLowerCase().trim() === entry.company?.toLowerCase().trim() &&
+      w.position?.toLowerCase().trim() === entry.position?.toLowerCase().trim()
+    );
+  };
+
+  const isDuplicateEducation = (entry: any) => {
+    const existing = user?.profile?.jobSeekerProfile?.education || [];
+    return existing.some((e: any) =>
+      e.institution?.toLowerCase().trim() === entry.institution?.toLowerCase().trim() &&
+      e.degree?.toLowerCase().trim() === entry.degree?.toLowerCase().trim()
+    );
+  };
+
+  const handleApplyParsedData = async () => {
+    if (!parsedCVData) return;
+
+    setApplyingParsedData(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    try {
+      // Step 1: Apply profile fields (title, bio, skills, experience)
+      const profileUpdate: any = {};
+      if (selectedProfileFields.title && parsedCVData.title) {
+        profileUpdate.title = parsedCVData.title;
+      }
+      if (selectedProfileFields.bio && parsedCVData.bio) {
+        profileUpdate.bio = parsedCVData.bio;
+      }
+      if (selectedProfileFields.experience && parsedCVData.experience) {
+        profileUpdate.experience = parsedCVData.experience;
+      }
+      if (selectedProfileFields.skills && parsedCVData.skills?.length > 0) {
+        profileUpdate.skills = parsedCVData.skills;
+      }
+
+      if (Object.keys(profileUpdate).length > 0) {
+        const profileRes = await usersApi.updateProfile({ jobSeekerProfile: profileUpdate });
+        if (profileRes.success) {
+          successCount++;
+          // Update local form state to reflect changes
+          if (profileUpdate.title) setFormData(prev => ({ ...prev, title: profileUpdate.title }));
+          if (profileUpdate.bio) setFormData(prev => ({ ...prev, bio: profileUpdate.bio }));
+          if (profileUpdate.experience) setFormData(prev => ({ ...prev, experience: profileUpdate.experience }));
+          if (profileUpdate.skills) setFormData(prev => ({ ...prev, skills: profileUpdate.skills }));
+        } else {
+          errorCount++;
+        }
+      }
+
+      // Step 2: Add selected work experience entries
+      const selectedWork = (parsedCVData.workExperience || []).filter((_: any, i: number) => selectedWorkEntries[i]);
+      for (const work of selectedWork) {
+        try {
+          const res = await usersApi.addWorkExperience({
+            position: work.position,
+            company: work.company,
+            location: work.location || '',
+            startDate: work.startDate || '',
+            endDate: work.endDate || '',
+            isCurrentJob: work.isCurrentJob || false,
+            description: work.description || '',
+            achievements: work.achievements || ''
+          });
+          if (res.success) successCount++;
+          else errorCount++;
+        } catch {
+          errorCount++;
+        }
+      }
+
+      // Step 3: Add selected education entries
+      const selectedEdu = (parsedCVData.education || []).filter((_: any, i: number) => selectedEducationEntries[i]);
+      for (const edu of selectedEdu) {
+        try {
+          const res = await usersApi.addEducation({
+            degree: edu.degree,
+            institution: edu.institution,
+            fieldOfStudy: edu.fieldOfStudy || '',
+            location: edu.location || '',
+            startDate: edu.startDate || '',
+            endDate: edu.endDate || '',
+            isCurrentStudy: edu.isCurrentStudy || false,
+            gpa: edu.gpa || '',
+            description: edu.description || ''
+          });
+          if (res.success) successCount++;
+          else errorCount++;
+        } catch {
+          errorCount++;
+        }
+      }
+
+      // Refresh user data
+      await refreshUser();
+      setShowCVPreviewModal(false);
+
+      // Figure out what fields were NOT extracted from CV (still missing)
+      const missing: string[] = [];
+      if (!parsedCVData.title) missing.push('titullin profesional');
+      if (!parsedCVData.bio) missing.push('bio-n');
+      if (!parsedCVData.skills?.length) missing.push('aftësitë');
+      if (!parsedCVData.workExperience?.length) missing.push('përvojën e punës');
+      if (!parsedCVData.education?.length) missing.push('arsimimin');
+
+      setParsedCVData(null);
+
+      if (errorCount === 0) {
+        const missingHint = missing.length > 0
+          ? ` Plotësoni manualisht: ${missing.join(', ')}.`
+          : '';
+        toast({
+          title: "Profili u përditësua!",
+          description: `${successCount} ndryshime u aplikuan me sukses nga CV-ja.${missingHint}`,
+        });
+      } else {
+        toast({
+          title: "Profili u përditësua pjesërisht",
+          description: `${successCount} ndryshime u aplikuan, ${errorCount} dështuan. Plotësoni manualisht fushat e mbetura.`,
+          variant: "destructive"
+        });
+      }
+    } catch (error: any) {
+      console.error('Error applying parsed data:', error);
+      toast({
+        title: "Gabim",
+        description: "Nuk mund të aplikohen të dhënat e CV-së",
+        variant: "destructive"
+      });
+    } finally {
+      setApplyingParsedData(false);
+    }
+  };
+
   // onClick handlers for broken buttons
   const handleAddWorkExperience = () => {
+    setEditingWorkId(null);
+    setWorkExperienceForm({ position: '', company: '', location: '', startDate: '', endDate: '', isCurrentJob: false, description: '', achievements: '' });
+    setWorkExperienceModal(true);
+  };
+
+  const handleEditWorkExperience = (work: any) => {
+    setEditingWorkId(work._id);
+    setWorkExperienceForm({
+      position: work.position || '',
+      company: work.company || '',
+      location: work.location || '',
+      startDate: work.startDate ? new Date(work.startDate).toISOString().slice(0, 7) : '',
+      endDate: work.endDate ? new Date(work.endDate).toISOString().slice(0, 7) : '',
+      isCurrentJob: !work.endDate,
+      description: work.description || '',
+      achievements: work.achievements || ''
+    });
     setWorkExperienceModal(true);
   };
 
   const handleAddEducation = () => {
+    setEditingEducationId(null);
+    setEducationForm({ degree: '', fieldOfStudy: '', institution: '', location: '', startDate: '', endDate: '', isCurrentStudy: false, gpa: '', description: '' });
+    setEducationModal(true);
+  };
+
+  const handleEditEducation = (edu: any) => {
+    setEditingEducationId(edu._id);
+    setEducationForm({
+      degree: edu.degree || '',
+      fieldOfStudy: edu.fieldOfStudy || '',
+      institution: edu.school || edu.institution || '',
+      location: edu.location || '',
+      startDate: edu.startDate ? new Date(edu.startDate).toISOString().slice(0, 7) : '',
+      endDate: edu.endDate ? new Date(edu.endDate).toISOString().slice(0, 7) : '',
+      isCurrentStudy: !edu.endDate,
+      gpa: edu.gpa || '',
+      description: edu.description || ''
+    });
     setEducationModal(true);
   };
 
@@ -716,15 +979,18 @@ const Profile = () => {
         return;
       }
 
-      const response = await usersApi.addWorkExperience(workExperienceForm);
+      const response = editingWorkId
+        ? await usersApi.updateWorkExperience(editingWorkId, workExperienceForm)
+        : await usersApi.addWorkExperience(workExperienceForm);
 
       if (response.success) {
         toast({
-          title: "Përvojë e re u shtua",
-          description: "Përvojën tuaj e punës u shtua me sukses"
+          title: editingWorkId ? "Përvojë u përditësua" : "Përvojë e re u shtua",
+          description: editingWorkId ? "Përvojën tuaj e punës u përditësua me sukses" : "Përvojën tuaj e punës u shtua me sukses"
         });
 
         setWorkExperienceModal(false);
+        setEditingWorkId(null);
         setWorkExperienceForm({
           position: '',
           company: '',
@@ -792,15 +1058,18 @@ const Profile = () => {
         return;
       }
 
-      const response = await usersApi.addEducation(educationForm);
+      const response = editingEducationId
+        ? await usersApi.updateEducation(editingEducationId, educationForm)
+        : await usersApi.addEducation(educationForm);
 
       if (response.success) {
         toast({
-          title: "Arsimimi u shtua",
-          description: "Arsimimi juaj u shtua me sukses"
+          title: editingEducationId ? "Arsimimi u përditësua" : "Arsimimi u shtua",
+          description: editingEducationId ? "Arsimimi juaj u përditësua me sukses" : "Arsimimi juaj u shtua me sukses"
         });
 
         setEducationModal(false);
+        setEditingEducationId(null);
         setEducationForm({
           degree: '',
           fieldOfStudy: '',
@@ -1537,7 +1806,7 @@ const Profile = () => {
           {/* Main Content */}
           <div className="lg:col-span-2">
             <Tabs defaultValue="personal" className="space-y-6" value={currentTab} onValueChange={setCurrentTab}>
-              <TabsList data-tutorial="tabs">
+              <TabsList data-tutorial="tabs" className="w-full overflow-x-auto flex-wrap h-auto">
                 <TabsTrigger value="personal">Informacion Personal</TabsTrigger>
                 <TabsTrigger value="experience" data-tutorial="work-experience-tab">Përvojë Pune</TabsTrigger>
                 <TabsTrigger value="applications" data-tutorial="applications-tab">Aplikimet</TabsTrigger>
@@ -1554,7 +1823,7 @@ const Profile = () => {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <InputWithCounter
                           label="Emri"
@@ -1738,7 +2007,7 @@ const Profile = () => {
                   <CardHeader>
                     <CardTitle>CV dhe Dokumente</CardTitle>
                     <CardDescription>
-                      Ngarko CV-në dhe dokumente të tjera (vetëm PDF, max 5MB)
+                      Ngarko CV-në dhe dokumente të tjera (PDF ose DOCX, max 5MB)
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -1752,10 +2021,30 @@ const Profile = () => {
                           <p className="text-sm text-muted-foreground mb-2">
                             {currentCV.split('/').pop() || 'CV.pdf'}
                           </p>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={() => window.open(currentCV, '_blank')}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              if (!currentCV) return;
+                              try {
+                                let url: string;
+                                if (currentCV.startsWith('http')) {
+                                  url = currentCV;
+                                } else {
+                                  const filename = currentCV.split('/').pop();
+                                  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+                                  url = `${apiUrl}/users/resume/${filename}`;
+                                }
+                                const res = await fetch(url, { headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` } });
+                                if (!res.ok) throw new Error('CV nuk u gjet');
+                                const blob = await res.blob();
+                                const blobUrl = URL.createObjectURL(blob);
+                                const win = window.open(blobUrl, '_blank');
+                                if (win) {
+                                  setTimeout(() => { URL.revokeObjectURL(blobUrl); }, 10000);
+                                }
+                              } catch { toast({ title: "Gabim", description: "CV nuk mund të hapet", variant: "destructive" }); }
+                            }}
                             className="mr-2"
                           >
                             <FileText className="mr-2 h-4 w-4" />
@@ -1771,28 +2060,53 @@ const Profile = () => {
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept=".pdf"
+                        accept=".pdf,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
                         onChange={handleFileSelect}
                         className="hidden"
                       />
-                      
-                      <Button 
-                        variant="outline" 
-                        onClick={handleUploadCV}
-                        disabled={uploadingCV}
-                      >
-                        {uploadingCV ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Duke ngarkuar...
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="mr-2 h-4 w-4" />
-                            {currentCV ? 'Ngarko CV të Re' : 'Ngarko CV'}
-                          </>
-                        )}
-                      </Button>
+                      <input
+                        ref={parseFileInputRef}
+                        type="file"
+                        accept=".pdf,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
+                        onChange={handleParseFileSelect}
+                        className="hidden"
+                      />
+
+                      <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                        <Button
+                          variant="outline"
+                          onClick={handleUploadCV}
+                          disabled={uploadingCV || parsingCV}
+                        >
+                          {uploadingCV ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Duke ngarkuar...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="mr-2 h-4 w-4" />
+                              {currentCV ? 'Ngarko CV të Re' : 'Ngarko CV'}
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          onClick={handleParseCV}
+                          disabled={uploadingCV || parsingCV}
+                        >
+                          {parsingCV ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Duke analizuar...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="mr-2 h-4 w-4" />
+                              Ngarko CV & Plotëso Profilin
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </div>
                     
                     {/* Save Button - Only show if there are changes */}
@@ -1829,25 +2143,26 @@ const Profile = () => {
                   <CardContent className="space-y-6">
                     <div className="border-l-2 border-primary pl-6 space-y-4">
                       {user?.profile?.jobSeekerProfile?.workHistory?.map((work, index) => (
-                        <div key={work._id || index} className="flex items-start justify-between gap-2">
-                          <div>
-                            <div className="flex items-center gap-2 mb-2">
-                              <Briefcase className="h-4 w-4 text-primary" />
+                        <div key={work._id || index} className="flex items-start justify-between gap-2 p-3 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors group" onClick={() => handleEditWorkExperience(work)}>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Briefcase className="h-4 w-4 text-primary flex-shrink-0" />
                               <h3 className="font-semibold text-foreground">{work.position}</h3>
                             </div>
                             <p className="text-muted-foreground text-sm">
-                              {work.company} • {new Date(work.startDate).getFullYear()} - {work.endDate ? new Date(work.endDate).getFullYear() : 'Tani'}
+                              {work.company}{work.location ? ` • ${work.location}` : ''} • {new Date(work.startDate).getFullYear()} - {work.endDate ? new Date(work.endDate).getFullYear() : 'Tani'}
                             </p>
                             {work.description && (
-                              <p className="text-sm mt-2">{work.description}</p>
+                              <p className="text-sm mt-1 text-muted-foreground line-clamp-2">{work.description}</p>
                             )}
+                            <p className="text-xs text-primary mt-1 opacity-0 group-hover:opacity-100 transition-opacity">Kliko për të ndryshuar</p>
                           </div>
                           {work._id && (
                             <Button
                               variant="ghost"
                               size="sm"
                               className="text-destructive hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
-                              onClick={() => handleDeleteWorkExperience(work._id)}
+                              onClick={(e) => { e.stopPropagation(); handleDeleteWorkExperience(work._id); }}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -1878,20 +2193,24 @@ const Profile = () => {
                   <CardContent className="space-y-4">
                     <div className="border-l-2 border-secondary pl-6 space-y-4">
                       {user?.profile?.jobSeekerProfile?.education?.map((edu, index) => (
-                        <div key={edu._id || index} className="flex items-start justify-between gap-2">
-                          <div>
-                            <div className="flex items-center gap-2 mb-2">
-                              <Award className="h-4 w-4 text-secondary" />
-                              <h3 className="font-semibold text-foreground">{edu.degree}</h3>
+                        <div key={edu._id || index} className="flex items-start justify-between gap-2 p-3 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors group" onClick={() => handleEditEducation(edu)}>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Award className="h-4 w-4 text-secondary flex-shrink-0" />
+                              <h3 className="font-semibold text-foreground">{edu.degree}{edu.fieldOfStudy ? ` — ${edu.fieldOfStudy}` : ''}</h3>
                             </div>
-                            <p className="text-muted-foreground text-sm">{edu.school} • {edu.year}</p>
+                            <p className="text-muted-foreground text-sm">{edu.school || edu.institution}{edu.location ? ` • ${edu.location}` : ''} • {edu.year}</p>
+                            {edu.description && (
+                              <p className="text-sm mt-1 text-muted-foreground line-clamp-2">{edu.description}</p>
+                            )}
+                            <p className="text-xs text-primary mt-1 opacity-0 group-hover:opacity-100 transition-opacity">Kliko për të ndryshuar</p>
                           </div>
                           {edu._id && (
                             <Button
                               variant="ghost"
                               size="sm"
                               className="text-destructive hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
-                              onClick={() => handleDeleteEducation(edu._id)}
+                              onClick={(e) => { e.stopPropagation(); handleDeleteEducation(edu._id); }}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -2221,9 +2540,9 @@ const Profile = () => {
       <Dialog open={workExperienceModal} onOpenChange={setWorkExperienceModal}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Shto Përvojë të Re Pune</DialogTitle>
+            <DialogTitle>{editingWorkId ? 'Ndrysho Përvojën e Punës' : 'Shto Përvojë të Re Pune'}</DialogTitle>
             <DialogDescription>
-              Shto informacion për përvojën tuaj profesionale të punës
+              {editingWorkId ? 'Përditëso informacionin për këtë përvojë pune' : 'Shto informacion për përvojën tuaj profesionale të punës'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6 py-4">
@@ -2263,27 +2582,46 @@ const Profile = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="start-date">Data e fillimit *</Label>
-                <Input
-                  id="start-date"
-                  type="month"
-                  value={workExperienceForm.startDate}
-                  onChange={(e) => setWorkExperienceForm(prev => ({ ...prev, startDate: e.target.value }))}
-                  className="w-full"
-                  required
-                />
+                <Label>Data e fillimit *</Label>
+                <div className="flex gap-2">
+                  <Select value={workExperienceForm.startDate.split('-')[1] || ''} onValueChange={(m) => setWorkExperienceForm(prev => ({ ...prev, startDate: `${prev.startDate.split('-')[0] || new Date().getFullYear()}-${m}` }))}>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Muaji" /></SelectTrigger>
+                    <SelectContent>
+                      {['01','02','03','04','05','06','07','08','09','10','11','12'].map(m => (
+                        <SelectItem key={m} value={m}>{['Janar','Shkurt','Mars','Prill','Maj','Qershor','Korrik','Gusht','Shtator','Tetor','Nëntor','Dhjetor'][parseInt(m)-1]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={workExperienceForm.startDate.split('-')[0] || ''} onValueChange={(y) => setWorkExperienceForm(prev => ({ ...prev, startDate: `${y}-${prev.startDate.split('-')[1] || '01'}` }))}>
+                    <SelectTrigger className="w-[100px]"><SelectValue placeholder="Viti" /></SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 40 }, (_, i) => String(new Date().getFullYear() - i)).map(y => (
+                        <SelectItem key={y} value={y}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="end-date">Data e mbarimit{!workExperienceForm.isCurrentJob && ' *'}</Label>
-                <Input
-                  id="end-date"
-                  type="month"
-                  value={workExperienceForm.endDate}
-                  onChange={(e) => setWorkExperienceForm(prev => ({ ...prev, endDate: e.target.value }))}
-                  className="w-full"
-                  disabled={workExperienceForm.isCurrentJob}
-                  required={!workExperienceForm.isCurrentJob}
-                />
+                <Label>Data e mbarimit{!workExperienceForm.isCurrentJob && ' *'}</Label>
+                <div className="flex gap-2">
+                  <Select disabled={workExperienceForm.isCurrentJob} value={workExperienceForm.endDate.split('-')[1] || ''} onValueChange={(m) => setWorkExperienceForm(prev => ({ ...prev, endDate: `${prev.endDate.split('-')[0] || new Date().getFullYear()}-${m}` }))}>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Muaji" /></SelectTrigger>
+                    <SelectContent>
+                      {['01','02','03','04','05','06','07','08','09','10','11','12'].map(m => (
+                        <SelectItem key={m} value={m}>{['Janar','Shkurt','Mars','Prill','Maj','Qershor','Korrik','Gusht','Shtator','Tetor','Nëntor','Dhjetor'][parseInt(m)-1]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select disabled={workExperienceForm.isCurrentJob} value={workExperienceForm.endDate.split('-')[0] || ''} onValueChange={(y) => setWorkExperienceForm(prev => ({ ...prev, endDate: `${y}-${prev.endDate.split('-')[1] || '01'}` }))}>
+                    <SelectTrigger className="w-[100px]"><SelectValue placeholder="Viti" /></SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 40 }, (_, i) => String(new Date().getFullYear() - i)).map(y => (
+                        <SelectItem key={y} value={y}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
 
@@ -2392,7 +2730,7 @@ const Profile = () => {
                 ) : (
                   <>
                     <Briefcase className="h-4 w-4 mr-2" />
-                    Ruaj përvojën
+                    {editingWorkId ? 'Përditëso përvojën' : 'Ruaj përvojën'}
                   </>
                 )}
               </Button>
@@ -2404,9 +2742,9 @@ const Profile = () => {
       <Dialog open={educationModal} onOpenChange={setEducationModal}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Shto Arsimim të Ri</DialogTitle>
+            <DialogTitle>{editingEducationId ? 'Ndrysho Arsimimin' : 'Shto Arsimim të Ri'}</DialogTitle>
             <DialogDescription>
-              Shto informacion për arsimimin dhe kualifikimet tuaja
+              {editingEducationId ? 'Përditëso informacionin për këtë arsimim' : 'Shto informacion për arsimimin dhe kualifikimet tuaja'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6 py-4">
@@ -2467,27 +2805,46 @@ const Profile = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edu-start-date">Data e fillimit *</Label>
-                <Input
-                  id="edu-start-date"
-                  type="month"
-                  value={educationForm.startDate}
-                  onChange={(e) => setEducationForm(prev => ({ ...prev, startDate: e.target.value }))}
-                  className="w-full"
-                  required
-                />
+                <Label>Data e fillimit *</Label>
+                <div className="flex gap-2">
+                  <Select value={educationForm.startDate.split('-')[1] || ''} onValueChange={(m) => setEducationForm(prev => ({ ...prev, startDate: `${prev.startDate.split('-')[0] || new Date().getFullYear()}-${m}` }))}>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Muaji" /></SelectTrigger>
+                    <SelectContent>
+                      {['01','02','03','04','05','06','07','08','09','10','11','12'].map(m => (
+                        <SelectItem key={m} value={m}>{['Janar','Shkurt','Mars','Prill','Maj','Qershor','Korrik','Gusht','Shtator','Tetor','Nëntor','Dhjetor'][parseInt(m)-1]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={educationForm.startDate.split('-')[0] || ''} onValueChange={(y) => setEducationForm(prev => ({ ...prev, startDate: `${y}-${prev.startDate.split('-')[1] || '01'}` }))}>
+                    <SelectTrigger className="w-[100px]"><SelectValue placeholder="Viti" /></SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 50 }, (_, i) => String(new Date().getFullYear() - i)).map(y => (
+                        <SelectItem key={y} value={y}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edu-end-date">Data e mbarimit{!educationForm.isCurrentStudy && ' *'}</Label>
-                <Input
-                  id="edu-end-date"
-                  type="month"
-                  value={educationForm.endDate}
-                  onChange={(e) => setEducationForm(prev => ({ ...prev, endDate: e.target.value }))}
-                  className="w-full"
-                  disabled={educationForm.isCurrentStudy}
-                  required={!educationForm.isCurrentStudy}
-                />
+                <Label>Data e mbarimit{!educationForm.isCurrentStudy && ' *'}</Label>
+                <div className="flex gap-2">
+                  <Select disabled={educationForm.isCurrentStudy} value={educationForm.endDate.split('-')[1] || ''} onValueChange={(m) => setEducationForm(prev => ({ ...prev, endDate: `${prev.endDate.split('-')[0] || new Date().getFullYear()}-${m}` }))}>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Muaji" /></SelectTrigger>
+                    <SelectContent>
+                      {['01','02','03','04','05','06','07','08','09','10','11','12'].map(m => (
+                        <SelectItem key={m} value={m}>{['Janar','Shkurt','Mars','Prill','Maj','Qershor','Korrik','Gusht','Shtator','Tetor','Nëntor','Dhjetor'][parseInt(m)-1]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select disabled={educationForm.isCurrentStudy} value={educationForm.endDate.split('-')[0] || ''} onValueChange={(y) => setEducationForm(prev => ({ ...prev, endDate: `${y}-${prev.endDate.split('-')[1] || '01'}` }))}>
+                    <SelectTrigger className="w-[100px]"><SelectValue placeholder="Viti" /></SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 50 }, (_, i) => String(new Date().getFullYear() - i)).map(y => (
+                        <SelectItem key={y} value={y}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
 
@@ -2608,12 +2965,250 @@ const Profile = () => {
                 ) : (
                   <>
                     <Award className="h-4 w-4 mr-2" />
-                    Ruaj arsimimin
+                    {editingEducationId ? 'Përditëso arsimimin' : 'Ruaj arsimimin'}
                   </>
                 )}
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* CV Parse Preview Modal */}
+      <Dialog open={showCVPreviewModal} onOpenChange={(open) => { if (!open && !applyingParsedData) { setShowCVPreviewModal(false); } }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              Të dhënat e nxjerra nga CV
+            </DialogTitle>
+            <DialogDescription>
+              Zgjidhni cilat të dhëna dëshironi t'i aplikoni në profilin tuaj
+            </DialogDescription>
+          </DialogHeader>
+
+          {parsedCVData && (
+            <div className="space-y-6">
+              {/* Profile Fields Section */}
+              {(parsedCVData.title || parsedCVData.bio || parsedCVData.experience || parsedCVData.skills?.length > 0) && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    Informacion Profesional
+                  </h3>
+
+                  {parsedCVData.title && (
+                    <label className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedProfileFields.title}
+                        onChange={(e) => setSelectedProfileFields(prev => ({ ...prev, title: e.target.checked }))}
+                        className="mt-1 h-4 w-4 rounded border-gray-300"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">Titulli profesional</p>
+                        <p className="text-sm text-muted-foreground">{parsedCVData.title}</p>
+                        {formData.title && formData.title !== parsedCVData.title && (
+                          <p className="text-xs text-orange-600 mt-1">Aktual: {formData.title}</p>
+                        )}
+                      </div>
+                    </label>
+                  )}
+
+                  {parsedCVData.bio && (
+                    <label className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedProfileFields.bio}
+                        onChange={(e) => setSelectedProfileFields(prev => ({ ...prev, bio: e.target.checked }))}
+                        className="mt-1 h-4 w-4 rounded border-gray-300"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">Bio</p>
+                        <p className="text-sm text-muted-foreground line-clamp-3">{parsedCVData.bio}</p>
+                        {formData.bio && formData.bio !== parsedCVData.bio && (
+                          <p className="text-xs text-orange-600 mt-1">Aktual: {formData.bio.slice(0, 80)}...</p>
+                        )}
+                      </div>
+                    </label>
+                  )}
+
+                  {parsedCVData.experience && (
+                    <label className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedProfileFields.experience}
+                        onChange={(e) => setSelectedProfileFields(prev => ({ ...prev, experience: e.target.checked }))}
+                        className="mt-1 h-4 w-4 rounded border-gray-300"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">Niveli i përvojës</p>
+                        <p className="text-sm text-muted-foreground">{parsedCVData.experience}</p>
+                        {formData.experience && formData.experience !== parsedCVData.experience && (
+                          <p className="text-xs text-orange-600 mt-1">Aktual: {formData.experience}</p>
+                        )}
+                      </div>
+                    </label>
+                  )}
+
+                  {parsedCVData.skills?.length > 0 && (
+                    <label className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedProfileFields.skills}
+                        onChange={(e) => setSelectedProfileFields(prev => ({ ...prev, skills: e.target.checked }))}
+                        className="mt-1 h-4 w-4 rounded border-gray-300"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">Aftësitë</p>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {parsedCVData.skills.map((skill: string, i: number) => (
+                            <Badge key={i} variant="secondary" className="text-xs">{skill}</Badge>
+                          ))}
+                        </div>
+                        {formData.skills?.length > 0 && (
+                          <div className="mt-1">
+                            <p className="text-xs text-orange-600">Aktuale: {formData.skills.join(', ')}</p>
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  )}
+                </div>
+              )}
+
+              {/* Work Experience Section */}
+              {parsedCVData.workExperience?.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                    <Briefcase className="h-4 w-4" />
+                    Përvojë Pune ({parsedCVData.workExperience.length})
+                  </h3>
+                  {parsedCVData.workExperience.map((work: any, i: number) => {
+                    const duplicate = isDuplicateWork(work);
+                    return (
+                      <label key={i} className={`flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer ${duplicate ? 'border-orange-300 bg-orange-50/50' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={selectedWorkEntries[i] ?? true}
+                          onChange={(e) => {
+                            const next = [...selectedWorkEntries];
+                            next[i] = e.target.checked;
+                            setSelectedWorkEntries(next);
+                          }}
+                          className="mt-1 h-4 w-4 rounded border-gray-300"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{work.position}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {work.company}
+                            {work.location ? ` • ${work.location}` : ''}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {work.startDate || '?'} — {work.isCurrentJob ? 'Tani' : work.endDate || '?'}
+                          </p>
+                          {work.description && (
+                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{work.description}</p>
+                          )}
+                          {duplicate && (
+                            <p className="text-xs text-orange-600 mt-1 flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3" /> Mund të jetë dublikatë
+                            </p>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Education Section */}
+              {parsedCVData.education?.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                    <Award className="h-4 w-4" />
+                    Arsimimi ({parsedCVData.education.length})
+                  </h3>
+                  {parsedCVData.education.map((edu: any, i: number) => {
+                    const duplicate = isDuplicateEducation(edu);
+                    return (
+                      <label key={i} className={`flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer ${duplicate ? 'border-orange-300 bg-orange-50/50' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={selectedEducationEntries[i] ?? true}
+                          onChange={(e) => {
+                            const next = [...selectedEducationEntries];
+                            next[i] = e.target.checked;
+                            setSelectedEducationEntries(next);
+                          }}
+                          className="mt-1 h-4 w-4 rounded border-gray-300"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{edu.degree}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {edu.institution}
+                            {edu.fieldOfStudy ? ` — ${edu.fieldOfStudy}` : ''}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {edu.startDate || '?'} — {edu.isCurrentStudy ? 'Tani' : edu.endDate || '?'}
+                          </p>
+                          {duplicate && (
+                            <p className="text-xs text-orange-600 mt-1 flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3" /> Mund të jetë dublikatë
+                            </p>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Languages Section (read-only) */}
+              {parsedCVData.languages?.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                    <Globe className="h-4 w-4" />
+                    Gjuhët (vetëm informative)
+                  </h3>
+                  <div className="flex flex-wrap gap-2 px-3">
+                    {parsedCVData.languages.map((lang: any, i: number) => (
+                      <Badge key={i} variant="outline" className="text-xs">
+                        {lang.name} — {lang.proficiency}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => { setShowCVPreviewModal(false); setParsedCVData(null); }}
+                  disabled={applyingParsedData}
+                >
+                  Anulo
+                </Button>
+                <Button
+                  onClick={handleApplyParsedData}
+                  disabled={applyingParsedData}
+                >
+                  {applyingParsedData ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Duke aplikuar...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4 mr-2" />
+                      Apliko të Dhënat e Zgjedhura
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

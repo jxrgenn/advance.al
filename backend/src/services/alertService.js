@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import debugLogger from './debugLogger.js';
+import logger from '../config/logger.js';
 
 /**
  * Alert Service
@@ -72,7 +73,7 @@ class AlertService {
 
       this.lastAlerts[type] = now;
     } catch (error) {
-      console.error(`[ALERT] Failed to send ${type} alert:`, error.message);
+      logger.error(`[ALERT] Failed to send ${type} alert:`, error.message);
     }
   }
 

@@ -5,6 +5,7 @@ import { Notification, Job, QuickUser } from '../models/index.js';
 import { authenticate, requireEmployer, requireAdmin } from '../middleware/auth.js';
 import notificationService from '../lib/notificationService.js';
 import { sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
@@ -79,7 +80,7 @@ router.get('/', authenticate, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error fetching notifications:', error);
+    logger.error('Error fetching notifications:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e njoftimeve'
@@ -100,7 +101,7 @@ router.get('/unread-count', authenticate, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error getting unread count:', error);
+    logger.error('Error getting unread count:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në numërimin e njoftimeve'
@@ -133,7 +134,7 @@ router.patch('/:id/read', validateObjectId('id'), authenticate, async (req, res)
     });
 
   } catch (error) {
-    console.error('❌ Error marking notification as read:', error);
+    logger.error('Error marking notification as read:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në shënimin e njoftimit si të lexuar'
@@ -155,7 +156,7 @@ router.patch('/mark-all-read', authenticate, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error marking all notifications as read:', error);
+    logger.error('Error marking all notifications as read:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në shënimin e njoftimeve si të lexuara'
@@ -186,7 +187,7 @@ router.delete('/:id', validateObjectId('id'), authenticate, async (req, res) => 
     });
 
   } catch (error) {
-    console.error('❌ Error deleting notification:', error);
+    logger.error('Error deleting notification:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në fshirjen e njoftimit'
@@ -229,7 +230,7 @@ router.post('/test-job-match', authenticate, requireAdmin, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Test notification error:', error);
+    logger.error('Test notification error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në testimin e njoftimeve'
@@ -251,7 +252,7 @@ router.post('/send-daily-digest', authenticate, requireAdmin, async (req, res) =
     });
 
   } catch (error) {
-    console.error('Daily digest error:', error);
+    logger.error('Daily digest error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në dërgimin e daily digest'
@@ -273,7 +274,7 @@ router.post('/send-weekly-digest', authenticate, requireAdmin, async (req, res) 
     });
 
   } catch (error) {
-    console.error('Weekly digest error:', error);
+    logger.error('Weekly digest error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në dërgimin e weekly digest'
@@ -314,7 +315,7 @@ router.post('/test-welcome-email', authenticate, requireAdmin, async (req, res) 
     });
 
   } catch (error) {
-    console.error('Test welcome email error:', error);
+    logger.error('Test welcome email error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në dërgimin e welcome email'
@@ -416,7 +417,7 @@ router.get('/quickuser-stats', authenticate, requireAdmin, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Notification stats error:', error);
+    logger.error('Notification stats error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e statistikave të njoftimeve'
@@ -470,7 +471,7 @@ router.post('/manual-notify', authenticate, requireAdmin, [
     });
 
   } catch (error) {
-    console.error('Manual notification error:', error);
+    logger.error('Manual notification error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në dërgimin manual të njoftimit'
@@ -530,7 +531,7 @@ router.get('/eligible-users/:jobId', validateObjectId('jobId'), authenticate, re
     });
 
   } catch (error) {
-    console.error('Get eligible users error:', error);
+    logger.error('Get eligible users error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e përdoruesve të gatshëm'

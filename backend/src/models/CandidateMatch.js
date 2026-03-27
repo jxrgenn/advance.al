@@ -27,7 +27,8 @@ const candidateMatchSchema = new mongoose.Schema({
     locationMatch: { type: Number, default: 0, min: 0, max: 15 },
     educationMatch: { type: Number, default: 0, min: 0, max: 5 },
     salaryMatch: { type: Number, default: 0, min: 0, max: 10 },
-    availabilityMatch: { type: Number, default: 0, min: 0, max: 10 }
+    availabilityMatch: { type: Number, default: 0, min: 0, max: 10 },
+    embeddingScore: { type: Number, default: null, min: 0, max: 1 }
   },
   calculatedAt: {
     type: Date,

@@ -1,11 +1,14 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
+import mammoth from 'mammoth';
 import { authenticate, requireJobSeeker } from '../middleware/auth.js';
 import { validateObjectId } from '../utils/sanitize.js';
 import { extractCVDataFromText } from '../services/openaiService.js';
 import { generateCVDocument } from '../services/cvDocumentService.js';
 import User from '../models/User.js';
 import File from '../models/File.js';
+import logger from '../config/logger.js';
+import userEmbeddingService from '../services/userEmbeddingService.js';
 
 const router = express.Router();
 
@@ -77,6 +80,9 @@ router.post('/generate', cvGenerateLimiter, authenticate, requireJobSeeker, asyn
       'profile.jobSeekerProfile.cvLastUpdatedAt': new Date()
     });
 
+    // Re-generate embedding with rich AI CV data (skills, summary, certs, languages)
+    setImmediate(() => userEmbeddingService.generateJobSeekerEmbedding(req.user._id).catch(e => logger.error('Embedding regen error (cv gen):', e.message)));
+
     res.json({
       success: true,
       message: 'CV generated successfully',
@@ -92,7 +98,7 @@ router.post('/generate', cvGenerateLimiter, authenticate, requireJobSeeker, asyn
     });
 
   } catch (error) {
-    console.error('CV generation error:', error.message);
+    logger.error('CV generation error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në gjenerimin e CV'
@@ -120,7 +126,7 @@ router.get('/download/:fileId', validateObjectId('fileId'), authenticate, async 
     res.send(file.fileData);
 
   } catch (error) {
-    console.error('CV download error:', error.message);
+    logger.error('CV download error:', error.message);
     res.status(500).json({ success: false, message: 'Gabim në shkarkimin e CV' });
   }
 });
@@ -139,13 +145,24 @@ router.get('/preview/:fileId', validateObjectId('fileId'), authenticate, async (
       return res.status(403).json({ success: false, message: 'Unauthorized' });
     }
 
-    res.setHeader('Content-Type', file.fileType);
-    const safePreviewName = file.fileName.replace(/[^\w.-]/g, '_');
-    res.setHeader('Content-Disposition', `inline; filename="${safePreviewName}"`);
-    res.send(file.fileData);
+    const isDocx = file.fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      || file.fileName.endsWith('.docx');
+
+    if (isDocx) {
+      // Convert DOCX to HTML so browsers can display it in a new tab
+      const result = await mammoth.convertToHtml({ buffer: Buffer.isBuffer(file.fileData) ? file.fileData : Buffer.from(file.fileData) });
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>CV</title><style>body{font-family:Arial,sans-serif;max-width:800px;margin:40px auto;padding:0 20px;line-height:1.6;color:#333}h1,h2,h3{color:#1a1a1a}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px}</style></head><body>${result.value}</body></html>`;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(html);
+    } else {
+      res.setHeader('Content-Type', file.fileType);
+      const safePreviewName = file.fileName.replace(/[^\w.-]/g, '_');
+      res.setHeader('Content-Disposition', `inline; filename="${safePreviewName}"`);
+      res.send(file.fileData);
+    }
 
   } catch (error) {
-    console.error('CV preview error:', error.message);
+    logger.error('CV preview error:', error.message);
     res.status(500).json({ success: false, message: 'Gabim në shikimin e CV' });
   }
 });
@@ -173,7 +190,7 @@ router.get('/my-cv', authenticate, requireJobSeeker, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get CV error:', error.message);
+    logger.error('Get CV error:', error.message);
     res.status(500).json({ success: false, message: 'Gabim në marrjen e CV' });
   }
 });

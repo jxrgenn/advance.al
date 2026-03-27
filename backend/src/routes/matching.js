@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth.js';
 import candidateMatchingService from '../services/candidateMatching.js';
 import { Job } from '../models/index.js';
 import { validateObjectId } from '../utils/sanitize.js';
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
@@ -62,7 +63,7 @@ router.get('/jobs/:jobId/candidates', validateObjectId('jobId'), authenticate, a
     });
 
   } catch (error) {
-    console.error('Error fetching matching candidates:', error);
+    logger.error('Error fetching matching candidates:', error.message);
     res.status(500).json({
       success: false,
       message: process.env.NODE_ENV === 'production' ? 'Error fetching matching candidates' : (error.message || 'Error fetching matching candidates')
@@ -135,7 +136,7 @@ router.post('/jobs/:jobId/purchase', validateObjectId('jobId'), authenticate, as
     });
 
   } catch (error) {
-    console.error('Error processing payment:', error);
+    logger.error('Error processing payment:', error.message);
     res.status(500).json({
       success: false,
       message: process.env.NODE_ENV === 'production' ? 'Error processing payment' : (error.message || 'Error processing payment')
@@ -168,7 +169,7 @@ router.post('/track-contact', authenticate, async (req, res) => {
     res.json(result);
 
   } catch (error) {
-    console.error('Error tracking contact:', error);
+    logger.error('Error tracking contact:', error.message);
     res.status(500).json({
       success: false,
       message: process.env.NODE_ENV === 'production' ? 'Error tracking contact' : (error.message || 'Error tracking contact')
@@ -196,7 +197,7 @@ router.get('/jobs/:jobId/access', validateObjectId('jobId'), authenticate, async
     });
 
   } catch (error) {
-    console.error('Error checking access:', error);
+    logger.error('Error checking access:', error.message);
     res.status(500).json({
       success: false,
       message: process.env.NODE_ENV === 'production' ? 'Error checking access' : (error.message || 'Error checking access')

@@ -7,7 +7,8 @@ import RotatingContact from "@/components/RotatingContact";
 import AdvanceLanding from "@/components/about_us_actual_landing";
 import ScrollToTopButton from "@/components/ScrollToTopButton";
 import { statsApi } from "@/lib/api";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, type FC, type ReactNode } from "react";
+import { motion, useInView, AnimatePresence } from "motion/react";
 import {
   Users,
   Building,
@@ -25,8 +26,261 @@ import {
   Bell,
   Lightbulb,
   Search,
-  ChevronDown
+  ChevronDown,
+  Brain,
+  FileText,
+  Upload,
+  MousePointerClick,
+  ArrowRight
 } from "lucide-react";
+
+/* ─── Data ─── */
+const aiFeatures = [
+  { icon: Brain, title: 'Përputhje Inteligjente', desc: 'Analizon profilin, aftësitë, dhe përvojën tuaj — gjen punë që vërtet ju përshtaten, jo vetëm fjalë kyçe.', step: 'Regjistrim' },
+  { icon: Upload, title: 'Analizimi i CV-së', desc: 'Ngarkoni CV-në dhe sistemi e lexon, e kupton, e përdor për t\'ju gjetur punë më të përshtatshme.', step: 'Analizë' },
+  { icon: FileText, title: 'CV e Gjeneruar me AI', desc: 'Shkruani lirshëm për veten në çdo gjuhë — AI krijon CV profesionale të formatuar automatikisht.', step: 'Gjenerim' },
+  { icon: Bell, title: 'Njoftime Automatike', desc: 'Sapo postohet punë e re që përputhet me profilin tuaj, merrni email menjëherë.', step: 'Njoftim' },
+  { icon: MousePointerClick, title: 'Aplikim me 1 Klik', desc: 'Plotësoni profilin njëherë, aplikoni kudo me vetëm një klik. Pa formularë, pa përsëritje.', step: 'Aplikim' },
+  { icon: Shield, title: 'Kompani të Verifikuara', desc: 'Çdo punëdhënës kontrollohet nga ekipi ynë para se të postojë. Aplikoni me siguri.', step: 'Siguri' },
+];
+
+const scenarios = [
+  {
+    id: 'quick', name: 'Profil i Shpejtë', subtitle: 'Pa llogari',
+    steps: [
+      { text: 'Jepni emrin, emailin, dhe interesat — 2 minuta', detail: 'Asnjë regjistrim, asnjë CV, asnjë fjalëkalim. Thjesht: "Më interesojnë punët në Marketing, Tiranë".' },
+      { text: 'Ne bëjmë punën për ju', detail: 'Sa herë postohet punë që përputhet me interesat tuaja, ju njoftojmë me email automatikisht.' },
+      { text: 'Gjeni punën e duhur? Aplikoni direkt', detail: 'Kur të jeni gati, kaloni në profil të plotë me disa klika dhe filloni të aplikoni.' },
+    ],
+    result: 'Punët vijnë tek ju — pa kërkuar, pa humbur kohë.',
+  },
+  {
+    id: 'full', name: 'Profil i Plotë', subtitle: 'Punëkërkues',
+    steps: [
+      { text: 'Krijoni profilin dhe ngarkoni CV-në', detail: 'AI lexon CV-në tuaj, kupton aftësitë, dhe krijon profilin profesional automatikisht.' },
+      { text: 'Merrni njoftime për çdo punë që ju përshtatet', detail: 'Njësoj si profili i shpejtë — por tani AI ka të dhëna të plota dhe gjen përputhje më të sakta.' },
+      { text: 'Aplikoni me vetëm 1 klik kudo', detail: 'Profili juaj dërgohet automatikisht. Pa formularë, pa ngarkuar CV sërish — vetëm 1 klik.' },
+    ],
+    result: 'Kontrolli i plotë: njoftime, aplikime, dhe gjithçka në një vend.',
+  },
+  {
+    id: 'employer', name: 'Punëdhënës', subtitle: 'Kompani',
+    steps: [
+      { text: 'Postoni punë të re në 5 minuta', detail: 'Plotësoni formularin, vendosni pagën, publikoni. Shfaqet menjëherë për mijëra kandidatë.' },
+      { text: 'AI gjen dhe njofton kandidatët idealë', detail: 'Sistemi analizon çdo profil dhe u dërgon njoftime vetëm atyre që vërtet përputhen.' },
+      { text: 'Aplikime të cilësisë së lartë fillojnë të vijnë', detail: 'Filtroni, shkurtoni listën, dhe kontaktoni — direkt nga paneli juaj.' },
+    ],
+    result: 'Kandidati i duhur, pa agjenci, pa pritje të gjatë.',
+  },
+];
+
+/* ─── Showcase ─── */
+const FeatureShowcase = () => {
+  const [activeFeature, setActiveFeature] = useState(0);
+  const [activeScenario, setActiveScenario] = useState(0);
+  const sectionRef = useRef(null);
+  const isInView = useInView(sectionRef, { once: true, margin: "-80px" });
+  const s = scenarios[activeScenario];
+  const af = aiFeatures[activeFeature];
+
+  return (
+    <section ref={sectionRef} className="relative overflow-hidden" style={{ padding: '4.5rem 0' }}>
+      <div className="absolute -top-32 -left-48 w-[600px] h-[600px] rounded-full bg-primary/[0.025] blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-40 -right-32 w-[500px] h-[500px] rounded-full bg-blue-300/[0.03] blur-3xl pointer-events-none" />
+
+      <div className="container mx-auto px-4 relative">
+        <div className="max-w-6xl mx-auto">
+
+          {/* ── Heading ── */}
+          <motion.div
+            className="mb-10 md:mb-12"
+            initial={{ opacity: 0, y: 30 }}
+            animate={isInView ? { opacity: 1, y: 0 } : {}}
+            transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <h2 className="text-3xl sm:text-4xl md:text-[2.75rem] font-bold tracking-tight leading-[1.15] mb-3">
+              Si funksionon{' '}
+              <span className="relative inline-block">
+                <span className="bg-gradient-to-r from-primary via-blue-600 to-primary bg-clip-text text-transparent">
+                  Advance.al
+                </span>
+                <motion.span
+                  className="absolute -bottom-1 left-0 h-[2.5px] bg-gradient-to-r from-primary to-blue-400 rounded-full"
+                  initial={{ width: 0 }}
+                  animate={isInView ? { width: '100%' } : {}}
+                  transition={{ duration: 0.8, delay: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                />
+              </span>
+              ?
+            </h2>
+            <p className="text-base text-muted-foreground max-w-md">
+              Çdo hap i automatizuar — dhe rezultati në jetën reale.
+            </p>
+          </motion.div>
+
+          {/* ── Shared container — both columns stretch to match ── */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={isInView ? { opacity: 1, y: 0 } : {}}
+            transition={{ duration: 0.7, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+            className="bg-white rounded-2xl border border-border/50 shadow-sm overflow-hidden"
+          >
+            <div className="grid lg:grid-cols-2">
+
+              {/* ═══ LEFT: AI Feature Accordion ═══ */}
+              <div className="p-5 md:p-6 lg:border-r border-border/40">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-primary/50 mb-4">
+                  Teknologjia
+                </p>
+
+                <div className="divide-y divide-border/30">
+                  {aiFeatures.map((f, i) => {
+                    const Icon = f.icon;
+                    const isActive = activeFeature === i;
+                    return (
+                      <div key={i}>
+                        <button
+                          onClick={() => setActiveFeature(i)}
+                          className="w-full flex items-center gap-3.5 py-3 group text-left"
+                        >
+                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                            isActive
+                              ? 'bg-primary shadow-md shadow-primary/20 scale-105'
+                              : 'bg-slate-100 group-hover:bg-slate-200/80 scale-100'
+                          }`}>
+                            <Icon className={`h-4 w-4 transition-colors duration-300 ${
+                              isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-500'
+                            }`} />
+                          </div>
+
+                          <p className={`flex-1 font-semibold text-[14px] transition-colors duration-300 ${
+                            isActive ? 'text-foreground' : 'text-foreground/35 group-hover:text-foreground/60'
+                          }`}>
+                            {f.title}
+                          </p>
+
+                          <motion.div
+                            animate={{ rotate: isActive ? 90 : 0 }}
+                            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                          >
+                            <ArrowRight className={`h-3.5 w-3.5 flex-shrink-0 transition-colors duration-300 ${
+                              isActive ? 'text-primary' : 'text-slate-200 group-hover:text-slate-300'
+                            }`} />
+                          </motion.div>
+                        </button>
+
+                        <AnimatePresence>
+                          {isActive && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                              className="overflow-hidden"
+                            >
+                              <motion.p
+                                className="pl-[52px] pb-3 text-[13px] text-muted-foreground leading-[1.7]"
+                                initial={{ opacity: 0, y: 4 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.35, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
+                              >
+                                {af.desc}
+                              </motion.p>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ═══ RIGHT: Scenarios ═══ */}
+              <div className="p-5 md:p-6 bg-slate-50/60 flex flex-col border-t lg:border-t-0 border-border/40">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-primary/50 mb-4">
+                  Në praktikë
+                </p>
+
+                {/* Segmented tab */}
+                <div className="flex gap-1 p-1 bg-slate-200/50 rounded-xl mb-5">
+                  {scenarios.map((sc, i) => {
+                    const active = i === activeScenario;
+                    return (
+                      <button
+                        key={sc.id}
+                        onClick={() => setActiveScenario(i)}
+                        className={`relative flex-1 py-2 px-2 rounded-lg text-center transition-colors duration-300 ${
+                          active ? 'text-foreground' : 'text-muted-foreground/60 hover:text-foreground/50'
+                        }`}
+                      >
+                        {active && (
+                          <motion.div
+                            layoutId="scenarioIndicator"
+                            className="absolute inset-0 bg-white rounded-lg shadow-sm shadow-black/[0.06]"
+                            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                          />
+                        )}
+                        <span className="relative z-10 block text-[13px] font-semibold">{sc.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Steps — fills remaining space */}
+                <div className="flex-1 flex flex-col">
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={s.id}
+                      initial={{ opacity: 0, filter: 'blur(3px)' }}
+                      animate={{ opacity: 1, filter: 'blur(0px)' }}
+                      exit={{ opacity: 0, filter: 'blur(3px)' }}
+                      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                      className="flex-1 flex flex-col justify-between"
+                    >
+                      <div className="space-y-4">
+                        {s.steps.map((step, i) => (
+                          <motion.div
+                            key={i}
+                            className="flex gap-3.5"
+                            initial={{ opacity: 0, x: 10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ duration: 0.35, delay: i * 0.07, ease: [0.22, 1, 0.36, 1] }}
+                          >
+                            <div className="w-7 h-7 rounded-lg bg-primary/[0.08] flex items-center justify-center flex-shrink-0 mt-0.5">
+                              <span className="text-primary font-bold text-[11px]">{i + 1}</span>
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-foreground text-[13.5px] leading-snug">{step.text}</p>
+                              <p className="text-muted-foreground text-[12px] leading-relaxed mt-1">{step.detail}</p>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+
+                      {/* Result — pushed to bottom */}
+                      <motion.div
+                        className="flex gap-3.5 items-center mt-6 pt-4 border-t border-green-200/50"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.4, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-green-500 flex items-center justify-center flex-shrink-0">
+                          <CheckCircle className="h-3.5 w-3.5 text-white" />
+                        </div>
+                        <p className="font-semibold text-green-600 text-[13.5px]">{s.result}</p>
+                      </motion.div>
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
+              </div>
+
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    </section>
+  );
+};
 
 const AboutUs = () => {
   const [scrollProgress, setScrollProgress] = useState(0);
@@ -325,15 +579,15 @@ const AboutUs = () => {
                     </div>
                     <h3 className="text-2xl font-bold mb-2">Gjenero CV me AI</h3>
                     <p className="text-sm text-muted-foreground">
-                      Shkrim i lirë • Çdo gjuhë • Automatik
+                      Shkrim i lirë &bull; Çdo gjuhë &bull; Automatik
                     </p>
                   </div>
-                  
+
                   {/* Right side - Description & CTA */}
                   <div className="p-8 md:w-3/5">
                     <p className="text-muted-foreground mb-6 leading-relaxed">
-                      Krijoni një CV profesionale në sekonda duke shkruar thjesht për veten, 
-                      eksperiencën dhe aftësitë tuaja në mënyrë të natyrshme. IA jonë 
+                      Krijoni një CV profesionale në sekonda duke shkruar thjesht për veten,
+                      eksperiencën dhe aftësitë tuaja në mënyrë të natyrshme. IA jonë
                       analizon tekstin dhe krijon një CV të formatuar dhe të optimizuar automatikisht.
                     </p>
                     <Button size="lg" className="w-full md:w-auto" asChild>
@@ -400,7 +654,7 @@ const AboutUs = () => {
         </div>
       </section>
 
-      {/* Contact Information - New Component */}
+      {/* Contact Information */}
       <RotatingContact />
 
       <ScrollToTopButton />
@@ -431,7 +685,10 @@ const AboutUs = () => {
           </div>
         </div>
       </section>
-      
+
+      {/* ===== Feature Showcase (experimental — below footer) ===== */}
+      <FeatureShowcase />
+
       <Footer />
     </div>
   );

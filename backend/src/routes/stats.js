@@ -1,6 +1,7 @@
 import express from 'express';
 import { Job, User, Application } from '../models/index.js';
 import { cacheGet, cacheSet, cacheGetOrSet } from '../config/redis.js';
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
@@ -87,7 +88,7 @@ router.get('/public', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching platform statistics:', error);
+    logger.error('Error fetching platform statistics:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e statistikave të platformës'

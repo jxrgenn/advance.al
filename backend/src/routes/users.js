@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { randomUUID } from 'crypto';
+import mammoth from 'mammoth';
 import { body, validationResult } from 'express-validator';
 import { User, SystemConfiguration } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer, requireAdmin } from '../middleware/auth.js';
@@ -11,12 +12,20 @@ import resendEmailService from '../lib/resendEmailService.js';
 import { uploadToCloudinary, deleteFromCloudinary } from '../config/cloudinary.js';
 import logger from '../config/logger.js';
 import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
+import rateLimit from 'express-rate-limit';
+import { parseUserProfileCV } from '../services/cvParsingService.js';
 
 const router = express.Router();
 
 // Check if Cloudinary is configured
 const isCloudinaryConfigured = () =>
   !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
+
+// In production, Cloudinary is REQUIRED — local disk is ephemeral on Railway/Vercel
+const isProduction = process.env.NODE_ENV === 'production';
+if (isProduction && !isCloudinaryConfigured()) {
+  logger.error('Cloudinary not configured in production — file uploads will be rejected');
+}
 
 // Extract Cloudinary public_id from a Cloudinary URL for deletion
 const extractCloudinaryPublicId = (url) => {
@@ -60,12 +69,17 @@ const diskStorage = multer.diskStorage({
 
 const memoryStorage = multer.memoryStorage();
 
-// File filter for resume uploads (PDF only)
+// File filter for resume uploads (PDF + DOCX)
+const RESUME_ALLOWED_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+  'application/msword' // .doc (legacy)
+];
 const resumeFileFilter = (req, file, cb) => {
-  if (file.mimetype === 'application/pdf') {
+  if (RESUME_ALLOWED_TYPES.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Vetëm skedarët PDF janë të lejuar'), false);
+    cb(new Error('Vetëm skedarët PDF dhe Word (DOCX) janë të lejuar'), false);
   }
 };
 
@@ -79,10 +93,15 @@ const imageFileFilter = (req, file, cb) => {
   }
 };
 
-// Resume upload multer config
+// Resume upload multer config — production requires Cloudinary (disk is ephemeral)
 const upload = multer({
-  storage: isCloudinaryConfigured() ? memoryStorage : diskStorage,
-  fileFilter: resumeFileFilter,
+  storage: isCloudinaryConfigured() ? memoryStorage : (isProduction ? memoryStorage : diskStorage),
+  fileFilter: (req, file, cb) => {
+    if (isProduction && !isCloudinaryConfigured()) {
+      return cb(new Error('Ngarkimi i skedarëve nuk është i disponueshëm momentalisht'), false);
+    }
+    return resumeFileFilter(req, file, cb);
+  },
   limits: {
     fileSize: 5 * 1024 * 1024 // 5MB limit
   }
@@ -101,21 +120,28 @@ const validateImageMagicBytes = (buffer) => {
   return false;
 };
 
-// Image upload multer config (for logos and profile photos)
+// Image upload multer config (for logos and profile photos) — production requires Cloudinary
+const imageDiskStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(process.cwd(), 'uploads', 'images');
+    fs.mkdirSync(uploadDir, { recursive: true });
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const extension = path.extname(file.originalname);
+    cb(null, `image-${req.user._id}-${uniqueSuffix}${extension}`);
+  }
+});
+
 const imageUpload = multer({
-  storage: isCloudinaryConfigured() ? memoryStorage : multer.diskStorage({
-    destination: function (req, file, cb) {
-      const uploadDir = path.join(process.cwd(), 'uploads', 'images');
-      fs.mkdirSync(uploadDir, { recursive: true });
-      cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-      const extension = path.extname(file.originalname);
-      cb(null, `image-${req.user._id}-${uniqueSuffix}${extension}`);
+  storage: isCloudinaryConfigured() ? memoryStorage : (isProduction ? memoryStorage : imageDiskStorage),
+  fileFilter: (req, file, cb) => {
+    if (isProduction && !isCloudinaryConfigured()) {
+      return cb(new Error('Ngarkimi i imazheve nuk është i disponueshëm momentalisht'), false);
     }
-  }),
-  fileFilter: imageFileFilter,
+    return imageFileFilter(req, file, cb);
+  },
   limits: {
     fileSize: 2 * 1024 * 1024 // 2MB limit for images
   }
@@ -250,7 +276,7 @@ router.get('/profile', authenticate, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get profile error:', error);
+    logger.error('Get profile error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e profilit'
@@ -324,6 +350,12 @@ router.put('/profile', authenticate, async (req, res) => {
       // Arrays (education, workHistory) managed via dedicated CRUD endpoints
     }
 
+    // Normalize website: auto-prepend https:// for bare domains
+    if (employerProfile?.website) {
+      const w = employerProfile.website.trim();
+      employerProfile.website = w.match(/^https?:\/\//) ? w : `https://${w}`;
+    }
+
     // Update employer specific fields (only if not verified to prevent fraud)
     if (user.userType === 'employer' && employerProfile) {
       if (user.profile.employerProfile.verified) {
@@ -358,7 +390,7 @@ router.put('/profile', authenticate, async (req, res) => {
           try {
             await userEmbeddingService.generateJobSeekerEmbedding(user._id);
           } catch (error) {
-            console.error('Error regenerating jobseeker embedding:', error);
+            logger.error('Error regenerating jobseeker embedding:', error.message);
           }
         });
       }
@@ -371,7 +403,7 @@ router.put('/profile', authenticate, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Update profile error:', error);
+    logger.error('Update profile error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në përditësimin e profilit'
@@ -431,7 +463,7 @@ router.get('/public-profile/:id', validateObjectId('id'), authenticate, requireE
     });
 
   } catch (error) {
-    console.error('Get public profile error:', error);
+    logger.error('Get public profile error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e profilit publik'
@@ -487,7 +519,7 @@ router.delete('/account', authenticate, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Delete account error:', error);
+    logger.error('Delete account error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në fshirjen e llogarisë'
@@ -557,7 +589,7 @@ router.get('/stats', authenticate, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get user stats error:', error);
+    logger.error('Get user stats error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e statistikave'
@@ -646,7 +678,7 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
     });
 
   } catch (error) {
-    console.error('Upload resume error:', error);
+    logger.error('Upload resume error:', error.message);
 
     // Handle multer errors
     if (error.code === 'LIMIT_FILE_SIZE') {
@@ -656,16 +688,148 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
       });
     }
 
-    if (error.message === 'Vetëm skedarët PDF janë të lejuar') {
+    if (error.message === 'Vetëm skedarët PDF dhe Word (DOCX) janë të lejuar') {
       return res.status(400).json({
         success: false,
-        message: 'Vetëm skedarët PDF janë të lejuar'
+        message: 'Vetëm skedarët PDF dhe Word (DOCX) janë të lejuar'
       });
     }
 
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e CV-së'
+    });
+  }
+});
+
+// Rate limiter for CV parsing (uses OpenAI credits)
+const parseResumeLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: process.env.NODE_ENV === 'development' ? 100 : 5,
+  // Use user ID as key (auth middleware runs before this, so req.user is available)
+  // Fallback handled inside the route — this limiter applies after authenticate middleware
+  keyGenerator: (req) => req.user?._id?.toString() || 'anonymous',
+  message: {
+    success: false,
+    message: 'Keni arritur limitin e analizimit të CV. Provoni përsëri pas 1 ore.'
+  },
+  validate: false // Disable validation warnings for custom keyGenerator
+});
+
+// @route   POST /api/users/parse-resume
+// @desc    Upload CV, store it, and parse with AI to extract profile data for preview
+// @access  Private (Job Seekers only)
+router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter, upload.single('resume'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nuk u ngarkua asnjë skedar'
+      });
+    }
+
+    // Check config-driven max CV file size
+    try {
+      const maxSizeMB = await SystemConfiguration.getSettingValue('max_cv_file_size') || 5;
+      if (req.file.size > maxSizeMB * 1024 * 1024) {
+        return res.status(400).json({
+          success: false,
+          message: `Skedari është shumë i madh. Madhësia maksimale: ${maxSizeMB}MB`
+        });
+      }
+    } catch { /* use default multer limit if config unavailable */ }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Përdoruesi nuk u gjet'
+      });
+    }
+
+    // --- Step 1: Upload file (same as upload-resume) ---
+    let resumeUrl;
+
+    // Clean up old Cloudinary file if exists
+    const oldResumeUrl = user.profile.jobSeekerProfile?.resume;
+    if (oldResumeUrl) {
+      await cleanupOldCloudinaryFile(oldResumeUrl, 'raw');
+    }
+
+    if (isCloudinaryConfigured() && req.file.buffer) {
+      try {
+        const cloudResult = await uploadToCloudinary(req.file.buffer, {
+          folder: 'advance-al/cvs',
+          resource_type: 'raw',
+          public_id: `resume-${req.user._id}-${Date.now()}`,
+        });
+        resumeUrl = cloudResult.secure_url;
+        logger.info('Resume uploaded to Cloudinary (parse-resume)', { userId: req.user._id, url: resumeUrl });
+      } catch (cloudError) {
+        logger.error('Cloudinary resume upload failed, falling back to local', { error: cloudError.message });
+        const fallbackDir = path.join(process.cwd(), 'uploads', 'resumes');
+        fs.mkdirSync(fallbackDir, { recursive: true });
+        const fallbackName = `resume-${req.user._id}-${Date.now()}${path.extname(req.file.originalname)}`;
+        fs.writeFileSync(path.join(fallbackDir, fallbackName), req.file.buffer);
+        resumeUrl = `/uploads/resumes/${fallbackName}`;
+      }
+    } else {
+      resumeUrl = `/uploads/resumes/${req.file.filename}`;
+    }
+
+    // Update user profile with resume URL
+    if (!user.profile.jobSeekerProfile) {
+      user.profile.jobSeekerProfile = {};
+    }
+    user.profile.jobSeekerProfile.resume = resumeUrl;
+    await user.save();
+
+    // --- Step 2: Parse CV with AI ---
+    let parsedData = null;
+    try {
+      const parseResult = await parseUserProfileCV(req.file.buffer);
+      if (parseResult.success) {
+        parsedData = parseResult.data;
+      } else {
+        logger.warn('CV parsing returned no data', { userId: req.user._id, error: parseResult.error });
+      }
+    } catch (parseError) {
+      logger.error('CV parsing threw error', { userId: req.user._id, error: parseError.message });
+      // File upload succeeded — don't fail the whole request
+    }
+
+    res.json({
+      success: true,
+      message: parsedData
+        ? 'CV u ngarkua dhe u analizua me sukses'
+        : 'CV u ngarkua por nuk mund të analizohej',
+      data: {
+        resumeUrl,
+        parsedData,
+        user
+      }
+    });
+
+  } catch (error) {
+    logger.error('Parse resume error:', error.message);
+
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        message: 'Skedari është shumë i madh. Madhësia maksimale është 5MB'
+      });
+    }
+
+    if (error.message === 'Vetëm skedarët PDF dhe Word (DOCX) janë të lejuar') {
+      return res.status(400).json({
+        success: false,
+        message: 'Vetëm skedarët PDF dhe Word (DOCX) janë të lejuar'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Gabim në ngarkimin dhe analizimin e CV-së'
     });
   }
 });
@@ -754,7 +918,7 @@ router.post('/upload-logo', authenticate, requireEmployer, imageUpload.single('l
     });
 
   } catch (error) {
-    console.error('Upload logo error:', error);
+    logger.error('Upload logo error:', error.message);
 
     if (error.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({
@@ -861,7 +1025,7 @@ router.post('/upload-profile-photo', authenticate, requireJobSeeker, imageUpload
     });
 
   } catch (error) {
-    console.error('Upload profile photo error:', error);
+    logger.error('Upload profile photo error:', error.message);
 
     if (error.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({
@@ -885,28 +1049,26 @@ router.post('/upload-profile-photo', authenticate, requireJobSeeker, imageUpload
 });
 
 // Helper function to calculate profile completeness
+// IMPORTANT: Keep in sync with frontend Profile.tsx and ApplyModal.tsx
 const calculateProfileCompleteness = (user) => {
   if (user.userType !== 'jobseeker') return 100;
 
   const profile = user.profile;
   const jobSeekerProfile = profile.jobSeekerProfile || {};
 
-  let completeness = 0;
-  let totalFields = 8;
+  let score = 0;
 
-  // Basic fields (25 points each)
-  if (profile.firstName) completeness += 12.5;
-  if (profile.lastName) completeness += 12.5;
-  if (profile.phone) completeness += 12.5;
-  if (profile.location?.city) completeness += 12.5;
+  // Weighted fields (total = 100%)
+  if (profile.firstName && profile.lastName) score += 15;
+  if (profile.phone) score += 10;
+  if (profile.location?.city) score += 10;
+  if (jobSeekerProfile.title) score += 15;
+  if (jobSeekerProfile.bio) score += 15;
+  if (jobSeekerProfile.skills?.length > 0) score += 15;
+  if (jobSeekerProfile.experience) score += 10;
+  if (jobSeekerProfile.resume) score += 10;
 
-  // Job seeker specific fields
-  if (jobSeekerProfile.title) completeness += 12.5;
-  if (jobSeekerProfile.bio) completeness += 12.5;
-  if (jobSeekerProfile.skills?.length > 0) completeness += 12.5;
-  if (jobSeekerProfile.cvFile) completeness += 12.5;
-
-  return Math.round(completeness);
+  return Math.min(score, 100);
 };
 
 // Admin routes for employer verification
@@ -948,7 +1110,7 @@ router.get('/admin/pending-employers', authenticate, requireAdmin, async (req, r
     });
 
   } catch (error) {
-    console.error('Get pending employers error:', error);
+    logger.error('Get pending employers error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e punëdhënësve në pritje'
@@ -1009,7 +1171,7 @@ router.patch('/admin/verify-employer/:id', validateObjectId('id'), authenticate,
             : `<p>Përshëndetje ${employer.profile.firstName},</p><p>Na vjen keq, por llogaria juaj si punëdhënës nuk u aprovua në këtë moment. Ju lutemi kontaktoni ekipin tonë për më shumë informacion.</p><p>Ekipi i advance.al</p>`
         );
       } catch (emailErr) {
-        console.error('Error sending verification email:', emailErr.message);
+        logger.error('Error sending verification email:', emailErr.message);
       }
     });
 
@@ -1020,7 +1182,7 @@ router.patch('/admin/verify-employer/:id', validateObjectId('id'), authenticate,
     });
 
   } catch (error) {
-    console.error('Verify employer error:', error);
+    logger.error('Verify employer error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në verifikimin e punëdhënësit'
@@ -1074,6 +1236,9 @@ router.post('/work-experience', authenticate, requireJobSeeker, [
     user.profile.jobSeekerProfile.workHistory.push(experienceData);
     await user.save();
 
+    // Re-generate embedding with new work history data
+    setImmediate(() => userEmbeddingService.generateJobSeekerEmbedding(user._id).catch(e => logger.error('Embedding regen error (add work):', e.message)));
+
     res.json({
       success: true,
       message: 'Përvojë e punës u shtua me sukses',
@@ -1084,7 +1249,7 @@ router.post('/work-experience', authenticate, requireJobSeeker, [
     });
 
   } catch (error) {
-    console.error('Add work experience error:', error);
+    logger.error('Add work experience error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në shtimin e përvojës së punës'
@@ -1139,6 +1304,9 @@ router.post('/education', authenticate, requireJobSeeker, [
     user.profile.jobSeekerProfile.education.push(educationData);
     await user.save();
 
+    // Re-generate embedding with new education data
+    setImmediate(() => userEmbeddingService.generateJobSeekerEmbedding(user._id).catch(e => logger.error('Embedding regen error (add edu):', e.message)));
+
     res.json({
       success: true,
       message: 'Arsimimi u shtua me sukses',
@@ -1149,11 +1317,113 @@ router.post('/education', authenticate, requireJobSeeker, [
     });
 
   } catch (error) {
-    console.error('Add education error:', error);
+    logger.error('Add education error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në shtimin e arsimimit'
     });
+  }
+});
+
+// @route   PUT /api/users/work-experience/:experienceId
+// @desc    Update a work experience entry
+// @access  Private (Job Seeker only)
+router.put('/work-experience/:experienceId', validateObjectId('experienceId'), authenticate, requireJobSeeker, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Përdoruesi nuk u gjet' });
+    }
+
+    const workHistory = user.profile?.jobSeekerProfile?.workHistory;
+    if (!workHistory || workHistory.length === 0) {
+      return res.status(404).json({ success: false, message: 'Përvojë e punës nuk u gjet' });
+    }
+
+    const entry = workHistory.id(req.params.experienceId);
+    if (!entry) {
+      return res.status(404).json({ success: false, message: 'Përvojë e punës nuk u gjet' });
+    }
+
+    const { position, company, location, startDate, endDate, isCurrentJob, description, achievements } = req.body;
+    if (position) entry.position = stripHtml(position);
+    if (company) entry.company = stripHtml(company);
+    if (location !== undefined) entry.location = stripHtml(location || '');
+    if (startDate) entry.startDate = startDate;
+    if (isCurrentJob) {
+      entry.endDate = undefined;
+    } else if (endDate) {
+      entry.endDate = endDate;
+    }
+    if (description !== undefined) entry.description = stripHtml(description || '');
+    if (achievements !== undefined) entry.achievements = stripHtml(achievements || '');
+
+    await user.save();
+
+    // Re-generate embedding with updated work history
+    setImmediate(() => userEmbeddingService.generateJobSeekerEmbedding(user._id).catch(e => logger.error('Embedding regen error (edit work):', e.message)));
+
+    res.json({
+      success: true,
+      message: 'Përvojë e punës u përditësua me sukses',
+      data: { user }
+    });
+  } catch (error) {
+    logger.error('Update work experience error:', error.message);
+    res.status(500).json({ success: false, message: 'Gabim në përditësimin e përvojës së punës' });
+  }
+});
+
+// @route   PUT /api/users/education/:educationId
+// @desc    Update an education entry
+// @access  Private (Job Seeker only)
+router.put('/education/:educationId', validateObjectId('educationId'), authenticate, requireJobSeeker, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Përdoruesi nuk u gjet' });
+    }
+
+    const education = user.profile?.jobSeekerProfile?.education;
+    if (!education || education.length === 0) {
+      return res.status(404).json({ success: false, message: 'Arsimimi nuk u gjet' });
+    }
+
+    const entry = education.id(req.params.educationId);
+    if (!entry) {
+      return res.status(404).json({ success: false, message: 'Arsimimi nuk u gjet' });
+    }
+
+    const { degree, fieldOfStudy, institution, location, startDate, endDate, isCurrentStudy, gpa, description } = req.body;
+    if (degree) entry.degree = stripHtml(degree);
+    if (fieldOfStudy !== undefined) entry.fieldOfStudy = stripHtml(fieldOfStudy || '');
+    if (institution) entry.school = stripHtml(institution);
+    if (location !== undefined) entry.location = stripHtml(location || '');
+    if (startDate) entry.startDate = startDate;
+    if (isCurrentStudy) {
+      entry.endDate = undefined;
+    } else if (endDate) {
+      entry.endDate = endDate;
+    }
+    if (gpa !== undefined) entry.gpa = stripHtml(gpa || '');
+    if (description !== undefined) entry.description = stripHtml(description || '');
+    // Update year from endDate or startDate
+    if (endDate) entry.year = new Date(endDate).getFullYear();
+    else if (startDate) entry.year = new Date(startDate).getFullYear();
+
+    await user.save();
+
+    // Re-generate embedding with updated education
+    setImmediate(() => userEmbeddingService.generateJobSeekerEmbedding(user._id).catch(e => logger.error('Embedding regen error (edit edu):', e.message)));
+
+    res.json({
+      success: true,
+      message: 'Arsimimi u përditësua me sukses',
+      data: { user }
+    });
+  } catch (error) {
+    logger.error('Update education error:', error.message);
+    res.status(500).json({ success: false, message: 'Gabim në përditësimin e arsimimit' });
   }
 });
 
@@ -1180,13 +1450,16 @@ router.delete('/work-experience/:experienceId', validateObjectId('experienceId')
     workHistory.splice(index, 1);
     await user.save();
 
+    // Re-generate embedding after work history removal
+    setImmediate(() => userEmbeddingService.generateJobSeekerEmbedding(user._id).catch(e => logger.error('Embedding regen error (del work):', e.message)));
+
     res.json({
       success: true,
       message: 'Përvojë e punës u fshi me sukses',
       data: { user }
     });
   } catch (error) {
-    console.error('Delete work experience error:', error);
+    logger.error('Delete work experience error:', error.message);
     res.status(500).json({ success: false, message: 'Gabim në fshirjen e përvojës së punës' });
   }
 });
@@ -1214,13 +1487,16 @@ router.delete('/education/:educationId', validateObjectId('educationId'), authen
     education.splice(index, 1);
     await user.save();
 
+    // Re-generate embedding after education removal
+    setImmediate(() => userEmbeddingService.generateJobSeekerEmbedding(user._id).catch(e => logger.error('Embedding regen error (del edu):', e.message)));
+
     res.json({
       success: true,
       message: 'Arsimimi u fshi me sukses',
       data: { user }
     });
   } catch (error) {
-    console.error('Delete education error:', error);
+    logger.error('Delete education error:', error.message);
     res.status(500).json({ success: false, message: 'Gabim në fshirjen e arsimimit' });
   }
 });
@@ -1259,7 +1535,7 @@ router.post('/saved-jobs/check-bulk', authenticate, requireJobSeeker, async (req
     });
 
   } catch (error) {
-    console.error('Bulk check saved jobs error:', error);
+    logger.error('Bulk check saved jobs error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në kontrollimin e punëve të ruajtura'
@@ -1308,7 +1584,7 @@ router.post('/saved-jobs/:jobId', validateObjectId('jobId'), authenticate, requi
     });
 
   } catch (error) {
-    console.error('Save job error:', error);
+    logger.error('Save job error:', error.message);
     if (error.message === 'Only job seekers can save jobs') {
       return res.status(403).json({
         success: false,
@@ -1347,7 +1623,7 @@ router.delete('/saved-jobs/:jobId', validateObjectId('jobId'), authenticate, req
     });
 
   } catch (error) {
-    console.error('Unsave job error:', error);
+    logger.error('Unsave job error:', error.message);
     if (error.message === 'Only job seekers can unsave jobs') {
       return res.status(403).json({
         success: false,
@@ -1422,7 +1698,7 @@ router.get('/saved-jobs', authenticate, requireJobSeeker, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get saved jobs error:', error);
+    logger.error('Get saved jobs error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e punëve të ruajtura'
@@ -1454,11 +1730,228 @@ router.get('/saved-jobs/check/:jobId', validateObjectId('jobId'), authenticate, 
     });
 
   } catch (error) {
-    console.error('Check saved job error:', error);
+    logger.error('Check saved job error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në kontrollimin e punës së ruajtur'
     });
+  }
+});
+
+// @route   GET /api/users/resume/:filename
+// @desc    Serve uploaded resume files (authenticated, supports ?token= for new-tab viewing)
+// @access  Private
+router.get('/resume/:filename', (req, res, next) => {
+  // Support token in query param for new-tab opens (can't set headers in window.open)
+  if (!req.headers.authorization && req.query.token) {
+    req.headers.authorization = `Bearer ${req.query.token}`;
+  }
+  next();
+}, authenticate, async (req, res) => {
+  const { filename } = req.params;
+
+  // Sanitize filename — reject path traversal attempts
+  if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    return res.status(400).json({
+      success: false,
+      message: 'Emri i skedarit nuk është i vlefshëm'
+    });
+  }
+
+  const filePath = path.join(process.cwd(), 'uploads', 'resumes', filename);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({
+      success: false,
+      message: 'Skedari nuk u gjet'
+    });
+  }
+
+  // Detect content type from extension
+  const ext = path.extname(filename).toLowerCase();
+
+  if (ext === '.docx') {
+    // Convert DOCX to HTML so browsers can display it in a new tab
+    try {
+      const buffer = fs.readFileSync(filePath);
+      const result = await mammoth.convertToHtml({ buffer });
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>CV</title><style>body{font-family:Arial,sans-serif;max-width:800px;margin:40px auto;padding:0 20px;line-height:1.6;color:#333}h1,h2,h3{color:#1a1a1a}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px}</style></head><body>${result.value}</body></html>`;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(html);
+    } catch (err) {
+      logger.error('DOCX conversion error:', err.message);
+      res.status(500).json({ success: false, message: 'Gabim në leximin e skedarit' });
+    }
+  } else {
+    const mimeMap = {
+      '.pdf': 'application/pdf',
+      '.doc': 'application/msword'
+    };
+    res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+
+    const stream = fs.createReadStream(filePath);
+    stream.on('error', (err) => {
+      logger.error('Resume file stream error:', err.message);
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          message: 'Gabim në leximin e skedarit'
+        });
+      }
+    });
+    stream.pipe(res);
+  }
+});
+
+// ─── Cookie Consent (GDPR compliance) ────────────────────────────────────
+router.post('/cookie-consent', authenticate, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Perdoruesi nuk u gjet' });
+    }
+
+    user.consentTracking = user.consentTracking || {};
+    user.consentTracking.cookieConsentAt = new Date();
+    await user.save({ validateBeforeSave: false });
+
+    res.json({ success: true, message: 'Cookie consent u regjistrua me sukses' });
+  } catch (err) {
+    logger.error('Cookie consent error:', err.message);
+    res.status(500).json({ success: false, message: 'Gabim ne regjistrimin e cookie consent' });
+  }
+});
+
+// ─── Data Export (GDPR right to data portability) ────────────────────────
+router.get('/export', authenticate, async (req, res) => {
+  try {
+    const { Application, Job } = await import('../models/index.js');
+
+    // Fetch full user profile (exclude password, tokens, internal fields)
+    const user = await User.findById(req.user._id)
+      .select('-password -refreshTokens -emailVerificationToken -emailVerificationExpires -passwordResetToken -passwordResetExpires -__v');
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Perdoruesi nuk u gjet' });
+    }
+
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      account: {
+        email: user.email,
+        userType: user.userType,
+        status: user.status,
+        emailVerified: user.emailVerified,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        lastLoginAt: user.lastLoginAt,
+        privacySettings: user.privacySettings
+      },
+      consentTracking: user.consentTracking || {},
+      profile: {
+        firstName: user.profile?.firstName,
+        lastName: user.profile?.lastName,
+        phone: user.profile?.phone,
+        location: user.profile?.location
+      }
+    };
+
+    // Job seeker specific data
+    if (user.userType === 'jobseeker' && user.profile?.jobSeekerProfile) {
+      const jsp = user.profile.jobSeekerProfile;
+      exportData.jobSeekerProfile = {
+        title: jsp.title,
+        bio: jsp.bio,
+        experience: jsp.experience,
+        skills: jsp.skills,
+        education: jsp.education,
+        workHistory: jsp.workHistory,
+        desiredSalary: jsp.desiredSalary,
+        openToRemote: jsp.openToRemote,
+        availability: jsp.availability,
+        resume: jsp.resume ? '(file on record)' : null,
+        cvFile: jsp.cvFile ? '(file on record)' : null,
+        profilePhoto: jsp.profilePhoto ? '(file on record)' : null,
+        aiGeneratedCV: jsp.aiGeneratedCV || null,
+        cvGeneratedAt: jsp.cvGeneratedAt,
+        notifications: jsp.notifications
+      };
+
+      // Applications with job titles
+      const applications = await Application.find({
+        jobSeekerId: user._id,
+        withdrawn: false
+      })
+        .populate('jobId', 'title location category')
+        .select('status appliedAt applicationMethod coverLetter customAnswers viewedAt respondedAt messages')
+        .sort({ appliedAt: -1 })
+        .lean();
+
+      exportData.applications = applications.map(app => ({
+        jobTitle: app.jobId?.title || '(pune e fshire)',
+        jobLocation: app.jobId?.location,
+        jobCategory: app.jobId?.category,
+        status: app.status,
+        appliedAt: app.appliedAt,
+        applicationMethod: app.applicationMethod,
+        coverLetter: app.coverLetter,
+        customAnswers: app.customAnswers,
+        viewedAt: app.viewedAt,
+        respondedAt: app.respondedAt,
+        messageCount: app.messages?.length || 0
+      }));
+
+      // Saved jobs
+      if (user.savedJobs?.length) {
+        const savedJobs = await Job.find({ _id: { $in: user.savedJobs } })
+          .select('title location category')
+          .lean();
+        exportData.savedJobs = savedJobs.map(j => ({
+          title: j.title,
+          location: j.location,
+          category: j.category
+        }));
+      }
+    }
+
+    // Employer specific data
+    if (user.userType === 'employer' && user.profile?.employerProfile) {
+      const emp = user.profile.employerProfile;
+      exportData.employerProfile = {
+        companyName: emp.companyName,
+        companySize: emp.companySize,
+        industry: emp.industry,
+        description: emp.description,
+        website: emp.website,
+        logo: emp.logo ? '(file on record)' : null,
+        verified: emp.verified,
+        verificationStatus: emp.verificationStatus,
+        subscriptionTier: emp.subscriptionTier,
+        phone: emp.phone,
+        whatsapp: emp.whatsapp,
+        contactPreferences: emp.contactPreferences
+      };
+
+      // Jobs posted
+      const jobs = await Job.find({ employerId: user._id })
+        .select('title location category status createdAt applicationCount')
+        .sort({ createdAt: -1 })
+        .lean();
+      exportData.postedJobs = jobs.map(j => ({
+        title: j.title,
+        location: j.location,
+        category: j.category,
+        status: j.status,
+        createdAt: j.createdAt,
+        applicationCount: j.applicationCount
+      }));
+    }
+
+    res.json({ success: true, data: exportData });
+  } catch (err) {
+    logger.error('Data export error:', err.message);
+    res.status(500).json({ success: false, message: 'Gabim gjate eksportimit te te dhenave' });
   }
 });
 

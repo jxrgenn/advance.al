@@ -1,8 +1,11 @@
-# Use Node.js LTS version
-FROM node:18-alpine
+# Use Node.js 20 LTS (Node 18 EOL April 2025)
+FROM node:20-alpine
 
 # Set working directory
 WORKDIR /app
+
+# Set production environment
+ENV NODE_ENV=production
 
 # Copy package files
 COPY package*.json ./
@@ -13,8 +16,11 @@ RUN npm install --omit=dev
 # Copy application code
 COPY . .
 
-# Create uploads directory
+# Create uploads directory (dev fallback only — production uses Cloudinary)
 RUN mkdir -p uploads
+
+# Don't run as root
+USER node
 
 # Expose port
 EXPOSE 3001

@@ -1,0 +1,423 @@
+{
+  "scenario": "race",
+  "timestamp": "2026-03-25T00:40:52.173Z",
+  "overall": {
+    "totalRequests": 204,
+    "requestsPerSecond": 20.83027643921128,
+    "errorRate": 0,
+    "slowRequests": 0,
+    "responseTimes": {
+      "p50": 0,
+      "p95": 1956.0938,
+      "p99": 0
+    }
+  },
+  "endpoints": {
+    "jobList": {
+      "p50": 0,
+      "p95": 0,
+      "p99": 0
+    },
+    "jobDetail": {
+      "p50": 0,
+      "p95": 0,
+      "p99": 0
+    },
+    "search": {
+      "p50": 0,
+      "p95": 0,
+      "p99": 0
+    },
+    "auth": {
+      "p50": 0,
+      "p95": 0,
+      "p99": 0
+    },
+    "application": {
+      "p50": 0,
+      "p95": 1956,
+      "p99": 0
+    },
+    "notifications": {
+      "p50": 0,
+      "p95": 0,
+      "p99": 0
+    },
+    "profile": {
+      "p50": 0,
+      "p95": 0,
+      "p99": 0
+    },
+    "viewTrack": {
+      "p50": 0,
+      "p95": 0,
+      "p99": 0
+    },
+    "statsLocCo": {
+      "p50": 0,
+      "p95": 0,
+      "p99": 0
+    }
+  },
+  "checks": {
+    "passed": 0,
+    "failed": 0,
+    "total": 0,
+    "rate": null
+  },
+  "raceConditions": {
+    "applyToSameJob": {
+      "succeeded": 0,
+      "failed": 200
+    },
+    "registration": {
+      "succeeded": 0,
+      "failed": 0
+    },
+    "profileUpdate": {
+      "succeeded": 0,
+      "failed": 0
+    }
+  },
+  "rawK6Data": {
+    "state": {
+      "isStdOutTTY": false,
+      "isStdErrTTY": false,
+      "testRunDurationMs": 9793.437
+    },
+    "metrics": {
+      "http_req_tls_handshaking": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "avg": 0,
+          "min": 0,
+          "med": 0,
+          "max": 0,
+          "p(90)": 0,
+          "p(95)": 0
+        }
+      },
+      "vus": {
+        "type": "gauge",
+        "contains": "default",
+        "values": {
+          "value": 22,
+          "min": 0,
+          "max": 50
+        }
+      },
+      "data_received": {
+        "type": "counter",
+        "contains": "data",
+        "values": {
+          "count": 318277,
+          "rate": 32499.00928550416
+        }
+      },
+      "checks": {
+        "type": "rate",
+        "contains": "default",
+        "values": {
+          "fails": 0,
+          "rate": 1,
+          "passes": 400
+        }
+      },
+      "http_req_duration{expected_response:true}": {
+        "values": {
+          "avg": 489.2625,
+          "min": 232.637,
+          "med": 408.3915,
+          "max": 907.63,
+          "p(90)": 760.9333,
+          "p(95)": 834.2816499999999
+        },
+        "type": "trend",
+        "contains": "time"
+      },
+      "http_req_sending": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "max": 1.896,
+          "p(90)": 0.22530000000000008,
+          "p(95)": 0.49144999999999983,
+          "avg": 0.08696078431372567,
+          "min": 0.003,
+          "med": 0.01
+        }
+      },
+      "errors": {
+        "thresholds": {
+          "rate<0.01": {
+            "ok": true
+          }
+        },
+        "type": "rate",
+        "contains": "default",
+        "values": {
+          "passes": 0,
+          "fails": 200,
+          "rate": 0
+        }
+      },
+      "http_req_waiting": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "avg": 1687.4651225490213,
+          "min": 232.263,
+          "med": 1867.5,
+          "max": 1990.212,
+          "p(90)": 1945.0515,
+          "p(95)": 1956.0729000000001
+        }
+      },
+      "http_reqs": {
+        "contains": "default",
+        "values": {
+          "count": 204,
+          "rate": 20.83027643921128
+        },
+        "type": "counter"
+      },
+      "http_req_blocked": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "avg": 0.28192647058823556,
+          "min": 0.001,
+          "med": 0.002,
+          "max": 4.906,
+          "p(90)": 0.8558,
+          "p(95)": 1.8616999999999981
+        }
+      },
+      "vus_max": {
+        "type": "gauge",
+        "contains": "default",
+        "values": {
+          "value": 50,
+          "min": 50,
+          "max": 50
+        }
+      },
+      "iterations": {
+        "contains": "default",
+        "values": {
+          "count": 200,
+          "rate": 20.421839646285566
+        },
+        "type": "counter"
+      },
+      "http_req_duration": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "avg": 1687.5925931372553,
+          "min": 232.637,
+          "med": 1867.5430000000001,
+          "max": 1990.235,
+          "p(90)": 1945.0911,
+          "p(95)": 1956.0938
+        },
+        "thresholds": {
+          "p(95)<500": {
+            "ok": false
+          }
+        }
+      },
+      "data_sent": {
+        "type": "counter",
+        "contains": "data",
+        "values": {
+          "rate": 9830.767278127178,
+          "count": 96277
+        }
+      },
+      "iteration_duration": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "med": 1970.6032500000001,
+          "max": 2091.051375,
+          "p(90)": 2047.2089294,
+          "p(95)": 2056.3875660000003,
+          "avg": 1812.8147962400003,
+          "min": 863.866125
+        }
+      },
+      "application_duration": {
+        "type": "trend",
+        "contains": "default",
+        "values": {
+          "p(95)": 1956.20695,
+          "avg": 1711.5591950000005,
+          "min": 760.148,
+          "med": 1870.152,
+          "max": 1990.235,
+          "p(90)": 1945.2946
+        }
+      },
+      "group_duration": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "avg": 1712.0188923449991,
+          "min": 762.228083,
+          "med": 1870.221125,
+          "max": 1990.268125,
+          "p(90)": 1945.3412703,
+          "p(95)": 1956.2377625
+        }
+      },
+      "http_req_receiving": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "p(95)": 0.12569999999999998,
+          "avg": 0.04050980392156859,
+          "min": 0.013,
+          "med": 0.0265,
+          "max": 0.364,
+          "p(90)": 0.0767
+        }
+      },
+      "http_req_failed": {
+        "type": "rate",
+        "contains": "default",
+        "values": {
+          "rate": 0.9803921568627451,
+          "passes": 200,
+          "fails": 4
+        },
+        "thresholds": {
+          "rate<0.05": {
+            "ok": false
+          }
+        }
+      },
+      "race_apply_fail": {
+        "type": "counter",
+        "contains": "default",
+        "values": {
+          "count": 200,
+          "rate": 20.421839646285566
+        }
+      },
+      "http_req_connecting": {
+        "contains": "time",
+        "values": {
+          "med": 0,
+          "max": 3.28,
+          "p(90)": 0.7395000000000002,
+          "p(95)": 1.4702999999999993,
+          "avg": 0.2385637254901961,
+          "min": 0
+        },
+        "type": "trend"
+      }
+    },
+    "setup_data": {
+      "employerToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY5YzMyN2Q5NmM2N2E5ZGE1OWI1YmNkNCIsImVtYWlsIjoidGVzdGVtcGxveWVyQHRlc3QuY29tIiwidXNlclR5cGUiOiJlbXBsb3llciIsImlhdCI6MTc3NDM5OTI0MywiZXhwIjoxNzc0NDA2NDQzfQ.jvJ_tz1-v0Eo3Zd7sTRh4VOqWrS2sqFlGWBgO60lTZo",
+      "jobIds": [
+        "68d5758fc0bc09ea420dbef8",
+        "68e00b136f4912f56cfd20ee",
+        "68e00897453f2bf097f8eee5",
+        "68e00b136f4912f56cfd20ef",
+        "68e00897453f2bf097f8eee8",
+        "68e00b136f4912f56cfd20f0",
+        "68e00897453f2bf097f8eee6",
+        "68e00897453f2bf097f8eee7",
+        "68e00897453f2bf097f8eee9",
+        "69bc2a785a456757d1f06bdb",
+        "69bc2a695a456757d1f06a65",
+        "69bc2a575a456757d1f068ab",
+        "69bc2a515a456757d1f0680b",
+        "69bc2a505a456757d1f067f3",
+        "69bc293cc0776ae7a7cb22da",
+        "69bc28ff8e914fd06b8251ce",
+        "69bc2840cf6883e200af3044",
+        "69bc279acf6883e200af276f",
+        "69bc2794cf6883e200af26dc",
+        "69bc278ccf6883e200af2575",
+        "69bc278bcf6883e200af255f",
+        "69bc278acf6883e200af2549",
+        "69bc2743cf6883e200af2183",
+        "69bc273acf6883e200af207c",
+        "69bc2733cf6883e200af1f5b",
+        "69bc2731cf6883e200af1f37",
+        "69bc272ecf6883e200af1ef6",
+        "69bc2669cf6883e200af1b7c",
+        "69bc228aa9900aec907c8516",
+        "69bc2284a9900aec907c8465",
+        "69bc227fa9900aec907c83cc",
+        "69bc227ea9900aec907c839f",
+        "69bc227da9900aec907c8379",
+        "69bc227ba9900aec907c832f",
+        "69bc2258a9900aec907c829d",
+        "69bc224ca9900aec907c819c",
+        "69bc224ba9900aec907c816b",
+        "69bc224aa9900aec907c8146",
+        "69bc2248a9900aec907c80fb",
+        "69b8352e8639615fad70d360",
+        "697017461ac2b99fb889d871",
+        "68ffc7d76cda3060ae6032b8",
+        "68ffc7d66cda3060ae6032b4",
+        "68ffc7d66cda3060ae6032b0",
+        "68ffc7d66cda3060ae6032a9",
+        "68ffc7d56cda3060ae6032a2",
+        "68ffc7d56cda3060ae60329c",
+        "68ffc7b7a0e8ab0be8a0adda",
+        "68e00b136f4912f56cfd20f1",
+        "68e00b136f4912f56cfd20f2"
+      ],
+      "seekerToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY5YzMyN2Q4NmM2N2E5ZGE1OWI1YmNkMCIsImVtYWlsIjoidGVzdHNlZWtlckB0ZXN0LmNvbSIsInVzZXJUeXBlIjoiam9ic2Vla2VyIiwiaWF0IjoxNzc0Mzk5MjQyLCJleHAiOjE3NzQ0MDY0NDJ9.EqR45qK_WvngRT_OR9VlrDOU-71u5hnZECvP1MqWI-s",
+      "targetJobId": "68d5758fc0bc09ea420dbef8",
+      "adminToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY5YmMwYjk1ZjYyMDg5NWVmZjRmOGYzMiIsImVtYWlsIjoidGVzdGFkbWluQHRlc3QuY29tIiwidXNlclR5cGUiOiJhZG1pbiIsImlhdCI6MTc3NDM5OTI0MywiZXhwIjoxNzc0NDA2NDQzfQ.YPxDzzn5M1eE7_uv7y5f7pnA_R1Q6Zuy1LazNa_hZwE"
+    },
+    "root_group": {
+      "groups": [
+        {
+          "name": "race_apply_same_job",
+          "path": "::race_apply_same_job",
+          "id": "8d3886e52e2402e1f643bfed03720b0a",
+          "groups": [],
+          "checks": [
+              {
+                "name": "race apply: no 500 error",
+                "path": "::race_apply_same_job::race apply: no 500 error",
+                "id": "27dc97c8f55b4d42de18a575fc4c901e",
+                "passes": 200,
+                "fails": 0
+              },
+              {
+                "name": "race apply: expected status (200/400/401)",
+                "path": "::race_apply_same_job::race apply: expected status (200/400/401)",
+                "id": "3e4df1aa5898cd4a73650f4e58389e01",
+                "passes": 200,
+                "fails": 0
+              }
+            ]
+        }
+      ],
+      "checks": [],
+      "name": "",
+      "path": "",
+      "id": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "options": {
+      "summaryTimeUnit": "",
+      "noColor": false,
+      "summaryTrendStats": [
+        "avg",
+        "min",
+        "med",
+        "max",
+        "p(90)",
+        "p(95)"
+      ]
+    }
+  }
+}

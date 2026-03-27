@@ -286,13 +286,20 @@ const employerProfileSchema = new Schema({
     },
     enableEmailContact: {
       type: Boolean,
-      default: false
+      default: true
     },
     preferredContactMethod: {
       type: String,
       enum: ['phone', 'whatsapp', 'email', 'form'],
       default: 'form'
     }
+  },
+
+  // Administrata account flag — only admin can set this;
+  // when true, all jobs from this employer auto-get platformCategories.administrata = true
+  isAdministrataAccount: {
+    type: Boolean,
+    default: false
   },
 
   // Candidate Matching Feature
@@ -350,6 +357,10 @@ const userSchema = new Schema({
   isDeleted: {
     type: Boolean,
     default: false
+  },
+  deletedAt: {
+    type: Date,
+    default: null
   },
 
   // Suspension/Ban Details
@@ -463,6 +474,16 @@ const userSchema = new Schema({
     type: Date
   },
 
+  // Consent tracking (GDPR / legal compliance)
+  consentTracking: {
+    tosAcceptedAt: Date,
+    privacyAcceptedAt: Date,
+    tosVersion: { type: String, default: '2026-03' },
+    privacyVersion: { type: String, default: '2026-03' },
+    cookieConsentAt: Date,
+    ipAtConsent: String
+  },
+
   // Active refresh tokens (for token revocation)
   refreshTokens: [{
     token: { type: String, required: true },
@@ -479,6 +500,7 @@ const userSchema = new Schema({
 userSchema.index({ userType: 1 });
 userSchema.index({ 'profile.location.city': 1 });
 userSchema.index({ isDeleted: 1 });
+userSchema.index({ isDeleted: 1, deletedAt: 1 }); // For account cleanup scheduler
 userSchema.index({ status: 1 });
 
 // Virtual for full name
@@ -508,6 +530,7 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 userSchema.methods.softDelete = function() {
   this.isDeleted = true;
   this.status = 'deleted';
+  this.deletedAt = new Date();
   return this.save();
 };
 

@@ -1,6 +1,6 @@
 import express from 'express';
 import { body, query, validationResult } from 'express-validator';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { SystemConfiguration, ConfigurationAudit, SystemHealth } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 
@@ -14,8 +14,12 @@ const configurationLimit = rateLimit({
     success: false,
     message: 'Shumë ndryshime konfigurimi të bëra. Ju lutemi provoni pas 1 ore.'
   },
-  keyGenerator: (req) => `config_${req.user?.id || req.ip}`,
-  skip: (req) => process.env.NODE_ENV === 'development' // Skip in development
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => process.env.NODE_ENV === 'development',
+  keyGenerator: (req) => {
+    return req.user?.id || ipKeyGenerator(req);
+  }
 });
 
 // Validation middleware

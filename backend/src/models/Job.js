@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { cacheDelete } from '../config/redis.js';
+import logger from '../config/logger.js';
 
 const { Schema } = mongoose;
 
@@ -57,7 +58,7 @@ const jobSchema = new Schema({
   jobType: {
     type: String,
     required: true,
-    enum: ['full-time', 'part-time', 'contract', 'internship']
+    enum: ['full-time', 'part-time', 'internship']
   },
 
   // Core Platform Filters (Required for all jobs)
@@ -195,7 +196,7 @@ const jobSchema = new Schema({
     },
     email: {
       type: String,
-      match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, 'Email i pavlefshëm']
+      match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,63})+$/, 'Email i pavlefshëm']
     },
     enabledMethods: {
       phone: {
@@ -445,9 +446,17 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
     expiresAt: { $gt: new Date() }
   };
 
-  // Text search
+  // Search: try $text first for full-word matches, fall back to regex for partial/substring
   if (searchQuery) {
-    query.$text = { $search: searchQuery };
+    // Use regex for partial matching — searches title, description, category, and company-related fields
+    const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    query.$or = [
+      { title: { $regex: escaped, $options: 'i' } },
+      { description: { $regex: escaped, $options: 'i' } },
+      { category: { $regex: escaped, $options: 'i' } },
+      { 'location.city': { $regex: escaped, $options: 'i' } },
+      { tags: { $regex: escaped, $options: 'i' } }
+    ];
   }
 
   // Location filter (OR logic for multiple cities)
@@ -532,8 +541,8 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
     query['salary.currency'] = filters.currency;
   }
 
-  // Sort: Premium jobs first, then by posted date
-  const sort = { tier: -1, postedAt: -1 };
+  // Sort by posted date (newest first) — premium highlighting is done via PremiumJobsCarousel
+  const sort = { postedAt: -1 };
 
   return this.find(query)
     .populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.location')
@@ -556,7 +565,7 @@ jobSchema.post('save', async function() {
       await cacheDelete('locations:popular:10').catch(() => {});
     }
   } catch (err) {
-    console.error('Error in Job post-save Location hook:', err.message);
+    logger.error('Error in Job post-save Location hook:', err.message);
   }
 });
 

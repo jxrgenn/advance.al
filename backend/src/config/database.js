@@ -25,18 +25,18 @@ export const connectDB = async (retries = 5, delay = 3000) => {
 
       // Handle connection events
       mongoose.connection.on('error', (err) => {
-        console.error('MongoDB connection error:', err);
+        logger.error('MongoDB connection error:', err.message);
       });
 
       mongoose.connection.on('disconnected', () => {
-        console.error('MongoDB disconnected');
+        logger.warn('MongoDB disconnected');
       });
 
       return; // Success
     } catch (error) {
-      console.error(`MongoDB connection attempt ${attempt}/${retries} failed:`, error.message);
+      logger.error(`MongoDB connection attempt ${attempt}/${retries} failed:`, error.message);
       if (attempt === retries) {
-        console.error('All MongoDB connection attempts failed. Exiting.');
+        logger.error('All MongoDB connection attempts failed. Exiting.');
         process.exit(1);
       }
       logger.warn(`Retrying in ${delay / 1000}s...`);

@@ -1,10 +1,26 @@
 import { motion } from "motion/react";
 import { Container } from "@mantine/core";
 import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { ArrowRight, Briefcase, Building2, Users, TrendingUp, ChevronDown } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function Companies() {
+  const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuth();
+
+  const handlePostJobClick = () => {
+    if (isAuthenticated && user?.userType === 'employer') {
+      navigate('/post-job');
+    } else {
+      // Scroll to the registration form on the employers page
+      const formSection = document.querySelector('[data-employer-form]');
+      if (formSection) {
+        formSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  };
+
   return (
     <div className="w-full">
       {/* Hero Section */}
@@ -98,16 +114,16 @@ export function Companies() {
                 transition={{ delay: 0.6, duration: 0.8 }}
               >
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Button 
-                    size="lg" 
+                  <Button
+                    size="lg"
                     className="text-base md:text-lg px-8 py-7 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-2xl hover:shadow-primary/30 transition-all duration-300 group relative overflow-hidden"
-                    asChild
+                    onClick={handlePostJobClick}
                   >
-                    <Link to="/employers/post-job" className="relative z-10 flex items-center">
+                    <span className="relative z-10 flex items-center">
                       <Briefcase className="mr-2 h-5 w-5 group-hover:rotate-12 transition-transform duration-300" />
                       Posto nje pune
                       <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform duration-300" />
-                    </Link>
+                    </span>
                   </Button>
                 </motion.div>
               </motion.div>

@@ -71,6 +71,7 @@ export interface User {
       verified: boolean;
       verificationStatus: string;
       subscriptionTier: string;
+      isAdministrataAccount?: boolean;
     };
   };
   privacySettings: {
@@ -157,6 +158,7 @@ export interface Application {
     type: string;
     read: boolean;
   }>;
+  withdrawn?: boolean;
   timeAgo: string;
 }
 
@@ -347,8 +349,8 @@ const apiRequest = async <T>(
 
 // Authentication API
 export const authApi = {
-  // Register new user
-  register: async (userData: {
+  // Step 1: Validate data and send verification code
+  initiateRegistration: async (userData: {
     email: string;
     password: string;
     userType: 'jobseeker' | 'employer';
@@ -359,10 +361,23 @@ export const authApi = {
     companyName?: string;
     industry?: string;
     companySize?: string;
+    description?: string;
+    website?: string;
+  }): Promise<ApiResponse<null>> => {
+    return apiRequest<null>('/auth/initiate-registration', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    });
+  },
+
+  // Step 2: Verify code and complete registration
+  register: async (data: {
+    email: string;
+    verificationCode: string;
   }): Promise<ApiResponse<{ user: User; token: string; refreshToken: string }>> => {
     const response = await apiRequest<{ user: User; token: string; refreshToken: string }>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify(userData),
+      body: JSON.stringify(data),
     });
 
     if (response.success && response.data) {
@@ -768,6 +783,15 @@ export const usersApi = {
     });
   },
 
+  // Upload resume/CV and parse with AI for profile auto-fill
+  parseResume: async (formData: FormData): Promise<ApiResponse<{ resumeUrl: string; parsedData: any; user?: User }>> => {
+    return apiRequest<{ resumeUrl: string; parsedData: any; user?: User }>('/users/parse-resume', {
+      method: 'POST',
+      body: formData,
+      isFormData: true
+    });
+  },
+
   // Upload company logo
   uploadLogo: async (formData: FormData): Promise<ApiResponse<{ logoUrl: string; user?: User }>> => {
     return apiRequest<{ logoUrl: string; user?: User }>('/users/upload-logo', {
@@ -903,6 +927,13 @@ export const usersApi = {
     return apiRequest<{ savedMap: Record<string, boolean> }>('/users/saved-jobs/check-bulk', {
       method: 'POST',
       body: JSON.stringify({ jobIds }),
+    });
+  },
+
+  // Record cookie consent server-side (GDPR compliance)
+  recordCookieConsent: async (): Promise<ApiResponse<any>> => {
+    return apiRequest<any>('/users/cookie-consent', {
+      method: 'POST',
     });
   }
 };
@@ -1513,7 +1544,7 @@ export const adminApi = {
 
 // Quick Users API
 export const quickUsersApi = {
-  // Create a quick user for job notifications
+  // Create a quick user for job notifications (supports optional CV file upload)
   createQuickUser: async (data: {
     firstName: string;
     lastName: string;
@@ -1521,16 +1552,39 @@ export const quickUsersApi = {
     phone?: string;
     city: string;
     interests: string[];
+    customInterests?: string[];
+    resume?: File | null;
   }): Promise<ApiResponse<{ quickUser: any }>> => {
+    // Use FormData when a resume file is provided
+    if (data.resume) {
+      const formData = new FormData();
+      formData.append('firstName', data.firstName);
+      formData.append('lastName', data.lastName);
+      formData.append('email', data.email);
+      if (data.phone) formData.append('phone', data.phone);
+      formData.append('location', data.city);
+      formData.append('interests', JSON.stringify(data.interests));
+      if (data.customInterests) formData.append('customInterests', JSON.stringify(data.customInterests));
+      formData.append('resume', data.resume);
+
+      return apiRequest<{ quickUser: any }>('/quickusers', {
+        method: 'POST',
+        body: formData,
+        isFormData: true,
+      });
+    }
+
+    // Plain JSON when no file
     return apiRequest<{ quickUser: any }>('/quickusers', {
       method: 'POST',
       body: JSON.stringify({
         firstName: data.firstName,
         lastName: data.lastName,
         email: data.email,
-        phone: data.phone,
+        ...(data.phone && { phone: data.phone }),
         location: data.city, // API expects 'location' field
-        interests: data.interests
+        interests: data.interests,
+        ...(data.customInterests && { customInterests: data.customInterests })
       }),
     });
   }
@@ -1965,9 +2019,7 @@ export const cvApi = {
     const newWindow = window.open(url, '_blank');
 
     if (newWindow) {
-      setTimeout(() => {
-        window.URL.revokeObjectURL(url);
-      }, 10000);
+      setTimeout(() => { window.URL.revokeObjectURL(url); }, 10000);
     }
   },
 

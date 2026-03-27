@@ -1,5 +1,6 @@
 import QuickUser from '../models/QuickUser.js';
 import User from '../models/User.js';
+import Job from '../models/Job.js';
 import jobEmbeddingService from './jobEmbeddingService.js';
 
 /**
@@ -37,6 +38,35 @@ class UserEmbeddingService {
   prepareQuickUserText(quickUser) {
     const parts = [];
 
+    // Parsed CV data takes priority — much richer signal for matching
+    if (quickUser.parsedCV && quickUser.parsedCV.status === 'completed') {
+      if (quickUser.parsedCV.title) {
+        // Double-weight title (same strategy as job titles)
+        parts.push('Titulli profesional: ' + quickUser.parsedCV.title);
+        parts.push(quickUser.parsedCV.title);
+      }
+      if (quickUser.parsedCV.skills && quickUser.parsedCV.skills.length > 0) {
+        // Double-weight skills
+        parts.push('Aftësitë: ' + quickUser.parsedCV.skills.join(', '));
+        parts.push(quickUser.parsedCV.skills.join(' '));
+      }
+      if (quickUser.parsedCV.summary) {
+        parts.push('Përmbledhje: ' + quickUser.parsedCV.summary);
+      }
+      if (quickUser.parsedCV.experience) {
+        parts.push('Përvojë: ' + quickUser.parsedCV.experience);
+      }
+      if (quickUser.parsedCV.industries && quickUser.parsedCV.industries.length > 0) {
+        parts.push('Industritë: ' + quickUser.parsedCV.industries.join(', '));
+      }
+      if (quickUser.parsedCV.education) {
+        parts.push('Arsimim: ' + quickUser.parsedCV.education);
+      }
+      if (quickUser.parsedCV.languages && quickUser.parsedCV.languages.length > 0) {
+        parts.push('Gjuhët: ' + quickUser.parsedCV.languages.join(', '));
+      }
+    }
+
     if (quickUser.interests && quickUser.interests.length > 0) {
       // Double-weight the category interests (same weighting strategy as job titles/categories)
       parts.push('Interesat e punës: ' + quickUser.interests.join(', '));
@@ -64,31 +94,111 @@ class UserEmbeddingService {
     const profile = user.profile?.jobSeekerProfile;
     if (!profile) return '';
 
+    const MAX_TEXT = 7500;
     const parts = [];
 
+    // 1. Title (2x weight)
     if (profile.title) {
+      parts.push('Titulli profesional: ' + profile.title);
       parts.push(profile.title);
-      parts.push(profile.title); // double weight
     }
 
-    if (profile.skills && profile.skills.length > 0) {
-      parts.push(profile.skills.join(' '));
-      parts.push(profile.skills.join(' ')); // double weight
+    // 2. Skills — merge manual + aiGeneratedCV technical + tools (2x weight)
+    const allSkills = new Set();
+    if (profile.skills?.length) profile.skills.forEach(s => allSkills.add(s));
+    const aiCV = profile.aiGeneratedCV;
+    if (aiCV?.skills?.technical?.length) aiCV.skills.technical.forEach(s => allSkills.add(s));
+    if (aiCV?.skills?.tools?.length) aiCV.skills.tools.forEach(s => allSkills.add(s));
+    if (allSkills.size > 0) {
+      const skillsStr = [...allSkills].join(', ');
+      parts.push('Aftësitë: ' + skillsStr);
+      parts.push(skillsStr);
     }
 
+    // 3. AI CV professional summary (500 chars max)
+    if (aiCV?.professionalSummary) {
+      parts.push('Përmbledhje profesionale: ' + aiCV.professionalSummary.substring(0, 500));
+    }
+
+    // 4. Work history — most recent 5 entries
+    const workHistory = profile.workHistory;
+    if (workHistory?.length) {
+      const sorted = [...workHistory].sort((a, b) => {
+        const da = a.startDate ? new Date(a.startDate).getTime() : 0;
+        const db = b.startDate ? new Date(b.startDate).getTime() : 0;
+        return db - da;
+      });
+      const recent = sorted.slice(0, 5);
+      const workParts = recent.map(w => {
+        let entry = '';
+        if (w.position) entry += w.position;
+        if (w.company) entry += ' në ' + w.company;
+        if (w.description) entry += '. ' + w.description.substring(0, 400);
+        if (w.achievements) entry += '. Arritje: ' + w.achievements.substring(0, 200);
+        return entry.trim();
+      }).filter(Boolean);
+      if (workParts.length) {
+        parts.push('Përvojë pune: ' + workParts.join('. '));
+      }
+    }
+
+    // 5. Education — all entries
+    const education = profile.education;
+    if (education?.length) {
+      const eduParts = education.map(e => {
+        let entry = '';
+        if (e.degree) entry += e.degree;
+        if (e.fieldOfStudy) entry += ' në ' + e.fieldOfStudy;
+        if (e.institution || e.school) entry += ' nga ' + (e.institution || e.school);
+        if (e.description) entry += '. ' + e.description.substring(0, 200);
+        return entry.trim();
+      }).filter(Boolean);
+      if (eduParts.length) {
+        parts.push('Arsimim: ' + eduParts.join('. '));
+      }
+    }
+
+    // 6. AI CV certifications
+    if (aiCV?.certifications?.length) {
+      const certNames = aiCV.certifications.map(c => c.name).filter(Boolean);
+      if (certNames.length) {
+        parts.push('Certifikata: ' + certNames.join(', '));
+      }
+    }
+
+    // 7. AI CV languages
+    if (aiCV?.languages?.length) {
+      const langParts = aiCV.languages.map(l => {
+        if (l.name && l.proficiency) return l.name + ' (' + l.proficiency + ')';
+        return l.name || '';
+      }).filter(Boolean);
+      if (langParts.length) {
+        parts.push('Gjuhët: ' + langParts.join(', '));
+      }
+    }
+
+    // 8. Soft skills from AI CV
+    if (aiCV?.skills?.soft?.length) {
+      parts.push('Aftësi të buta: ' + aiCV.skills.soft.join(', '));
+    }
+
+    // 9. Bio
     if (profile.bio) {
       parts.push(profile.bio);
     }
 
+    // 10. Experience level
     if (profile.experience) {
       parts.push('Eksperiencë: ' + profile.experience);
     }
 
+    // 11. Location
     if (user.profile?.location?.city) {
       parts.push('Vendndodhja: ' + user.profile.location.city);
     }
 
-    return parts.join(' ').trim();
+    const text = parts.join(' ').trim();
+    return text.length > MAX_TEXT ? text.substring(0, MAX_TEXT) : text;
   }
 
   /**
@@ -275,6 +385,58 @@ class UserEmbeddingService {
     matchedJobSeekers.sort((a, b) => b.score - a.score);
 
     return { quickUsers: matchedQuickUsers, jobSeekers: matchedJobSeekers };
+  }
+
+  /**
+   * Find active jobs that semantically match a user's embedding.
+   * This is the REVERSE of findSemanticMatchesForJob — used when a user
+   * signs up or uploads a CV to show them existing matching jobs.
+   *
+   * @param {Array<number>} userVector - 1536-dim embedding vector of the user
+   * @param {Object} [options]
+   * @param {number} [options.limit=10] - Max jobs to return
+   * @param {string} [options.city] - Optional city filter
+   * @returns {Promise<Array<{job: Object, score: number}>>} Sorted desc by score
+   */
+  async findMatchingJobsForUser(userVector, options = {}) {
+    if (!userVector || userVector.length !== 1536) {
+      return [];
+    }
+
+    const { limit = 10, city } = options;
+    const threshold = this.threshold;
+    const BATCH_SIZE = 500;
+
+    const query = {
+      status: 'active',
+      'embedding.status': 'completed',
+      applicationDeadline: { $gte: new Date() }
+    };
+
+    if (city) {
+      query['location.city'] = { $regex: new RegExp(city, 'i') };
+    }
+
+    const matchedJobs = [];
+    const jobCursor = Job.find(query)
+      .select('+embedding.vector')
+      .populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo')
+      .batchSize(BATCH_SIZE)
+      .cursor();
+
+    for await (const job of jobCursor) {
+      const vec = job.embedding?.vector;
+      if (!vec || vec.length !== 1536) continue;
+      try {
+        const score = jobEmbeddingService.cosineSimilarity(userVector, vec);
+        if (score >= threshold) {
+          matchedJobs.push({ job, score });
+        }
+      } catch (_) { /* skip malformed vectors */ }
+    }
+
+    matchedJobs.sort((a, b) => b.score - a.score);
+    return matchedJobs.slice(0, limit);
   }
 }
 

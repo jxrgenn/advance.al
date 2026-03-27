@@ -494,28 +494,26 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
 });
 
 // Helper function to calculate profile completeness
+// IMPORTANT: Keep in sync with frontend Profile.tsx and ApplyModal.tsx
 const calculateProfileCompleteness = (user) => {
   if (user.userType !== 'jobseeker') return 100;
 
   const profile = user.profile;
   const jobSeekerProfile = profile.jobSeekerProfile || {};
 
-  let completeness = 0;
-  let totalFields = 8;
+  let score = 0;
 
-  // Basic fields (25 points each)
-  if (profile.firstName) completeness += 12.5;
-  if (profile.lastName) completeness += 12.5;
-  if (profile.phone) completeness += 12.5;
-  if (profile.location?.city) completeness += 12.5;
+  // Weighted fields (total = 100%)
+  if (profile.firstName && profile.lastName) score += 15;
+  if (profile.phone) score += 10;
+  if (profile.location?.city) score += 10;
+  if (jobSeekerProfile.title) score += 15;
+  if (jobSeekerProfile.bio) score += 15;
+  if (jobSeekerProfile.skills?.length > 0) score += 15;
+  if (jobSeekerProfile.experience) score += 10;
+  if (jobSeekerProfile.resume) score += 10;
 
-  // Job seeker specific fields
-  if (jobSeekerProfile.title) completeness += 12.5;
-  if (jobSeekerProfile.bio) completeness += 12.5;
-  if (jobSeekerProfile.skills?.length > 0) completeness += 12.5;
-  if (jobSeekerProfile.cvFile) completeness += 12.5;
-
-  return Math.round(completeness);
+  return Math.min(score, 100);
 };
 
 // Admin routes for employer verification

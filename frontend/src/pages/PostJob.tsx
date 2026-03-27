@@ -27,7 +27,7 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { Plus, X, Loader2, CheckCircle, ArrowLeft, ArrowRight, Briefcase, HelpCircle, Lightbulb, Target, Users, Zap, Play } from "lucide-react";
+import { Plus, X, Loader2, CheckCircle, ArrowLeft, ArrowRight, Briefcase, HelpCircle, Lightbulb, Users, Play, AlertTriangle } from "lucide-react";
 import { locationsApi, Location, jobsApi, isAuthenticated, getUserType } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import Footer from "@/components/Footer";
@@ -91,7 +91,7 @@ const PostJob = () => {
       salaryMin: '',
       salaryMax: '',
       salaryCurrency: 'EUR',
-      showSalary: false,
+      showSalary: true,
       applicationMethod: 'one_click',
       expiresAt: '',
       platformCategories: {
@@ -410,6 +410,8 @@ const PostJob = () => {
         const errorDetails = error.response.errors.map((err: any) => `${err.field}: ${err.message}`).join(', ');
         errorMessage = `Gabime validimi: ${errorDetails}`;
         console.error('❌ Validation errors:', error.response.errors);
+      } else if (error.response?.message || error.message) {
+        errorMessage = error.response?.message || error.message;
       }
 
       notifications.show({
@@ -1046,7 +1048,6 @@ const PostJob = () => {
                 data={[
                   { value: 'full-time', label: 'Full-time' },
                   { value: 'part-time', label: 'Part-time' },
-                  { value: 'contract', label: 'Kontratë' },
                   { value: 'internship', label: 'Praktikë' }
                 ]}
                 required
@@ -1147,6 +1148,12 @@ const PostJob = () => {
                     ]}
                   />
                 </SimpleGrid>
+
+                <Switch
+                  label="Shfaq pagën publikisht në listim"
+                  description="Nëse aktivizohet, paga do të shfaqet në kartën e punës"
+                  {...jobForm.getInputProps('showSalary', { type: 'checkbox' })}
+                />
 
                 <Divider />
 
@@ -1264,12 +1271,19 @@ const PostJob = () => {
               <MultiSelect
                 label="Kategoritë e Platformës"
                 placeholder="Zgjidhni kategoritë"
-                description="Kategoritë që përputhen me këtë pozicion për të rritur dukshmërinë"
+                description={
+                  user?.profile?.employerProfile?.isAdministrataAccount
+                    ? "Llogaria juaj është e shënuar si Administrata — të gjitha punët do të kenë automatikisht këtë etiketë"
+                    : "Kategoritë që përputhen me këtë pozicion për të rritur dukshmërinë"
+                }
                 data={[
                   { value: 'diaspora', label: 'Diaspora - Për shqiptarë jashtë vendit' },
                   { value: 'ngaShtepia', label: 'Nga shtëpia - Punë në distancë' },
                   { value: 'partTime', label: 'Part Time - Orar i reduktuar' },
-                  { value: 'administrata', label: 'Administrata - Pozicione administrative' },
+                  // Only show administrata for flagged accounts
+                  ...(user?.profile?.employerProfile?.isAdministrataAccount
+                    ? [{ value: 'administrata', label: 'Administrata - Pozicione administrative' }]
+                    : []),
                   { value: 'sezonale', label: 'Sezonale - Punë të përkohshme' }
                 ]}
                 value={Object.keys(jobForm.values.platformCategories || {}).filter(key => jobForm.values.platformCategories[key as keyof typeof jobForm.values.platformCategories])}
@@ -1278,7 +1292,8 @@ const PostJob = () => {
                     diaspora: values.includes('diaspora'),
                     ngaShtepia: values.includes('ngaShtepia'),
                     partTime: values.includes('partTime'),
-                    administrata: values.includes('administrata'),
+                    // For administrata accounts, always true; for others, always false
+                    administrata: user?.profile?.employerProfile?.isAdministrataAccount ? true : values.includes('administrata'),
                     sezonale: values.includes('sezonale')
                   });
                 }}
@@ -1315,23 +1330,7 @@ const PostJob = () => {
                     </ActionIcon>
                   </Group>
                   <Group gap="lg">
-                    <Select
-                      size="xs"
-                      label="Lloji"
-                      value={q.type}
-                      onChange={(value) => {
-                        const updated = [...customQuestions];
-                        updated[index] = { ...updated[index], type: value || 'text' };
-                        setCustomQuestions(updated);
-                      }}
-                      data={[
-                        { value: 'text', label: 'Tekst' },
-                        { value: 'email', label: 'Email' },
-                        { value: 'phone', label: 'Telefon' },
-                      ]}
-                      style={{ width: 120 }}
-                    />
-                    <Box mt={18}>
+                    <Box>
                       <Group gap="xs">
                         <Switch
                           size="xs"
@@ -1497,100 +1496,25 @@ const PostJob = () => {
       {/* Tutorial Overlay */}
       <TutorialOverlay />
 
-      <Container size="lg" py={40} pt={2}>
-        {/* Header */}
-        <Center mb={30}>
-          <Stack align="center" gap="sm">
-            <ThemeIcon size={40} radius="md" color="blue" variant="light">
-              <Briefcase size={20} />
-            </ThemeIcon>
-            <Title ta="center" size="2.2rem" fw={700} lh={1.1} maw={600} c="dark">
-              Posto punë të re dhe gjej kandidatin ideal
-            </Title>
-            <Text ta="center" size="sm" c="dimmed" maw={400} lh={1.4}>
-              advance.al të ndihmon të gjesh dhe të rekrutosh kandidatë të shkëlqyer për kompaninë tënde.
-            </Text>
-          </Stack>
-        </Center>
-
-        {/* Two Column Layout */}
-        <Grid>
-          <Grid.Col span={{ base: 12, lg: 6 }}>
-            {/* Left: Benefits of Posting */}
-            <Stack gap="lg">
-              <Paper p="xl" radius="md" withBorder>
-                <Title order={3} mb="lg" c="dark">
-                  Pse advance.al?
-                </Title>
-                
-                <Stack gap="lg">
-                  <Group wrap="nowrap" align="flex-start">
-                    <ThemeIcon size={40} radius="md" color="blue" variant="light">
-                      <Zap size={20} />
-                    </ThemeIcon>
-                    <Box style={{ flex: 1 }}>
-                      <Text fw={600} mb={4}>Publikim i Shpejtë</Text>
-                      <Text size="sm" c="dimmed">
-                        Posto punën tënde në vetëm 3 minuta
-                      </Text>
-                    </Box>
+      <Container size="lg" pt={90} pb="xl">
+        <Stack gap="md" maw={960} mx="auto">
+              {/* Unverified employer warning */}
+              {user?.userType === 'employer' && !user?.profile?.employerProfile?.verified && (
+                <Paper shadow="xs" p="md" radius="md" withBorder style={{ borderColor: '#f59e0b', backgroundColor: '#fffbeb' }}>
+                  <Group gap="sm" wrap="nowrap">
+                    <AlertTriangle size={20} color="#d97706" style={{ flexShrink: 0 }} />
+                    <Text size="sm" c="dark">
+                      <strong>Llogaria juaj nuk është verifikuar ende.</strong> Ju nuk mund të postoni punë derisa administratori të verifikojë llogarinë tuaj. Nëse sapo jeni regjistruar, ju lutemi prisni deri sa llogaria juaj të aprovohet.
+                    </Text>
                   </Group>
-
-                  <Group wrap="nowrap" align="flex-start">
-                    <ThemeIcon size={40} radius="md" color="green" variant="light">
-                      <Target size={20} />
-                    </ThemeIcon>
-                    <Box style={{ flex: 1 }}>
-                      <Text fw={600} mb={4}>Kandidatë të Kualifikuar</Text>
-                      <Text size="sm" c="dimmed">
-                        Algoritëm inteligjent që gjen kandidatët më të përshtatshëm
-                      </Text>
-                    </Box>
-                  </Group>
-
-                  <Group wrap="nowrap" align="flex-start">
-                    <ThemeIcon size={40} radius="md" color="orange" variant="light">
-                      <Users size={20} />
-                    </ThemeIcon>
-                    <Box style={{ flex: 1 }}>
-                      <Text fw={600} mb={4}>Menaxhim i Thjeshtë</Text>
-                      <Text size="sm" c="dimmed">
-                        Dashboard intuitiv për menaxhimin e aplikimeve
-                      </Text>
-                    </Box>
-                  </Group>
-                </Stack>
-              </Paper>
-
-              <SimpleGrid cols={2} spacing="md">
-                <Paper p="md" radius="md" withBorder style={{ textAlign: 'center' }}>
-                  <Text size="2xl" fw={700} c="blue" mb={4}>5,000+</Text>
-                  <Text size="sm" c="dimmed">Kandidatë Aktivë</Text>
                 </Paper>
-                <Paper p="md" radius="md" withBorder style={{ textAlign: 'center' }}>
-                  <Text size="2xl" fw={700} c="blue" mb={4}>300+</Text>
-                  <Text size="sm" c="dimmed">Kompani</Text>
-                </Paper>
-              </SimpleGrid>
-            </Stack>
-          </Grid.Col>
+              )}
 
-          <Grid.Col span={{ base: 12, lg: 6 }}>
-            {/* Right: Multi-step Job Posting Form */}
-            <Stack gap="xl">
               {/* Tutorial Help Link */}
               {!showTutorial && (
-                <Paper shadow="xs" p="md" radius="md" withBorder style={{ backgroundColor: '#f8f9fa' }}>
+                <Paper shadow="xs" p="xs" px="md" radius="md" withBorder style={{ backgroundColor: '#f8f9fa' }}>
                   <Group justify="space-between" wrap="nowrap">
-                    <Group gap="sm">
-                      <ThemeIcon size={30} radius="md" color="blue" variant="light">
-                        <Lightbulb size={16} />
-                      </ThemeIcon>
-                      <Box>
-                        <Text size="sm" fw={500}>Nuk e di si të fillosh?</Text>
-                        <Text size="xs" c="dimmed">Fillo tutorialin për ndihmë hap pas hapi</Text>
-                      </Box>
-                    </Group>
+                    <Text size="sm" c="dimmed">Nuk e di si të fillosh?</Text>
                     <Button
                       variant="subtle"
                       color="blue"
@@ -1598,74 +1522,53 @@ const PostJob = () => {
                       onClick={startTutorial}
                       size="xs"
                     >
-                      Fillo Tutorialin
+                      Tutoriali
                     </Button>
                   </Group>
                 </Paper>
               )}
 
-              <Paper shadow="sm" p="xl" radius="md" withBorder>
-                {/* Header with Step Progress */}
-                <Group mb="xl">
-                  <ThemeIcon size={40} radius="md" color="blue" variant="light">
-                    <Briefcase size={20} />
-                  </ThemeIcon>
-                  <Box style={{ flex: 1 }}>
-                    <Title order={3} fw={600}>Posto Punë të Re</Title>
-                    <Text size="sm" c="dimmed">Plotëso formularin për të postuar punën tënde</Text>
-                  </Box>
-                </Group>
+              <Paper shadow="sm" p={{ base: 'md', sm: 'xl' }} radius="md" withBorder style={{ borderColor: '#bfdbfe', borderWidth: 2 }}>
+                {/* Compact Header + Steps in one row */}
+                <Group justify="space-between" mb="lg" wrap="nowrap">
+                  <Group gap="sm" wrap="nowrap">
+                    <ThemeIcon size={36} radius="md" color="blue" variant="light">
+                      <Briefcase size={18} />
+                    </ThemeIcon>
+                    <Title order={4} fw={600}>Posto Punë të Re</Title>
+                  </Group>
 
-                {/* Step Indicator - Horizontal Compact */}
-                <Box mb="lg">
-                  <div className="flex items-center justify-between gap-2 p-3 bg-slate-50 rounded-lg border">
+                  {/* Step dots */}
+                  <Group gap={6} wrap="nowrap">
                     {steps.map((step, index) => (
                       <div
                         key={index}
-                        className={`flex items-center gap-2 flex-1 ${
-                          index < steps.length - 1 ? 'border-r border-slate-200 pr-2' : ''
+                        className={`w-2.5 h-2.5 rounded-full transition-colors ${
+                          currentStep === index
+                            ? 'bg-blue-500 ring-2 ring-blue-200'
+                            : currentStep > index
+                            ? 'bg-green-500'
+                            : 'bg-gray-300'
                         }`}
-                      >
-                        <div
-                          className={`flex items-center justify-center w-8 h-8 rounded-full border-2 transition-colors ${
-                            currentStep === index
-                              ? 'bg-blue-500 border-blue-500 text-white'
-                              : currentStep > index
-                              ? 'bg-green-500 border-green-500 text-white'
-                              : 'bg-white border-slate-300 text-slate-400'
-                          }`}
-                        >
-                          {currentStep > index ? (
-                            <CheckCircle size={16} />
-                          ) : (
-                            <step.icon size={14} />
-                          )}
-                        </div>
-                        <Text
-                          size="xs"
-                          fw={currentStep === index ? 600 : 400}
-                          c={currentStep === index ? 'blue' : currentStep > index ? 'green' : 'dimmed'}
-                          className="hidden sm:block"
-                        >
-                          {step.label}
-                        </Text>
-                      </div>
+                        title={step.label}
+                      />
                     ))}
-                  </div>
-                </Box>
+                  </Group>
+                </Group>
 
                 {/* Step Content */}
                 {renderStepContent()}
 
                 {/* Navigation Buttons */}
-                <Group justify="space-between" mt="xl">
+                <Group justify="space-between" mt="lg">
                   <Button
                     variant="subtle"
                     leftSection={<ArrowLeft size={16} />}
                     onClick={handlePrevStep}
                     disabled={currentStep === 0}
+                    size="sm"
                   >
-                    Kthehu Prapa
+                    Prapa
                   </Button>
 
                   <Group>
@@ -1673,6 +1576,7 @@ const PostJob = () => {
                       <Button
                         rightSection={<ArrowRight size={16} />}
                         onClick={handleNextStep}
+                        size="sm"
                       >
                         Vazhdo
                       </Button>
@@ -1682,6 +1586,7 @@ const PostJob = () => {
                         onClick={handleSubmit}
                         loading={loading}
                         color="green"
+                        size="sm"
                       >
                         {loading ? 'Duke postuar...' : 'Posto Punën'}
                       </Button>
@@ -1689,9 +1594,7 @@ const PostJob = () => {
                   </Group>
                 </Group>
               </Paper>
-            </Stack>
-          </Grid.Col>
-        </Grid>
+        </Stack>
       </Container>
 
       <Footer />

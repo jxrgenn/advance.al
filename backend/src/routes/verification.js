@@ -15,7 +15,7 @@ const verificationCodesMemory = new Map();
 // Rate limiting for verification requests
 const verificationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 verification requests per window
+  max: process.env.NODE_ENV === 'development' ? 10000 : 5, // limit each IP to 5 verification requests per window
   message: {
     success: false,
     error: 'Shumë kërkesa për verifikim, ju lutemi provoni përsëri pas 15 minutash.',
@@ -25,7 +25,7 @@ const verificationLimiter = rateLimit({
 // Rate limiting for code verification
 const codeVerificationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // limit each IP to 10 code verification attempts per window
+  max: process.env.NODE_ENV === 'development' ? 10000 : 10, // limit each IP to 10 code verification attempts per window
   message: {
     success: false,
     error: 'Shumë tentativa verifikimi, ju lutemi provoni përsëri pas 15 minutash.',
@@ -164,7 +164,7 @@ Nëse nuk keni kërkuar këtë verifikim, ju lutemi injoroni këtë email.
     const result = await resendEmailService.sendTransactionalEmail(email, subject, htmlContent, textContent);
     return result.success;
   } catch (error) {
-    console.error('❌ Error sending verification email:', error);
+    logger.error('Error sending verification email:', error.message);
     return false;
   }
 };
@@ -277,7 +277,7 @@ router.post('/request', verificationLimiter, verificationRequestValidation, hand
         await sendSMS(identifier, code);
       }
     } catch (error) {
-      console.error('Error sending verification:', error);
+      logger.error('Error sending verification:', error.message);
       return res.status(500).json({
         success: false,
         message: method === 'email'
@@ -299,7 +299,7 @@ router.post('/request', verificationLimiter, verificationRequestValidation, hand
     });
 
   } catch (error) {
-    console.error('Verification request error:', error);
+    logger.error('Verification request error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në kërkesën për verifikim'
@@ -394,7 +394,7 @@ router.post('/verify', codeVerificationLimiter, codeVerificationValidation, hand
     });
 
   } catch (error) {
-    console.error('Code verification error:', error);
+    logger.error('Code verification error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në verifikimin e kodit'
@@ -449,7 +449,7 @@ router.post('/validate-token', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Token validation error:', error);
+    logger.error('Token validation error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në validimin e token-it'
@@ -499,7 +499,7 @@ router.post('/resend', verificationLimiter, async (req, res) => {
         await sendSMS(identifier, code);
       }
     } catch (error) {
-      console.error('Error resending verification:', error);
+      logger.error('Error resending verification:', error.message);
       return res.status(500).json({
         success: false,
         message: method === 'email'
@@ -521,7 +521,7 @@ router.post('/resend', verificationLimiter, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Resend verification error:', error);
+    logger.error('Resend verification error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në ridërgimin e kodit të verifikimit'
@@ -562,7 +562,7 @@ router.get('/status/:identifier', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Verification status error:', error);
+    logger.error('Verification status error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në kontrollimin e statusit të verifikimit'

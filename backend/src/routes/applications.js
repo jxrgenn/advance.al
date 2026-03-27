@@ -3,7 +3,8 @@ import { body, validationResult } from 'express-validator';
 import { Application, Job, User, Notification } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer } from '../middleware/auth.js';
 import resendEmailService from '../lib/resendEmailService.js';
-import { sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
+import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
@@ -35,10 +36,14 @@ const applyValidation = [
     .optional()
     .isArray()
     .withMessage('Përgjigjet duhet të jenë një listë'),
+  body('customAnswers.*.answer')
+    .optional()
+    .customSanitizer(v => stripHtml(v)),
   body('coverLetter')
     .optional()
     .isLength({ max: 2000 })
     .withMessage('Letra e shoqërimit nuk mund të ketë më shumë se 2000 karaktere')
+    .customSanitizer(v => stripHtml(v))
 ];
 
 // @route   POST /api/applications/apply
@@ -159,7 +164,7 @@ router.post('/apply', authenticate, requireJobSeeker, applyValidation, handleVal
           relatedJob: application.jobId?._id
         });
       } catch (err) {
-        console.error('Error creating application_received notification:', err);
+        logger.error('Error creating application_received notification:', err);
       }
 
       // Send email to employer about new application
@@ -173,7 +178,7 @@ router.post('/apply', authenticate, requireJobSeeker, applyValidation, handleVal
           );
         }
       } catch (err) {
-        console.error('Error sending new application email to employer:', err);
+        logger.error('Error sending new application email to employer:', err);
       }
     });
 
@@ -184,7 +189,7 @@ router.post('/apply', authenticate, requireJobSeeker, applyValidation, handleVal
     });
 
   } catch (error) {
-    console.error('Apply for job error:', error);
+    logger.error('Apply for job error:', error.message);
     
     // Handle duplicate application error
     if (error.code === 11000) {
@@ -218,7 +223,7 @@ router.get('/applied-jobs', authenticate, requireJobSeeker, async (req, res) => 
       data: { jobIds }
     });
   } catch (error) {
-    console.error('Get applied jobs error:', error);
+    logger.error('Get applied jobs error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e punëve të aplikuara'
@@ -275,7 +280,7 @@ router.get('/my-applications', authenticate, requireJobSeeker, async (req, res) 
     });
 
   } catch (error) {
-    console.error('Get my applications error:', error);
+    logger.error('Get my applications error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e aplikimeve tuaja'
@@ -362,7 +367,7 @@ router.get('/job/:jobId', validateObjectId('jobId'), authenticate, requireEmploy
     });
 
   } catch (error) {
-    console.error('Get job applications error:', error);
+    logger.error('Get job applications error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e aplikimeve'
@@ -388,7 +393,7 @@ router.get('/employer/all', authenticate, requireEmployer, async (req, res) => {
     if (status) filters.status = status;
     if (jobId) filters.jobId = jobId;
 
-    const safeLimit3 = sanitizeLimit(limit, 50, 10);
+    const safeLimit3 = sanitizeLimit(limit, 200, 10);
     const safePage3 = Math.max(1, parseInt(page) || 1);
     const skip = (safePage3 - 1) * safeLimit3;
 
@@ -421,7 +426,7 @@ router.get('/employer/all', authenticate, requireEmployer, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get employer applications error:', error);
+    logger.error('Get employer applications error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e aplikimeve'
@@ -472,7 +477,7 @@ router.get('/:id', validateObjectId('id'), authenticate, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get application error:', error);
+    logger.error('Get application error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e aplikimit'
@@ -513,7 +518,7 @@ router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmploye
       viewed: ['shortlisted', 'rejected'],
       shortlisted: ['hired', 'rejected'],
       rejected: [],
-      hired: []
+      hired: ['shortlisted']
     };
 
     const currentStatus = application.status || 'pending';
@@ -543,7 +548,7 @@ router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmploye
             );
           }
         } catch (err) {
-          console.error('Error sending application status email:', err);
+          logger.error('Error sending application status email:', err);
         }
       });
     }
@@ -562,7 +567,7 @@ router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmploye
     });
 
   } catch (error) {
-    console.error('Update application status error:', error);
+    logger.error('Update application status error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në përditësimin e statusit'
@@ -650,7 +655,7 @@ router.post('/:id/message', validateObjectId('id'), authenticate, async (req, re
           relatedJob: application.jobId
         });
       } catch (err) {
-        console.error('Error creating message_received notification:', err);
+        logger.error('Error creating message_received notification:', err);
       }
     });
 
@@ -692,7 +697,7 @@ router.post('/:id/message', validateObjectId('id'), authenticate, async (req, re
         );
 
       } catch (error) {
-        console.error('Error sending application message email:', error);
+        logger.error('Error sending application message email:', error.message);
       }
     });
 
@@ -702,7 +707,7 @@ router.post('/:id/message', validateObjectId('id'), authenticate, async (req, re
     });
 
   } catch (error) {
-    console.error('Send message error:', error);
+    logger.error('Send message error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në dërgimin e mesazhit'
@@ -745,7 +750,7 @@ router.delete('/:id', validateObjectId('id'), authenticate, requireJobSeeker, as
     });
 
   } catch (error) {
-    console.error('Withdraw application error:', error);
+    logger.error('Withdraw application error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në tërheqjen e aplikimit'

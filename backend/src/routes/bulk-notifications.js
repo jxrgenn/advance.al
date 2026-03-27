@@ -4,7 +4,8 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { BulkNotification, Notification, User } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { sendBulkNotificationEmail } from '../lib/resendEmailService.js';
-import { sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
+import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
@@ -48,14 +49,16 @@ const bulkNotificationValidation = [
     .withMessage('Titulli është i detyrueshëm')
     .isLength({ max: 200 })
     .withMessage('Titulli nuk mund të ketë më shumë se 200 karaktere')
-    .trim(),
+    .trim()
+    .customSanitizer(v => stripHtml(v)),
 
   body('message')
     .notEmpty()
     .withMessage('Mesazhi është i detyrueshëm')
     .isLength({ max: 2000 })
     .withMessage('Mesazhi nuk mund të ketë më shumë se 2000 karaktere')
-    .trim(),
+    .trim()
+    .customSanitizer(v => stripHtml(v)),
 
   body('type')
     .isIn(['announcement', 'maintenance', 'feature', 'warning', 'update'])
@@ -83,6 +86,7 @@ const bulkNotificationValidation = [
     .isLength({ max: 100 })
     .withMessage('Emri i template nuk mund të ketë më shumë se 100 karaktere')
     .trim()
+    .customSanitizer(v => stripHtml(v))
 ];
 
 // @route   POST /api/bulk-notifications
@@ -153,7 +157,7 @@ router.post('/', authenticate, requireAdmin, bulkNotificationLimit, bulkNotifica
     });
 
   } catch (error) {
-    console.error('❌ Error creating bulk notification:', error);
+    logger.error('Error creating bulk notification:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në krijimin e njoftimit masiv',
@@ -211,7 +215,7 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error fetching bulk notification history:', error);
+    logger.error('Error fetching bulk notification history:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e historisë së njoftimeve',
@@ -241,7 +245,7 @@ router.get('/:id', validateObjectId('id'), authenticate, requireAdmin, async (re
     });
 
   } catch (error) {
-    console.error('❌ Error fetching bulk notification:', error);
+    logger.error('Error fetching bulk notification:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e njoftimit',
@@ -263,7 +267,7 @@ router.get('/templates/list', authenticate, requireAdmin, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error fetching templates:', error);
+    logger.error('Error fetching templates:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e template-ve',
@@ -286,7 +290,7 @@ router.post('/templates/:id/create', validateObjectId('id'), authenticate, requi
     });
 
   } catch (error) {
-    console.error('❌ Error creating from template:', error);
+    logger.error('Error creating from template:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në krijimin e njoftimit nga template',
@@ -325,7 +329,7 @@ router.delete('/:id', validateObjectId('id'), authenticate, requireAdmin, async 
     });
 
   } catch (error) {
-    console.error('❌ Error deleting bulk notification:', error);
+    logger.error('Error deleting bulk notification:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në fshirjen e njoftimit',
@@ -385,7 +389,7 @@ async function processNotifications(bulkNotification, targetUsers) {
             sentCount++;
 
           } catch (error) {
-            console.error(`❌ Error processing notification for user ${user._id}:`, error);
+            logger.error(`Error processing notification for user ${user._id}:`, error.message);
             // Determine the channel based on the error
             const channel = error.message.includes('email') || error.message.includes('Resend') ? 'email' : 'in-app';
             await bulkNotification.logError(error, user._id, channel);
@@ -411,7 +415,7 @@ async function processNotifications(bulkNotification, targetUsers) {
     await bulkNotification.markAsSent();
 
   } catch (error) {
-    console.error('❌ Error in background processing:', error);
+    logger.error('Error in background processing:', error.message);
     await bulkNotification.markAsFailed(error);
   }
 }

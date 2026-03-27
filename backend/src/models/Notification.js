@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import logger from '../config/logger.js';
 
 const { Schema } = mongoose;
 
@@ -173,7 +174,7 @@ notificationSchema.statics.createApplicationStatusNotification = async function(
     }
 
   } catch (error) {
-    console.error('❌ Error creating application status notification:', error);
+    logger.error('Error creating application status notification:', error.message);
   }
 };
 
@@ -267,7 +268,7 @@ notificationSchema.statics.createAccountActionNotification = async function(user
     }
 
   } catch (error) {
-    console.error(`❌ Error creating ${action} notification:`, error);
+    logger.error(`Error creating ${action} notification:`, error.message);
   }
 };
 

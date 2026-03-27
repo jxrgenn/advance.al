@@ -17,7 +17,7 @@ import statsRoutes from './src/routes/stats.js';
 import verificationRoutes from './src/routes/verification.js';
 import quickUserRoutes from './src/routes/quickusers.js';
 import companiesRoutes from './src/routes/companies.js';
-import sendVerificationRoutes from './src/routes/send-verification.js';
+// send-verification route REMOVED — legacy unauthenticated email endpoint (security risk)
 import adminRoutes from './src/routes/admin.js';
 import reportRoutes from './src/routes/reports.js';
 import bulkNotificationRoutes from './src/routes/bulk-notifications.js';
@@ -137,7 +137,7 @@ app.use('/api/stats', statsRoutes);
 app.use('/api/verification', verificationRoutes);
 app.use('/api/quickusers', quickUserRoutes);
 app.use('/api/companies', companiesRoutes);
-app.use('/api/send-verification', sendVerificationRoutes);
+// send-verification route removed — see backend/server.js for current routes
 
 // Welcome Route
 app.get('/', (req, res) => {

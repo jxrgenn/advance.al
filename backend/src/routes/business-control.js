@@ -4,6 +4,7 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { BusinessCampaign, PricingRule, RevenueAnalytics, Job, User, SystemConfiguration } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { escapeRegex, sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
@@ -106,7 +107,7 @@ router.post('/campaigns', authenticate, requireAdmin, businessControlLimit, camp
     });
 
   } catch (error) {
-    console.error('❌ Error creating campaign:', error);
+    logger.error('Error creating campaign:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në krijimin e kampanjës',
@@ -163,7 +164,7 @@ router.get('/campaigns', authenticate, requireAdmin, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error fetching campaigns:', error);
+    logger.error('Error fetching campaigns:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e kampanjave',
@@ -203,7 +204,7 @@ router.put('/campaigns/:id', validateObjectId('id'), authenticate, requireAdmin,
     });
 
   } catch (error) {
-    console.error('❌ Error updating campaign:', error);
+    logger.error('Error updating campaign:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në përditësimin e kampanjës',
@@ -235,7 +236,7 @@ router.post('/campaigns/:id/activate', validateObjectId('id'), authenticate, req
     });
 
   } catch (error) {
-    console.error('❌ Error activating campaign:', error);
+    logger.error('Error activating campaign:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në aktivizimin e kampanjës',
@@ -267,7 +268,7 @@ router.post('/campaigns/:id/pause', validateObjectId('id'), authenticate, requir
     });
 
   } catch (error) {
-    console.error('❌ Error pausing campaign:', error);
+    logger.error('Error pausing campaign:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në pezullimin e kampanjës',
@@ -325,7 +326,7 @@ router.post('/pricing-rules', authenticate, requireAdmin, businessControlLimit, 
     });
 
   } catch (error) {
-    console.error('❌ Error creating pricing rule:', error);
+    logger.error('Error creating pricing rule:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në krijimin e rregullës së çmimit',
@@ -380,7 +381,7 @@ router.get('/pricing-rules', authenticate, requireAdmin, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error fetching pricing rules:', error);
+    logger.error('Error fetching pricing rules:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e rregullave të çmimit',
@@ -420,7 +421,7 @@ router.put('/pricing-rules/:id', validateObjectId('id'), authenticate, requireAd
     });
 
   } catch (error) {
-    console.error('❌ Error updating pricing rule:', error);
+    logger.error('Error updating pricing rule:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në përditësimin e rregullës së çmimit',
@@ -454,7 +455,7 @@ router.post('/pricing-rules/:id/toggle', validateObjectId('id'), authenticate, r
     });
 
   } catch (error) {
-    console.error('❌ Error toggling pricing rule:', error);
+    logger.error('Error toggling pricing rule:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në ndryshimin e statusit të rregullës',
@@ -500,7 +501,7 @@ router.get('/analytics/dashboard', authenticate, requireAdmin, async (req, res) 
     });
 
   } catch (error) {
-    console.error('❌ Error fetching dashboard data:', error);
+    logger.error('Error fetching dashboard data:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e të dhënave të dashboard-it',
@@ -545,7 +546,7 @@ router.get('/analytics/revenue', authenticate, requireAdmin, async (req, res) =>
     });
 
   } catch (error) {
-    console.error('❌ Error fetching revenue analytics:', error);
+    logger.error('Error fetching revenue analytics:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e analizave të të ardhurave',
@@ -601,7 +602,7 @@ router.post('/analytics/update', authenticate, requireAdmin, async (req, res) =>
     });
 
   } catch (error) {
-    console.error('❌ Error updating analytics:', error);
+    logger.error('Error updating analytics:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në përditësimin e analizave',
@@ -708,7 +709,7 @@ router.post('/platform/emergency', authenticate, requireAdmin, async (req, res) 
     });
 
   } catch (error) {
-    console.error('❌ Error executing emergency action:', error);
+    logger.error('Error executing emergency action:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në ekzekutimin e veprimit emergjence',
@@ -741,7 +742,7 @@ router.get('/whitelist', authenticate, requireAdmin, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error fetching whitelist:', error);
+    logger.error('Error fetching whitelist:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e listës së privilegjuar'
@@ -810,7 +811,7 @@ router.post('/whitelist/:employerId', validateObjectId('employerId'), authentica
     });
 
   } catch (error) {
-    console.error('❌ Error adding to whitelist:', error);
+    logger.error('Error adding to whitelist:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në shtimin e punëdhënësit në listën e privilegjuar'
@@ -851,7 +852,7 @@ router.delete('/whitelist/:employerId', validateObjectId('employerId'), authenti
     });
 
   } catch (error) {
-    console.error('❌ Error removing from whitelist:', error);
+    logger.error('Error removing from whitelist:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në heqjen e punëdhënësit nga lista e privilegjuar'
@@ -892,7 +893,7 @@ router.get('/employers/search', authenticate, requireAdmin, async (req, res) => 
     });
 
   } catch (error) {
-    console.error('❌ Error searching employers:', error);
+    logger.error('Error searching employers:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në kërkimin e punëdhënësve'

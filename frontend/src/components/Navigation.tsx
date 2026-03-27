@@ -133,27 +133,35 @@ const Navigation = () => {
       handleMarkAsRead(notification._id);
     }
 
-    // Navigate to related content
+    setNotificationsOpen(false);
+
+    // For employers with application-related notifications, always go to applicants tab
+    if (notification.relatedApplication && user?.userType === 'employer') {
+      navigate('/employer-dashboard?tab=applications');
+      return;
+    }
+
+    // For job seekers with application notifications, go to profile
+    if (notification.relatedApplication) {
+      navigate('/profile');
+      return;
+    }
+
+    // For job-related notifications (no application), go to job page
     if (notification.relatedJob?._id) {
-      setNotificationsOpen(false);
       navigate(`/jobs/${notification.relatedJob._id}`);
-    } else if (notification.relatedApplication) {
-      // For application-related notifications, navigate based on user type
-      setNotificationsOpen(false);
-      if (user?.userType === 'employer') {
-        navigate('/employer-dashboard');
-      } else {
-        navigate('/profile');
-      }
     }
   };
 
   const getNotificationLink = (notification: Notification): string | null => {
-    if (notification.relatedJob?._id) {
-      return `/jobs/${notification.relatedJob._id}`;
+    if (notification.relatedApplication && user?.userType === 'employer') {
+      return '/employer-dashboard?tab=applications';
     }
     if (notification.relatedApplication) {
-      return user?.userType === 'employer' ? '/employer-dashboard' : '/profile';
+      return '/profile';
+    }
+    if (notification.relatedJob?._id) {
+      return `/jobs/${notification.relatedJob._id}`;
     }
     return null;
   };
@@ -203,7 +211,7 @@ const Navigation = () => {
   };
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-[9998] w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <nav className="fixed top-0 left-0 right-0 z-[9998] w-full border-b bg-background">
       <div className="container relative flex h-16 items-center justify-between">
         <Link to="/" className="flex items-center">
           <img

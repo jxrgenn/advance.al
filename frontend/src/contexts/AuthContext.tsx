@@ -91,20 +91,7 @@ interface AuthContextType {
   
   // Actions
   login: (email: string, password: string) => Promise<boolean>;
-  register: (userData: {
-    email: string;
-    password: string;
-    userType: 'jobseeker' | 'employer';
-    firstName: string;
-    lastName: string;
-    city: string;
-    phone?: string;
-    companyName?: string;
-    industry?: string;
-    companySize?: string;
-    description?: string;
-    website?: string;
-  }) => Promise<void>;
+  register: (email: string, verificationCode: string) => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
   updateUser: (user: User) => void;
@@ -149,29 +136,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // Register function
-  const register = async (userData: {
-    email: string;
-    password: string;
-    userType: 'jobseeker' | 'employer';
-    firstName: string;
-    lastName: string;
-    city: string;
-    phone?: string;
-    companyName?: string;
-    industry?: string;
-    companySize?: string;
-    description?: string;
-    website?: string;
-  }): Promise<void> => {
+  // Register function (step 2: verify code and complete registration)
+  const register = async (email: string, verificationCode: string): Promise<void> => {
     dispatch({ type: 'AUTH_START' });
 
     try {
-      const response = await authApi.register(userData);
+      const response = await authApi.register({ email, verificationCode });
 
       if (response.success && response.data) {
         dispatch({ type: 'AUTH_SUCCESS', payload: response.data.user });
-        return; // Success - promise resolves
+        return;
       } else {
         const errorMessage = response.message || 'Gabim në regjistrimin';
         dispatch({ type: 'AUTH_ERROR', payload: errorMessage });
@@ -187,7 +161,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
 
       dispatch({ type: 'AUTH_ERROR', payload: errorMessage });
-      throw error; // Re-throw so caller can handle
+      throw error;
     }
   };
 

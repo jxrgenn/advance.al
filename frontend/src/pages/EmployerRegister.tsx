@@ -3,12 +3,13 @@ import { Link, useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building, Mail, Lock, MapPin, Users, CreditCard, Briefcase } from "lucide-react";
+import { Building, Mail, Lock, MapPin, Users, CreditCard, Briefcase, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { authApi } from "@/lib/api";
 
 const INDUSTRIES = [
   'Teknologji Informacioni',
@@ -32,9 +33,23 @@ const INDUSTRIES = [
 const EmployerRegister = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState(1);
+  const [showPassword, setShowPassword] = useState(false);
+  const [verificationOpen, setVerificationOpen] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [verificationEmail, setVerificationEmail] = useState('');
+  const [verificationLoading, setVerificationLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { register, user } = useAuth();
+
+  // Resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
 
   // Redirect authenticated users
   useEffect(() => {
@@ -94,28 +109,37 @@ const EmployerRegister = () => {
     if (step > 1) setStep(step - 1);
   };
 
+  const getRegistrationData = () => ({
+    email: email.trim(),
+    password,
+    userType: 'employer' as const,
+    firstName: contactFirstName.trim(),
+    lastName: contactLastName.trim(),
+    city: location.trim(),
+    companyName: companyName.trim(),
+    industry,
+    companySize,
+    description: description.trim() || undefined,
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      await register({
-        email: email.trim(),
-        password,
-        userType: 'employer',
-        firstName: contactFirstName.trim(),
-        lastName: contactLastName.trim(),
-        city: location.trim(),
-        companyName: companyName.trim(),
-        industry,
-        companySize,
-        description: description.trim() || undefined,
-      });
-      toast({
-        title: 'Mirësevini në PunaShqip!',
-        description: 'Llogaria juaj u krijua me sukses. Llogaria juaj po verifikohet nga administratori.',
-      });
-      navigate('/employer-dashboard');
+      const response = await authApi.initiateRegistration(getRegistrationData());
+      if (response.success) {
+        setVerificationEmail(email.trim());
+        setVerificationCode('');
+        setVerificationOpen(true);
+        setResendCooldown(60);
+        toast({
+          title: 'Kontrolloni email-in',
+          description: `Kemi dërguar një kod verifikimi në ${email.trim()}`,
+        });
+      } else {
+        throw new Error(response.message || 'Gabim gjatë dërgimit të kodit');
+      }
     } catch (error: any) {
       toast({
         title: 'Gabim në regjistrim',
@@ -127,13 +151,47 @@ const EmployerRegister = () => {
     }
   };
 
+  const handleVerifyCode = async () => {
+    if (verificationCode.length !== 6) return;
+    try {
+      setVerificationLoading(true);
+      await register(verificationEmail, verificationCode);
+      setVerificationOpen(false);
+      toast({
+        title: 'Mirësevini në PunaShqip!',
+        description: 'Llogaria juaj u krijua me sukses.',
+      });
+      navigate('/employer-dashboard');
+    } catch (error: any) {
+      toast({
+        title: 'Gabim',
+        description: error?.message || 'Kodi i gabuar. Provoni përsëri.',
+        variant: 'destructive',
+      });
+    } finally {
+      setVerificationLoading(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (resendCooldown > 0) return;
+    try {
+      await authApi.initiateRegistration(getRegistrationData());
+      setResendCooldown(60);
+      setVerificationCode('');
+      toast({ title: 'Kodi u ridërgua', description: 'Kontrolloni email-in tuaj' });
+    } catch (error: any) {
+      toast({ title: 'Gabim', description: error?.message || 'Nuk mund të ridërgohet kodi', variant: 'destructive' });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
 
       <div className="container flex items-center justify-center min-h-[calc(100vh-4rem)] py-8">
         <div className="w-full max-w-2xl">
-          <Card>
+          <Card className="border-2 border-blue-200">
             <CardHeader className="text-center">
               <CardTitle className="text-2xl">Regjistro Kompaniën</CardTitle>
               <CardDescription>
@@ -150,89 +208,80 @@ const EmployerRegister = () => {
               <form onSubmit={handleSubmit} className="space-y-6">
                 {step === 1 && (
                   <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="company-name">Emri i Kompanisë *</Label>
+                    <div className="relative">
+                      <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="company-name"
+                        placeholder="Emri i Kompanisë *"
+                        className="pl-10"
+                        value={companyName}
+                        onChange={(e) => setCompanyName(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <Input
+                        id="contact-first-name"
+                        placeholder="Emri i kontaktit *"
+                        value={contactFirstName}
+                        onChange={(e) => setContactFirstName(e.target.value)}
+                        required
+                      />
+                      <Input
+                        id="contact-last-name"
+                        placeholder="Mbiemri i kontaktit *"
+                        value={contactLastName}
+                        onChange={(e) => setContactLastName(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="company-email"
+                        type="email"
+                        placeholder="Email i kompanisë *"
+                        className="pl-10"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="relative">
-                        <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
-                          id="company-name"
-                          placeholder="Tech Innovations AL"
-                          className="pl-10"
-                          value={companyName}
-                          onChange={(e) => setCompanyName(e.target.value)}
+                          id="password"
+                          type={showPassword ? "text" : "password"}
+                          placeholder="Fjalëkalimi *"
+                          className="pl-10 pr-10"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
                           required
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          tabIndex={-1}
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
                       </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="contact-first-name">Emri i Kontaktit *</Label>
-                        <Input
-                          id="contact-first-name"
-                          placeholder="Andi"
-                          value={contactFirstName}
-                          onChange={(e) => setContactFirstName(e.target.value)}
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="contact-last-name">Mbiemri i Kontaktit *</Label>
-                        <Input
-                          id="contact-last-name"
-                          placeholder="Krasniqi"
-                          value={contactLastName}
-                          onChange={(e) => setContactLastName(e.target.value)}
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="company-email">Email i Kompanisë *</Label>
                       <div className="relative">
-                        <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
-                          id="company-email"
-                          type="email"
-                          placeholder="hr@kompania.com"
+                          id="confirm-password"
+                          type={showPassword ? "text" : "password"}
+                          placeholder="Konfirmo fjalëkalimin *"
                           className="pl-10"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
                           required
                         />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="password">Fjalëkalimi *</Label>
-                        <div className="relative">
-                          <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            id="password"
-                            type="password"
-                            className="pl-10"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            required
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="confirm-password">Konfirmo Fjalëkalimin *</Label>
-                        <div className="relative">
-                          <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            id="confirm-password"
-                            type="password"
-                            className="pl-10"
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
-                            required
-                          />
-                        </div>
                       </div>
                     </div>
 
@@ -244,69 +293,57 @@ const EmployerRegister = () => {
 
                 {step === 2 && (
                   <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="location">Vendndodhja *</Label>
-                      <div className="relative">
-                        <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          id="location"
-                          placeholder="Tiranë, Shqipëri"
-                          className="pl-10"
-                          value={location}
-                          onChange={(e) => setLocation(e.target.value)}
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="industry">Sektori *</Label>
-                      <div className="relative">
-                        <Briefcase className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                        <select
-                          id="industry"
-                          className="w-full pl-10 pr-3 py-2 border border-input bg-background rounded-md text-sm"
-                          value={industry}
-                          onChange={(e) => setIndustry(e.target.value)}
-                          required
-                        >
-                          <option value="">Zgjidh sektorin...</option>
-                          {INDUSTRIES.map((ind) => (
-                            <option key={ind} value={ind}>{ind}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="company-size">Madhësia e Kompanisë</Label>
-                      <div className="relative">
-                        <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                        <select
-                          id="company-size"
-                          className="w-full pl-10 pr-3 py-2 border border-input bg-background rounded-md text-sm"
-                          value={companySize}
-                          onChange={(e) => setCompanySize(e.target.value)}
-                        >
-                          <option value="1-10">1-10 punonjës</option>
-                          <option value="11-50">11-50 punonjës</option>
-                          <option value="51-200">51-200 punonjës</option>
-                          <option value="201-500">201-500 punonjës</option>
-                          <option value="501+">501+ punonjës</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="description">Përshkrimi i Kompanisë</Label>
-                      <Textarea
-                        id="description"
-                        placeholder="Shkruaj një përshkrim të shkurtër për kompaniën tuaj..."
-                        rows={4}
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
+                    <div className="relative">
+                      <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="location"
+                        placeholder="Vendndodhja *"
+                        className="pl-10"
+                        value={location}
+                        onChange={(e) => setLocation(e.target.value)}
+                        required
                       />
                     </div>
+
+                    <div className="relative">
+                      <Briefcase className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                      <select
+                        id="industry"
+                        className="w-full pl-10 pr-3 py-2 border border-input bg-background rounded-md text-sm"
+                        value={industry}
+                        onChange={(e) => setIndustry(e.target.value)}
+                        required
+                      >
+                        <option value="">Zgjidh sektorin *</option>
+                        {INDUSTRIES.map((ind) => (
+                          <option key={ind} value={ind}>{ind}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="relative">
+                      <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                      <select
+                        id="company-size"
+                        className="w-full pl-10 pr-3 py-2 border border-input bg-background rounded-md text-sm"
+                        value={companySize}
+                        onChange={(e) => setCompanySize(e.target.value)}
+                      >
+                        <option value="1-10">1-10 punonjës</option>
+                        <option value="11-50">11-50 punonjës</option>
+                        <option value="51-200">51-200 punonjës</option>
+                        <option value="201-500">201-500 punonjës</option>
+                        <option value="501+">501+ punonjës</option>
+                      </select>
+                    </div>
+
+                    <Textarea
+                      id="description"
+                      placeholder="Përshkrimi i kompanisë (opsional)"
+                      rows={4}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                    />
 
                     <div className="flex gap-3">
                       <Button type="button" variant="outline" onClick={prevStep} className="flex-1">
@@ -353,7 +390,7 @@ const EmployerRegister = () => {
 
                     <div className="space-y-4">
                       <div className="space-y-2">
-                        <Label>Metoda e Pagesës (Demo)</Label>
+                        <p className="text-sm text-muted-foreground">Metoda e Pagesës (Demo)</p>
                         <div className="relative">
                           <CreditCard className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                           <Input
@@ -390,6 +427,60 @@ const EmployerRegister = () => {
           </Card>
         </div>
       </div>
+      {/* Email Verification Overlay */}
+      {verificationOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <Card className="w-full max-w-sm mx-4">
+            <CardContent className="p-6 text-center space-y-4">
+              <div className="mx-auto w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center">
+                <Mail className="w-6 h-6 text-blue-600" />
+              </div>
+              <h3 className="text-lg font-semibold">Verifikoni Email-in</h3>
+              <p className="text-sm text-muted-foreground">
+                Kemi dërguar një kod 6-shifror në{' '}
+                <span className="font-semibold text-blue-600">{verificationEmail}</span>
+              </p>
+              <Input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="000000"
+                className="text-center text-2xl tracking-[0.5em] font-bold"
+                value={verificationCode}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                  setVerificationCode(val);
+                }}
+                autoFocus
+              />
+              <Button
+                className="w-full"
+                onClick={handleVerifyCode}
+                disabled={verificationCode.length !== 6 || verificationLoading}
+              >
+                {verificationLoading ? 'Duke verifikuar...' : 'Verifiko & Krijo Llogarinë'}
+              </Button>
+              <div className="flex items-center justify-center gap-2">
+                <span className="text-xs text-muted-foreground">Nuk e morët kodin?</span>
+                <button
+                  className="text-xs text-blue-600 hover:underline disabled:text-gray-400 disabled:no-underline flex items-center gap-1"
+                  onClick={handleResendCode}
+                  disabled={resendCooldown > 0}
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  {resendCooldown > 0 ? `Ridërgo (${resendCooldown}s)` : 'Ridërgo kodin'}
+                </button>
+              </div>
+              <button
+                className="text-xs text-muted-foreground hover:underline"
+                onClick={() => setVerificationOpen(false)}
+              >
+                Anulo
+              </button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };

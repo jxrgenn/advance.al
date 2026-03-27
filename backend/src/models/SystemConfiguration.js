@@ -5,7 +5,7 @@ const { Schema } = mongoose;
 const systemConfigurationSchema = new Schema({
   category: {
     type: String,
-    enum: ['platform', 'users', 'content', 'email', 'system', 'features'],
+    enum: ['platform', 'users', 'content', 'email', 'system', 'features', 'payment'],
     required: true
   },
   key: {
@@ -315,6 +315,47 @@ systemConfigurationSchema.statics.createDefaultSettings = async function(adminUs
       description: 'Ditët derisa punët skadon automatikisht',
       defaultValue: 30,
       validation: { required: true, min: 7, max: 365 }
+    },
+
+    // Payment Settings
+    {
+      category: 'payment',
+      key: 'payment_enabled',
+      value: false,
+      dataType: 'boolean',
+      description: 'Aktivizo sistemin e pagesave — kur është false, të gjithë punëdhënësit e verifikuar postojnë falas',
+      defaultValue: false,
+      validation: { required: true }
+    },
+    {
+      category: 'payment',
+      key: 'pricing_standard_posting',
+      value: 28,
+      dataType: 'number',
+      description: 'Çmimi për postim standart pune (EUR)',
+      defaultValue: 28,
+      isPublic: true,
+      validation: { required: true, min: 0, max: 1000 }
+    },
+    {
+      category: 'payment',
+      key: 'pricing_promoted_posting',
+      value: 45,
+      dataType: 'number',
+      description: 'Çmimi për postim të promovuar pune (EUR)',
+      defaultValue: 45,
+      isPublic: true,
+      validation: { required: true, min: 0, max: 1000 }
+    },
+    {
+      category: 'payment',
+      key: 'pricing_candidate_viewing',
+      value: 15,
+      dataType: 'number',
+      description: 'Çmimi për shikimin e kandidatëve (EUR)',
+      defaultValue: 15,
+      isPublic: true,
+      validation: { required: true, min: 0, max: 1000 }
     },
 
     // Email Settings

@@ -162,7 +162,7 @@ bulkNotificationSchema.methods.getTargetUsers = async function() {
     case 'quick_users': {
       // QuickUser is a separate collection
       const QuickUser = mongoose.model('QuickUser');
-      return QuickUser.find({ isActive: true }).select('_id email firstName lastName');
+      return QuickUser.find({ isActive: true }).select('_id email firstName lastName').lean();
     }
     case 'all':
     default:
@@ -174,7 +174,7 @@ bulkNotificationSchema.methods.getTargetUsers = async function() {
   query.status = { $nin: ['suspended', 'banned', 'deleted'] };
   query.isDeleted = false;
 
-  return User.find(query).select('_id email profile.firstName profile.lastName userType');
+  return User.find(query).select('_id email profile.firstName profile.lastName userType').lean();
 };
 
 // Method to update delivery stats

@@ -1,6 +1,6 @@
 import express from 'express';
 import { body, query, validationResult } from 'express-validator';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { BulkNotification, Notification, User } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { sendBulkNotificationEmail } from '../lib/resendEmailService.js';
@@ -15,8 +15,12 @@ const bulkNotificationLimit = rateLimit({
     success: false,
     message: 'Shumë njoftimet masive të dërguara. Ju lutemi provoni pas 1 ore.'
   },
-  keyGenerator: (req) => `bulk_notification_${req.user?.id || req.ip}`,
-  skip: (req) => process.env.NODE_ENV === 'development' // Skip in development
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => process.env.NODE_ENV === 'development',
+  keyGenerator: (req) => {
+    return req.user?.id || ipKeyGenerator(req);
+  }
 });
 
 // Validation middleware

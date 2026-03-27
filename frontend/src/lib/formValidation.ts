@@ -101,6 +101,11 @@ export const validateForm = (
 ): ValidationResult => {
   const errors: ValidationError[] = [];
 
+  // Guard against null/undefined formData or rules
+  if (!formData || !rules || typeof rules !== 'object') {
+    return { isValid: true, errors: [], errorMessage: '' };
+  }
+
   Object.entries(rules).forEach(([fieldName, rule]) => {
     const value = formData[fieldName];
     const error = validateField(fieldName, value, rule, formData);
@@ -146,7 +151,11 @@ export const profileValidationRules = {
     },
     phone: {
       required: false,
-      pattern: /^\+?[0-9]{9,15}$/,
+      custom: (value: string) => {
+        if (!value || value.trim() === '') return true; // Optional field
+        const cleaned = value.replace(/[\s\-\(\)]/g, ''); // Strip spaces, dashes, parentheses
+        return /^\+?[0-9]{9,15}$/.test(cleaned);
+      },
       message: "Numri i telefonit duhet të jetë i vlefshëm (9-15 shifra)"
     },
     bio: {
@@ -267,7 +276,14 @@ export const profileValidationRules = {
     },
     newPassword: {
       minLength: 8,
-      message: "Fjalëkalimi i ri duhet të ketë të paktën 8 karaktere"
+      custom: (value: string) => {
+        if (!value) return true;
+        if (!/[A-Z]/.test(value)) return false;
+        if (!/[a-z]/.test(value)) return false;
+        if (!/[0-9]/.test(value)) return false;
+        return true;
+      },
+      message: "Fjalëkalimi i ri duhet të ketë 8+ karaktere, 1 shkronjë të madhe, 1 të vogël, 1 numër"
     },
     confirmPassword: {
       custom: (value: string, formData?: any) =>
@@ -288,20 +304,19 @@ export const jobSeekerSignupRules = {
     password: {
       required: true,
       minLength: 8,
-      message: "Fjalëkalimi duhet të ketë të paktën 8 karaktere"
-    },
-    confirmPassword: {
-      required: true,
-      message: "Fjalëkalimet nuk përputhen"
+      custom: (value: string) => {
+        if (!value) return true; // required check handles empty
+        if (!/[A-Z]/.test(value)) return false;
+        if (!/[a-z]/.test(value)) return false;
+        if (!/[0-9]/.test(value)) return false;
+        return true;
+      },
+      message: "Fjalëkalimi duhet të ketë 8+ karaktere, 1 shkronjë të madhe, 1 të vogël, 1 numër"
     },
     phone: profileValidationRules.personal.phone,
     city: {
       required: true,
       message: "Qyteti është i detyrueshëm"
-    },
-    education: {
-      required: true,
-      message: "Arsimi është i detyrueshëm"
     }
   },
   quickForm: {
@@ -324,30 +339,33 @@ export const jobSeekerSignupRules = {
  * Common validation rules for Employer signup
  */
 export const employerSignupRules = {
+  // Step 0: Personal Info (matches UI step 0)
   step0: {
+    firstName: profileValidationRules.personal.firstName,
+    lastName: profileValidationRules.personal.lastName,
+    email: profileValidationRules.settings.email,
+    password: {
+      required: true,
+      minLength: 8,
+      custom: (value: string) => {
+        if (!value) return true;
+        if (!/[A-Z]/.test(value)) return false;
+        if (!/[a-z]/.test(value)) return false;
+        if (!/[0-9]/.test(value)) return false;
+        return true;
+      },
+      message: "Fjalëkalimi duhet të ketë 8+ karaktere, 1 shkronjë të madhe, 1 të vogël, 1 numër"
+    },
+    phone: profileValidationRules.personal.phone
+  },
+  // Step 1: Company Info (matches UI step 1)
+  step1: {
     companyName: {
       required: true,
       minLength: 2,
       maxLength: 100,
       message: "Emri i kompanisë duhet të jetë midis 2 dhe 100 karakteresh"
     },
-    email: profileValidationRules.settings.email,
-    password: {
-      required: true,
-      minLength: 8,
-      message: "Fjalëkalimi duhet të ketë të paktën 8 karaktere"
-    },
-    confirmPassword: {
-      required: true,
-      message: "Fjalëkalimet nuk përputhen"
-    }
-  },
-  step1: {
-    firstName: profileValidationRules.personal.firstName,
-    lastName: profileValidationRules.personal.lastName,
-    phone: profileValidationRules.personal.phone
-  },
-  step2: {
     companySize: {
       required: true,
       message: "Madhësia e kompanisë është e detyrueshme"
@@ -363,8 +381,12 @@ export const employerSignupRules = {
       message: "Përshkrimi duhet të jetë midis 50 dhe 500 karakteresh"
     },
     website: {
-      pattern: /^https?:\/\/.+\..+/,
-      message: "Uebsajti duhet të jetë një URL i vlefshëm"
+      custom: (value: string) => {
+        if (!value || value.trim() === '') return true; // Optional
+        // Accept bare domains (jxsoft.al, www.jxsoft.al) and full URLs (https://jxsoft.al)
+        return /^(https?:\/\/)?[\w.-]+\.[a-z]{2,}(\/.*)?$/i.test(value.trim());
+      },
+      message: "Uebsajti duhet të jetë një URL i vlefshëm (p.sh. jxsoft.al)"
     }
   }
 };
@@ -451,8 +473,11 @@ export const employerDashboardSettingsRules = {
     message: "Përshkrimi duhet të jetë midis 50 dhe 500 karakteresh"
   },
   website: {
-    pattern: /^https?:\/\/.+\..+/,
-    message: "Uebsajti duhet të jetë një URL i vlefshëm"
+    custom: (value: string) => {
+      if (!value || value.trim() === '') return true; // Optional
+      return /^(https?:\/\/)?[\w.-]+\.[a-z]{2,}(\/.*)?$/i.test(value.trim());
+    },
+    message: "Uebsajti duhet të jetë një URL i vlefshëm (p.sh. jxsoft.al)"
   },
   industry: {
     required: true,
@@ -465,10 +490,7 @@ export const employerDashboardSettingsRules = {
   city: {
     required: true,
     message: "Qyteti është i detyrueshëm"
-  },
-  firstName: profileValidationRules.personal.firstName,
-  lastName: profileValidationRules.personal.lastName,
-  phone: profileValidationRules.personal.phone
+  }
 };
 
 /**
@@ -595,4 +617,27 @@ export const formatValidationErrors = (errors: ValidationError[]): string => {
   }
 
   return message.trim();
+};
+
+/**
+ * Normalize Albanian phone number:
+ * - Strips spaces, dashes, parentheses
+ * - Auto-adds +355 prefix for local numbers
+ * - Strips leading 0 after country code
+ * - Returns undefined for empty input
+ */
+export const normalizeAlbanianPhone = (phone: string): string | undefined => {
+  if (!phone || phone.trim() === '') return undefined;
+  const cleaned = phone.replace(/[\s\-\(\)]/g, '');
+  if (!cleaned) return undefined;
+  if (cleaned.startsWith('+')) {
+    // Strip leading 0 after country code: +3550... → +355...
+    return cleaned.replace(/^(\+\d{2,3})0+/, '$1');
+  }
+  if (cleaned.startsWith('00')) {
+    const withPlus = '+' + cleaned.slice(2);
+    return withPlus.replace(/^(\+\d{2,3})0+/, '$1');
+  }
+  // Local number: strip leading 0, add +355
+  return '+355' + cleaned.replace(/^0+/, '');
 };

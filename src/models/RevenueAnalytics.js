@@ -222,7 +222,7 @@ const revenueAnalyticsSchema = new Schema({
 
 // Indexes for performance
 revenueAnalyticsSchema.index({ date: -1 });
-revenueAnalyticsSchema.index({ dateString: 1 });
+// dateString already has unique: true in schema definition — no duplicate index needed
 revenueAnalyticsSchema.index({ 'metrics.totalRevenue': -1 });
 revenueAnalyticsSchema.index({ generatedAt: -1 });
 

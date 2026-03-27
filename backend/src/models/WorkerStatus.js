@@ -72,7 +72,7 @@ const workerStatusSchema = new Schema({
 });
 
 // Indexes
-workerStatusSchema.index({ workerId: 1 }, { unique: true });
+// workerId already has unique: true in schema definition — no duplicate index needed
 workerStatusSchema.index({ lastHeartbeat: -1 }); // For health checks
 workerStatusSchema.index({ status: 1 });
 

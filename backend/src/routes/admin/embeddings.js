@@ -6,6 +6,7 @@ import jobEmbeddingService from '../../services/jobEmbeddingService.js';
 import debugLogger from '../../services/debugLogger.js';
 import { authenticate, requireAdmin } from '../../middleware/auth.js';
 import { sanitizeLimit } from '../../utils/sanitize.js';
+import logger from '../../config/logger.js';
 
 const router = express.Router();
 
@@ -103,7 +104,7 @@ router.get('/status', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get embedding status error:', error);
+    logger.error('Get embedding status error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Error fetching embedding status'
@@ -173,7 +174,7 @@ router.get('/queue', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get queue details error:', error);
+    logger.error('Get queue details error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Error fetching queue details'
@@ -233,7 +234,7 @@ router.get('/workers', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get worker status error:', error);
+    logger.error('Get worker status error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Error fetching worker status'
@@ -258,7 +259,7 @@ router.post('/recompute-all', async (req, res) => {
         await jobEmbeddingService.queueEmbeddingGeneration(job._id, 5); // Priority 5
         queuedCount++;
       } catch (error) {
-        console.error(`Error queuing job ${job._id}:`, error.message);
+        logger.error(`Error queuing job ${job._id}:`, error.message);
         errorCount++;
       }
     }
@@ -273,7 +274,7 @@ router.post('/recompute-all', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Recompute all error:', error);
+    logger.error('Recompute all error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Error recomputing embeddings'
@@ -309,7 +310,7 @@ router.post('/retry-failed', async (req, res) => {
         await jobEmbeddingService.queueEmbeddingGeneration(job._id, 5);
         queuedCount++;
       } catch (error) {
-        console.error(`Error retrying job ${job._id}:`, error.message);
+        logger.error(`Error retrying job ${job._id}:`, error.message);
         errorCount++;
       }
     }
@@ -324,7 +325,7 @@ router.post('/retry-failed', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Retry failed jobs error:', error);
+    logger.error('Retry failed jobs error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Error retrying failed jobs'
@@ -357,7 +358,7 @@ router.post('/clear-old-queue', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Clear old queue error:', error);
+    logger.error('Clear old queue error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Error clearing old queue items'
@@ -389,7 +390,7 @@ router.post('/toggle-debug', async (req, res) => {
       data: debugLogger.getStatus()
     });
   } catch (error) {
-    console.error('Toggle debug error:', error);
+    logger.error('Toggle debug error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Error toggling debug mode'
@@ -424,7 +425,7 @@ router.post('/queue-job/:jobId', async (req, res) => {
       data: { jobId, priority }
     });
   } catch (error) {
-    console.error('Queue job error:', error);
+    logger.error('Queue job error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Error queuing job'
@@ -456,7 +457,7 @@ router.delete('/queue-item/:queueId', async (req, res) => {
       data: { queueId }
     });
   } catch (error) {
-    console.error('Delete queue item error:', error);
+    logger.error('Delete queue item error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Error deleting queue item'

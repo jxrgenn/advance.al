@@ -1,6 +1,6 @@
 import express from 'express';
 import { body, query, validationResult } from 'express-validator';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { BusinessCampaign, PricingRule, RevenueAnalytics, Job, User } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 
@@ -14,8 +14,12 @@ const businessControlLimit = rateLimit({
     success: false,
     message: 'Shumë kërkesa për kontrollet e biznesit. Ju lutemi provoni pas 1 ore.'
   },
-  keyGenerator: (req) => `business_control_${req.user?.id || req.ip}`,
-  skip: (req) => process.env.NODE_ENV === 'development'
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => process.env.NODE_ENV === 'development',
+  keyGenerator: (req) => {
+    return req.user?.id || ipKeyGenerator(req);
+  }
 });
 
 // Validation middleware

@@ -6,6 +6,7 @@ import { authenticate, requireEmployer, requireVerifiedEmployer, optionalAuth } 
 import notificationService from '../lib/notificationService.js';
 import jobEmbeddingService from '../services/jobEmbeddingService.js';
 import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
@@ -41,7 +42,7 @@ const createJobValidation = [
     .isIn(['Teknologji', 'Marketing', 'Shitje', 'Financë', 'Burime Njerëzore', 'Inxhinieri', 'Dizajn', 'Menaxhim', 'Shëndetësi', 'Arsim', 'Turizëm', 'Ndërtim', 'Transport', 'Tjetër'])
     .withMessage('Kategoria e zgjedhur nuk është e vlefshme'),
   body('jobType')
-    .isIn(['full-time', 'part-time', 'contract', 'internship'])
+    .isIn(['full-time', 'part-time', 'internship'])
     .withMessage('Lloji i punës nuk është i vlefshëm'),
   body('location.city')
     .trim()
@@ -109,7 +110,7 @@ const updateJobValidation = [
     .withMessage('Kategoria e zgjedhur nuk është e vlefshme'),
   body('jobType')
     .optional()
-    .isIn(['full-time', 'part-time', 'contract', 'internship'])
+    .isIn(['full-time', 'part-time', 'internship'])
     .withMessage('Lloji i punës nuk është i vlefshëm'),
   body('location.city')
     .optional()
@@ -292,10 +293,9 @@ router.get('/', optionalAuth, async (req, res) => {
     // Execute search
     let query = Job.searchJobs(search, filters);
 
-    // Apply sorting
+    // Apply sorting — premium jobs are highlighted in PremiumJobsCarousel, not in main listing sort
     const sortOptions = {};
     if (sortBy === 'postedAt') {
-      sortOptions.tier = sortOrder === 'desc' ? -1 : 1; // Premium first
       sortOptions.postedAt = sortOrder === 'desc' ? -1 : 1;
     } else if (sortBy === 'salary') {
       sortOptions['salary.max'] = sortOrder === 'desc' ? -1 : 1;
@@ -319,7 +319,13 @@ router.get('/', optionalAuth, async (req, res) => {
       isDeleted: false,
       status: 'active',
       expiresAt: { $gt: new Date() },
-      ...(search && { $text: { $search: search } }),
+      ...(search && { $or: [
+        { title: { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+        { description: { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+        { category: { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+        { 'location.city': { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+        { tags: { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }
+      ] }),
       ...(city && { 'location.city': Array.isArray(filters.city) ? { $in: filters.city } : city }),
       ...(categories && Array.isArray(filters.categories) && { category: { $in: filters.categories } }),
       ...(category && !categories && { category }),
@@ -365,7 +371,7 @@ router.get('/', optionalAuth, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get jobs error:', error);
+    logger.error('Get jobs error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e punëve'
@@ -571,7 +577,7 @@ router.get('/recommendations', authenticate, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get job recommendations error:', error);
+    logger.error('Get job recommendations error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e rekomandimeve të punës'
@@ -609,7 +615,7 @@ router.get('/employer/my-jobs', authenticate, requireEmployer, async (req, res) 
     sortOptions[safeSortBy] = sortOrder === 'desc' ? -1 : 1;
 
     // Pagination
-    const empLimit = sanitizeLimit(limit, 50, 10);
+    const empLimit = sanitizeLimit(limit, 200, 10);
     const empPage = Math.max(1, parseInt(page) || 1);
     const skip = (empPage - 1) * empLimit;
 
@@ -637,7 +643,7 @@ router.get('/employer/my-jobs', authenticate, requireEmployer, async (req, res) 
     });
 
   } catch (error) {
-    console.error('Get employer jobs error:', error);
+    logger.error('Get employer jobs error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e punëve tuaja'
@@ -673,7 +679,7 @@ router.get('/:id', validateObjectId('id'), optionalAuth, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get job error:', error);
+    logger.error('Get job error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e punës'
@@ -765,7 +771,7 @@ router.get('/:id/similar', validateObjectId('id'), async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get similar jobs error:', error);
+    logger.error('Get similar jobs error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e punëve të ngjashme'
@@ -825,6 +831,11 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
       });
     }
 
+    // Server-side enforcement: non-administrata employers cannot set administrata flag
+    if (platformCategories.administrata && !req.user.profile?.employerProfile?.isAdministrataAccount) {
+      platformCategories.administrata = false;
+    }
+
     // Validate salary range
     if (salary.min != null && salary.max != null && salary.min > salary.max) {
       return res.status(400).json({
@@ -869,7 +880,10 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
         diaspora: platformCategories.diaspora || false,
         ngaShtepia: platformCategories.ngaShtepia || false,
         partTime: platformCategories.partTime || false,
-        administrata: platformCategories.administrata || false,
+        // Auto-set administrata for flagged employer accounts; otherwise use the submitted value
+        administrata: req.user.profile?.employerProfile?.isAdministrataAccount
+          ? true
+          : (platformCategories.administrata || false),
         sezonale: platformCategories.sezonale || false
       },
       customQuestions,
@@ -878,8 +892,10 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
       status: 'active'
     });
 
-    // Calculate pricing using business rules
-    const basePrice = 50; // Default base price
+    // Calculate pricing using configurable prices
+    const standardPrice = await SystemConfiguration.getSettingValue('pricing_standard_posting', 28);
+    const promotedPrice = await SystemConfiguration.getSettingValue('pricing_promoted_posting', 45);
+    const basePrice = tier === 'promoted' ? promotedPrice : standardPrice;
     const jobData = {
       industry: category,
       location: job.location,
@@ -944,7 +960,7 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
         campaignApplied: appliedCampaign
       };
     } catch (pricingError) {
-      console.error('Pricing calculation failed, using default price:', pricingError);
+      logger.error('Pricing calculation failed, using default price:', pricingError);
       job.pricing = {
         basePrice: basePrice,
         finalPrice: basePrice,
@@ -976,7 +992,9 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
 
     // Check if employer has free posting privileges
     const employer = await User.findById(req.user._id);
-    const isFreeForEmployer = employer.freePostingEnabled;
+    // If no payment system is configured yet, all verified employers post for free
+    const paymentEnabled = await SystemConfiguration.getSettingValue('payment_enabled');
+    const isFreeForEmployer = employer.freePostingEnabled || !paymentEnabled;
 
     // Check if job approval is required (config-driven)
     const requireApproval = await SystemConfiguration.getSettingValue('require_job_approval');
@@ -1046,7 +1064,7 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
           }
 
         } catch (analyticsError) {
-          console.error('Error updating revenue analytics:', analyticsError);
+          logger.error('Error updating revenue analytics:', analyticsError);
         }
       });
     }
@@ -1060,7 +1078,7 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
       try {
         await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10); // Priority 10 (normal)
       } catch (error) {
-        console.error('Error queueing embedding for job:', error);
+        logger.error('Error queueing embedding for job:', error.message);
       }
 
       // Only notify users for active jobs (not pending_payment), and after embedding is queued
@@ -1071,7 +1089,7 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
           const populatedJob = await Job.findById(job._id).populate('employerId', 'profile.employerProfile.companyName');
           await notificationService.notifyMatchingUsers(populatedJob);
         } catch (error) {
-          console.error('Error in job notification process:', error);
+          logger.error('Error in job notification process:', error.message);
         }
       }
     });
@@ -1083,7 +1101,7 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
     });
 
   } catch (error) {
-    console.error('Create job error:', error);
+    logger.error('Create job error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në krijimin e punës'
@@ -1181,7 +1199,7 @@ router.put('/:id', validateObjectId('id'), authenticate, requireEmployer, requir
         });
         await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10);
       } catch (error) {
-        console.error('Error re-queueing embedding for job:', error);
+        logger.error('Error re-queueing embedding for job:', error.message);
       }
     });
 
@@ -1192,7 +1210,7 @@ router.put('/:id', validateObjectId('id'), authenticate, requireEmployer, requir
     });
 
   } catch (error) {
-    console.error('Update job error:', error);
+    logger.error('Update job error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në përditësimin e punës'
@@ -1226,7 +1244,7 @@ router.delete('/:id', validateObjectId('id'), authenticate, requireEmployer, asy
     });
 
   } catch (error) {
-    console.error('Delete job error:', error);
+    logger.error('Delete job error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në fshirjen e punës'
@@ -1277,7 +1295,7 @@ router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmploye
     });
 
   } catch (error) {
-    console.error('Update job status error:', error);
+    logger.error('Update job status error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në përditësimin e statusit'
@@ -1328,7 +1346,7 @@ router.post('/:id/renew', validateObjectId('id'), authenticate, requireEmployer,
       data: { job }
     });
   } catch (error) {
-    console.error('Job renewal error:', error);
+    logger.error('Job renewal error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në ripostimin e punës'

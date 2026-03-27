@@ -66,6 +66,14 @@ const SimilarJobs = ({ currentJob, limit = 4 }: SimilarJobsProps) => {
     return Math.round(score * 100) / 100; // Round to 2 decimal places
   };
 
+  // Boost raw scores for more appealing display percentages
+  const boostScore = (score: number): number => {
+    if (score >= 0.8) return 0.90 + (score - 0.8) * 0.5;   // 80-100% → 90-100%
+    if (score >= 0.5) return 0.70 + (score - 0.5) * 0.67;   // 50-80% → 70-90%
+    if (score >= 0.3) return 0.55 + (score - 0.3) * 0.75;   // 30-50% → 55-70%
+    return Math.max(score * 1.8, 0.40);                       // Below 30% → min 40%
+  };
+
   const loadSimilarJobs = async () => {
     try {
       setLoading(true);
@@ -81,12 +89,13 @@ const SimilarJobs = ({ currentJob, limit = 4 }: SimilarJobsProps) => {
       const response = await jobsApi.getJobs(filters);
 
       if (response.success && response.data.jobs) {
-        // Calculate similarity scores for all jobs
+        // Calculate similarity scores, filter test data, boost for display
         const scoredJobs: ScoredJob[] = response.data.jobs
-          .filter(job => job._id !== currentJob._id) // Extra safety to exclude current job
+          .filter(job => job._id !== currentJob._id) // Exclude current job
+          .filter(job => !/^test/i.test(job.title))  // Filter out test jobs
           .map(job => ({
             ...job,
-            similarityScore: calculateSimilarityScore(job)
+            similarityScore: boostScore(calculateSimilarityScore(job))
           }))
           .sort((a, b) => b.similarityScore - a.similarityScore) // Sort by highest score first
           .slice(0, limit); // Take only the top results
@@ -208,8 +217,8 @@ const SimilarJobs = ({ currentJob, limit = 4 }: SimilarJobsProps) => {
                   <Badge
                     variant="secondary"
                     className={`text-xs ${
-                      job.similarityScore > 0.7 ? 'bg-green-100 text-green-700' :
-                      job.similarityScore > 0.4 ? 'bg-yellow-100 text-yellow-700' :
+                      job.similarityScore > 0.75 ? 'bg-green-100 text-green-700' :
+                      job.similarityScore > 0.65 ? 'bg-yellow-100 text-yellow-700' :
                       'bg-gray-100 text-gray-600'
                     }`}
                   >

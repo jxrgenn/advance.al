@@ -98,12 +98,11 @@ const Privacy = () => {
 
               <div>
                 <h4 className="font-semibold text-foreground mb-2">Të Dhëna Automatike</h4>
-                <ul className="list-disc list-inside space-y-1 ml-2">
-                  <li>Adresa IP dhe informacioni i shfletuesit</li>
-                  <li>Data dhe ora e vizitave</li>
-                  <li>Faqet e vizituara në platformë</li>
-                  <li>Pajisja dhe sistemi operativ</li>
-                </ul>
+                <p className="text-sm ml-2">
+                  Serveri ynë regjistron informacion bazë të kërkesave (si adresa IP dhe lloji i shfletuesit) në mënyrë
+                  të përkohshme për qëllime diagnostikuese, por nuk i ruajmë këto të dhëna në mënyrë të strukturuar
+                  dhe nuk krijojmë profile përdoruesish bazuar në to.
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -157,34 +156,28 @@ const Privacy = () => {
             </CardHeader>
             <CardContent className="space-y-4 text-muted-foreground leading-relaxed">
               <p>
-                advance.al përdor cookies dhe teknologji të ngjashme për funksionimin e platformës:
+                advance.al përdor një numër minimal cookies dhe teknologjish ruajtjeje lokale:
               </p>
               <div className="space-y-3">
                 <div className="bg-muted/50 p-4 rounded-lg">
-                  <h4 className="font-semibold text-foreground mb-1">Cookies të Domosdoshme</h4>
+                  <h4 className="font-semibold text-foreground mb-1">Ruajtja Lokale (localStorage)</h4>
                   <p className="text-sm">
-                    Këto cookies janë të nevojshme për funksionimin bazë të platformës, përfshirë autentikimin
-                    dhe ruajtjen e sesionit tuaj. Nuk mund të çaktivizohen.
+                    Tokeni i autentikimit (JWT) ruhet në localStorage të shfletuesit tuaj për të mbajtur sesionin
+                    aktiv. Ky token fshihet automatikisht kur dilni nga llogaria.
                   </p>
                 </div>
                 <div className="bg-muted/50 p-4 rounded-lg">
-                  <h4 className="font-semibold text-foreground mb-1">Cookies Funksionale</h4>
+                  <h4 className="font-semibold text-foreground mb-1">Cookie e Vetme</h4>
                   <p className="text-sm">
-                    Ruajnë preferencat tuaja si gjuha, vendndodhja e preferuar dhe filtrat e kërkimit
-                    për të përmirësuar përvojën tuaj.
-                  </p>
-                </div>
-                <div className="bg-muted/50 p-4 rounded-lg">
-                  <h4 className="font-semibold text-foreground mb-1">Cookies Analitike</h4>
-                  <p className="text-sm">
-                    Na ndihmojnë të kuptojmë se si përdoret platforma për ta përmirësuar atë.
-                    Të dhënat janë anonime dhe nuk identifikojnë përdoruesit individualë.
+                    Përdorim një cookie të vetme (<code className="bg-muted px-1 rounded">sidebar:state</code>) për
+                    të ruajtur gjendjen e menysë anësore. Kjo cookie skadon pas 7 ditësh dhe nuk përmban
+                    të dhëna personale.
                   </p>
                 </div>
               </div>
               <p className="text-sm">
-                Mund të menaxhoni cookies përmes cilësimeve të shfletuesit tuaj. Çaktivizimi i disa cookies
-                mund të ndikojë në funksionalitetin e platformës.
+                Nuk përdorim cookies funksionale, analitike apo gjurmimi. Preferencat si gjuha dhe filtrat
+                e kërkimit ruhen në gjendjen e aplikacionit ose në URL dhe nuk përdorin cookies.
               </p>
             </CardContent>
           </Card>
@@ -220,8 +213,8 @@ const Privacy = () => {
                   përpunimit të të dhënave tuaja në rrethana të caktuara.
                 </li>
                 <li>
-                  <span className="font-medium text-foreground">E drejta e transportueshmërisë:</span> Mund të kërkoni të
-                  dhënat tuaja në një format të strukturuar dhe të lexueshëm nga makineria.
+                  <span className="font-medium text-foreground">E drejta e transportueshmërisë:</span> Mund të shkarkoni të
+                  dhënat tuaja në format JSON përmes profilit tuaj (Eksporto të Dhënat).
                 </li>
                 <li>
                   <span className="font-medium text-foreground">E drejta e kundërshtimit:</span> Mund të kundërshtoni

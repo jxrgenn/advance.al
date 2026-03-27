@@ -2,6 +2,7 @@ import express from 'express';
 import { User, Job } from '../models/index.js';
 import { authenticate, optionalAuth } from '../middleware/auth.js';
 import { escapeRegex, sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
@@ -159,7 +160,7 @@ router.get('/', optionalAuth, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get companies error:', error);
+    logger.error('Get companies error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e kompanive'
@@ -261,7 +262,7 @@ router.get('/:id', validateObjectId('id'), optionalAuth, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get company profile error:', error);
+    logger.error('Get company profile error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e profilit të kompanisë'
@@ -349,7 +350,7 @@ router.get('/:id/jobs', validateObjectId('id'), optionalAuth, async (req, res) =
     });
 
   } catch (error) {
-    console.error('Get company jobs error:', error);
+    logger.error('Get company jobs error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e punëve të kompanisë'

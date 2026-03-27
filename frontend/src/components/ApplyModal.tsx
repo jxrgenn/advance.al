@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Separator } from '@/components/ui/separator';
 import {
   Dialog,
   DialogContent,
@@ -21,37 +20,45 @@ import {
   Phone,
   MapPin,
   FileText,
-  Clock,
   Building,
   Loader2,
   AlertCircle,
-  Send
+  Send,
+  Upload,
+  File
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { Job, applicationsApi } from '@/lib/api';
+import { Job, applicationsApi, usersApi } from '@/lib/api';
 
-interface QuickApplyModalProps {
+interface ApplyModalProps {
   job: Job | null;
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-const QuickApplyModal: React.FC<QuickApplyModalProps> = ({
+const ApplyModal: React.FC<ApplyModalProps> = ({
   job,
   isOpen,
   onClose,
   onSuccess
 }) => {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [includeCoverLetter, setIncludeCoverLetter] = useState(false);
   const [coverLetter, setCoverLetter] = useState('');
   const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // CV upload state
+  const [cvFile, setCvFile] = useState<File | null>(null);
+  const [uploadingCV, setUploadingCV] = useState(false);
+
+  const userHasCV = !!user?.profile?.jobSeekerProfile?.resume;
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -60,11 +67,12 @@ const QuickApplyModal: React.FC<QuickApplyModalProps> = ({
       setCoverLetter('');
       setCustomAnswers({});
       setErrors({});
+      setCvFile(null);
 
       // Pre-fill custom answers
       if (job?.customQuestions) {
         const initialAnswers: Record<string, string> = {};
-        job.customQuestions.forEach((q, index) => {
+        job.customQuestions.forEach((_, index) => {
           initialAnswers[index.toString()] = '';
         });
         setCustomAnswers(initialAnswers);
@@ -73,26 +81,45 @@ const QuickApplyModal: React.FC<QuickApplyModalProps> = ({
   }, [isOpen, job]);
 
   // Profile completion check
+  // IMPORTANT: Keep in sync with backend users.js calculateProfileCompleteness and Profile.tsx
   const getProfileCompleteness = () => {
     if (!user?.profile) return 0;
 
     let score = 0;
-    const checks = [
-      user.profile.firstName && user.profile.lastName,
-      user.profile.phone,
-      user.profile.location?.city,
-      user.profile.jobSeekerProfile?.title,
-      user.profile.jobSeekerProfile?.bio,
-      user.profile.jobSeekerProfile?.skills?.length > 0,
-      user.profile.jobSeekerProfile?.resume
-    ];
 
-    score = checks.filter(Boolean).length;
-    return Math.round((score / checks.length) * 100);
+    // Weighted fields (total = 100%)
+    if (user.profile.firstName && user.profile.lastName) score += 15;
+    if (user.profile.phone) score += 10;
+    if (user.profile.location?.city) score += 10;
+    if (user.profile.jobSeekerProfile?.title) score += 15;
+    if (user.profile.jobSeekerProfile?.bio) score += 15;
+    if (user.profile.jobSeekerProfile?.skills && user.profile.jobSeekerProfile.skills.length > 0) score += 15;
+    if (user.profile.jobSeekerProfile?.experience) score += 10;
+    if (user.profile.jobSeekerProfile?.resume) score += 10;
+
+    return Math.min(score, 100);
   };
 
   const profileCompleteness = getProfileCompleteness();
   const isProfileIncomplete = profileCompleteness < 60;
+
+  const handleCVSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword'];
+    if (!allowedTypes.includes(file.type)) {
+      toast({ title: 'Format i gabuar', description: 'Vetëm skedarë PDF ose Word (DOCX) pranohen.', variant: 'destructive' });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: 'Skedar shumë i madh', description: 'CV-ja duhet të jetë nën 5MB.', variant: 'destructive' });
+      return;
+    }
+
+    setCvFile(file);
+    setErrors(prev => { const { cv, ...rest } = prev; return rest; });
+  };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -130,18 +157,26 @@ const QuickApplyModal: React.FC<QuickApplyModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      // Prepare application data
+      // Step 1: Upload CV if user selected one and doesn't already have one
+      if (cvFile && !userHasCV) {
+        setUploadingCV(true);
+        const formData = new FormData();
+        formData.append('resume', cvFile);
+        await usersApi.uploadResume(formData);
+        await refreshUser();
+        setUploadingCV(false);
+      }
+
+      // Step 2: Submit application
       const applicationData: any = {
         jobId: job._id,
         applicationMethod: job.customQuestions && job.customQuestions.length > 0 ? 'custom_form' : 'one_click'
       };
 
-      // Add cover letter if included
       if (includeCoverLetter && coverLetter.trim()) {
         applicationData.coverLetter = coverLetter.trim();
       }
 
-      // Add custom answers if any
       if (job.customQuestions && job.customQuestions.length > 0) {
         applicationData.customAnswers = job.customQuestions.map((question, index) => ({
           question: question.question,
@@ -169,6 +204,7 @@ const QuickApplyModal: React.FC<QuickApplyModalProps> = ({
       });
     } finally {
       setIsSubmitting(false);
+      setUploadingCV(false);
     }
   };
 
@@ -200,7 +236,6 @@ const QuickApplyModal: React.FC<QuickApplyModalProps> = ({
                     </h4>
                     <p className="text-sm text-yellow-700 mb-3">
                       Një profil i kompletuar rrit shanset tuaja për t'u zgjedhur.
-                      Konsiderojeni të plotësoni profilin para aplikimit.
                     </p>
                     <Button
                       size="sm"
@@ -258,6 +293,66 @@ const QuickApplyModal: React.FC<QuickApplyModalProps> = ({
             </CardContent>
           </Card>
 
+          {/* CV Section */}
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="font-medium mb-3 flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                CV / Rezyme
+              </h3>
+              {userHasCV ? (
+                <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-green-800">CV-ja juaj është ngarkuar në profil</p>
+                    <p className="text-xs text-green-600">Do të dërgohet automatikisht me aplikimin</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                    <p className="text-sm text-orange-700">
+                      Nuk keni CV në profil. Ngarkoni një CV për ta bashkangjitur me aplikimin.
+                    </p>
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.docx,.doc"
+                    className="hidden"
+                    onChange={handleCVSelect}
+                  />
+                  {cvFile ? (
+                    <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <File className="h-5 w-5 text-blue-600 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-blue-800 truncate">{cvFile.name}</p>
+                        <p className="text-xs text-blue-600">{(cvFile.size / 1024 / 1024).toFixed(1)} MB</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => { setCvFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                      >
+                        Ndrysho
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full"
+                    >
+                      <Upload className="mr-2 h-4 w-4" />
+                      Ngarko CV (PDF, max 5MB)
+                    </Button>
+                  )}
+                  {errors.cv && <p className="text-xs text-red-500">{errors.cv}</p>}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Custom Questions */}
           {job.customQuestions && job.customQuestions.length > 0 && (
             <Card>
@@ -271,34 +366,23 @@ const QuickApplyModal: React.FC<QuickApplyModalProps> = ({
                     <div key={index} className="space-y-2">
                       <Label htmlFor={`question_${index}`} className="flex items-center gap-2">
                         {question.question}
-                        {question.required && <Badge variant="destructive" className="text-xs">Detyrueshme</Badge>}
+                        {question.required ? (
+                          <Badge variant="destructive" className="text-xs">Detyrueshme</Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-xs">Opsionale</Badge>
+                        )}
                       </Label>
-                      {question.type === 'text' && (
-                        <Textarea
-                          id={`question_${index}`}
-                          value={customAnswers[index.toString()] || ''}
-                          onChange={(e) => setCustomAnswers(prev => ({
-                            ...prev,
-                            [index.toString()]: e.target.value
-                          }))}
-                          placeholder="Shkruani përgjigjen tuaj..."
-                          className={errors[`custom_${index}`] ? 'border-red-500' : ''}
-                          rows={3}
-                        />
-                      )}
-                      {question.type !== 'text' && (
-                        <Input
-                          id={`question_${index}`}
-                          type={question.type === 'email' ? 'email' : question.type === 'phone' ? 'tel' : 'text'}
-                          value={customAnswers[index.toString()] || ''}
-                          onChange={(e) => setCustomAnswers(prev => ({
-                            ...prev,
-                            [index.toString()]: e.target.value
-                          }))}
-                          placeholder="Shkruani përgjigjen tuaj..."
-                          className={errors[`custom_${index}`] ? 'border-red-500' : ''}
-                        />
-                      )}
+                      <Textarea
+                        id={`question_${index}`}
+                        value={customAnswers[index.toString()] || ''}
+                        onChange={(e) => setCustomAnswers(prev => ({
+                          ...prev,
+                          [index.toString()]: e.target.value
+                        }))}
+                        placeholder="Shkruani përgjigjen tuaj..."
+                        className={errors[`custom_${index}`] ? 'border-red-500' : ''}
+                        rows={3}
+                      />
                       {errors[`custom_${index}`] && (
                         <p className="text-xs text-red-500">{errors[`custom_${index}`]}</p>
                       )}
@@ -365,9 +449,9 @@ const QuickApplyModal: React.FC<QuickApplyModalProps> = ({
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Metoda e aplikimit:</span>
+                  <span>CV:</span>
                   <span className="font-medium">
-                    {job.customQuestions && job.customQuestions.length > 0 ? 'Formular i detajuar' : 'Aplikim i shpejtë'}
+                    {userHasCV ? 'Nga profili' : cvFile ? cvFile.name : 'Nuk ka'}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -407,7 +491,7 @@ const QuickApplyModal: React.FC<QuickApplyModalProps> = ({
             {isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Duke dërguar aplikimin...
+                {uploadingCV ? 'Duke ngarkuar CV-në...' : 'Duke dërguar aplikimin...'}
               </>
             ) : (
               <>
@@ -422,4 +506,4 @@ const QuickApplyModal: React.FC<QuickApplyModalProps> = ({
   );
 };
 
-export default QuickApplyModal;
+export default ApplyModal;

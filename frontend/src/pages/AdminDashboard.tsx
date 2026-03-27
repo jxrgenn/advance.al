@@ -19,7 +19,7 @@ import {
   Users, Briefcase, TrendingUp, TrendingDown, DollarSign,
   Eye, UserPlus, FileText, AlertTriangle, Settings,
   BarChart3, Activity, Database, Shield, Star, Trash2, Edit,
-  ChevronLeft, ChevronRight, Calendar, Send, Zap
+  ChevronLeft, ChevronRight, Calendar, Send, Zap, Download, Search
 } from "lucide-react";
 
 interface DashboardStats {
@@ -220,6 +220,7 @@ const AdminDashboard = () => {
   const [reportedJobsModal, setReportedJobsModal] = useState(false);
   const [expiringJobsModal, setExpiringJobsModal] = useState(false);
   const [newUsersModal, setNewUsersModal] = useState(false);
+  const [allUsersModal, setAllUsersModal] = useState(false);
   const [reportsModal, setReportsModal] = useState(false);
   const [bulkNotificationModal, setBulkNotificationModal] = useState(false);
   const [configModal, setConfigModal] = useState(false);
@@ -233,6 +234,17 @@ const AdminDashboard = () => {
   const [reportedJobsLoading, setReportedJobsLoading] = useState(false);
   const [expiringJobsLoading, setExpiringJobsLoading] = useState(false);
   const [newUsersLoading, setNewUsersLoading] = useState(false);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [allUsersLoading, setAllUsersLoading] = useState(false);
+  const [allUsersFilter, setAllUsersFilter] = useState<string>('all');
+  const [allUsersSearch, setAllUsersSearch] = useState('');
+  const [allUsersPagination, setAllUsersPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalUsers: 0,
+    hasNextPage: false,
+    hasPrevPage: false
+  });
   const [selectedUserForDetails, setSelectedUserForDetails] = useState<User | null>(null);
   const [bulkNotificationLoading, setBulkNotificationLoading] = useState(false);
   // Reports & Suspensions state
@@ -439,6 +451,37 @@ const AdminDashboard = () => {
   const handleNewUsers = () => {
     setNewUsersModal(true);
     loadNewUsers(); // Load new users when modal opens
+  };
+
+  const handleAllUsers = () => {
+    setAllUsersModal(true);
+    setAllUsersFilter('all');
+    setAllUsersSearch('');
+    loadAllUsers(1, 'all', '');
+  };
+
+  const loadAllUsers = async (page: number = 1, userType: string = 'all', search: string = '') => {
+    setAllUsersLoading(true);
+    try {
+      const params: any = { page, limit: 10 };
+      if (userType && userType !== 'all') params.userType = userType;
+      if (search.trim()) params.search = search.trim();
+
+      const response = await adminApi.getAllUsers(params);
+      if (response.success && response.data) {
+        setAllUsers(response.data.users);
+        setAllUsersPagination(response.data.pagination);
+      }
+    } catch (error: any) {
+      console.error('Error loading all users:', error);
+      toast({
+        title: "Gabim",
+        description: "Nuk mund të ngarkohen përdoruesit",
+        variant: "destructive"
+      });
+    } finally {
+      setAllUsersLoading(false);
+    }
   };
 
   const handleReportsAndSuspensions = () => {
@@ -1018,8 +1061,8 @@ const AdminDashboard = () => {
                 onClick={() => setActiveTab("business")}
                 className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
               >
-                <Zap className="h-4 w-4 mr-2" />
-                Paneli i Biznesit
+                <DollarSign className="h-4 w-4 mr-2" />
+                Çmimet
               </Button>
             </div>
           </div>
@@ -1099,13 +1142,17 @@ const AdminDashboard = () => {
 
           {/* Main Admin Content - Tabbed Interface */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="overview">Përmbledhje</TabsTrigger>
-              <TabsTrigger value="employers">Punëdhënës</TabsTrigger>
-              <TabsTrigger value="analytics">Analitika</TabsTrigger>
-              <TabsTrigger value="content">Përmbajtja</TabsTrigger>
-              <TabsTrigger value="business">Paneli i Biznesit</TabsTrigger>
-            </TabsList>
+            <div className="space-y-1">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="overview">Përmbledhje</TabsTrigger>
+                <TabsTrigger value="employers">Punëdhënës</TabsTrigger>
+                <TabsTrigger value="analytics">Analitika</TabsTrigger>
+              </TabsList>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="content">Përmbajtja</TabsTrigger>
+                <TabsTrigger value="business">Çmimet</TabsTrigger>
+              </TabsList>
+            </div>
 
             {/* Overview Tab */}
             <TabsContent value="overview" className="space-y-6">
@@ -1512,6 +1559,10 @@ const AdminDashboard = () => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    <Button className="w-full" variant="outline" onClick={handleAllUsers}>
+                      <Users className="h-4 w-4 mr-2" />
+                      Të gjithë përdoruesit
+                    </Button>
                     <Button className="w-full" variant="outline" onClick={handleNewUsers}>
                       <UserPlus className="h-4 w-4 mr-2" />
                       Përdorues të rinj
@@ -1634,7 +1685,7 @@ const AdminDashboard = () => {
                       {/* Job Header */}
                       <div className="flex items-start justify-between">
                         <div className="space-y-1">
-                          <h3 className="font-semibold text-lg">{job.title}</h3>
+                          <h3 className="font-semibold text-lg"><a href={`/jobs/${job._id}`} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">{job.title}</a></h3>
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
                             <div className="flex items-center gap-1">
                               <Building className="h-4 w-4" />
@@ -1659,7 +1710,10 @@ const AdminDashboard = () => {
                         >
                           {job.status === 'active' ? 'Aktiv' :
                            job.status === 'expired' ? 'Skaduar' :
-                           job.status === 'draft' ? 'Draft' : 'Refuzuar'}
+                           job.status === 'draft' ? 'Draft' :
+                           job.status === 'pending_approval' ? 'Në pritje' :
+                           job.status === 'pending_payment' ? 'Pa paguar' :
+                           job.status === 'rejected' ? 'Refuzuar' : job.status}
                         </Badge>
                       </div>
 
@@ -1677,7 +1731,7 @@ const AdminDashboard = () => {
                             onClick={() => handleJobAction(job._id, 'feature')}
                           >
                             <Star className="h-4 w-4 mr-1" />
-                            Promofo
+                            Promovo
                           </Button>
                         )}
 
@@ -1688,7 +1742,7 @@ const AdminDashboard = () => {
                             onClick={() => handleJobAction(job._id, 'approve')}
                           >
                             <CheckCircle className="h-4 w-4 mr-1" />
-                            Mirafo
+                            Mirato
                           </Button>
                         )}
 
@@ -1785,7 +1839,7 @@ const AdminDashboard = () => {
                       {/* Job Header */}
                       <div className="flex items-start justify-between">
                         <div className="space-y-1">
-                          <h3 className="font-semibold text-lg">{job.title}</h3>
+                          <h3 className="font-semibold text-lg"><a href={`/jobs/${job._id}`} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">{job.title}</a></h3>
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
                             <div className="flex items-center gap-1">
                               <Building className="h-4 w-4" />
@@ -1905,7 +1959,7 @@ const AdminDashboard = () => {
                       {/* Job Header */}
                       <div className="flex items-start justify-between">
                         <div className="space-y-1">
-                          <h3 className="font-semibold text-lg">{job.title}</h3>
+                          <h3 className="font-semibold text-lg"><a href={`/jobs/${job._id}`} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">{job.title}</a></h3>
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
                             <div className="flex items-center gap-1">
                               <Building className="h-4 w-4" />
@@ -1957,7 +2011,7 @@ const AdminDashboard = () => {
                           onClick={() => handleJobAction(job._id, 'feature')}
                         >
                           <Star className="h-4 w-4 mr-1" />
-                          Promofo & Riaktivizo
+                          Promovo & Riaktivizo
                         </Button>
 
                         <Button
@@ -2102,7 +2156,7 @@ const AdminDashboard = () => {
                           </div>
                         )}
                         {user.userType === 'jobseeker' && user.profile.jobSeekerProfile && (
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             {user.profile.jobSeekerProfile.title && (
                               <span>{user.profile.jobSeekerProfile.title}</span>
                             )}
@@ -2110,6 +2164,20 @@ const AdminDashboard = () => {
                               <>
                                 <span>•</span>
                                 <span>{user.profile.jobSeekerProfile.experience} përvojë</span>
+                              </>
+                            )}
+                            {user.profile.jobSeekerProfile.resume && (
+                              <>
+                                <span>•</span>
+                                <a
+                                  href={user.profile.jobSeekerProfile.resume}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline"
+                                >
+                                  <Download className="h-3 w-3" />
+                                  Shkarko CV
+                                </a>
                               </>
                             )}
                           </div>
@@ -2190,6 +2258,230 @@ const AdminDashboard = () => {
                         size="sm"
                         onClick={() => loadNewUsers(newUsersPagination.currentPage + 1)}
                         disabled={!newUsersPagination.hasNextPage}
+                      >
+                        Tjetër
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* All Users Modal */}
+      <Dialog open={allUsersModal} onOpenChange={setAllUsersModal}>
+        <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Të gjithë përdoruesit</DialogTitle>
+            <DialogDescription>
+              Shiko dhe menaxho të gjithë përdoruesit e platformës
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Filters */}
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Kërko me emër ose email..."
+                    value={allUsersSearch}
+                    onChange={(e) => setAllUsersSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        loadAllUsers(1, allUsersFilter, allUsersSearch);
+                      }
+                    }}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+              <Select value={allUsersFilter} onValueChange={(val) => {
+                setAllUsersFilter(val);
+                loadAllUsers(1, val, allUsersSearch);
+              }}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Filtro tipin" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Të gjithë</SelectItem>
+                  <SelectItem value="jobseeker">Kërkues pune</SelectItem>
+                  <SelectItem value="employer">Punëdhënës</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button size="sm" onClick={() => loadAllUsers(1, allUsersFilter, allUsersSearch)}>
+                <Search className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {allUsersLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                  <p className="text-sm text-muted-foreground">Duke ngarkuar përdoruesit...</p>
+                </div>
+              </div>
+            ) : allUsers.length === 0 ? (
+              <div className="text-center py-8">
+                <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">Nuk u gjetën përdorues</p>
+              </div>
+            ) : (
+              <>
+                <div className="text-sm text-muted-foreground">
+                  {allUsersPagination.totalUsers} përdorues gjithsej
+                </div>
+                <div className="space-y-3">
+                  {allUsers.map((user) => (
+                    <div key={user._id} className="border rounded-lg p-4 space-y-3 bg-card hover:bg-accent/50 transition-colors">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <h3 className="font-semibold text-lg">{user.profile.firstName} {user.profile.lastName}</h3>
+                          <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
+                            <div className="flex items-center gap-1">
+                              <Mail className="h-4 w-4" />
+                              {user.email}
+                            </div>
+                            {user.profile.location?.city && (
+                              <div className="flex items-center gap-1">
+                                <MapPin className="h-4 w-4" />
+                                {user.profile.location.city}
+                              </div>
+                            )}
+                            <div className="flex items-center gap-1">
+                              <Calendar className="h-4 w-4" />
+                              {new Date(user.createdAt).toLocaleDateString('sq-AL')}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant={
+                              user.userType === 'admin' ? 'destructive' :
+                              user.userType === 'employer' ? 'secondary' :
+                              'default'
+                            }
+                          >
+                            {user.userType === 'admin' ? 'Admin' :
+                             user.userType === 'employer' ? 'Punëdhënës' :
+                             'Kërkues pune'}
+                          </Badge>
+                          <Badge
+                            variant={
+                              user.status === 'active' ? 'default' :
+                              user.status === 'suspended' ? 'destructive' :
+                              'secondary'
+                            }
+                          >
+                            {user.status === 'active' ? 'Aktiv' :
+                             user.status === 'suspended' ? 'Pezulluar' :
+                             user.status === 'pending_verification' ? 'Në pritje' :
+                             'Fshirë'}
+                          </Badge>
+                        </div>
+                      </div>
+                      {/* Employer info */}
+                      {user.userType === 'employer' && user.profile.employerProfile && (
+                        <div className="text-sm text-muted-foreground flex items-center gap-4">
+                          <div className="flex items-center gap-1">
+                            <Building className="h-4 w-4" />
+                            {user.profile.employerProfile.companyName}
+                          </div>
+                          {user.profile.employerProfile.industry && (
+                            <>
+                              <span>•</span>
+                              <span>{user.profile.employerProfile.industry}</span>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      {/* Jobseeker info */}
+                      {user.userType === 'jobseeker' && user.profile.jobSeekerProfile && (
+                        <div className="text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
+                          {user.profile.jobSeekerProfile.title && (
+                            <span>{user.profile.jobSeekerProfile.title}</span>
+                          )}
+                          {user.profile.jobSeekerProfile.resume && (
+                            <>
+                              <span>•</span>
+                              <a
+                                href={user.profile.jobSeekerProfile.resume}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline"
+                              >
+                                <Download className="h-3 w-3" />
+                                CV
+                              </a>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      {/* Actions */}
+                      <div className="flex items-center gap-2 pt-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedUserForDetails(user)}
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          Detaje
+                        </Button>
+                        {user.status === 'suspended' && (
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => handleUserAction(user._id, 'activate')}
+                          >
+                            <CheckCircle className="h-4 w-4 mr-1" />
+                            Aktivizo
+                          </Button>
+                        )}
+                        {user.status === 'active' && user.userType !== 'admin' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openReasonDialog(
+                              'Arsyeja e Pezullimit',
+                              'Pezulluar nga admin',
+                              (reason) => handleUserAction(user._id, 'suspend', reason)
+                            )}
+                          >
+                            <XCircle className="h-4 w-4 mr-1" />
+                            Pezullo
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Pagination */}
+                {allUsersPagination.totalPages > 1 && (
+                  <div className="flex items-center justify-between pt-4">
+                    <div className="text-sm text-muted-foreground">
+                      Faqja {allUsersPagination.currentPage} nga {allUsersPagination.totalPages}
+                      ({allUsersPagination.totalUsers} përdorues gjithsej)
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => loadAllUsers(allUsersPagination.currentPage - 1, allUsersFilter, allUsersSearch)}
+                        disabled={!allUsersPagination.hasPrevPage}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        Mëparshme
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => loadAllUsers(allUsersPagination.currentPage + 1, allUsersFilter, allUsersSearch)}
+                        disabled={!allUsersPagination.hasNextPage}
                       >
                         Tjetër
                         <ChevronRight className="h-4 w-4" />
@@ -2842,7 +3134,25 @@ const AdminDashboard = () => {
                     <p><strong>Përvojë:</strong> {selectedUserForDetails.profile.jobSeekerProfile.experience || 'Nuk është dhënë'}</p>
                     <p><strong>Aftësi:</strong> {selectedUserForDetails.profile.jobSeekerProfile.skills?.join(', ') || 'Nuk janë dhënë'}</p>
                     <p><strong>Përshkrimi:</strong> {selectedUserForDetails.profile.jobSeekerProfile.bio || 'Nuk është dhënë'}</p>
-                    <p><strong>CV:</strong> {selectedUserForDetails.profile.jobSeekerProfile.resume ? 'Ngarkuar' : 'Nuk është ngarkuar'}</p>
+                    <div className="flex items-center gap-2">
+                      <strong>CV:</strong>
+                      {selectedUserForDetails.profile.jobSeekerProfile.resume ? (
+                        <>
+                          <span className="text-green-600">Ngarkuar</span>
+                          <a
+                            href={selectedUserForDetails.profile.jobSeekerProfile.resume}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline text-sm"
+                          >
+                            <Download className="h-3 w-3" />
+                            Shkarko CV
+                          </a>
+                        </>
+                      ) : (
+                        <span>Nuk është ngarkuar</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

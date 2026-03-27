@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import SMTPTransport from 'nodemailer/lib/smtp-transport/index.js';
+import logger from '../config/logger.js';
 
 class EmailService {
   constructor() {
@@ -26,7 +27,7 @@ class EmailService {
         this.transporter = nodemailer.createTransport(emailConfig);
         this.isConfigured = true;
       } catch (error) {
-        console.error('❌ Email configuration error:', error);
+        logger.error('Email configuration error:', error.message);
         this.setupTestAccount();
       }
     } else {
@@ -51,7 +52,7 @@ class EmailService {
 
       this.isConfigured = true;
     } catch (error) {
-      console.error('❌ Failed to setup test email account:', error);
+      logger.error('Failed to setup test email account:', error.message);
       this.isConfigured = false;
     }
   }
@@ -92,7 +93,7 @@ class EmailService {
       };
 
     } catch (error) {
-      console.error(`❌ Email send error for ${to}:`, error);
+      logger.error(`Email send error for ${to}:`, error.message);
 
       // Retry once
       try {
@@ -110,7 +111,7 @@ class EmailService {
         };
 
       } catch (retryError) {
-        console.error(`❌ Email retry failed for ${to}:`, retryError);
+        logger.error(`Email retry failed for ${to}:`, retryError.message);
         return {
           success: false,
           error: retryError.message
@@ -143,7 +144,7 @@ class EmailService {
 
       return { success: true, messageId: result.sid };
     } catch (error) {
-      console.error(`❌ SMS send error for ${to}:`, error.message);
+      logger.error(`SMS send error for ${to}:`, error.message);
       return { success: false, error: error.message };
     }
   }
@@ -158,7 +159,7 @@ class EmailService {
       await this.transporter.verify();
       return { success: true };
     } catch (error) {
-      console.error('❌ Email verification failed:', error);
+      logger.error('Email verification failed:', error.message);
       return { success: false, error: error.message };
     }
   }

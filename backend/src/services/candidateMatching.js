@@ -1,4 +1,6 @@
 import { User, Job, CandidateMatch } from '../models/index.js';
+import jobEmbeddingService from './jobEmbeddingService.js';
+import logger from '../config/logger.js';
 
 /**
  * Candidate Matching Service
@@ -276,11 +278,13 @@ class CandidateMatchingService {
 
       // Cache miss or insufficient matches - recalculate
 
-      // Get job details
-      const job = await Job.findById(jobId);
+      // Get job details WITH embedding for hybrid scoring
+      const job = await Job.findById(jobId).select('+embedding.vector');
       if (!job) {
         throw new Error('Job not found');
       }
+
+      const jobVector = job.embedding?.vector?.length === 1536 ? job.embedding.vector : null;
 
       // Process candidates in batches via cursor to prevent OOM at scale
       const BATCH_SIZE = 500;
@@ -292,29 +296,50 @@ class CandidateMatchingService {
         isDeleted: false,
         status: 'active'
       })
-      .select('email profile createdAt')
+      .select('email profile createdAt' + (jobVector ? ' +profile.jobSeekerProfile.embedding.vector' : ''))
       .batchSize(BATCH_SIZE)
       .cursor();
 
       for await (const candidate of candidateCursor) {
-        const { totalScore, breakdown } = this.calculateMatchScore(candidate, job);
+        const { totalScore: heuristicScore, breakdown } = this.calculateMatchScore(candidate, job);
+
+        // Compute hybrid score: embedding (0-50) + heuristic (0-50)
+        let embeddingScore = null;
+        let finalScore;
+
+        const candidateVector = candidate.profile?.jobSeekerProfile?.embedding?.vector;
+        if (jobVector && candidateVector?.length === 1536) {
+          try {
+            embeddingScore = jobEmbeddingService.cosineSimilarity(jobVector, candidateVector);
+            // Hybrid: embedding scaled to 0-50, heuristic scaled to 0-50
+            finalScore = Math.round(((embeddingScore * 50) + (heuristicScore * 0.5)) * 10) / 10;
+          } catch (_) {
+            // Malformed vector — fallback to heuristic only
+            finalScore = heuristicScore;
+          }
+        } else {
+          // No embedding available — heuristic only (backward compatible)
+          finalScore = heuristicScore;
+        }
+
+        breakdown.embeddingScore = embeddingScore;
 
         // Insert into topMatches if it qualifies
         if (topMatches.length < limit) {
           topMatches.push({
             candidate,
-            matchScore: totalScore,
+            matchScore: finalScore,
             matchBreakdown: breakdown
           });
           // Re-sort when we reach the limit to establish the threshold
           if (topMatches.length === limit) {
             topMatches.sort((a, b) => b.matchScore - a.matchScore);
           }
-        } else if (totalScore > topMatches[topMatches.length - 1].matchScore) {
+        } else if (finalScore > topMatches[topMatches.length - 1].matchScore) {
           // Replace the lowest-scoring entry
           topMatches[topMatches.length - 1] = {
             candidate,
-            matchScore: totalScore,
+            matchScore: finalScore,
             matchBreakdown: breakdown
           };
           topMatches.sort((a, b) => b.matchScore - a.matchScore);
@@ -363,7 +388,7 @@ class CandidateMatchingService {
       };
 
     } catch (error) {
-      console.error('Error finding top candidates:', error);
+      logger.error('Error finding top candidates:', error.message);
       return {
         success: false,
         message: error.message
@@ -398,7 +423,7 @@ class CandidateMatchingService {
       return hasJobAccess;
 
     } catch (error) {
-      console.error('Error checking access:', error);
+      logger.error('Error checking access:', error.message);
       return false;
     }
   }
@@ -447,7 +472,7 @@ class CandidateMatchingService {
       };
 
     } catch (error) {
-      console.error('Error granting access:', error);
+      logger.error('Error granting access:', error.message);
       return {
         success: false,
         message: error.message
@@ -475,7 +500,7 @@ class CandidateMatchingService {
       return { success: true };
 
     } catch (error) {
-      console.error('Error tracking contact:', error);
+      logger.error('Error tracking contact:', error.message);
       return { success: false, message: error.message };
     }
   }

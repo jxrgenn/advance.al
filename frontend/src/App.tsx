@@ -10,6 +10,8 @@ import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
 import ScrollToTop from "@/components/ScrollToTop";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import CookieConsent from "@/components/CookieConsent";
+import RobotAssistant from "@/components/RobotAssistant";
 
 // Lazy-loaded page components
 const Index = lazy(() => import("./pages/Index"));
@@ -129,6 +131,8 @@ const App = () => (
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
+            <RobotAssistant />
+            <CookieConsent />
           </BrowserRouter>
         </AuthProvider>
       </QueryClientProvider>

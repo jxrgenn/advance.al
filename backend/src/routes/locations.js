@@ -2,6 +2,7 @@ import express from 'express';
 import { Location } from '../models/index.js';
 import { cacheGet, cacheSet } from '../config/redis.js';
 import { sanitizeLimit } from '../utils/sanitize.js';
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
@@ -30,7 +31,7 @@ router.get('/', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get locations error:', error);
+    logger.error('Get locations error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e vendndodhjeve'
@@ -66,7 +67,7 @@ router.get('/popular', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get popular locations error:', error);
+    logger.error('Get popular locations error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Gabim në marrjen e vendndodhjeve popullore'

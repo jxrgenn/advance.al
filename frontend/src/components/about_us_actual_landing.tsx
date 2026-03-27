@@ -426,13 +426,13 @@ export default function AdvanceLanding() {
 
       {/* Hero Section */}
       <section className="py-20 lg:py-24 min-h-screen flex items-center relative z-10">
-        <div className="container mx-auto px-4">
+        <div className="container mx-auto px-2 sm:px-4">
           <div className="flex flex-col lg:flex-row items-center lg:items-center justify-between gap-12 lg:gap-16">
             {/* Left Content */}
-            <div className="flex-1 w-full lg:max-w-[540px] text-center lg:text-left relative">
+            <div className="flex-1 w-full lg:max-w-[650px] text-center lg:text-left relative pt-6 sm:pt-8 lg:pt-0">
               <div className="hidden lg:block absolute -left-8 top-0 w-1 h-20 bg-gradient-to-b from-primary to-transparent rounded-full opacity-60"></div>
               
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold leading-[1.15] mb-6 lg:mb-7 text-foreground tracking-tight">
+              <h1 className="text-[1.75rem] sm:text-4xl lg:text-5xl font-bold leading-[1.2] mb-6 lg:mb-7 text-foreground tracking-tight" style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}>
                 <span className="text-primary font-extrabold relative inline-block">
                   Advance.al
                   <span className="absolute -bottom-1 left-0 right-0 h-1 bg-primary/20 rounded-full"></span>
@@ -440,20 +440,20 @@ export default function AdvanceLanding() {
                 {' '}është platforma e vetme në Shqipëri e përkushtuar totalisht në tregun e punës.
               </h1>
               
-              <p className="text-lg sm:text-xl lg:text-[1.25rem] text-muted-foreground mb-8 lg:mb-10 leading-relaxed font-light">
+              <p className="text-lg sm:text-xl lg:text-[1.25rem] text-muted-foreground mb-8 lg:mb-10 leading-relaxed font-light" style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}>
                 Advance.al bashkon kompanitë më të mira me talentet më të specializuar për të ndërtuar biznese te suksesshme dhe karriera të shkëlqyera!
               </p>
               
               <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-                <button 
-                  className="group relative px-8 py-4 text-base font-bold text-primary-foreground bg-primary rounded-xl cursor-pointer transition-all duration-300 hover:shadow-2xl hover:shadow-primary/30 hover:-translate-y-1 overflow-hidden"
+                <button
+                  className="group relative px-6 py-3 sm:px-8 sm:py-4 text-sm sm:text-base font-bold text-primary-foreground bg-primary rounded-xl cursor-pointer transition-all duration-300 hover:shadow-2xl hover:shadow-primary/30 hover:-translate-y-1 overflow-hidden"
                   onClick={() => window.location.href = '/jobseekers'}
                 >
                   <span className="relative z-10">Gjej pune</span>
                   <div className="absolute inset-0 bg-gradient-to-r from-primary to-primary/80 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                 </button>
-                <button 
-                  className="px-8 py-4 text-base font-semibold text-foreground bg-background border-2 border-border rounded-xl cursor-pointer transition-all duration-300 hover:border-primary hover:text-primary hover:shadow-lg hover:-translate-y-0.5"
+                <button
+                  className="px-6 py-3 sm:px-8 sm:py-4 text-sm sm:text-base font-semibold text-foreground bg-background border-2 border-border rounded-xl cursor-pointer transition-all duration-300 hover:border-primary hover:text-primary hover:shadow-lg hover:-translate-y-0.5"
                   onClick={() => window.location.href = '/employers'}
                 >
                   Posto pune
@@ -470,7 +470,7 @@ export default function AdvanceLanding() {
               <div className="relative z-10">
                 <div 
                   ref={containerRef}
-                  className="relative w-[300px] h-[300px] sm:w-[400px] sm:h-[400px] md:w-[500px] md:h-[500px] lg:w-[550px] lg:h-[550px]"
+                  className="relative w-[95vw] h-[95vw] sm:w-[420px] sm:h-[420px] md:w-[500px] md:h-[500px] lg:w-[600px] lg:h-[600px] xl:w-[650px] xl:h-[650px]"
                   style={{
                     opacity: isLoaded ? 1 : 0,
                     transition: 'opacity 0.8s ease-out'

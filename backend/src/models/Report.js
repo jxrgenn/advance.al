@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import logger from '../config/logger.js';
 
 const { Schema } = mongoose;
 
@@ -306,7 +307,7 @@ reportSchema.methods.resolve = async function(action, reason, adminId, duration 
           const resendEmailService = await import('../lib/resendEmailService.js');
           await resendEmailService.default.sendAccountActionEmail(reportedUser, action, reason, duration);
         } catch (error) {
-          console.error('Error sending account action email:', error);
+          logger.error('Error sending account action email:', error.message);
         }
       });
     }
@@ -415,7 +416,7 @@ reportSchema.post('save', async function(doc) {
       const notificationService = await import('../lib/notificationService.js');
       await notificationService.default.notifyAdmins('new_report', doc);
     } catch (error) {
-      console.error('Failed to send admin notification for new report:', error);
+      logger.error('Failed to send admin notification for new report:', error.message);
     }
   }
 });

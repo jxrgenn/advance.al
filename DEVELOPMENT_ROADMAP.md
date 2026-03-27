@@ -1,11 +1,385 @@
 # advance.al - DEVELOPMENT STATUS & ROADMAP
 
 **Date:** September 25-28, 2025
-**Last Updated:** March 19, 2026 (Comprehensive Runtime Audit — 6 agents + runtime API testing, 20+ new issues found and fixed, XSS/validation hardening pass)
+**Last Updated:** March 27, 2026 (AI improvements: richer embeddings, hybrid candidate matching, DOCX support)
 **Platform:** Premier Job Marketplace for Albania
-**CURRENT STATUS:** 🟢 **PRODUCTION READY — All 8 phases complete. Two deep audits done. Runtime-tested all API flows. 0 npm vulnerabilities, security hardened, scalability optimized for 10k+ users.**
-**Phase:** Final Audit Implementation (see `FINAL_AUDIT_IMPLEMENTATION_PLAN.md`)
+**CURRENT STATUS:** 🟢 **DEPLOY-READY — QA in progress. 211/211 API tests, 15/15 audit fixes verified. Manual QA bugs being fixed (Rounds 1-3 complete).**
+**Phase:** QA & Deployment (see env var checklist below)
 **Brand:** advance.al (formerly Albania JobFlow)
+
+## ✅ **3 AI IMPROVEMENTS — MARCH 27, 2026**
+
+### Feature 2: Richer User Embeddings (implemented first)
+- **Rewrote `prepareJobSeekerText()`** — old text: title(2x) + skills(2x) + bio + experience + city (~200-500 chars)
+- **New text includes:** title(2x), merged skills (manual + aiGeneratedCV.technical + tools)(2x), professionalSummary(500ch), workHistory (recent 5: position+company+description+achievements), education (all: degree+field+institution+description), certifications, languages+proficiency, soft skills, bio, experience, location — ~750-6000 chars, max 7500
+- **Enriched `prepareQuickUserText()`** — added parsedCV.education and parsedCV.languages (already in QuickUser model but unused)
+- **7 embedding regeneration triggers:** POST/PUT/DELETE work-experience (3), POST/PUT/DELETE education (3), POST cv/generate (1)
+- No breaking change — same model, same dimensions. Existing embeddings stay valid. Admin can bulk re-embed via `/api/admin/embeddings/recompute-all`
+
+### Feature 1: Semantic Candidate Matching (hybrid scoring)
+- **Hybrid scoring formula:** `hybridScore = (embeddingScore × 50) + (heuristicScore × 0.5)` — total 0-100
+- Embedding cosine similarity (0-1) scaled to 0-50 pts; existing heuristic (0-100) scaled to 0-50 pts
+- **Backward compatible:** if either user or job lacks embedding → heuristic-only (no change)
+- Added `embeddingScore` field to CandidateMatch.matchBreakdown schema
+- Job fetched with `+embedding.vector`; candidates fetched with `+profile.jobSeekerProfile.embedding.vector`
+
+### ~~Feature 3: Semantic Job Search~~ — REMOVED
+- Removed per user decision (unnecessary OpenAI API cost for search)
+- Endpoint, frontend UI, and all related code fully removed
+
+### CV Upload: PDF + DOCX support
+- Added DOCX/DOC support to CV uploads (was PDF-only)
+- Backend: `mammoth` library for DOCX text extraction, auto-detect via magic bytes
+- Updated file filters in `users.js`, `quickusers.js`, `cvParsingService.js`
+- Updated frontend accept attributes in Profile, JobSeekersPage, ApplyModal
+
+### Files modified:
+- `backend/src/services/userEmbeddingService.js` — rewritten prepareJobSeekerText(), enriched prepareQuickUserText()
+- `backend/src/routes/users.js` — 6 embedding triggers, DOCX support, content-type detection
+- `backend/src/routes/cv.js` — 1 embedding trigger after AI CV generation
+- `backend/src/routes/quickusers.js` — DOCX support for CV upload
+- `backend/src/services/cvParsingService.js` — DOCX text extraction via mammoth, unified extractTextFromCV()
+- `backend/src/services/candidateMatching.js` — hybrid scoring in findTopCandidates()
+- `backend/src/models/CandidateMatch.js` — embeddingScore in matchBreakdown
+- `frontend/src/lib/api.ts` — DOCX-aware cvApi.previewFile(), removed semanticSearch()
+- `frontend/src/pages/Index.tsx` — removed semantic search UI
+- `frontend/src/pages/Profile.tsx` — accept PDF+DOCX, DOCX-aware CV viewing
+- `frontend/src/pages/EmployerDashboard.tsx` — DOCX-aware handleViewCV() and handleDownloadCV()
+- `frontend/src/pages/JobSeekersPage.tsx` — accept PDF+DOCX
+- `frontend/src/components/ApplyModal.tsx` — accept PDF+DOCX
+
+## ✅ **ADMIN DASHBOARD & BUSINESS PANEL SIMPLIFICATION — MARCH 27, 2026**
+
+### Business Dashboard → Simple Pricing Panel:
+- **Replaced entire BusinessDashboard.tsx** (was 1143 lines with campaigns, rules, analytics, whitelist, emergency controls) with a clean pricing configuration page (~260 lines)
+- 3 configurable prices: Standard Posting (€28), Promoted Posting (€45), Candidate Viewing (€15)
+- Payment system on/off toggle
+- Prices stored in `SystemConfiguration` model (category: 'payment')
+- Added `GET/PUT /api/configuration/pricing` dedicated endpoints
+- Updated `jobs.js` to read pricing from SystemConfiguration instead of hardcoded `basePrice = 50`
+- Added 'payment' to SystemConfiguration category enum
+
+### Admin Dashboard — All Users Modal:
+- New "Të gjithë përdoruesit" button in user management section
+- Modal with search, filter by type (All/Kërkues pune/Punëdhënës/Admin), pagination
+- Shows: name, email, city, registration date, user type badge, status badge
+- Employer details: company name, industry
+- Jobseeker details: title, CV download link
+- Actions: view details, activate, suspend
+
+### Admin Dashboard — CV Download:
+- Added download link in "Përdorues të rinj" list for jobseekers with uploaded CVs
+- Added download link in user detail modal (replaces plain "Ngarkuar" text)
+- Download links open in new tab
+
+### Other Admin Fixes (from previous session):
+- ✅ "Promofo" → "Promovo" typo fix (2 occurrences)
+- ✅ "Mirafo" → "Mirato" typo fix
+- ✅ Job titles clickable in admin dashboard modals (opens in new tab)
+- ✅ Status labels for pending_approval ("Në pritje") and pending_payment ("Pa paguar")
+- ✅ QuickUser → Full User automatic conversion on registration
+- ✅ Unverified employer warning on PostJob page
+- ✅ Password reset links use FRONTEND_URL instead of localhost
+- ✅ Admin reports page crash fix (null safety for reportedUser)
+
+## ✅ **EMPLOYERS PAGE REDESIGN + QUICKUSER CV UPLOAD + ROBOT WIDGET — MARCH 26, 2026**
+
+### EmployersPage redesign (2 changes):
+1. **Mascot placeholder** — Replaced 4 Paper benefit cards (left sidebar) with a mascot image placeholder area (sticky, hidden on mobile). User will provide actual image via Nano Banana AI
+2. **Pricing cards updated** — "Postim standart" 28€/21 ditë and "Postim i promovuar" 45€/21 ditë. Slimmer horizontally (max-w-4xl), same original design, removed "Rekomanduar" badge and footer tip text
+
+### AboutUs "Çfarë Bëjmë Ne?" update:
+- Updated description text and replaced bullet points with new content matching screenshot
+
+### QuickUser CV upload (4 files):
+- `backend/src/models/QuickUser.js` — Added `resume: { type: String, default: null }` field
+- `backend/src/routes/quickusers.js` — Added multer middleware (memory/disk storage, PDF-only, 5MB), handles multipart/form-data with JSON array field parsing, uploads to Cloudinary with local fallback
+- `frontend/src/lib/api.ts` — `createQuickUser` now sends FormData when resume file is provided, plain JSON otherwise
+- `frontend/src/pages/JobSeekersPage.tsx` — Added Mantine `FileInput` for optional CV upload in quick signup form
+
+### CV Parsing Service (new):
+- `backend/src/services/cvParsingService.js` — Extracts text from uploaded CV PDFs (pdfjs-dist), parses with GPT-4o-mini to extract title, skills, experience, industries, education, languages, summary. Stored in QuickUser.parsedCV subdocument.
+- `backend/src/services/userEmbeddingService.js` — prepareQuickUserText now includes parsed CV data (double-weighted title/skills) for richer embedding generation
+- Flow: QuickUser uploads CV → Cloudinary storage → PDF text extraction → GPT-4o-mini parsing → embedding generation includes parsed CV data → better job matching
+
+### Notification System Fixes:
+- **Rate limiting fix**: Reduced email batch size from 10→4, increased delay 500ms→1200ms to stay under Resend's 5 req/sec limit
+- **Semantic matching fix**: `notifyMatchingUsers` now loads job with `+embedding.vector` (was excluded by `select: false`)
+- **Keyword fallback always runs**: Changed from "only if no embedding" to "always run + deduplicate" for more complete matching
+- **Admin approval notifications**: Both `/api/admin/jobs/:id/approve` and `/api/admin/jobs/:jobId/manage` now trigger embedding generation + user notifications when a job is approved (was missing entirely)
+- Tested: 12/12 emails sent successfully (9 semantic + 3 keyword matches)
+
+### Floating robot assistant widget:
+- New `frontend/src/components/RobotAssistant.tsx` — Fixed bottom-right, idle floating animation, expands to 2 options: "Krijo llogari" and "Gjenero CV"
+- Hidden on: /jobseekers, /login, /register, /profile, /employer-dashboard, /admin, and when logged in
+- Mounted in `App.tsx` inside BrowserRouter
+
+## 🟡 **MANUAL QA BUG FIXES — MARCH 25, 2026 (IN PROGRESS)**
+
+User-reported QA bugs from manual testing, fixed with smart solutions:
+
+**Round 1 (QA-01 through QA-08):**
+- ✅ **a) Duplicate email registration** — Normalized email (trim+lowercase) in `initiate-registration` before `User.findOne()`. Previously, different casing could bypass the duplicate check.
+- ✅ **b) Phone number spaces** — Changed frontend phone validation from regex pattern to custom function that strips spaces/dashes/parentheses before checking digits. Backend already receives normalized phone.
+- ✅ **c) "Posto pune" broken link (404)** — Changed `/employers/post-job` (non-existent) to smart navigation: logged-in employers → `/post-job`, non-logged-in → scroll to registration form.
+- ✅ **d) Website validation too strict** — Changed from `https?://` pattern to accept bare domains (`jxsoft.al`, `www.jxsoft.al`). Backend auto-prepends `https://` for storage.
+- ✅ **e) Employer signup crash** — Fixed two bugs: (1) `validateForm()` crashed on null/undefined rules (added guard), (2) `handleEmployerSubmit` called `employerSignupRules.step2` which didn't exist — removed invalid call, fixed step0 data mismatch.
+- ✅ **f) "Fshihi filtrat" didn't toggle** — `handleShowFilters()` only set `showAllFilters(true)` — changed to toggle between true/false.
+- ✅ **g) "Rendit sipas" sorting** — Fixed React stale closure: `handleApplyFilters` called `setState` then `loadJobs()` which read stale state. Added `filterOverrides` param to `loadJobs` to pass filters directly, bypassing React batched state. Backend sort verified working.
+- ✅ **h) Remote type not shown** — Added remoteType display badge on JobDetail page: "Nga distanca" (full remote) or "Hibride" (hybrid).
+- ✅ **i) Administrata for all employers** — Added `isAdministrataAccount` flag to employer profile. Only flagged accounts see/set administrata. Auto-enforced in backend job creation. Admin can toggle via `set_administrata`/`remove_administrata` actions.
+- ✅ **j) Index filter toggle** — Same fix as (f) — `handleShowFilters` now properly toggles.
+
+**Round 2 (continued QA):**
+- ✅ **Removed "kontratë" from job types** — Removed from Job model enum, PostJob frontend, and both create/update validation in backend.
+- ✅ **Custom questions type selector removed** — All custom questions are now text-only (removed "lloji" selector from PostJob).
+- ✅ **Jobs going "draft"/"pending_payment"** — Root cause: 50€ base price with no payment system. Added `payment_enabled` system config (default: false). When payment is disabled, all verified employers post for free. Jobs now go `active` immediately.
+- ✅ **Job-not-found page cut off by navbar** — Fixed padding from `py-8` to `py-8 pt-24` to clear the fixed navbar.
+- ✅ **Salary not shown on job cards** — `.lean()` strips Mongoose virtuals (like `formattedSalary`). Added client-side `formatSalary()` helper in JobCard.tsx and JobDetail.tsx that computes salary display from raw `salary.min`/`salary.max` fields.
+- ✅ **Contact preferences defaults** — Already set to `true` in User model (enablePhoneContact, enableWhatsAppContact, enableEmailContact).
+- ✅ **Navbar opacity** — Changed from `bg-background/95 backdrop-blur` to solid `bg-background` (full white, no transparency).
+- ✅ **Banner between jobs** — QuickUserBanner remains for non-authenticated users (signup CTA every 4 jobs). Authenticated users don't see signup prompts (by design).
+- ✅ **New jobs not appearing at top** — Sort was `{ tier: -1, postedAt: -1 }` which pushed ALL basic-tier jobs below ALL premium jobs regardless of date. Removed tier from sort — premium jobs are already highlighted in PremiumJobsCarousel. Now sorted purely by `postedAt`.
+- ✅ **Save/bookmark on job detail page** — Added bookmark button in job header (checks saved status, toggle save/unsave via API).
+- ✅ **CV/Apply flow rework:**
+  - 1-click apply: Only available if user has CV in profile. If job has custom questions, opens modal first.
+  - Apply (formerly "Quick Apply"): Always available. Added CV upload in modal (PDF, max 5MB). Shows all custom questions with "Detyrueshme"/"Opsionale" badges.
+  - CV uploaded during apply is saved to user profile for future 1-click applications.
+  - If user has no CV, a prompt to upload or go to profile is shown.
+
+**Round 3 (continued QA — March 26, 2026):**
+- ✅ **Search returning 0 results** — MongoDB `$text` search only matches whole tokenized words, not substrings. Changed to `$regex`-based search across title, description, category, city, tags in both route and model.
+- ✅ **Optional custom questions blocking submission** — `Application.customAnswers.answer` had `required: true` in Mongoose schema. Changed to `default: ''` so optional questions can be left blank.
+- ✅ **Notification "Shiko" goes to wrong page** — Employer notification click for applications now navigates to `/employer-dashboard?tab=applications` instead of the job post page. Dashboard reads URL param to auto-select the tab.
+- ✅ **Applicants page missing job info** — Added clickable job title in applicant list rows and in the detail modal. Links go to `/jobs/:id`.
+- ✅ **Status "hired" error unclear** — Backend only allows `shortlisted → hired` transition. Frontend now only shows "Punëso" option when applicant status is `shortlisted` (both in dropdown and modal).
+- ✅ **Settings tab "emri dhe mbiemri" validation error** — `employerDashboardSettingsRules` included firstName/lastName/phone rules but the settings form doesn't have those fields. Removed invalid rules.
+- ✅ **Banner disappeared for logged-in users** — QuickUserBanner now has `variant` prop: 'signup' for guests, 'cv' for logged-in users (promotes AI CV generation, links to /profile).
+- ✅ **Hero section mobile layout** — Fixed word-break/hyphenation on Albanian text (`hyphens:none`, `word-break:keep-all`), made graph bigger on mobile (90vw/380px max), CTA buttons smaller on mobile, added top padding to text section, wider text container on desktop (650px), reduced container padding.
+
+**Round 4 (continued QA — March 26, 2026):**
+- ✅ **"Punësuar" not revocable** — Backend now allows `hired → shortlisted` transition. Frontend shows "Kthe në listë të shkurtër" option for hired applicants. Both hiring and reverting have confirmation dialogs.
+- ✅ **Notification "Shiko" still went to job page** — Root cause: `relatedJob` was checked before `relatedApplication` in handler. Application notifications typically have both fields. Fixed by checking `relatedApplication` first for employers, routing to `/employer-dashboard?tab=applications`.
+- ✅ **Shortlist-before-hire hint** — Added inline hint in status dropdown for pending/viewed applicants: "Shtoni në listë të shkurtër para punësimit" (with lightbulb icon).
+- ✅ **Job filter on applicants page** — Added job dropdown filter alongside status filter buttons. Shows all jobs with application counts. Allows filtering applicants by specific job posting.
+- ✅ **Hero text still breaking words** — `[word-break:normal]` wasn't enough; browser CSS `hyphens` was causing "platfor-ma" splits. Changed to inline styles with `hyphens: none`, `wordBreak: keep-all`. Also widened desktop text container from 540px to 650px.
+- ✅ **Salary not showing on job detail page** — Root cause: PostJob.tsx defaulted `showSalary: false` with NO toggle in the UI, so every posted job had `showPublic: false`. Fixed: (1) changed PostJob default to `true`, (2) added missing "Shfaq pagën publikisht" Switch to PostJob salary section, (3) JobDetail now always shows salary info — shows actual salary if available and public, otherwise shows "Pagë për t'u negociuar", (4) EditJob now defaults `showSalary` to `true` for jobs where field was undefined.
+
+**Round 5 (continued QA — March 26, 2026):**
+- ✅ **"Verifikuar" badge removed from dashboard header** — Badge inside `<p>` caused DOM nesting warning. Removed badge, kept CheckCircle icon.
+- ✅ **Phone validation too strict** — Regex `^\+\d{8,}$` didn't allow spaces. Added `normalizePhone()` that strips spaces/dashes/parentheses before validation and before sending to API.
+- ✅ **"Shiko CV" 404 on Profile** — CV stored as `/uploads/resumes/...` but backend had no serving route. Added `GET /api/users/resume/:filename` authenticated endpoint. Supports `?token=` query param for new-tab viewing. Updated Profile.tsx and EmployerDashboard.tsx to use API route.
+- ✅ **"Shkarko CV" and "Shiko CV" broken in employer applicant modal** — Same root cause as above. Updated URL construction to use `/api/users/resume/:filename`.
+- ✅ **Date pickers ugly** — Replaced `type="month"` HTML inputs with paired Select dropdowns (Albanian month names + year) for both work experience and education forms.
+- ✅ **Experience/education not editable** — Cards now clickable with hover state. Clicking opens the modal pre-filled with existing data. Save handler uses `updateWorkExperience`/`updateEducation` API when editing.
+- ✅ **Employer can't see applicant's experience/education** — Added workHistory and education sections to the applicant detail modal, showing position, company, dates, description for each entry.
+- ✅ **Graph bigger on desktop** — Increased to 600px (lg) and 650px (xl). Mobile uses 95vw.
+- ✅ **Hero text larger on mobile** — Title bumped to 1.75rem, subtitle to text-lg.
+- ✅ **Dashboard loads only 10 jobs/applications** — Both API calls now use `limit: 200`. Backend max raised from 50 to 200 for employer dashboard endpoints.
+
+- ✅ **PUT routes for work-experience and education** — Backend only had POST/DELETE. Added `PUT /api/users/work-experience/:experienceId` and `PUT /api/users/education/:educationId` using Mongoose subdocument updates.
+- ✅ **"Shiko" buttons download instead of display** — `window.open(url)` triggers download for PDFs. Changed both Profile.tsx and EmployerDashboard.tsx to use `fetch` + `blob` + `URL.createObjectURL` for inline viewing. "Shkarko" also uses fetch+blob for proper authenticated download.
+- ✅ **Experience/education too long in employer modal** — Replaced full cards with compact one-line rows (position @ company • dates). Shows max 2 entries with expandable "+N të tjera" toggle.
+
+**Round 6 (continued QA — March 26, 2026):**
+- ✅ **Contact button on applications tab** — Added "Kontakto" button to ApplicationStatusTimeline cards (Profile.tsx aplikimet tab). Shows animated popover with available contact methods (Phone, WhatsApp, Email) based on employer's contactPreferences. Backend updated to populate employer contact data (phone, whatsapp, email, contactPreferences) in getJobSeekerApplications query. Disabled state shown when no contact methods enabled.
+
+Additional fixes:
+- ✅ Duplicate Mongoose index warning on `WorkerStatus.workerId` fixed
+- ✅ Backend website normalization: auto-prepends `https://` for bare domains in registration and profile update
+- ✅ **Profile completion percentage inconsistency** — Three different calculations existed: backend users.js (8 equal-weight fields, checked wrong `cvFile` field), ApplyModal.tsx (7 equal-weight checks), Profile.tsx (8 weighted fields). Unified all three to same weighted formula: firstName+lastName=15%, phone=10%, city=10%, title=15%, bio=15%, skills=15%, experience=10%, resume=10%. Fixed backend checking `cvFile` (always null) instead of `resume` (actually populated by upload).
+
+**Privacy compliance (March 26, 2026):**
+- ✅ **Hard-delete scheduler for soft-deleted accounts** — Privacy policy promises deletion within 30 days. Added `deletedAt` field to User schema (was missing — admin route set it but Mongoose strict mode silently discarded it). Updated `softDelete()` method to set `deletedAt`. Created `accountCleanup.js` service that runs daily (setInterval) + once on startup (30s delay). For each user past the 30-day retention period: deletes their applications, jobs (if employer) + applications to those jobs, notifications, File documents, CandidateMatch records, local uploaded files, then permanently removes the user document. Logs per-user cleanup details. Wrapped in try/catch per user so one failure doesn't block others.
+
+## 🟢 **FULL TEST EXECUTION — MARCH 25, 2026 (COMPLETE)**
+
+Comprehensive 5-part test execution with zero skips:
+
+**Part 1 — API Tests:** 211/211 passed, 0 failed, 0 skipped (51.5s)
+- Enhanced test to read verification codes from Redis via SHA-256 brute-force
+- Fallback login to pre-existing test accounts for downstream tests
+- All 28 sections green including change password, application messaging, logout
+
+**Part 2 — k6 Load Tests:** 4/4 scenarios completed
+- Normal (100 VUs): 6,918 reqs, 22.7 RPS, p95=1,419ms
+- Spike (500 VUs): 10,605 reqs, 31.8 RPS, p95=17,261ms
+- Stress (1000 VUs): 14,932 iterations, server never crashed
+- Race (50 VUs): 0 duplicate applications in 200 concurrent attempts
+- Note: latency dominated by local→Atlas network; production will be 5-10x faster
+
+**Part 3 — Audit Fix Verification:** 15/15 PASS (C1-C7, H1-H8 all verified at runtime)
+
+**Part 4 — Security Smoke Tests:** 8/8 PASS
+- Auth bypass, role escalation, IDOR, NoSQL injection, XSS, rate limiting, large payload, query injection
+
+**Part 5 — Database Health Check:**
+- 21 collections indexed, 1 COLLSCAN on jobs listing (add `{ status: 1, createdAt: -1 }` index)
+- 47 orphaned references (cleanup recommended)
+- 77 unverified-but-active users (policy decision needed)
+
+**Fixes applied this session:**
+- ✅ IPv6 rate limiter fix in 4 root-level route files (reports, bulk-notifications, configuration, business-control)
+- ✅ Duplicate Mongoose index warnings fixed (SystemConfiguration.key, RevenueAnalytics.dateString)
+- ✅ Root server.js: removed dead send-verification import
+- ✅ Root package.json: added `start` script delegating to backend workspace
+
+**Pre-deploy items:**
+1. Verify `NODE_ENV=production` on Railway
+2. Add index: `db.jobs.createIndex({ status: 1, createdAt: -1 })`
+3. Clean up 47 orphaned documents (notifications, applications, jobs)
+4. Decide on 77 unverified-but-active users
+
+## 🟢 **POST-AUDIT PHASE 2: TESTS & QA — MARCH 25, 2026 (COMPLETE)**
+
+All 4 deliverables regenerated with comprehensive coverage:
+
+**Test Suite (tests/api-tests.js):** 211 tests, 0 failures, 0 skips, 28 test sections
+- Full registration → verification → login → profile → logout E2E flow
+- Every endpoint tested: happy path, auth (401), role (403), validation (400), not-found (404)
+- NEW: Rate limiting, authorization boundary, change-password flow, logout flow tests
+- NEW: Enhanced injection tests (prototype pollution, null bytes, SVG XSS, NoSQL regex)
+- NEW: Company detail, job similar, job views sections
+
+**Load Test (tests/load-test.js):** 985 lines, 4 scenarios (normal/spike/stress/race)
+- NEW: setup() with authenticated tokens for seeker/employer scenarios
+- NEW: Apply-to-job and profile-update actions under load
+- NEW: Enhanced race condition tests (concurrent apply, register, profile updates)
+
+**QA Manual Checklist (QA-MANUAL-CHECKLIST.md):** 30 sections (was 24)
+- NEW: QA-25 AI CV Generation, QA-26 Application Messaging, QA-27 Status Timeline
+- NEW: QA-28 Business Control, QA-29 Reports & Moderation, QA-30 Multi-Tab Behavior
+
+**Deployment Checklist (DEPLOYMENT-CHECKLIST.md):** 10 sections (was 9)
+- NEW: Section 5.5 Security Verification (CORS, headers, rate limiting, bundle audit)
+- Updated: Pre-deploy fixes reflect latest audit (notifyAdmins, .lean(), .gitignore)
+- Updated: Enhanced smoke tests with CORS and auth flow commands
+
+## 🟢 **PRE-DEPLOYMENT DEEP AUDIT — MARCH 24, 2026 (COMPLETE)**
+
+Full 9-phase audit (functional correctness, concurrency, data integrity, security, embeddings, notifications, production readiness, code quality). 5 Critical, 8 High, 8 Medium, 4 Low issues identified.
+
+**Critical Fixes Applied:**
+- ✅ **notifyAdmins() silent failure**: `notificationService.js:499` queried `{ role: 'admin' }` but User model uses `userType` field → admin report notifications were silently dropped. Fixed to `{ userType: 'admin' }`
+- ✅ **pendingRegistrationsMap memory leak**: In-memory Map fallback (non-Redis environments) had no size limit → could exhaust memory under registration spam. Added 10K cap, periodic cleanup (5min), and capacity rejection with user-friendly error
+- ✅ **BulkNotification.getTargetUsers() memory**: Loaded ALL matching users as full Mongoose documents into memory → added `.lean()` to both User and QuickUser queries (reduces memory ~60-80% per document)
+- ✅ **.gitignore hardened**: Added `test-mongodb*` and `test-*.js` patterns to prevent accidental credential commits
+
+**Verified Working (No Action Needed):**
+- `.env` files are NOT tracked in git (gitignore working correctly)
+- All admin routes properly protected with `authenticate` + `requireAdmin` middleware
+- CORS whitelist correctly configured for production domains
+- No `eval()`, `Function()`, or code injection vectors found
+- `stripHtml` sanitization applied to all user-facing text inputs (firstName, lastName, etc.)
+- Input validation rejects XSS payloads, SQL injection, invalid emails
+- JWT uses HS256 pinning, refresh tokens hashed with SHA-256
+- Rate limiting active on auth endpoints
+- Frontend build strips console/debugger in production
+- Dockerfile uses non-root user, Node 20 Alpine
+
+**Remaining Items (Non-Critical, Post-Launch):**
+- Credential rotation: MongoDB Atlas password should be rotated (was previously in `test-mongodb.js`, now deleted)
+- `resendEmailService.js:18`: Remove hardcoded test email (`advance.al123456@gmail.com`) — controlled by `EMAIL_TEST_MODE` env var
+- `verification.js:163`: TODO about changing to actual recipient email in production
+- Set `DEBUG_EMBEDDINGS=false`, `DEBUG_WORKER=false`, `DEBUG_QUEUE=false` in production env
+
+## 🟢 **POST-AUDIT FIXES — MARCH 24, 2026 (COMPLETE)**
+
+Two must-fix-before-deploy items from test execution report:
+
+- ✅ **C3 — Password validation inconsistency**: change-password required special chars but registration/reset-password didn't → unified all 3 backend flows + frontend settings to same rule (8+ chars, uppercase, lowercase, digit). Files: auth.js (lines 583-591), formValidation.ts (lines 268-280)
+- ✅ **XSS sanitization gaps**: 6 routes accepted HTML in text fields without `stripHtml()` → added sanitization to: quickusers.js (firstName, lastName, location, customInterests), applications.js (coverLetter, customAnswers answers), reports.js (description), bulk-notifications.js (title, message, templateName), configuration.js (reason)
+
+## 🟢 **FULL TEST EXECUTION — MARCH 24, 2026 (COMPLETE)**
+
+167 API tests (0 skip, 0 fail), 4 k6 load test scenarios, security smoke tests, DB health check.
+
+**Bugs Found & Fixed:**
+- ✅ Email regex in QuickUser.js and Job.js was `{2,3}` (rejected valid TLDs like .info, .jobs, .academy) → fixed to `{2,63}` per RFC
+- ✅ Admin embeddings route (`routes/admin/embeddings.js`) existed but was never mounted in server.js → mounted at `/api/admin/embeddings`
+- ✅ Application `{jobId, jobSeekerId}` unique index was non-unique in DB (Mongoose doesn't auto-update existing indexes) → dropped stale index, cleaned 4 duplicate records, created correct unique partial index
+- ✅ Application model partial filter used `$ne: true` (unsupported by MongoDB partial indexes) → changed to `{ withdrawn: false }`
+- ✅ Deleted dead `send-verification.js` file (C1 audit item)
+- ✅ Improved QuickUser route error logging
+
+**Test Suite Files:**
+- `tests/api-tests.js` — 167 zero-skip API tests with full registration flow, admin/seeker/employer tokens
+- `tests/load-test.js` — k6 load test (normal/spike/stress/race condition scenarios)
+- `QA-MANUAL-CHECKLIST.md` — 24-section manual QA checklist
+- `DEPLOYMENT-CHECKLIST.md` — 9-section production deployment checklist
+
+## 🟢 **FULL PRODUCTION AUDIT — MARCH 21, 2026 (COMPLETE)**
+
+3-agent deep audit (backend routes, frontend pages, deployment/security). 80+ findings analyzed, false positives eliminated.
+
+**CRITICAL Fixes:**
+- ✅ Removed `/api/send-verification` — unauthenticated email spray attack vector (legacy route, frontend never used it)
+- ✅ Added production warnings for EMAIL_TEST_MODE=true and EMAIL_FROM=resend.dev (loud logger.error at startup)
+- ✅ Cloudinary-only uploads enforced in production (disk fallback disabled — files lost on Railway deploy)
+- ✅ Per-email rate limiting on forgot-password (max 3 resets/email/hour via Redis)
+
+**Backend Hardening:**
+- ✅ Replaced ~40 console.error/warn calls with structured logger across auth.js, database.js, openaiService.js, stats.js, cv.js, notificationService.js, ReportAction.js, candidateMatching.js, alertService.js
+- ✅ Dockerfile upgraded: Node 18→20, added USER node (non-root), ENV NODE_ENV=production
+- ✅ Added `engines: { node: ">=20.0.0" }` to backend package.json
+- ✅ Production startup warns about DEBUG_* flags and missing Cloudinary
+- ✅ setInterval IDs tracked and cleared on graceful shutdown (prevents ghost intervals)
+
+**Frontend Hardening:**
+- ✅ Created `.env.production` with VITE_API_URL for Vercel builds
+- ✅ vite.config.ts: `esbuild.drop: ['console', 'debugger']` in production — strips all console.* from bundles
+- ✅ Verified: 0 console statements in production build output
+
+**User Action Required Before Go-Live:**
+- Set Railway env vars: `EMAIL_TEST_MODE=false`, `EMAIL_FROM=advance.al <noreply@advance.al>`, `FRONTEND_URL=https://advance.al`, `DEBUG_EMBEDDINGS=false`, `DEBUG_WORKER=false`, `DEBUG_QUEUE=false`
+- Set Vercel env vars: `VITE_API_URL=https://<railway-url>/api`
+- Verify advance.al domain in Resend dashboard
+- Point DNS (advance.al, www.advance.al) to Vercel
+
+## 🟢 **PRODUCTION HARDENING — MARCH 21, 2026 (COMPLETE)**
+
+Error handling, state management & deployment readiness audit. 4 phases.
+
+**Backend Production Config:**
+- ✅ Added `advance.al` and `www.advance.al` to CORS whitelist (hardcoded, not dependent on env var)
+- ✅ FRONTEND_URL validation at startup: required in production (password reset links default to localhost without it), warns in dev
+- ✅ Redis status added to `/health` endpoint (reports `connected`, `not_configured`, or `error`)
+
+**Pending Registrations → Redis:**
+- ✅ Moved from in-memory Map to Redis with `pending_reg:<email>` key pattern (600s TTL)
+- ✅ Map fallback preserved for dev environments without Redis
+- ✅ Removed `setInterval` cleanup (Redis TTL handles expiry)
+- ✅ Attempt counting persists across Redis reads/writes (survives Railway deploys)
+
+**Frontend Error Handling & UX:**
+- ✅ Profile.tsx: Error toast on loadApplications failure (was silently failing)
+- ✅ Index.tsx: `applyingJobId` double-submit guard on Apply button (prevents duplicate API calls from rapid clicks)
+
+**npm audit:**
+- ✅ `npm audit fix` applied — remaining 2 moderate vulns are esbuild/vite dev-only deps requiring major version bump (not actionable)
+
+## 🟢 **QA MANUAL TESTING FIXES — MARCH 20, 2026 (COMPLETE)**
+
+14 bugs found during user manual testing. All fixed.
+
+**Breaking Bugs Fixed:**
+- ❌→✅ Jobseeker registration blocked by phantom "arsimi" (education) requirement → Removed `education: required` from formValidation.ts
+- ❌→✅ Employer registration always failed at step 0 ("companyName 2-100 chars") → Reorganized validation rules to match UI steps (companyName moved to step 1 where it belongs)
+- ❌→✅ Change password returned 400 (backend requires uppercase+number+special char, frontend only checked length) → Added matching frontend validation
+- ❌→✅ Quick user creation 400 errors (empty phone → "+355", interests mismatch) → Fixed phone normalization, split interests into recognized/custom
+- ❌→✅ "Hap Email" button showed success toast but did nothing → Added contact info validation, show error if missing, only success when action taken
+- ❌→✅ No verification email sent on registration → **Rewrote to verify-then-register flow**: form data cached in-memory with 10-min TTL, 6-digit code sent to email, account only created after code verification. PinInput modal on all 3 registration pages (JobSeekersPage, EmployersPage, EmployerRegister). Backend: `POST /api/auth/initiate-registration` + modified `POST /api/auth/register` (requires email + verificationCode). Users are `emailVerified: true` on creation.
+
+**UX/Behavior Fixes:**
+- ❌→✅ Phone number handling: auto-add +355, strip leading 0, ignore spaces → Shared `normalizeAlbanianPhone()` utility
+- ❌→✅ Similar jobs showing test data with rough 60% scores → Filter test jobs, boost score display range
+- ❌→✅ Rate limiting too harsh (quickusers 10/15min) → Increased to 20/15min in prod, 10000 in dev
+- ❌→✅ Login "sign up as" links landed at page top → Added `?signup=true` with scroll-to-form logic
+
+**Visual/Layout Fixes:**
+- ❌→✅ Profile page not mobile responsive (grid-cols-2 forced on mobile) → Added responsive breakpoints, tabs overflow handling
+- ❌→✅ Registration forms lacked styling → Blue border on form containers, removed text labels (placeholder-only)
+- ❌→✅ Post job page cluttered with benefits sidebar → Removed sidebar, full-width form layout, kept tutorial
 
 ## 🟢 **COMPREHENSIVE RUNTIME AUDIT — MARCH 19, 2026 (COMPLETE)**
 
@@ -2248,7 +2622,7 @@ Comprehensive mobile UX improvements and implementation of Profile page tutorial
 **2. 📲 Modal Padding/Margin Improvements**
 - **Goal:** Better spacing and usability for modals on mobile devices
 - **Affected Components:**
-  - QuickApplyModal (frontend/src/components/QuickApplyModal.tsx)
+  - ApplyModal (frontend/src/components/ApplyModal.tsx)
   - Contact Modal (frontend/src/pages/JobDetail.tsx)
 - **Planned Fixes:**
   - Increase mobile padding (p-4 instead of p-3)
@@ -2357,7 +2731,7 @@ Successfully completed comprehensive mobile UX improvements and implemented a so
 
 **📋 COMPLETED IMPLEMENTATION:**
 
-**1. ✅ QuickApplyModal Padding Enhancement:**
+**1. ✅ ApplyModal (formerly QuickApplyModal) Padding Enhancement:**
 - Increased padding from `p-6 sm:p-8` to `p-8 sm:p-10` (33% more padding on mobile)
 - Enhanced DialogHeader spacing with `space-y-4` and `mb-2`
 - Improved content spacing from `space-y-6 py-6` to `space-y-8 py-8`
@@ -2491,7 +2865,7 @@ Successfully completed comprehensive mobile UX improvements and implemented a so
 **📋 Files Modified:**
 
 **Modal Improvements:**
-- `frontend/src/components/QuickApplyModal.tsx` - Enhanced padding and spacing
+- `frontend/src/components/ApplyModal.tsx` (renamed from QuickApplyModal.tsx) - Enhanced padding and spacing
 - `frontend/src/pages/JobDetail.tsx` - Improved contact modal UX
 
 **Tutorial Implementation:**

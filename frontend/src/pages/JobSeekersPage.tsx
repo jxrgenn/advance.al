@@ -5,7 +5,7 @@ import Footer from "@/components/Footer";
 import RotatingContact from "@/components/RotatingContact";
 import { JobSearchHero } from "@/components/JobSearchHero";
 import { CVCreatorSection } from "@/components/CVCreatorSection";
-import ScrollToTopButton from "@/components/ScrollToTopButton";
+
 import {
   Container,
   Title,
@@ -31,13 +31,17 @@ import {
   Textarea,
   TagsInput,
   SegmentedControl,
+  PinInput,
+  Modal,
+  Loader,
+  FileInput,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { Play, Users, Bell, HelpCircle, X, Lightbulb, CheckCircle, ArrowRight, Briefcase, Zap, UserPlus, FileText, Send, Download, Eye } from "lucide-react";
+import { Play, Users, Bell, HelpCircle, X, Lightbulb, CheckCircle, ArrowRight, Briefcase, Zap, UserPlus, FileText, Send, Download, Eye, EyeOff, Mail, RefreshCw, Upload } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi, quickUsersApi, cvApi } from "@/lib/api";
-import { validateForm, jobSeekerSignupRules, formatValidationErrors } from "@/lib/formValidation";
+import { validateForm, jobSeekerSignupRules, formatValidationErrors, normalizeAlbanianPhone } from "@/lib/formValidation";
 import { InputWithCounter } from "@/components/CharacterCounter";
 
 const JobSeekersPage = () => {
@@ -46,24 +50,47 @@ const JobSeekersPage = () => {
   const { isAuthenticated, user, register } = useAuth();
   const [showQuickForm, setShowQuickForm] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+
+  // Email verification flow state
+  const [verificationOpen, setVerificationOpen] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [verificationEmail, setVerificationEmail] = useState('');
+  const [verificationLoading, setVerificationLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   // Reset scroll lock on unmount
   useEffect(() => {
     return () => { document.body.style.overflow = ''; };
   }, []);
 
-  // Check for quick=true query parameter
+  // Check for query parameters to scroll to forms
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
     if (searchParams.get('quick') === 'true') {
       setShowQuickForm(true);
-      // Scroll to form section after a brief delay
-      setTimeout(() => {
-        const formSection = document.querySelector('[data-quick-form]');
-        if (formSection) {
-          formSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const tryScroll = (attr: string, attempts = 0) => {
+        const el = document.querySelector(`[${attr}]`);
+        if (el) {
+          const y = el.getBoundingClientRect().top + window.scrollY - 140;
+          window.scrollTo({ top: y, behavior: 'smooth' });
+        } else if (attempts < 10) {
+          setTimeout(() => tryScroll(attr, attempts + 1), 200);
         }
-      }, 300);
+      };
+      setTimeout(() => tryScroll('data-quick-form'), 100);
+    } else if (searchParams.get('signup') === 'true') {
+      const tryScroll = (attr: string, attempts = 0) => {
+        const el = document.querySelector(`[${attr}]`);
+        if (el) {
+          const y = el.getBoundingClientRect().top + window.scrollY - 140;
+          window.scrollTo({ top: y, behavior: 'smooth' });
+        } else if (attempts < 10) {
+          setTimeout(() => tryScroll(attr, attempts + 1), 200);
+        }
+      };
+      setTimeout(() => tryScroll('data-signup-form'), 100);
     }
   }, [location.search]);
 
@@ -280,6 +307,14 @@ Telefoni: _______________`;
   // Removed redirect - allow jobseekers to view this page regardless of auth status
   // Users should be able to visit /jobseekers even when logged in
 
+  // Resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
+
   const handleFullSubmit = async (values: typeof fullForm.values) => {
     try {
       setLoading(true);
@@ -290,10 +325,8 @@ Telefoni: _______________`;
         lastName: values.lastName,
         email: values.email,
         password: values.password,
-        confirmPassword: values.password,
         phone: values.phone,
-        city: values.city,
-        education: '' // Not collected in this form
+        city: values.city
       };
 
       const validationResult = validateForm(validationData, jobSeekerSignupRules.fullForm);
@@ -309,39 +342,92 @@ Telefoni: _______________`;
         return;
       }
 
-      // Format phone: keep international (+...), convert 00xx to +xx, otherwise assume Albanian +355
-      const cleanPhone = values.phone.replace(/[\s\-\(\)]/g, '');
-      const formattedPhone = cleanPhone.startsWith('+') ? cleanPhone
-        : cleanPhone.startsWith('00') ? '+' + cleanPhone.slice(2)
-        : '+355' + cleanPhone.replace(/^0/, '');
+      // Normalize phone number
+      const formattedPhone = normalizeAlbanianPhone(values.phone);
 
-      // Use register from useAuth to update auth state (not authApi.register directly)
-      const success = await register({
+      // Step 1: Send verification code (account not created yet)
+      const response = await authApi.initiateRegistration({
         email: values.email,
         password: values.password,
         userType: 'jobseeker',
         firstName: values.firstName,
         lastName: values.lastName,
-        phone: formattedPhone,
+        ...(formattedPhone && { phone: formattedPhone }),
         city: values.city
       });
 
-      if (success) {
+      if (response.success) {
+        // Show verification code modal
+        setVerificationEmail(values.email);
+        setVerificationCode('');
+        setVerificationOpen(true);
+        setResendCooldown(60);
         notifications.show({
-          title: "Mirë se vini!",
-          message: "Llogaria u krijua me sukses!",
-          color: "green"
+          title: "Kontrolloni email-in",
+          message: `Kemi dërguar një kod verifikimi në ${values.email}`,
+          color: "blue",
+          autoClose: 5000,
         });
-        navigate('/jobs');
+      } else {
+        throw new Error(response.message || 'Gabim gjatë dërgimit të kodit');
       }
     } catch (error: any) {
       notifications.show({
         title: "Gabim",
-        message: error.message || "Nuk mund të krijohet llogaria. Provoni përsëri.",
+        message: error.message || "Nuk mund të dërgohet kodi. Provoni përsëri.",
         color: "red"
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    if (verificationCode.length !== 6) {
+      notifications.show({ title: "Gabim", message: "Kodi duhet të ketë 6 shifra", color: "red" });
+      return;
+    }
+    try {
+      setVerificationLoading(true);
+      await register(verificationEmail, verificationCode);
+      // Success — account created and user logged in
+      setVerificationOpen(false);
+      notifications.show({
+        title: "Mirë se vini!",
+        message: "Llogaria u krijua me sukses!",
+        color: "green"
+      });
+      navigate('/jobs');
+    } catch (error: any) {
+      notifications.show({
+        title: "Gabim",
+        message: error.message || "Kodi i gabuar. Provoni përsëri.",
+        color: "red"
+      });
+    } finally {
+      setVerificationLoading(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (resendCooldown > 0) return;
+    try {
+      const values = fullForm.values;
+      const formattedPhone = normalizeAlbanianPhone(values.phone);
+      await authApi.initiateRegistration({
+        email: values.email,
+        password: values.password,
+        userType: 'jobseeker',
+        firstName: values.firstName,
+        lastName: values.lastName,
+        ...(formattedPhone && { phone: formattedPhone }),
+        city: values.city
+      });
+      setResendCooldown(60);
+      setVerificationCode('');
+      notifications.show({ title: "Kodi u ridërgua", message: "Kontrolloni email-in tuaj", color: "blue" });
+    } catch (error: any) {
+      notifications.show({ title: "Gabim", message: error.message || "Nuk mund të ridërgohet kodi", color: "red" });
     }
   };
 
@@ -382,29 +468,40 @@ Telefoni: _______________`;
         return;
       }
 
-      // Format phone: keep international (+...), convert 00xx to +xx, otherwise assume Albanian +355
-      const cleanPhone = values.phone.replace(/[\s\-\(\)]/g, '');
-      const formattedPhone = cleanPhone.startsWith('+') ? cleanPhone
-        : cleanPhone.startsWith('00') ? '+' + cleanPhone.slice(2)
-        : '+355' + cleanPhone.replace(/^0/, '');
+      // Normalize phone number
+      const formattedPhone = normalizeAlbanianPhone(values.phone);
+
+      // Separate recognized interests from custom ones
+      const validInterests = [
+        'Teknologji', 'Marketing', 'Shitje', 'Financë', 'Burime Njerëzore',
+        'Inxhinieri', 'Dizajn', 'Menaxhim', 'Shëndetësi', 'Arsim',
+        'Turizëm', 'Ndërtim', 'Transport', 'Tjetër'
+      ];
+      const recognized = values.interests.filter((i: string) => validInterests.includes(i));
+      const custom = values.interests.filter((i: string) => !validInterests.includes(i));
 
       const response = await quickUsersApi.createQuickUser({
         firstName: values.firstName,
         lastName: values.lastName,
         email: values.email,
-        phone: formattedPhone,
+        ...(formattedPhone && { phone: formattedPhone }),
         city: values.city,
-        interests: values.interests
+        interests: recognized.length > 0 ? recognized : ['Tjetër'],
+        ...(custom.length > 0 && { customInterests: custom }),
+        ...(resumeFile && { resume: resumeFile })
       });
 
       if (response.success) {
         notifications.show({
           title: "Sukses!",
-          message: "Do të filloni të merrni njoftime për punë të reja.",
+          message: resumeFile
+            ? "Do të filloni të merrni njoftime për punë të reja. CV-ja juaj u ngarkua me sukses."
+            : "Do të filloni të merrni njoftime për punë të reja.",
           color: "green"
         });
         // Reset form
         quickForm.reset();
+        setResumeFile(null);
         setShowQuickForm(false);
       }
     } catch (error: any) {
@@ -1141,7 +1238,7 @@ Telefoni: _______________`;
 
             {/* Form Selector */}
             {!showQuickForm ? (
-              <Paper shadow="sm" p="xl" radius="md" withBorder>
+              <Paper shadow="sm" p="xl" radius="md" withBorder data-signup-form style={{ borderColor: '#bfdbfe', borderWidth: 2 }}>
                 {/* Header - Fixed Alignment */}
                 <Group mb="xl" wrap="nowrap" align="start">
                   <ThemeIcon size={40} radius="md" color="blue" variant="light" style={{ flexShrink: 0 }}>
@@ -1156,8 +1253,7 @@ Telefoni: _______________`;
                   <Stack gap="md">
                     <SimpleGrid cols={2} spacing="md" data-tutorial="firstName">
                       <InputWithCounter
-                        label="Emri"
-                        placeholder="Emri juaj"
+                        placeholder="Emri *"
                         value={fullForm.values.firstName}
                         onChange={(e) => fullForm.setFieldValue('firstName', e.target.value)}
                         maxLength={50}
@@ -1167,8 +1263,7 @@ Telefoni: _______________`;
                         required
                       />
                       <InputWithCounter
-                        label="Mbiemri"
-                        placeholder="Mbiemri juaj"
+                        placeholder="Mbiemri *"
                         value={fullForm.values.lastName}
                         onChange={(e) => fullForm.setFieldValue('lastName', e.target.value)}
                         maxLength={50}
@@ -1181,8 +1276,7 @@ Telefoni: _______________`;
 
                     <Box data-tutorial="email">
                       <TextInput
-                        label="Email"
-                        placeholder="email@example.com"
+                        placeholder="Email *"
                         type="email"
                         {...fullForm.getInputProps('email')}
                         required
@@ -1191,27 +1285,35 @@ Telefoni: _______________`;
 
                     <Box data-tutorial="password">
                       <TextInput
-                        label="Fjalëkalimi"
-                        placeholder="Të paktën 8 karaktere"
-                        type="password"
+                        placeholder="Fjalëkalimi (min. 8 karaktere, 1 e madhe, 1 numër, 1 special) *"
+                        type={showPassword ? "text" : "password"}
                         {...fullForm.getInputProps('password')}
-                        description="Fjalëkalimi duhet të ketë të paktën 8 karaktere"
                         required
+                        rightSection={
+                          <ActionIcon variant="subtle" color="gray" onClick={() => setShowPassword(!showPassword)} tabIndex={-1}>
+                            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </ActionIcon>
+                        }
                       />
                     </Box>
 
                     <Box data-tutorial="phone">
                       <TextInput
-                        label="Telefoni"
-                        placeholder="+355 69 123 4567"
+                        placeholder="69 123 4567"
+                        leftSection={<Text size="sm" c="dimmed" fw={500}>+355</Text>}
+                        leftSectionWidth={52}
                         {...fullForm.getInputProps('phone')}
+                        onChange={(e) => {
+                          let val = e.target.value;
+                          if (val.startsWith('0')) val = val.replace(/^0+/, '');
+                          fullForm.setFieldValue('phone', val);
+                        }}
                       />
                     </Box>
 
                     <Box data-tutorial="city">
                       <Select
-                        label="Qyteti"
-                        placeholder="Zgjidhni qytetin"
+                        placeholder="Zgjidhni qytetin *"
                         {...fullForm.getInputProps('city')}
                         data={[
                           'Tiranë',
@@ -1255,14 +1357,13 @@ Telefoni: _______________`;
                 </form>
               </Paper>
             ) : (
-              <Paper 
-                shadow="sm" 
-                p="xl" 
-                radius="md" 
-                withBorder 
-                bg="gray.0" 
-                style={{ borderColor: 'var(--mantine-color-gray-3)' }}
+              <Paper
+                shadow="sm"
+                p="xl"
+                radius="md"
+                withBorder
                 data-quick-form
+                style={{ borderColor: '#bfdbfe', borderWidth: 2 }}
               >
                 {/* Header - Fixed Alignment */}
                 <Group mb="xl" wrap="nowrap" align="start">
@@ -1280,8 +1381,7 @@ Telefoni: _______________`;
                   <Stack gap="md">
                     <SimpleGrid cols={2} spacing="md" data-tutorial="quick-name">
                       <InputWithCounter
-                        label="Emri"
-                        placeholder="Emri juaj"
+                        placeholder="Emri *"
                         value={quickForm.values.firstName}
                         onChange={(e) => quickForm.setFieldValue('firstName', e.target.value)}
                         maxLength={50}
@@ -1291,8 +1391,7 @@ Telefoni: _______________`;
                         required
                       />
                       <InputWithCounter
-                        label="Mbiemri"
-                        placeholder="Mbiemri juaj"
+                        placeholder="Mbiemri *"
                         value={quickForm.values.lastName}
                         onChange={(e) => quickForm.setFieldValue('lastName', e.target.value)}
                         maxLength={50}
@@ -1305,8 +1404,7 @@ Telefoni: _______________`;
 
                     <Box data-tutorial="quick-email">
                       <TextInput
-                        label="Email"
-                        placeholder="email@example.com"
+                        placeholder="Email *"
                         type="email"
                         {...quickForm.getInputProps('email')}
                         required
@@ -1315,15 +1413,20 @@ Telefoni: _______________`;
 
                     <Box data-tutorial="quick-phone">
                       <TextInput
-                        label="Telefoni"
-                        placeholder="+355 69 123 4567"
+                        placeholder="69 123 4567"
+                        leftSection={<Text size="sm" c="dimmed" fw={500}>+355</Text>}
+                        leftSectionWidth={52}
                         {...quickForm.getInputProps('phone')}
+                        onChange={(e) => {
+                          let val = e.target.value;
+                          if (val.startsWith('0')) val = val.replace(/^0+/, '');
+                          quickForm.setFieldValue('phone', val);
+                        }}
                       />
                     </Box>
 
                     <Box data-tutorial="quick-city">
                       <Select
-                        label="Qyteti"
                         placeholder="Zgjidhni qytetin"
                         {...quickForm.getInputProps('city')}
                         data={[
@@ -1342,8 +1445,7 @@ Telefoni: _______________`;
 
                     <Box data-tutorial="interests">
                       <TagsInput
-                        label="Lloji i Punës / Aftësitë"
-                        placeholder="Shkruani dhe shtypni Enter ose zgjidhni nga lista"
+                        placeholder="Lloji i Punës / Aftësitë"
                         description="Shtoni llojet e punës ose aftësitë që ju interesojnë. Përdorni Enter ose presje për të ndarë."
                         data={jobCategories}
                         {...quickForm.getInputProps('interests')}
@@ -1355,6 +1457,23 @@ Telefoni: _______________`;
                       {quickForm.errors.interests && (
                         <Text size="xs" c="red" mt="xs">
                           {quickForm.errors.interests}
+                        </Text>
+                      )}
+                    </Box>
+
+                    <Box>
+                      <FileInput
+                        placeholder="Ngarko CV-në tënde (PDF ose DOCX, opsionale)"
+                        description="Ngarko CV-në tënde për të rritur shanset e përputhjes me punë"
+                        accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
+                        leftSection={<Upload size={16} />}
+                        value={resumeFile}
+                        onChange={setResumeFile}
+                        clearable
+                      />
+                      {resumeFile && resumeFile.size > 5 * 1024 * 1024 && (
+                        <Text size="xs" c="red" mt="xs">
+                          Skedari duhet të jetë më i vogël se 5MB
                         </Text>
                       )}
                     </Box>
@@ -1556,9 +1675,62 @@ Telefoni: _______________`;
       {/* Contact Section */}
       <RotatingContact />
 
-      <ScrollToTopButton />
-
       <Footer />
+
+      {/* Email Verification Modal */}
+      <Modal
+        opened={verificationOpen}
+        onClose={() => setVerificationOpen(false)}
+        title=""
+        centered
+        size="sm"
+        withCloseButton={false}
+        closeOnClickOutside={false}
+      >
+        <Stack align="center" gap="md" py="md">
+          <ThemeIcon size={56} radius="xl" color="blue" variant="light">
+            <Mail className="w-6 h-6" />
+          </ThemeIcon>
+          <Title order={3} ta="center">Verifikoni Email-in</Title>
+          <Text size="sm" c="dimmed" ta="center">
+            Kemi dërguar një kod 6-shifror në{' '}
+            <Text span fw={600} c="blue">{verificationEmail}</Text>
+          </Text>
+          <PinInput
+            length={6}
+            type="number"
+            size="lg"
+            value={verificationCode}
+            onChange={setVerificationCode}
+            onComplete={handleVerifyCode}
+            autoFocus
+          />
+          <Button
+            fullWidth
+            size="md"
+            onClick={handleVerifyCode}
+            loading={verificationLoading}
+            disabled={verificationCode.length !== 6}
+          >
+            Verifiko & Krijo Llogarinë
+          </Button>
+          <Group gap="xs">
+            <Text size="xs" c="dimmed">Nuk e morët kodin?</Text>
+            <Button
+              variant="subtle"
+              size="xs"
+              onClick={handleResendCode}
+              disabled={resendCooldown > 0}
+              leftSection={<RefreshCw className="w-3 h-3" />}
+            >
+              {resendCooldown > 0 ? `Ridërgo (${resendCooldown}s)` : 'Ridërgo kodin'}
+            </Button>
+          </Group>
+          <Button variant="subtle" size="xs" c="dimmed" onClick={() => setVerificationOpen(false)}>
+            Anulo
+          </Button>
+        </Stack>
+      </Modal>
     </Box>
   );
 };

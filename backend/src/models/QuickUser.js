@@ -22,7 +22,7 @@ const quickUserSchema = new Schema({
     unique: true,
     lowercase: true,
     trim: true,
-    match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, 'Email i pavlefshëm']
+    match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,63})+$/, 'Email i pavlefshëm']
   },
   phone: {
     type: String,
@@ -136,6 +136,26 @@ const quickUserSchema = new Schema({
   },
   userAgent: {
     type: String
+  },
+
+  // CV/Resume file URL (optional, uploaded during quick signup)
+  resume: {
+    type: String,
+    default: null
+  },
+
+  // Parsed CV data (extracted via GPT-4o-mini from uploaded PDF)
+  parsedCV: {
+    title: { type: String },           // e.g. "Software Engineer"
+    skills: [{ type: String }],        // e.g. ["React", "Node.js", "Python"]
+    experience: { type: String },      // e.g. "3 years"
+    industries: [{ type: String }],    // e.g. ["Teknologji", "Financë"]
+    education: { type: String },       // e.g. "Bachelor in Computer Science"
+    languages: [{ type: String }],     // e.g. ["Shqip", "English"]
+    summary: { type: String },         // brief professional summary
+    parsedAt: { type: Date },
+    status: { type: String, enum: ['pending', 'completed', 'failed'], default: 'pending' },
+    error: { type: String }
   },
 
   // Semantic embedding for job matching (text-embedding-3-small, 1536 dims)

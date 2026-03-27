@@ -505,8 +505,8 @@ const AdminReports = () => {
                         {getCategoryLabel(report.category)}
                       </CardTitle>
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <span>Raportuar nga: {report.reportingUser.firstName} {report.reportingUser.lastName}</span>
-                        <span>Përdoruesi i raportuar: {report.reportedUser.firstName} {report.reportedUser.lastName}</span>
+                        <span>Raportuar nga: {report.reportingUser?.firstName} {report.reportingUser?.lastName}</span>
+                        <span>{report.reportedUser ? `Përdoruesi i raportuar: ${report.reportedUser.firstName} ${report.reportedUser.lastName}` : report.reportedJob ? `Puna e raportuar: ${report.reportedJob.title || 'Pa titull'}` : 'E panjohur'}</span>
                         <span>{new Date(report.createdAt).toLocaleDateString('sq-AL')}</span>
                       </div>
                     </div>
@@ -568,7 +568,7 @@ const AdminReports = () => {
                           variant="outline"
                           onClick={() => handleReopenClick(
                             report._id,
-                            `${report.reportedUser.firstName} ${report.reportedUser.lastName} - ${getCategoryLabel(report.category)}`
+                            `${report.reportedUser?.firstName || report.reportedJob?.title || 'E panjohur'} ${report.reportedUser?.lastName || ''} - ${getCategoryLabel(report.category)}`
                           )}
                           disabled={reopening === report._id}
                         >
@@ -609,14 +609,14 @@ const AdminReports = () => {
                               <TabsContent value="details" className="space-y-4">
                                 <div className="grid grid-cols-2 gap-4">
                                   <div>
-                                    <h4 className="font-medium">Përdoruesi i raportuar</h4>
-                                    <p>{reportDetails.report.reportedUser.firstName} {reportDetails.report.reportedUser.lastName}</p>
-                                    <p className="text-sm text-muted-foreground">{reportDetails.report.reportedUser.email}</p>
+                                    <h4 className="font-medium">{reportDetails.report.reportedUser ? 'Përdoruesi i raportuar' : 'Puna e raportuar'}</h4>
+                                    <p>{reportDetails.report.reportedUser ? `${reportDetails.report.reportedUser.firstName} ${reportDetails.report.reportedUser.lastName}` : reportDetails.report.reportedJob?.title || 'E panjohur'}</p>
+                                    <p className="text-sm text-muted-foreground">{reportDetails.report.reportedUser?.email || ''}</p>
                                   </div>
                                   <div>
                                     <h4 className="font-medium">Raportuar nga</h4>
-                                    <p>{reportDetails.report.reportingUser.firstName} {reportDetails.report.reportingUser.lastName}</p>
-                                    <p className="text-sm text-muted-foreground">{reportDetails.report.reportingUser.email}</p>
+                                    <p>{reportDetails.report.reportingUser?.firstName} {reportDetails.report.reportingUser?.lastName}</p>
+                                    <p className="text-sm text-muted-foreground">{reportDetails.report.reportingUser?.email || ''}</p>
                                   </div>
                                 </div>
 
