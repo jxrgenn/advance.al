@@ -1,11 +1,37 @@
 # advance.al - DEVELOPMENT STATUS & ROADMAP
 
 **Date:** September 25-28, 2025
-**Last Updated:** March 28, 2026 (AI test suite, applicationDeadline→expiresAt bug fix)
+**Last Updated:** March 28, 2026 (Comment out Kompanite, rewrite Privacy & Terms legal pages)
 **Platform:** Premier Job Marketplace for Albania
 **CURRENT STATUS:** 🟢 **DEPLOY-READY — QA in progress. 211/211 API tests, 15/15 audit fixes verified. Manual QA bugs being fixed (Rounds 1-3 complete).**
 **Phase:** QA & Deployment (see env var checklist below)
 **Brand:** advance.al (formerly Albania JobFlow)
+
+## ✅ **KOMPANITE DISABLED, LEGAL PAGES REWRITE — MARCH 28, 2026**
+
+### Comment Out "Kompanite" (Companies)
+- No companies using platform yet — temporarily disabled following `{/* TEMPORARILY DISABLED */}` pattern
+- **Navigation.tsx:** Desktop + mobile "Kompanite" links commented out
+- **Footer.tsx:** "Shfleto Kompanitë" and "Profili i Kompanisë" links commented out
+- **App.tsx:** `/companies` and `/company/:id` routes commented out
+- Page components (`CompaniesPageSimple.tsx`, `CompanyProfile.tsx`) kept intact for re-enabling later
+
+### Privacy Policy Rewrite (14 sections, was 7)
+- Full rewrite under Albanian law (Ligji Nr. 9887, datë 10.03.2008) with GDPR alignment
+- New sections: Data Controller (JXSOFT), Legal Basis (4 bases), AI Processing (CV gen, parsing, embeddings), Third-Party Sharing (OpenAI, MongoDB Atlas, Cloudinary, Resend, Sentry, Paysera, Railway/Vercel), International Transfers (SCCs), Retention Periods, Children's Protection, Data Breach notification (72h)
+- Added: IDP Commissioner complaint reference (Rruga "Abdi Toptani" Nr. 5, Tiranë; idp.al)
+
+### Terms & Conditions Rewrite (16 sections, was 9)
+- Full rewrite referencing Albanian civil code (Kodi Civil, Ligji Nr. 9901)
+- New sections: Service Description (what advance.al IS and IS NOT), Paid Services (Paysera, EUR, refund policy), AI Usage Terms, Indemnification, Service Availability, Force Majeure, General Provisions (governing law, jurisdiction Tirana courts, dispute resolution per Ligji Nr. 10385)
+- 15-day notice for material changes, 30-day price change notice, Neni 608 liability exception
+
+### Files modified:
+- `frontend/src/components/Navigation.tsx` — commented out Kompanite links (desktop + mobile)
+- `frontend/src/components/Footer.tsx` — commented out 2 companies links
+- `frontend/src/App.tsx` — commented out `/companies` and `/company/:id` routes
+- `frontend/src/pages/Privacy.tsx` — full rewrite (14 sections)
+- `frontend/src/pages/Terms.tsx` — full rewrite (16 sections)
 
 ## ✅ **AI TESTING & BUG FIX — MARCH 28, 2026**
 

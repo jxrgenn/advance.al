@@ -77,7 +77,7 @@ const RotatingContact: React.FC<RotatingContactProps> = ({
   };
 
   return (
-    <section className={`w-full py-8 px-6 ${className}`}>
+    <section id="contact-section" className={`w-full py-8 px-6 ${className}`}>
       <div className="max-w-5xl mx-auto">
         <div className="bg-gradient-to-br from-[#1e3a8a] to-[#1e40af] rounded-2xl p-3 md:px-6 md:py-2 shadow-lg overflow-hidden">
         {/* Responsive grid — text side drives the height, image overflows and clips */}

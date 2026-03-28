@@ -48,7 +48,7 @@ const Footer = () => {
                 </button>
               </li>
               <li>
-                <button onClick={() => handleNavigation('/jobseekers')} className="text-muted-foreground hover:text-primary transition-colors text-left">
+                <button onClick={() => handleNavigation('/jobseekers?signup=true')} className="text-muted-foreground hover:text-primary transition-colors text-left">
                   Regjistrohu
                 </button>
               </li>
@@ -57,11 +57,13 @@ const Footer = () => {
                   Gjenero CV me AI
                 </button>
               </li>
+              {/* TEMPORARILY DISABLED - No companies using platform yet
               <li>
                 <button onClick={() => handleNavigation('/companies')} className="text-muted-foreground hover:text-primary transition-colors text-left">
                   Shfleto Kompanitë
                 </button>
               </li>
+              */}
             </ul>
           </div>
 
@@ -74,16 +76,13 @@ const Footer = () => {
                   Regjistrohu si Punëdhënës
                 </button>
               </li>
-              <li>
-                <button onClick={() => handleNavigation('/employer-register')} className="text-muted-foreground hover:text-primary transition-colors text-left">
-                  Regjistrohu si Kompani
-                </button>
-              </li>
+              {/* TEMPORARILY DISABLED - No companies using platform yet
               <li>
                 <button onClick={() => handleNavigation('/companies')} className="text-muted-foreground hover:text-primary transition-colors text-left">
                   Profili i Kompanisë
                 </button>
               </li>
+              */}
             </ul>
           </div>
 
@@ -97,9 +96,9 @@ const Footer = () => {
                 </button>
               </li>
               <li>
-                <a href="mailto:info@advance.al" className="text-muted-foreground hover:text-primary transition-colors">
+                <button onClick={() => handleAnchorNavigation('/about', 'contact-section')} className="text-muted-foreground hover:text-primary transition-colors text-left">
                   Kontakti
-                </a>
+                </button>
               </li>
               <li>
                 <button onClick={() => handleNavigation('/privacy')} className="text-muted-foreground hover:text-primary transition-colors text-left">

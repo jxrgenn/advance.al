@@ -254,6 +254,7 @@ const Navigation = () => {
           >
             Punëkërkues
           </Link>
+          {/* TEMPORARILY DISABLED - No companies using platform yet
           <Link
             to="/companies"
             className={`text-sm font-medium transition-colors hover:text-primary ${
@@ -262,6 +263,7 @@ const Navigation = () => {
           >
             Kompanite
           </Link>
+          */}
         </div>
 
         <div className="flex items-center space-x-2">
@@ -531,6 +533,7 @@ loadNotifications();
             >
               Punëkërkues
             </Link>
+            {/* TEMPORARILY DISABLED - No companies using platform yet
             <Link
               to="/companies"
               className={`block py-2 text-sm font-medium transition-colors hover:text-primary ${
@@ -540,6 +543,7 @@ loadNotifications();
             >
               Kompanite
             </Link>
+            */}
           </div>
         </div>
       )}
