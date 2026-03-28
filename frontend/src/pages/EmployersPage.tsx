@@ -1224,7 +1224,7 @@ const EmployersPage = () => {
           </div>
           <div className="hidden md:flex justify-end items-center">
             <img
-              src="/3d_assets/arrow.png"
+              src="/3d_assets/ideal_career1.png"
               alt="Find ideal candidates for your team"
               className="w-full max-w-[160px] object-contain"
               loading="eager"
@@ -1238,7 +1238,7 @@ const EmployersPage = () => {
             {/* Left: Mascot Image */}
             <div className="hidden md:flex md:items-center md:justify-center md:min-h-full" style={{ position: 'sticky', top: 100 }}>
               <img
-                src="/3d_assets/triangle_people.png"
+                src="/3d_assets/arrow.png"
                 alt="Gjeni kandidatin ideal për ekipin tuaj"
                 className="w-full max-w-[520px] object-contain"
                 loading="eager"
