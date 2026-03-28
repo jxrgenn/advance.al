@@ -84,13 +84,13 @@ export function Companies() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3, duration: 0.8 }}
               >
-                <h2 className="text-4xl md:text-5xl lg:text-6xl font-extrabold leading-[1.1] tracking-tight text-foreground" style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}>
+                <h2 className="text-2xl md:text-3xl lg:text-[2.5rem] font-extrabold leading-[1.15] tracking-tight text-foreground" style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}>
                   Gjeni kandidatin tuaj shpejtë, lehtë dhe në mënyrë të sigurt!
                 </h2>
               </motion.div>
               
               <motion.p 
-                className="text-xl md:text-2xl lg:text-3xl text-primary font-semibold text-center md:text-left" style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}
+                className="text-sm md:text-base lg:text-lg text-primary font-semibold text-center md:text-left" style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4, duration: 0.8 }}
