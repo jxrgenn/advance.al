@@ -418,7 +418,7 @@ const AboutUs = () => {
                   Çfarë Bëjmë Ne?
                 </h2>
                 <p className="text-lg md:text-xl text-muted-foreground leading-relaxed">
-                  advance.al është platforma më moderne dhe më e lehtë për t'u përdorur në tregun shqiptar të punës.
+                  Advance.al është një platformë që ju shërben me entusiazëm e kombinuar me inteligjencë artificiale e cila shkurton kohë dhe përmirëson cilësinë.
                 </p>
               </div>
               <div className="bg-gradient-to-br from-primary/5 to-primary/10 rounded-2xl p-8 border border-primary/20">

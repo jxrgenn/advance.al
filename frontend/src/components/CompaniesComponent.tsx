@@ -84,13 +84,13 @@ export function Companies() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3, duration: 0.8 }}
               >
-                <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold leading-[1.15] tracking-tight text-foreground" style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}>
+                <h2 className="text-4xl md:text-5xl lg:text-6xl font-extrabold leading-[1.1] tracking-tight text-foreground" style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}>
                   Gjeni kandidatin tuaj shpejtë, lehtë dhe në mënyrë të sigurt!
                 </h2>
               </motion.div>
               
               <motion.p 
-                className="text-lg md:text-xl lg:text-2xl text-primary font-semibold text-center md:text-left" style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}
+                className="text-xl md:text-2xl lg:text-3xl text-primary font-semibold text-center md:text-left" style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4, duration: 0.8 }}
@@ -218,20 +218,6 @@ export function Companies() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 items-start">
             {/* Left Column */}
             <div className="space-y-6 md:space-y-8 z-10 relative">
-              {/* Title moved to left */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2, duration: 0.6 }}
-              >
-                <h3 className="text-4xl md:text-5xl font-extrabold mb-4 text-foreground">
-                  Bashkohu me elitën!
-                </h3>
-                <p className="text-2xl text-muted-foreground mb-8">
-                  Kompanitë lider janë të gjitha këtu.
-                </p>
-              </motion.div>
-
               {/* Two Cards in Row */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                 <motion.div 
@@ -287,14 +273,25 @@ export function Companies() {
               </motion.div>
             </div>
 
-            {/* Right Column - Image aligned with cards */}
+            {/* Right Column - Title + Image */}
             <div className="flex flex-col justify-start z-10 relative">
-              {/* 3D Visual Element with glassmorphism - aligned with cards */}
-              {/* Group image - no border, breathing only */}
-              <motion.img 
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2, duration: 0.6 }}
+                className="mb-4"
+              >
+                <h3 className="text-4xl md:text-5xl font-extrabold mb-3 text-foreground">
+                  Bashkohu me elitën!
+                </h3>
+                <p className="text-xl md:text-2xl text-muted-foreground">
+                  Kompanitë lider janë të gjitha këtu.
+                </p>
+              </motion.div>
+              <motion.img
                 src="/3d_assets/elite.png"
-                alt="Elite companies - diverse team" 
-                className="w-full h-auto relative z-10 mt-[60px] md:mt-[40px]"
+                alt="Elite companies - diverse team"
+                className="w-full h-auto relative z-10"
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ 
                   opacity: 1,
