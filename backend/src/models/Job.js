@@ -513,6 +513,11 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
     query.postedAt = { $gte: filters.postedAfter };
   }
 
+  // Tier filter
+  if (filters.tier) {
+    query.tier = filters.tier;
+  }
+
   // Salary range filter
   if (filters.minSalary || filters.maxSalary) {
     if (!query.$and) query.$and = [];

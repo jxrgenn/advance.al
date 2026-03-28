@@ -400,29 +400,29 @@ const AboutUs = () => {
       {/* What We Do Section */}
       <section className="py-16">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              Çfarë Bëjmë Ne?
-            </h2>
-            <p className="text-lg md:text-xl text-muted-foreground max-w-3xl mx-auto">
-              advance.al është platforma më moderne dhe më e lehtë për t'u përdorur në tregun shqiptar të punës.
-            </p>
-          </div>
-
           <div className="grid md:grid-cols-2 gap-12 items-center">
             {/* Left side - Image */}
             <div className="flex justify-center items-center">
               <img
-                src="/3d_assets/hired1.png"
+                src="/3d_assets/arrow.png"
                 alt="Job matching success - Connecting job seekers with employers"
-                className="w-full max-w-[400px] object-contain"
+                className="w-full max-w-[500px] object-contain"
                 loading="eager"
               />
             </div>
 
-            {/* Right side - Pse advance.al? */}
-            <div className="bg-gradient-to-br from-primary/5 to-primary/10 rounded-2xl p-8 border border-primary/20">
-              <h3 className="text-2xl font-bold mb-6 text-foreground">Pse advance.al?</h3>
+            {/* Right side - Title + Pse advance.al? */}
+            <div>
+              <div className="text-left mb-6">
+                <h2 className="text-3xl md:text-4xl font-bold mb-3">
+                  Çfarë Bëjmë Ne?
+                </h2>
+                <p className="text-lg md:text-xl text-muted-foreground leading-relaxed">
+                  advance.al është platforma më moderne dhe më e lehtë për t'u përdorur në tregun shqiptar të punës.
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-primary/5 to-primary/10 rounded-2xl p-8 border border-primary/20">
+                <h3 className="text-2xl font-bold mb-6 text-foreground">Pse advance.al?</h3>
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
                   <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
@@ -449,6 +449,7 @@ const AboutUs = () => {
                   <span className="text-muted-foreground">100% falas për punëkërkuesit</span>
                 </div>
               </div>
+            </div>
             </div>
           </div>
         </div>

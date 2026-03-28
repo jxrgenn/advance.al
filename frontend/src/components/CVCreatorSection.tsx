@@ -90,14 +90,14 @@ export function CVCreatorSection() {
               transition={{ delay: 0.3, duration: 0.6 }}
             >
               <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold leading-[1.1] tracking-tight">
-                <span className="block text-foreground">KURSE KOHE.</span>
+                <span className="block text-foreground">Kurse kohë,</span>
                 <motion.span
                   className="block bg-gradient-to-r from-primary via-primary/90 to-primary/70 bg-clip-text text-transparent"
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.5, duration: 0.6 }}
                 >
-                KRIJO CV TUAJ ME NDIHMEN E IA TANI!
+                Krijo të ardhmen!
                 </motion.span>
               </h2>
             </motion.div>

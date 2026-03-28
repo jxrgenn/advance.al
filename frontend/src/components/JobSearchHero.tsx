@@ -132,7 +132,7 @@ export function JobSearchHero() {
           >
             {/* Image container - breathing animation only */}
             <motion.img 
-              src="/3d_assets/climbing_success1.png" 
+              src="/3d_assets/walking.png" 
               alt="Career growth - climbing to success" 
               className="w-full max-w-[360px] md:max-w-[480px] h-auto relative z-10"
               animate={{ 

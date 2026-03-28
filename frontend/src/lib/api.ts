@@ -490,6 +490,7 @@ export const jobsApi = {
     partTime?: string;
     administrata?: string;
     sezonale?: string;
+    tier?: string;
   } = {}): Promise<ApiResponse<{
     jobs: Job[];
     pagination: {

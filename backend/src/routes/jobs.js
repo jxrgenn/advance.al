@@ -181,6 +181,7 @@ router.get('/', optionalAuth, async (req, res) => {
       experience = '',
       seniority = '',
       remote = '',
+      tier = '',
       postedAfter = '',
       page = 1,
       limit = 10,
@@ -290,6 +291,11 @@ router.get('/', optionalAuth, async (req, res) => {
     if (administrata === 'true') filters.administrata = true;
     if (sezonale === 'true') filters.sezonale = true;
 
+    // Tier filter
+    if (tier && ['basic', 'premium', 'featured'].includes(tier)) {
+      filters.tier = tier;
+    }
+
     // Execute search
     let query = Job.searchJobs(search, filters);
 
@@ -341,7 +347,8 @@ router.get('/', optionalAuth, async (req, res) => {
       ...(ngaShtepia === 'true' && { 'platformCategories.ngaShtepia': true }),
       ...(partTime === 'true' && { 'platformCategories.partTime': true }),
       ...(administrata === 'true' && { 'platformCategories.administrata': true }),
-      ...(sezonale === 'true' && { 'platformCategories.sezonale': true })
+      ...(sezonale === 'true' && { 'platformCategories.sezonale': true }),
+      ...(filters.tier && { tier: filters.tier })
     };
 
     const totalJobs = await Job.countDocuments(countQuery);

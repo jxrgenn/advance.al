@@ -432,7 +432,7 @@ export default function AdvanceLanding() {
             <div className="flex-1 w-full lg:max-w-[650px] text-center lg:text-left relative pt-6 sm:pt-8 lg:pt-0">
               <div className="hidden lg:block absolute -left-8 top-0 w-1 h-20 bg-gradient-to-b from-primary to-transparent rounded-full opacity-60"></div>
               
-              <h1 className="text-[1.75rem] sm:text-4xl lg:text-5xl font-bold leading-[1.2] mb-6 lg:mb-7 text-foreground tracking-tight" style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}>
+              <h1 className="text-[1.75rem] sm:text-[2rem] lg:text-[2.75rem] font-bold leading-[1.2] mb-6 lg:mb-7 text-foreground tracking-tight" style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}>
                 <span className="text-primary font-extrabold relative inline-block">
                   Advance.al
                   <span className="absolute -bottom-1 left-0 right-0 h-1 bg-primary/20 rounded-full"></span>

@@ -23,6 +23,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const Index = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [premiumJobs, setPremiumJobs] = useState<Job[]>([]);
   const [recommendations, setRecommendations] = useState<Job[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [savedJobsMap, setSavedJobsMap] = useState<Record<string, boolean>>({});
@@ -117,9 +118,10 @@ const Index = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load locations on mount
+  // Load locations and premium jobs on mount
   useEffect(() => {
     loadLocations();
+    loadPremiumJobs();
   }, []);
 
   // Load recommendations when user authentication changes
@@ -322,6 +324,17 @@ const Index = () => {
     } catch (error) {
       console.error('Error loading recommendations:', error);
       // Don't show error to user for recommendations
+    }
+  };
+
+  const loadPremiumJobs = async () => {
+    try {
+      const response = await jobsApi.getJobs({ tier: 'premium', limit: 10, sortBy: 'postedAt', sortOrder: 'desc' });
+      if (response.success && response.data) {
+        setPremiumJobs(response.data.jobs);
+      }
+    } catch (error) {
+      console.error('Error loading premium jobs:', error);
     }
   };
 
@@ -573,11 +586,9 @@ const Index = () => {
       <Navigation />
 
       <div className="container py-8 pt-20">
-        {/* Premium Jobs Carousel - Full width, above heading */}
-        {!loading && !searchQuery && selectedLocations.length === 0 && !selectedType && (
-          <div className="mb-8">
-            <PremiumJobsCarousel jobs={jobs} />
-          </div>
+        {/* Premium Jobs Carousel — no wrapper div, sticky needs tall parent */}
+        {premiumJobs.length > 0 && (
+          <PremiumJobsCarousel jobs={premiumJobs} />
         )}
 
         {/* Search Bar - Wellfound Style */}
@@ -677,7 +688,7 @@ const Index = () => {
               onFilterChange={handleCoreFilterChange}
               onShowAllFilters={handleShowFilters}
               showAllFilters={showAllFilters}
-              className="sticky top-4"
+              className={premiumJobs.length > 0 ? "sticky top-[17rem] z-20" : "sticky top-20 z-20"}
             />
 
             {/* Expandable Filter Section - Below CoreFilters */}

@@ -23,6 +23,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const Jobs = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [premiumJobs, setPremiumJobs] = useState<Job[]>([]);
   const [recommendations, setRecommendations] = useState<Job[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,10 +76,11 @@ const Jobs = () => {
     }
   }, [location.search]);
 
-  // Load locations and recommendations on mount
+  // Load locations, recommendations, and premium jobs on mount
   useEffect(() => {
     loadLocations();
     loadRecommendations();
+    loadPremiumJobs();
   }, [isAuthenticated, user?.userType]);
 
   // Enhanced debounced search with loading states - handles initial load too
@@ -249,6 +251,18 @@ const Jobs = () => {
     }
   };
 
+  const loadPremiumJobs = async () => {
+    try {
+      const response = await jobsApi.getJobs({ tier: 'premium', limit: 10, sortBy: 'postedAt', sortOrder: 'desc' });
+      if (response.success && response.data) {
+        setPremiumJobs(response.data.jobs);
+      }
+    } catch (error) {
+      console.error('Error loading premium jobs:', error);
+      setPremiumJobs([]);
+    }
+  };
+
   // Create merged job list with recommendation indicators
   const getMergedJobs = () => {
     const recommendationIds = new Set(recommendations.map(job => job._id));
@@ -412,10 +426,10 @@ const Jobs = () => {
       <Navigation />
 
       <div className="container py-8 pt-20">
-        {/* Premium Jobs Carousel - Full width, above heading */}
-        {!loading && !searchQuery && !selectedLocation && !selectedType && (
-          <div className="mb-8">
-            <PremiumJobsCarousel jobs={jobs} />
+        {/* Premium Jobs Carousel - Always visible, sticky */}
+        {premiumJobs.length > 0 && (
+          <div className="sticky top-16 z-20 bg-background/95 backdrop-blur-sm pt-2 pb-2 mb-6">
+            <PremiumJobsCarousel jobs={premiumJobs} />
           </div>
         )}
 

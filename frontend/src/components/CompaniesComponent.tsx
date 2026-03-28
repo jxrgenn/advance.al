@@ -84,13 +84,13 @@ export function Companies() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3, duration: 0.8 }}
               >
-                <h2 className="text-4xl md:text-5xl lg:text-6xl font-extrabold leading-[1.1] tracking-tight text-foreground">
+                <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold leading-[1.15] tracking-tight text-foreground" style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}>
                   Gjeni kandidatin tuaj shpejtë, lehtë dhe në mënyrë të sigurt!
                 </h2>
               </motion.div>
               
               <motion.p 
-                className="text-lg md:text-xl text-primary font-semibold text-center md:text-left"
+                className="text-lg md:text-xl lg:text-2xl text-primary font-semibold text-center md:text-left" style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4, duration: 0.8 }}
@@ -99,7 +99,7 @@ export function Companies() {
               </motion.p>
               
               <motion.p 
-                className="text-xl md:text-2xl text-muted-foreground leading-relaxed max-w-xl font-medium text-center md:text-left mx-auto md:mx-0"
+                className="text-2xl md:text-3xl lg:text-4xl text-muted-foreground leading-relaxed max-w-xl font-medium text-center md:text-left mx-auto md:mx-0" style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4, duration: 0.8 }}
@@ -292,7 +292,7 @@ export function Companies() {
               {/* 3D Visual Element with glassmorphism - aligned with cards */}
               {/* Group image - no border, breathing only */}
               <motion.img 
-                src="/3d_assets/group1.png" 
+                src="/3d_assets/elite.png"
                 alt="Elite companies - diverse team" 
                 className="w-full h-auto relative z-10 mt-[60px] md:mt-[40px]"
                 initial={{ opacity: 0, scale: 0.9 }}

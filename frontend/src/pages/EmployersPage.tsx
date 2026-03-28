@@ -1218,8 +1218,8 @@ const EmployersPage = () => {
             <ThemeIcon size={40} radius="md" color="blue" variant="light" mb={12}>
               <Building size={20} />
             </ThemeIcon>
-            <Title ta={{ base: 'center', md: 'left' }} size="2.2rem" fw={700} lh={1.1} c="dark" mb={12}>
-              Gjeni kandidatët idealë për ekipin tuaj
+            <Title ta={{ base: 'center', md: 'left' }} size="2.2rem" fw={700} lh={1.1} c="dark" mb={12} style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}>
+              Më shpejtë | Më thjeshtë | Më mirë
             </Title>
             <Text ta={{ base: 'center', md: 'left' }} size="sm" c="dimmed" lh={1.4}>
               advance.al ju ndihmon të gjeni dhe punësoni kandidatë të shkëlqyer për kompaninë tuaj.
