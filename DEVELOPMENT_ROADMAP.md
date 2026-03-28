@@ -1,11 +1,38 @@
 # advance.al - DEVELOPMENT STATUS & ROADMAP
 
 **Date:** September 25-28, 2025
-**Last Updated:** March 27, 2026 (AI improvements: richer embeddings, hybrid candidate matching, DOCX support)
+**Last Updated:** March 28, 2026 (AI test suite, applicationDeadline→expiresAt bug fix)
 **Platform:** Premier Job Marketplace for Albania
 **CURRENT STATUS:** 🟢 **DEPLOY-READY — QA in progress. 211/211 API tests, 15/15 audit fixes verified. Manual QA bugs being fixed (Rounds 1-3 complete).**
 **Phase:** QA & Deployment (see env var checklist below)
 **Brand:** advance.al (formerly Albania JobFlow)
+
+## ✅ **AI TESTING & BUG FIX — MARCH 28, 2026**
+
+### Bug Fix 1: `applicationDeadline` → `expiresAt` in userEmbeddingService.js
+- **File:** `backend/src/services/userEmbeddingService.js`, line 413
+- **Bug:** `findMatchingJobsForUser()` queried `applicationDeadline` field which does NOT exist on the Job model → MongoDB returned 0 matches for ALL users
+- **Impact:** Completely broke QuickUser "notify about existing jobs" flow and reverse matching
+- **Fix:** Changed to `expiresAt` (the correct field on Job model)
+
+### Bug Fix 2: Mongoose path collision in candidateMatching.js
+- **File:** `backend/src/services/candidateMatching.js`, line 299
+- **Bug:** `.select('email profile createdAt +profile.jobSeekerProfile.embedding.vector')` — selecting parent `profile` AND nested `+profile.jobSeekerProfile.embedding.vector` causes Mongoose path collision → 500 error on ALL candidate matching calls when job has embedding
+- **Impact:** Candidate matching completely broken for any job with a completed embedding vector
+- **Fix:** Changed to `.select('-__v +profile.jobSeekerProfile.embedding.vector')` — select all fields minus `__v`, plus the hidden vector
+
+### Comprehensive AI Test Suite: `tests/ai-tests.js`
+- **61 tests across 8 groups** with REAL OpenAI API calls
+- Group 1: CV Parsing — 10 adversarial inputs (name only, recipe, trilingual, stress test, etc.)
+- Group 2: CV Generation — 10 tests (prompt injection, XSS, fabrication detection, validation)
+- Group 3: Embedding Lifecycle — 7 tests (generation, regeneration on profile changes)
+- Group 4: Embedding Quality — 5 semantic similarity tests (cosine similarity checks)
+- Group 5: Candidate Matching E2E — 7 tests (ranking, caching, payment gates, RBAC)
+- Group 6: DOCX Preview — 4 tests (HTML conversion, auth checks)
+- Group 7: QuickUser Flow — 3 tests (with/without resume, garbage file handling)
+- Group 8: Error Handling — 8 validation and auth error tests
+- Fabrication detection, MongoDB vector inspection, cosine similarity computation
+- Run: `node tests/ai-tests.js` (~4 min, ~$0.03)
 
 ## ✅ **3 AI IMPROVEMENTS — MARCH 27, 2026**
 

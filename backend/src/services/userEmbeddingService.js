@@ -410,7 +410,7 @@ class UserEmbeddingService {
     const query = {
       status: 'active',
       'embedding.status': 'completed',
-      applicationDeadline: { $gte: new Date() }
+      expiresAt: { $gte: new Date() }
     };
 
     if (city) {

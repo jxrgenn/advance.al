@@ -77,13 +77,13 @@ const RotatingContact: React.FC<RotatingContactProps> = ({
   };
 
   return (
-    <section className={`w-full py-12 px-6 ${className}`}>
-      <div className="max-w-6xl mx-auto">
-        <div className="bg-gradient-to-br from-[#1e3a8a] to-[#1e40af] rounded-3xl p-4 md:p-8 shadow-lg overflow-hidden">
-        {/* Responsive height container - auto on mobile, fixed on desktop */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 items-center min-h-[340px] md:h-[280px]">
-          {/* Left side - 3D Asset - Bigger size */}
-          <div className="flex justify-center md:justify-start items-center h-full">
+    <section className={`w-full py-8 px-6 ${className}`}>
+      <div className="max-w-5xl mx-auto">
+        <div className="bg-gradient-to-br from-[#1e3a8a] to-[#1e40af] rounded-2xl p-3 md:px-6 md:py-2 shadow-lg overflow-hidden">
+        {/* Responsive grid — text side drives the height, image overflows and clips */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 items-center">
+          {/* Left side - 3D Asset - full size, overflows vertically and gets clipped by parent overflow-hidden */}
+          <div className="flex justify-center md:justify-start items-center md:-my-8 md:-ml-4 md:translate-y-2">
             <div className={`transition-all duration-500 ${
               isTransitioning ? 'opacity-0 scale-90' : 'opacity-100 scale-100'
             }`}>
@@ -98,27 +98,27 @@ const RotatingContact: React.FC<RotatingContactProps> = ({
 
           {/* Right side - Contact info - Flexible height */}
           <div
-            className={`text-white transition-all duration-300 flex flex-col justify-center py-4 md:py-0 text-center md:text-left ${
+            className={`text-white transition-all duration-300 flex flex-col justify-center py-3 md:py-0 text-center md:text-left ${
               isTransitioning ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'
             }`}
           >
-            <h2 className="text-3xl md:text-4xl font-bold mb-2 leading-tight">
+            <h2 className="text-2xl md:text-3xl font-bold mb-1.5 leading-tight">
               {currentContact.heading}
             </h2>
-            <p className="text-lg md:text-xl text-white/90 mb-5 leading-snug">
+            <p className="text-base md:text-lg text-white/90 mb-4 leading-snug">
               {currentContact.subheading}
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center md:justify-start items-center sm:items-start">
+            <div className="flex flex-col sm:flex-row gap-3 justify-center md:justify-start items-center sm:items-start">
               {/* Phone */}
               <a
                 href={`tel:${currentContact.phone}`}
-                className="flex items-center gap-2.5 group"
+                className="flex items-center gap-2 group"
               >
-                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-[#228be6] group-hover:bg-[#1c7ed6] transition-colors flex-shrink-0">
+                <div className="flex items-center justify-center w-9 h-9 rounded-full bg-[#228be6] group-hover:bg-[#1c7ed6] transition-colors flex-shrink-0">
                   <Phone className="h-4 w-4 text-white" />
                 </div>
-                <span className="text-base font-medium group-hover:underline whitespace-nowrap">
+                <span className="text-sm font-medium group-hover:underline whitespace-nowrap">
                   {currentContact.phone}
                 </span>
               </a>
@@ -126,12 +126,12 @@ const RotatingContact: React.FC<RotatingContactProps> = ({
               {/* Email */}
               <a
                 href={`mailto:${currentContact.email}`}
-                className="flex items-center gap-2.5 group"
+                className="flex items-center gap-2 group"
               >
-                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-[#228be6] group-hover:bg-[#1c7ed6] transition-colors flex-shrink-0">
+                <div className="flex items-center justify-center w-9 h-9 rounded-full bg-[#228be6] group-hover:bg-[#1c7ed6] transition-colors flex-shrink-0">
                   <Mail className="h-4 w-4 text-white" />
                 </div>
-                <span className="text-base font-medium group-hover:underline break-all">
+                <span className="text-sm font-medium group-hover:underline break-all">
                   {currentContact.email}
                 </span>
               </a>
@@ -140,7 +140,7 @@ const RotatingContact: React.FC<RotatingContactProps> = ({
         </div>
 
         {/* Rotation indicator dots */}
-        <div className="flex justify-center gap-3 mt-6 md:mt-8">
+        <div className="flex justify-center gap-3 mt-4 md:mt-5">
           {contacts.map((_, idx) => (
             <button
               key={idx}

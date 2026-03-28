@@ -5,7 +5,7 @@ import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import RotatingContact from "@/components/RotatingContact";
 import AdvanceLanding from "@/components/about_us_actual_landing";
-import ScrollToTopButton from "@/components/ScrollToTopButton";
+
 import { statsApi } from "@/lib/api";
 import { useEffect, useState, useRef, type FC, type ReactNode } from "react";
 import { motion, useInView, AnimatePresence } from "motion/react";
@@ -604,6 +604,9 @@ const AboutUs = () => {
         </div>
       </section>
 
+      {/* How Advance.al Works — Technology & Scenarios */}
+      <FeatureShowcase />
+
       {/* Why Choose advance.al Section */}
       <section className="py-16 bg-muted/30">
         <div className="container mx-auto px-4">
@@ -657,8 +660,6 @@ const AboutUs = () => {
       {/* Contact Information */}
       <RotatingContact />
 
-      <ScrollToTopButton />
-
       {/* Call to Action */}
       <section className="py-16 bg-primary text-primary-foreground">
         <div className="container mx-auto px-4 text-center">
@@ -685,9 +686,6 @@ const AboutUs = () => {
           </div>
         </div>
       </section>
-
-      {/* ===== Feature Showcase (experimental — below footer) ===== */}
-      <FeatureShowcase />
 
       <Footer />
     </div>

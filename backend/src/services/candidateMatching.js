@@ -296,7 +296,7 @@ class CandidateMatchingService {
         isDeleted: false,
         status: 'active'
       })
-      .select('email profile createdAt' + (jobVector ? ' +profile.jobSeekerProfile.embedding.vector' : ''))
+      .select(jobVector ? '-__v +profile.jobSeekerProfile.embedding.vector' : 'email profile createdAt')
       .batchSize(BATCH_SIZE)
       .cursor();
 
