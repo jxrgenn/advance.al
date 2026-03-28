@@ -404,7 +404,7 @@ const AboutUs = () => {
             {/* Left side - Image */}
             <div className="flex justify-center items-center">
               <img
-                src="/3d_assets/arrow.png"
+                src="/3d_assets/hired1.png"
                 alt="Job matching success - Connecting job seekers with employers"
                 className="w-full max-w-[500px] object-contain"
                 loading="eager"

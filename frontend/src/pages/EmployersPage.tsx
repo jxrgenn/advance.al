@@ -1215,19 +1215,16 @@ const EmployersPage = () => {
           {/* Hero Section with 3D Asset */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center mb-8">
           <div className="text-center md:text-left">
-            <ThemeIcon size={40} radius="md" color="blue" variant="light" mb={12}>
-              <Building size={20} />
-            </ThemeIcon>
             <Title ta={{ base: 'center', md: 'left' }} size="2.2rem" fw={700} lh={1.1} c="dark" mb={12} style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}>
               Më shpejtë | Më thjeshtë | Më mirë
             </Title>
             <Text ta={{ base: 'center', md: 'left' }} size="sm" c="dimmed" lh={1.4}>
-              advance.al ju ndihmon të gjeni dhe punësoni kandidatë të shkëlqyer për kompaninë tuaj.
+              Plotësoni ekipin tuaj të punës në mënyrën më efikase ndonjëherë.
             </Text>
           </div>
           <div className="hidden md:flex justify-end items-center">
             <img
-              src="/3d_assets/ideal_career1.png"
+              src="/3d_assets/arrow.png"
               alt="Find ideal candidates for your team"
               className="w-full max-w-[160px] object-contain"
               loading="eager"
