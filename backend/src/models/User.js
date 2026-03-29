@@ -631,16 +631,17 @@ userSchema.methods.liftSuspension = function() {
 };
 
 // Methods for managing saved jobs
-userSchema.methods.saveJob = function(jobId) {
+userSchema.methods.saveJob = async function(jobId) {
   if (this.userType !== 'jobseeker') {
     throw new Error('Only job seekers can save jobs');
   }
 
-  if (!this.savedJobs.includes(jobId)) {
-    this.savedJobs.push(jobId);
-    return this.save();
-  }
-  return Promise.resolve(this);
+  // Use $addToSet for atomic duplicate prevention (race-condition safe)
+  await this.constructor.updateOne(
+    { _id: this._id },
+    { $addToSet: { savedJobs: jobId } }
+  );
+  return this;
 };
 
 userSchema.methods.unsaveJob = function(jobId) {

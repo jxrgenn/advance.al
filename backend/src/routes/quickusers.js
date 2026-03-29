@@ -11,7 +11,7 @@ import userEmbeddingService from '../services/userEmbeddingService.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { uploadToCloudinary } from '../config/cloudinary.js';
 import { parseQuickUserCV } from '../services/cvParsingService.js';
-import { stripHtml } from '../utils/sanitize.js';
+import { stripHtml, validateObjectId } from '../utils/sanitize.js';
 import logger from '../config/logger.js';
 
 // Check if Cloudinary is configured
@@ -188,7 +188,7 @@ const handleMultipart = (req, res, next) => {
 // @route   POST /api/quickusers
 // @desc    Create a new quick user for notifications (supports optional CV upload via multipart/form-data)
 // @access  Public
-router.post('/', handleMultipart, quickUserValidation, handleValidationErrors, async (req, res) => {
+router.post('/', quickUserLimiter, handleMultipart, quickUserValidation, handleValidationErrors, async (req, res) => {
   try {
     const {
       firstName,
@@ -532,7 +532,7 @@ router.get('/:id', authenticate, requireAdmin, async (req, res) => {
 // @route   PUT /api/quickusers/:id/preferences
 // @desc    Update quick user preferences
 // @access  Token-protected (requires unsubscribeToken for verification)
-router.put('/:id/preferences', async (req, res) => {
+router.put('/:id/preferences', validateObjectId('id'), async (req, res) => {
   try {
     const { id } = req.params;
     const { preferences, token } = req.body;

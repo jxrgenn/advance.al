@@ -1,5 +1,6 @@
 import express from 'express';
-import { authenticate } from '../middleware/auth.js';
+import mongoose from 'mongoose';
+import { authenticate, requireEmployer } from '../middleware/auth.js';
 import candidateMatchingService from '../services/candidateMatching.js';
 import { Job } from '../models/index.js';
 import { validateObjectId } from '../utils/sanitize.js';
@@ -12,7 +13,7 @@ const router = express.Router();
  * Get top matching candidates for a job
  * Requires: Employer authentication + candidate matching access for this job
  */
-router.get('/jobs/:jobId/candidates', validateObjectId('jobId'), authenticate, async (req, res) => {
+router.get('/jobs/:jobId/candidates', validateObjectId('jobId'), authenticate, requireEmployer, async (req, res) => {
   try {
     const { jobId } = req.params;
     const employerId = req.user._id;
@@ -76,7 +77,7 @@ router.get('/jobs/:jobId/candidates', validateObjectId('jobId'), authenticate, a
  * Purchase candidate matching access for a job
  * MOCK PAYMENT: Always succeeds for testing
  */
-router.post('/jobs/:jobId/purchase', validateObjectId('jobId'), authenticate, async (req, res) => {
+router.post('/jobs/:jobId/purchase', validateObjectId('jobId'), authenticate, requireEmployer, async (req, res) => {
   try {
     const { jobId } = req.params;
     const employerId = req.user._id;
@@ -149,10 +150,21 @@ router.post('/jobs/:jobId/purchase', validateObjectId('jobId'), authenticate, as
  * Track when employer contacts a candidate
  * Body: { jobId, candidateId, contactMethod: 'email'|'phone'|'whatsapp' }
  */
-router.post('/track-contact', authenticate, async (req, res) => {
+router.post('/track-contact', authenticate, requireEmployer, async (req, res) => {
   try {
     const { jobId, candidateId, contactMethod } = req.body;
     const employerId = req.user._id;
+
+    // Validate inputs
+    if (!jobId || !candidateId || !contactMethod) {
+      return res.status(400).json({ success: false, message: 'jobId, candidateId, and contactMethod are required' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(jobId) || !mongoose.Types.ObjectId.isValid(candidateId)) {
+      return res.status(400).json({ success: false, message: 'Invalid jobId or candidateId format' });
+    }
+    if (!['email', 'phone', 'whatsapp'].includes(contactMethod)) {
+      return res.status(400).json({ success: false, message: 'contactMethod must be email, phone, or whatsapp' });
+    }
 
     // Verify job belongs to this employer
     const job = await Job.findById(jobId);
@@ -181,7 +193,7 @@ router.post('/track-contact', authenticate, async (req, res) => {
  * GET /api/matching/jobs/:jobId/access
  * Check if employer has access to candidate matching for a job
  */
-router.get('/jobs/:jobId/access', validateObjectId('jobId'), authenticate, async (req, res) => {
+router.get('/jobs/:jobId/access', validateObjectId('jobId'), authenticate, requireEmployer, async (req, res) => {
   try {
     const { jobId } = req.params;
     const employerId = req.user._id;

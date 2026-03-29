@@ -112,7 +112,7 @@ router.get('/unread-count', authenticate, async (req, res) => {
 // @route   PATCH /api/notifications/:id/read
 // @desc    Mark single notification as read
 // @access  Private
-router.patch('/:id/read', validateObjectId('id'), authenticate, async (req, res) => {
+router.patch('/:id/read', notificationLimiter, validateObjectId('id'), authenticate, async (req, res) => {
   try {
     const notification = await Notification.findOne({
       _id: req.params.id,
@@ -145,7 +145,7 @@ router.patch('/:id/read', validateObjectId('id'), authenticate, async (req, res)
 // @route   PATCH /api/notifications/mark-all-read
 // @desc    Mark all notifications as read for user
 // @access  Private
-router.patch('/mark-all-read', authenticate, async (req, res) => {
+router.patch('/mark-all-read', notificationLimiter, authenticate, async (req, res) => {
   try {
     const result = await Notification.markAllAsReadForUser(req.user._id);
 
@@ -167,7 +167,7 @@ router.patch('/mark-all-read', authenticate, async (req, res) => {
 // @route   DELETE /api/notifications/:id
 // @desc    Delete a notification
 // @access  Private
-router.delete('/:id', validateObjectId('id'), authenticate, async (req, res) => {
+router.delete('/:id', notificationLimiter, validateObjectId('id'), authenticate, async (req, res) => {
   try {
     const result = await Notification.findOneAndDelete({
       _id: req.params.id,

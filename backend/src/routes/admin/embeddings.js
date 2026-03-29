@@ -5,7 +5,7 @@ import WorkerStatus from '../../models/WorkerStatus.js';
 import jobEmbeddingService from '../../services/jobEmbeddingService.js';
 import debugLogger from '../../services/debugLogger.js';
 import { authenticate, requireAdmin } from '../../middleware/auth.js';
-import { sanitizeLimit } from '../../utils/sanitize.js';
+import { sanitizeLimit, validateObjectId } from '../../utils/sanitize.js';
 import logger from '../../config/logger.js';
 
 const router = express.Router();
@@ -341,8 +341,9 @@ router.post('/retry-failed', async (req, res) => {
 router.post('/clear-old-queue', async (req, res) => {
   try {
     const { days = 7 } = req.body;
+    const safeDays = Math.min(Math.max(1, parseInt(days) || 7), 365);
 
-    const cutoffDate = new Date(Date.now() - parseInt(days) * 24 * 60 * 60 * 1000);
+    const cutoffDate = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000);
 
     const result = await JobQueue.deleteMany({
       status: { $in: ['completed', 'failed'] },
@@ -403,7 +404,7 @@ router.post('/toggle-debug', async (req, res) => {
  * @desc    Manually queue a specific job for embedding
  * @access  Admin only
  */
-router.post('/queue-job/:jobId', async (req, res) => {
+router.post('/queue-job/:jobId', validateObjectId('jobId'), async (req, res) => {
   try {
     const { jobId } = req.params;
     const { priority = 1 } = req.body; // Admin queued jobs get high priority
@@ -438,7 +439,7 @@ router.post('/queue-job/:jobId', async (req, res) => {
  * @desc    Delete a specific queue item
  * @access  Admin only
  */
-router.delete('/queue-item/:queueId', async (req, res) => {
+router.delete('/queue-item/:queueId', validateObjectId('queueId'), async (req, res) => {
   try {
     const { queueId } = req.params;
 

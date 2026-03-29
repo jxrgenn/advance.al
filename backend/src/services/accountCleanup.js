@@ -119,7 +119,13 @@ function deleteLocalFile(filePath) {
   if (!filePath.startsWith('/uploads/')) return;
 
   try {
-    const absolutePath = path.join(process.cwd(), filePath);
+    const uploadsDir = path.resolve(process.cwd(), 'uploads');
+    const absolutePath = path.resolve(process.cwd(), filePath);
+    // Prevent path traversal — resolved path must be under uploads/
+    if (!absolutePath.startsWith(uploadsDir + path.sep)) {
+      logger.warn('Account cleanup: path traversal attempt blocked', { path: filePath });
+      return;
+    }
     if (fs.existsSync(absolutePath)) {
       fs.unlinkSync(absolutePath);
       logger.info('Account cleanup: deleted local file', { path: filePath });

@@ -197,6 +197,8 @@ router.get('/', optionalAuth, async (req, res) => {
 
     const safeLimit = sanitizeLimit(limit, 50, 10);
     const safePage = Math.max(1, parseInt(page) || 1);
+    // Strip null bytes from search to prevent MongoDB regex crash
+    const safeSearch = search ? search.replace(/\0/g, '') : '';
 
     // Build search filters
     const filters = {};
@@ -249,7 +251,7 @@ router.get('/', optionalAuth, async (req, res) => {
             hasPrevPage: false
           },
           filters: {
-            search: stripHtml(search || ''),
+            search: stripHtml(safeSearch || ''),
             city,
             category,
             jobType,
@@ -297,7 +299,7 @@ router.get('/', optionalAuth, async (req, res) => {
     }
 
     // Execute search
-    let query = Job.searchJobs(search, filters);
+    let query = Job.searchJobs(safeSearch, filters);
 
     // Apply sorting — premium jobs are highlighted in PremiumJobsCarousel, not in main listing sort
     const sortOptions = {};
@@ -325,12 +327,12 @@ router.get('/', optionalAuth, async (req, res) => {
       isDeleted: false,
       status: 'active',
       expiresAt: { $gt: new Date() },
-      ...(search && { $or: [
-        { title: { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
-        { description: { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
-        { category: { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
-        { 'location.city': { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
-        { tags: { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }
+      ...(safeSearch && { $or: [
+        { title: { $regex: safeSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+        { description: { $regex: safeSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+        { category: { $regex: safeSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+        { 'location.city': { $regex: safeSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+        { tags: { $regex: safeSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }
       ] }),
       ...(city && { 'location.city': Array.isArray(filters.city) ? { $in: filters.city } : city }),
       ...(categories && Array.isArray(filters.categories) && { category: { $in: filters.categories } }),
@@ -367,7 +369,7 @@ router.get('/', optionalAuth, async (req, res) => {
           hasPrevPage: safePage > 1
         },
         filters: {
-          search: stripHtml(search || ''),
+          search: stripHtml(safeSearch || ''),
           city,
           category,
           jobType,
@@ -1177,7 +1179,15 @@ router.put('/:id', validateObjectId('id'), authenticate, requireEmployer, requir
       ...(applicationMethod !== undefined && { applicationMethod }),
       ...(externalApplicationUrl !== undefined && { externalApplicationUrl }),
       ...(applicationEmail !== undefined && { applicationEmail }),
-      ...(platformCategories !== undefined && { platformCategories }),
+      ...(platformCategories !== undefined && {
+        platformCategories: {
+          ...platformCategories,
+          // Server-side enforcement: non-administrata employers cannot set administrata flag
+          administrata: req.user.profile?.employerProfile?.isAdministrataAccount
+            ? true
+            : false
+        }
+      }),
       updatedAt: new Date()
     };
     Object.assign(job, updates);

@@ -22,13 +22,16 @@ router.get('/', optionalAuth, async (req, res) => {
       sortOrder = 'asc'
     } = req.query;
 
-    // Build query for active employers (temporarily include unverified)
+    // Build query for active employers
+    // In production, only show verified employers to prevent fake/spam companies
     const matchQuery = {
       userType: 'employer',
       status: 'active',
-      // 'profile.employerProfile.verified': true, // Temporarily disabled to show all employers
       isDeleted: false
     };
+    if (process.env.NODE_ENV === 'production') {
+      matchQuery['profile.employerProfile.verified'] = true;
+    }
 
     // Add search filters
     if (search) {

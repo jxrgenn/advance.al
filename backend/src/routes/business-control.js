@@ -187,12 +187,13 @@ router.put('/campaigns/:id', validateObjectId('id'), authenticate, requireAdmin,
       });
     }
 
-    // Update fields
-    Object.keys(req.body).forEach(key => {
-      if (key !== '_id' && key !== 'createdBy' && key !== 'createdAt') {
+    // Update only allowed fields (allowlist to prevent prototype pollution)
+    const allowedCampaignFields = ['name', 'description', 'type', 'parameters', 'schedule'];
+    for (const key of allowedCampaignFields) {
+      if (req.body[key] !== undefined) {
         campaign[key] = req.body[key];
       }
-    });
+    }
 
     campaign.lastModifiedBy = req.user._id;
     await campaign.save();
@@ -404,12 +405,13 @@ router.put('/pricing-rules/:id', validateObjectId('id'), authenticate, requireAd
       });
     }
 
-    // Update fields
-    Object.keys(req.body).forEach(key => {
-      if (key !== '_id' && key !== 'createdBy' && key !== 'createdAt') {
+    // Update only allowed fields (allowlist to prevent prototype pollution)
+    const allowedPricingFields = ['name', 'description', 'category', 'rules', 'isActive', 'priority'];
+    for (const key of allowedPricingFields) {
+      if (req.body[key] !== undefined) {
         rule[key] = req.body[key];
       }
-    });
+    }
 
     rule.lastModifiedBy = req.user._id;
     await rule.save();

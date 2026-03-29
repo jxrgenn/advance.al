@@ -258,10 +258,10 @@ const employerProfileValidation = [
 // @access  Private
 router.get('/profile', authenticate, async (req, res) => {
   try {
+    // cvFile is always ObjectId, but profilePhoto/logo are Mixed (can be ObjectId or URL string)
+    // Only populate cvFile safely; profilePhoto/logo may be URL strings that can't be populated
     const user = await User.findById(req.user._id)
-      .populate('profile.jobSeekerProfile.cvFile', 'filename originalName')
-      .populate('profile.jobSeekerProfile.profilePhoto', 'filename originalName')
-      .populate('profile.employerProfile.logo', 'filename originalName');
+      .populate('profile.jobSeekerProfile.cvFile', 'fileName fileType fileSize fileCategory');
 
     if (!user) {
       return res.status(404).json({
@@ -424,8 +424,7 @@ router.get('/public-profile/:id', validateObjectId('id'), authenticate, requireE
       'privacySettings.profileVisible': true
     })
       .select('profile createdAt')
-      .populate('profile.jobSeekerProfile.cvFile', 'filename originalName cloudUrl')
-      .populate('profile.jobSeekerProfile.profilePhoto', 'filename originalName cloudUrl');
+      .populate('profile.jobSeekerProfile.cvFile', 'fileName fileType fileSize fileCategory');
 
     if (!user) {
       return res.status(404).json({

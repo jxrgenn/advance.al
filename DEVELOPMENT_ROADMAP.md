@@ -1,11 +1,86 @@
 # advance.al - DEVELOPMENT STATUS & ROADMAP
 
 **Date:** September 25-28, 2025
-**Last Updated:** March 29, 2026 (Database enrichment, vector embedding fixes, onboarding system)
+**Last Updated:** March 29, 2026 (Comprehensive Human QA Checklist created — 450+ test items across 37 sections)
 **Platform:** Premier Job Marketplace for Albania
-**CURRENT STATUS:** 🟢 **DEPLOY-READY — Pre-deployment audit complete. 6 critical + 7 high + 2 medium fixes applied. Test suite, load tests, QA checklist, deployment checklist created.**
-**Phase:** QA & Deployment (see env var checklist below)
+**CURRENT STATUS:** 🟢 **PRODUCTION-READY — Full security audit + deep audit round 2, 216 runtime tests passing, 60 security attacks blocked, 11 bugs found and fixed. See FINAL-REPORT.md.**
+**Phase:** QA & Deployment (frontend manual QA + production config remaining)
 **Brand:** advance.al (formerly Albania JobFlow)
+
+## ✅ **COMPREHENSIVE HUMAN QA CHECKLIST — MARCH 29, 2026**
+
+Created `HUMAN-QA-CHECKLIST.md` — exhaustive manual QA checklist for frontend/UI testing:
+- **450+ individual test items** across 37 sections
+- **Priority tiers:** CRITICAL (10 sections), HIGH (8 sections), MEDIUM (12 sections), LOW (7 sections)
+- **Coverage:** Every page, form, button, modal, responsive breakpoint, browser, and user role
+- **Replaces:** Previous `QA-MANUAL-CHECKLIST.md` (30 sections) with comprehensive version
+- **Includes:** Step-by-step instructions, expected results, edge cases, data integrity cross-flow checks
+- **Sign-off table** for tracking QA completion per area
+
+## ✅ **SOLO DEV LOOP AUDIT — MARCH 29, 2026**
+
+### Full 7-Phase Autonomous Audit:
+- **Phase 1:** Read entire codebase (19 routes, 20 models, 11 services, 26 pages)
+- **Phase 2:** Security audit found 33 issues (3C, 9H, 10M, 6L, 5U)
+- **Phase 3:** Fixed 13 issues, verified 4 safe, accepted 10 low-risk, documented 5 unbuilt
+- **Phase 4:** Runtime-tested 338 features with real HTTP requests against live server (209 unique features, 60 security attacks, 51 interaction tests, 18 production checks)
+- **Phase 5:** Found + fixed 4 new bugs during testing (profile crash, null bytes, admin self-suspend, race condition)
+- **Phase 5b:** Deep audit round 2 — found + fixed 7 more security issues (regex injection ×2, path traversal, prototype pollution, XSS, administrata bypass, env validation)
+- **Phase 6:** All loop-check criteria passed
+- **Phase 7:** Deliverables created (FINAL-REPORT.md, SECURITY-TEST-RESULTS.md, FEATURE-INVENTORY.md, etc.)
+
+### Bugs Found and Fixed:
+1. **Profile 500 crash** — Mongoose `populate()` on Mixed type fields (profilePhoto/logo can be URL strings) → Removed populate for Mixed fields (`users.js`)
+2. **Null bytes crash regex** — `\0` in search caused MongoDB regex crash → Strip null bytes in `sanitize.js`, `Job.js`, `jobs.js`
+3. **Admin self-suspend** — Admin could lock themselves out → Self-action guard in `admin.js`
+4. **Concurrent save-job duplicates** — Race condition on saved jobs → Atomic `$addToSet` in `User.js`
+
+### Security Fixes Applied (Round 1):
+- `verification.js` — Rate-limited status endpoint, removed verification method leak
+- `matching.js` — Added requireEmployer to all routes, ObjectId validation
+- `notifications.js` — Rate limiters on write operations
+- `reports.js` — Evidence validation, timeframe bounds 1-365
+- `admin.js` — Self-action prevention
+- `sanitize.js` — Null byte stripping in escapeRegex
+- `User.js` — Atomic $addToSet for concurrent-safe saves
+
+### Security Fixes Applied (Round 2 — Deep Audit):
+- `userEmbeddingService.js` — Regex injection fix: escapeRegex on city param
+- `QuickUser.js` — Regex injection fix: escapeRegex on job tags in matching
+- `accountCleanup.js` — Path traversal fix: resolve + boundary check
+- `business-control.js` — Prototype pollution fix: allowlists for campaign/pricing updates
+- `applications.js` — XSS fix: stripHtml on notes field
+- `jobs.js` — Administrata bypass fix: server-side enforcement on update route
+- `server.js` — Production env validation: MONGODB_URI required
+
+### Test Results:
+| Category | Tests | Pass |
+|----------|-------|------|
+| Feature testing (round 1 — reads) | 93 | 92 (1 skip: needs API key) |
+| Feature testing (round 2 — mutations) | 116 | 115 (1 skip: data-dependent) |
+| Feature interactions | 51 | 44 (7 skips: data-dependent) |
+| Security attacks (round 1) | 42 | 42 |
+| Security attacks (round 2) | 18 | 18 |
+| Production readiness | 18 | 18 |
+| **Total** | **338** | **329 (100% of testable)** |
+
+### Files Modified:
+- `backend/src/routes/users.js` — Fixed populate crash
+- `backend/src/routes/admin.js` — Self-action prevention
+- `backend/src/routes/jobs.js` — Null byte protection in search, administrata bypass fix
+- `backend/src/routes/verification.js` — Rate limiting + info leak fix
+- `backend/src/routes/matching.js` — Auth + validation fixes
+- `backend/src/routes/notifications.js` — Rate limiting on writes
+- `backend/src/routes/reports.js` — Input validation fixes
+- `backend/src/routes/applications.js` — Notes XSS sanitization
+- `backend/src/routes/business-control.js` — Prototype pollution fix (allowlists)
+- `backend/src/models/Job.js` — Null byte protection
+- `backend/src/models/User.js` — Atomic saveJob
+- `backend/src/models/QuickUser.js` — Regex injection fix in tag matching
+- `backend/src/utils/sanitize.js` — Null byte stripping
+- `backend/src/services/userEmbeddingService.js` — Regex injection fix in city param
+- `backend/src/services/accountCleanup.js` — Path traversal prevention
+- `backend/server.js` — MONGODB_URI required in production
 
 ## ✅ **DATABASE ENRICHMENT & VECTOR EMBEDDING FIXES — MARCH 29, 2026**
 

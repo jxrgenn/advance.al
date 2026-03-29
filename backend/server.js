@@ -57,6 +57,11 @@ if (missingEnvVars.length > 0) {
   logger.error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
   process.exit(1);
 }
+// MONGODB_URI is critical in production — localhost fallback must not be used
+if (process.env.NODE_ENV === 'production' && !process.env.MONGODB_URI) {
+  logger.error('MONGODB_URI is required in production');
+  process.exit(1);
+}
 // FRONTEND_URL is critical in production — password reset links default to localhost without it
 if (process.env.NODE_ENV === 'production' && !process.env.FRONTEND_URL) {
   logger.error('FRONTEND_URL is required in production (used for password reset links, email URLs)');

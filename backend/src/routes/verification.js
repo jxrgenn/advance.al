@@ -531,20 +531,21 @@ router.post('/resend', verificationLimiter, async (req, res) => {
 
 // @route   GET /api/verification/status/:identifier
 // @desc    Check verification status for an identifier
-// @access  Public
-router.get('/status/:identifier', async (req, res) => {
+// @access  Public (rate-limited to prevent enumeration)
+router.get('/status/:identifier', verificationLimiter, async (req, res) => {
   try {
     const { identifier } = req.params;
 
     // Check if there's an active verification
     const verificationData = await getVerificationCode(identifier);
 
+    // Always return the same shape to prevent information leakage about
+    // whether an email is in the process of registering
     if (!verificationData) {
       return res.json({
         success: true,
         data: {
           hasActiveVerification: false,
-          method: null,
           expiresAt: null,
           attemptsRemaining: null
         }
@@ -555,7 +556,6 @@ router.get('/status/:identifier', async (req, res) => {
       success: true,
       data: {
         hasActiveVerification: true,
-        method: verificationData.method,
         expiresAt: verificationData.expiry,
         attemptsRemaining: Math.max(0, 3 - verificationData.attempts)
       }

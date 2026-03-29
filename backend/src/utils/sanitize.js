@@ -30,7 +30,9 @@ export function validateObjectId(...paramNames) {
  */
 export function escapeRegex(str) {
   if (!str) return '';
-  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return String(str)
+    .replace(/\0/g, '')  // Strip null bytes (crash MongoDB regex)
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**

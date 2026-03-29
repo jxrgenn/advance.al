@@ -2,6 +2,7 @@ import QuickUser from '../models/QuickUser.js';
 import User from '../models/User.js';
 import Job from '../models/Job.js';
 import jobEmbeddingService from './jobEmbeddingService.js';
+import { escapeRegex } from '../utils/sanitize.js';
 
 /**
  * User Embedding Service
@@ -414,7 +415,7 @@ class UserEmbeddingService {
     };
 
     if (city) {
-      query['location.city'] = { $regex: new RegExp(city, 'i') };
+      query['location.city'] = { $regex: new RegExp(escapeRegex(city), 'i') };
     }
 
     const matchedJobs = [];

@@ -574,6 +574,14 @@ router.patch('/users/:userId/manage', async (req, res) => {
       return res.status(400).json({ success: false, message: 'ID i pavlefshëm' });
     }
 
+    // Prevent admin from suspending/banning/deleting themselves
+    if (userId === req.user._id.toString() && ['suspend', 'ban', 'delete'].includes(action)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nuk mund të ndryshoni statusin e llogarisë suaj'
+      });
+    }
+
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({

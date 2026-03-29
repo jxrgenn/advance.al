@@ -62,11 +62,14 @@ const reportValidation = [
 
   body('evidence')
     .optional()
-    .isArray()
-    .withMessage('Dëshmitë duhet të jenë një listë')
+    .isArray({ max: 5 })
+    .withMessage('Dëshmitë duhet të jenë një listë (maksimumi 5)')
     .custom((evidence) => {
-      if (evidence && evidence.length > 5) {
-        throw new Error('Maksimumi 5 dokumente dëshmi');
+      if (!evidence) return true;
+      for (const item of evidence) {
+        if (typeof item !== 'string' || item.length > 500) {
+          throw new Error('Çdo dëshmi duhet të jetë tekst deri në 500 karaktere');
+        }
       }
       return true;
     })
@@ -417,9 +420,10 @@ router.get('/admin/stats',
   async (req, res) => {
     try {
       const { timeframe = 30 } = req.query;
+      const safeTimeframe = Math.min(Math.max(1, parseInt(timeframe) || 30), 365);
 
-      const reportStats = await Report.getStats(parseInt(timeframe));
-      const actionStats = await ReportAction.getActionStats(parseInt(timeframe));
+      const reportStats = await Report.getStats(safeTimeframe);
+      const actionStats = await ReportAction.getActionStats(safeTimeframe);
 
       const totalReports = reportStats.totalReports[0]?.count || 0;
       const resolvedReports = reportStats.resolved[0]?.count || 0;
@@ -429,7 +433,7 @@ router.get('/admin/stats',
       const topReportedUsers = await Report.aggregate([
         {
           $match: {
-            createdAt: { $gte: new Date(Date.now() - parseInt(timeframe) * 24 * 60 * 60 * 1000) }
+            createdAt: { $gte: new Date(Date.now() - safeTimeframe * 24 * 60 * 60 * 1000) }
           }
         },
         { $group: { _id: '$reportedUser', count: { $sum: 1 } } },
@@ -461,7 +465,7 @@ router.get('/admin/stats',
         {
           $match: {
             'resolution.resolvedAt': { $exists: true },
-            createdAt: { $gte: new Date(Date.now() - parseInt(timeframe) * 24 * 60 * 60 * 1000) }
+            createdAt: { $gte: new Date(Date.now() - safeTimeframe * 24 * 60 * 60 * 1000) }
           }
         },
         {
@@ -494,7 +498,7 @@ router.get('/admin/stats',
           reportStats,
           actionStats,
           topReportedUsers,
-          timeframe: parseInt(timeframe)
+          timeframe: safeTimeframe
         }
       });
 

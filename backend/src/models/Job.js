@@ -449,7 +449,7 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
   // Search: try $text first for full-word matches, fall back to regex for partial/substring
   if (searchQuery) {
     // Use regex for partial matching — searches title, description, category, and company-related fields
-    const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escaped = searchQuery.replace(/\0/g, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     query.$or = [
       { title: { $regex: escaped, $options: 'i' } },
       { description: { $regex: escaped, $options: 'i' } },

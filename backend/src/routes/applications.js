@@ -490,7 +490,8 @@ router.get('/:id', validateObjectId('id'), authenticate, async (req, res) => {
 // @access  Private (Job owner only)
 router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmployer, async (req, res) => {
   try {
-    const { status, notes = '' } = req.body;
+    const { status, notes: rawNotes = '' } = req.body;
+    const notes = stripHtml(rawNotes);
 
     if (!['viewed', 'shortlisted', 'rejected', 'hired'].includes(status)) {
       return res.status(400).json({
@@ -590,14 +591,17 @@ router.post('/:id/message', validateObjectId('id'), authenticate, async (req, re
 
     const { message, type = 'text' } = req.body;
 
-    if (!message || message.trim().length === 0) {
+    // Sanitize message to prevent stored XSS
+    const sanitizedMessage = stripHtml(message || '');
+
+    if (!sanitizedMessage || sanitizedMessage.trim().length === 0) {
       return res.status(400).json({
         success: false,
         message: 'Mesazhi nuk mund të jetë bosh'
       });
     }
 
-    if (message.length > 5000) {
+    if (sanitizedMessage.length > 5000) {
       return res.status(400).json({
         success: false,
         message: 'Mesazhi nuk mund të jetë më i gjatë se 5000 karaktere'
@@ -631,7 +635,7 @@ router.post('/:id/message', validateObjectId('id'), authenticate, async (req, re
       });
     }
 
-    await application.addMessage(req.user._id, message.trim(), type);
+    await application.addMessage(req.user._id, sanitizedMessage.trim(), type);
 
     // Create message_received in-app notification for the other party (non-blocking)
     setImmediate(async () => {
@@ -692,7 +696,7 @@ router.post('/:id/message', validateObjectId('id'), authenticate, async (req, re
             lastName: sender.lastName
           },
           jobData,
-          message.trim(),
+          sanitizedMessage.trim(),
           type
         );
 

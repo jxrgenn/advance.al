@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import crypto from 'crypto';
+import { escapeRegex } from '../utils/sanitize.js';
 
 const { Schema } = mongoose;
 
@@ -347,7 +348,7 @@ quickUserSchema.statics.findMatchesForJob = function(job) {
     {
       $or: [
         { interests: { $in: jobKeywords } },
-        { customInterests: { $in: jobKeywords.map(k => new RegExp(k, 'i')) } }
+        { customInterests: { $in: jobKeywords.map(k => new RegExp(escapeRegex(k), 'i')) } }
       ]
     }
   ];
