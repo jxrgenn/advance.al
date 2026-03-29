@@ -111,9 +111,8 @@ const corsOptions = {
       return callback(null, true);
     }
     
-    // In production, block API requests without Origin header
-    // (health check is not behind CORS, server-to-server tools don't need CORS)
-    if (!origin) return callback(new Error('Not allowed by CORS'));
+    // Allow requests with no Origin header (health checks, server-to-server, curl, monitoring)
+    if (!origin) return callback(null, true);
     
     const allowedOrigins = [
       'http://localhost:5173', // Vite dev server
