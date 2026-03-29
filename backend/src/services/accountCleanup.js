@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Application from '../models/Application.js';
 import Job from '../models/Job.js';
@@ -12,6 +13,7 @@ const PURGE_AFTER_DAYS = 30;
 /**
  * Find all soft-deleted users whose deletedAt is more than 30 days ago
  * and permanently remove them along with all their associated data.
+ * Uses MongoDB transactions to ensure atomicity.
  *
  * Returns the number of accounts permanently deleted.
  */
@@ -32,63 +34,64 @@ async function purgeDeletedAccounts() {
   let purgedCount = 0;
 
   for (const user of usersToPurge) {
+    const session = await mongoose.startSession();
     try {
       const userId = user._id;
 
-      // 1. Delete their applications (as job seeker)
-      const appResult = await Application.deleteMany({ jobSeekerId: userId });
+      await session.withTransaction(async () => {
+        // 1. Delete their applications (as job seeker)
+        const appResult = await Application.deleteMany({ jobSeekerId: userId }, { session });
 
-      // 2. Delete their jobs if employer
-      let jobResult = { deletedCount: 0 };
-      if (user.userType === 'employer') {
-        // Also delete applications that were made TO their jobs
-        const employerJobs = await Job.find({ employerId: userId }).select('_id');
-        const employerJobIds = employerJobs.map(j => j._id);
-        if (employerJobIds.length > 0) {
-          await Application.deleteMany({ jobId: { $in: employerJobIds } });
+        // 2. Delete their jobs if employer
+        let jobResult = { deletedCount: 0 };
+        if (user.userType === 'employer') {
+          // Also delete applications that were made TO their jobs (bounded query)
+          const employerJobs = await Job.find({ employerId: userId }).select('_id').limit(10000).session(session);
+          const employerJobIds = employerJobs.map(j => j._id);
+          if (employerJobIds.length > 0) {
+            await Application.deleteMany({ jobId: { $in: employerJobIds } }, { session });
+          }
+          jobResult = await Job.deleteMany({ employerId: userId }, { session });
         }
-        jobResult = await Job.deleteMany({ employerId: userId });
-      }
 
-      // 3. Delete their notifications
-      const notifResult = await Notification.deleteMany({ userId });
+        // 3. Delete their notifications
+        const notifResult = await Notification.deleteMany({ userId }, { session });
 
-      // 4. Delete uploaded files from the filesystem (local storage only)
-      //    Cloudinary files are handled by their own TTL/manual cleanup;
-      //    local files in uploads/ need explicit removal.
+        // 4. Delete the File documents in MongoDB that belong to this user
+        try {
+          const File = (await import('../models/File.js')).default;
+          await File.deleteMany({ uploadedBy: userId }, { session });
+        } catch {
+          // File model import may fail in some setups — non-fatal
+        }
+
+        // 5. Delete candidate matches referencing this user
+        try {
+          const CandidateMatch = (await import('../models/CandidateMatch.js')).default;
+          await CandidateMatch.deleteMany({ candidateId: userId }, { session });
+        } catch {
+          // Non-fatal if model doesn't exist
+        }
+
+        // 6. Finally, permanently delete the user document
+        await User.deleteOne({ _id: userId }, { session });
+
+        logger.info('Account cleanup: permanently deleted user', {
+          userId: userId.toString(),
+          email: user.email,
+          userType: user.userType,
+          applicationsDeleted: appResult.deletedCount,
+          jobsDeleted: jobResult.deletedCount,
+          notificationsDeleted: notifResult.deletedCount
+        });
+      });
+
+      purgedCount++;
+
+      // Delete local files AFTER successful transaction (filesystem ops can't be rolled back)
       deleteLocalFile(user.profile?.jobSeekerProfile?.resume);
       deleteLocalFile(user.profile?.jobSeekerProfile?.profilePhoto);
       deleteLocalFile(user.profile?.employerProfile?.logo);
-
-      // 5. Delete the File documents in MongoDB that belong to this user
-      //    (File model stores binary data uploaded by the user)
-      try {
-        const File = (await import('../models/File.js')).default;
-        await File.deleteMany({ uploadedBy: userId });
-      } catch {
-        // File model import may fail in some setups — non-fatal
-      }
-
-      // 6. Delete candidate matches referencing this user
-      try {
-        const CandidateMatch = (await import('../models/CandidateMatch.js')).default;
-        await CandidateMatch.deleteMany({ candidateId: userId });
-      } catch {
-        // Non-fatal if model doesn't exist
-      }
-
-      // 7. Finally, permanently delete the user document
-      await User.deleteOne({ _id: userId });
-
-      purgedCount++;
-      logger.info('Account cleanup: permanently deleted user', {
-        userId: userId.toString(),
-        email: user.email,
-        userType: user.userType,
-        applicationsDeleted: appResult.deletedCount,
-        jobsDeleted: jobResult.deletedCount,
-        notificationsDeleted: notifResult.deletedCount
-      });
 
     } catch (error) {
       logger.error('Account cleanup: failed to purge user', {
@@ -96,6 +99,8 @@ async function purgeDeletedAccounts() {
         error: error.message
       });
       // Continue with next user — don't let one failure stop the whole batch
+    } finally {
+      await session.endSession();
     }
   }
 

@@ -270,6 +270,7 @@ const EditJob = () => {
 
   const handleSubmit = async () => {
     if (currentStep !== 3) return;
+    if (loading) return; // Prevent double-submit
 
     // Final validation before submission
     const step0Validation = validateForm(formData, postJobRules.step0);

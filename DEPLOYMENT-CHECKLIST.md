@@ -5,397 +5,289 @@
 
 ---
 
-## 1. Pre-Deploy: Critical Audit Fixes
+## Phase 1: Pre-Deploy — Environment Variables
 
-Verify these issues from the audit are resolved before deploying:
+Set ALL of the following in the production environment (Railway for backend, Vercel for frontend).
+**Never commit actual secrets. This list shows the expected format only.**
 
-- [x] **C1**: `send-verification.js` deleted (legacy unauthenticated email spray route)
-- [x] **C3**: Password validation aligned across all auth flows (8+ chars, uppercase, lowercase, digit)
-- [x] **C4**: `pendingRegistrationsMap` in `auth.js` has 10K size limit, periodic cleanup, capacity rejection
-- [x] **C5**: `notifyAdmins()` in `notificationService.js:499` fixed — was querying `role: 'admin'` (wrong field), now correctly queries `userType: 'admin'` (admin report notifications were silently dropped)
-- [x] **C6**: `BulkNotification.getTargetUsers()` uses `.lean()` for memory-efficient user loading
-- [x] **H8**: `resendEmailService.js` has production safety check — crashes if `EMAIL_TEST_MODE=true` in production
-- [x] **H9**: `.gitignore` hardened — added `test-mongodb*` and `test-*.js` patterns to prevent credential file commits
-- [ ] **POST-LAUNCH**: Rotate MongoDB Atlas credentials (were previously exposed in `test-mongodb.js`, now deleted)
-- [ ] **POST-LAUNCH**: Remove hardcoded test email `advance.al123456@gmail.com` from `resendEmailService.js:18` (controlled by `EMAIL_TEST_MODE` env var)
+### Backend (Railway)
 
----
+| Variable | Format | Required | Notes |
+|----------|--------|----------|-------|
+| `NODE_ENV` | `production` | YES | Must be "production" |
+| `PORT` | `3001` | NO | Railway auto-assigns port |
+| `MONGODB_URI` | `mongodb+srv://user:pass@cluster.mongodb.net/advance-al?retryWrites=true&w=majority` | YES | MongoDB Atlas SRV connection string |
+| `JWT_SECRET` | 64+ char random string | YES | `openssl rand -hex 32` |
+| `JWT_REFRESH_SECRET` | 64+ char random string (different from JWT_SECRET) | YES | `openssl rand -hex 32` |
+| `FRONTEND_URL` | `https://advance.al` | YES | Used in password reset links, CORS, email URLs |
+| `OPENAI_API_KEY` | `sk-...` | YES | For CV generation + embeddings |
+| `OPENAI_MODEL` | `gpt-4o-mini` | NO | Defaults to gpt-4o-mini |
+| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | NO | Defaults to text-embedding-3-small |
+| `RESEND_API_KEY` | `re_...` | YES | Resend email service |
+| `EMAIL_FROM` | `advance.al <noreply@advance.al>` | NO | Defaults to this |
+| `EMAIL_TEST_MODE` | `false` | YES | **MUST be false in production** |
+| `CLOUDINARY_CLOUD_NAME` | `your-cloud-name` | YES | File uploads |
+| `CLOUDINARY_API_KEY` | `123456789012345` | YES | File uploads |
+| `CLOUDINARY_API_SECRET` | `AbCdEfGhIjKlMnOpQrStUvWxYz` | YES | File uploads |
+| `UPSTASH_REDIS_REST_URL` | `https://xyz.upstash.io` | YES | Caching, rate limiting |
+| `UPSTASH_REDIS_REST_TOKEN` | `AXyz...` | YES | Upstash auth |
+| `SENTRY_DSN` | `https://abc@sentry.io/123` | YES | Error monitoring |
+| `SENTRY_ENABLED` | `true` | NO | Auto-enabled in production |
+| `RATE_LIMIT_WINDOW_MS` | `900000` | NO | 15 minutes default |
+| `RATE_LIMIT_MAX_REQUESTS` | `100` | NO | 100/window default |
+| `EMBEDDING_WORKER_ENABLED` | `true` | NO | Defaults to true |
+| `ALERT_EMAIL_ENABLED` | `true` | REC | Enable alert emails |
+| `ALERT_EMAIL_TO` | `admin@advance.al` | REC | Alert recipient |
 
-## 2. Pre-Deploy: Environment Variables
+### Frontend (Vercel)
 
-Set ALL of the following in the **Railway** dashboard (backend) and **Vercel** dashboard (frontend).
+| Variable | Format | Required |
+|----------|--------|----------|
+| `VITE_API_URL` | `https://api.advance.al` (or Railway production URL) | YES |
+| `VITE_SENTRY_DSN` | `https://abc@sentry.io/456` | REC |
 
-### Backend (Railway) — Required:
-
-| Variable | Format | Notes |
-|----------|--------|-------|
-| `NODE_ENV` | `production` | **Must be set** |
-| `MONGODB_URI` | `mongodb+srv://user:pass@cluster.mongodb.net/advance-al?retryWrites=true&w=majority` | Atlas connection string with SRV |
-| `JWT_SECRET` | 64-byte hex string | `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"` |
-| `JWT_REFRESH_SECRET` | 64-byte hex string (different from JWT_SECRET) | Same generation method |
-| `JWT_EXPIRES_IN` | `2h` | Access token lifetime |
-| `JWT_REFRESH_EXPIRES_IN` | `7d` | Refresh token lifetime |
-| `FRONTEND_URL` | `https://advance.al` | Used for CORS, email links, password reset URLs |
-| `CLOUDINARY_CLOUD_NAME` | Your Cloudinary cloud name | |
-| `CLOUDINARY_API_KEY` | Cloudinary API key | |
-| `CLOUDINARY_API_SECRET` | Cloudinary API secret | |
-| `RESEND_API_KEY` | `re_xxxxxxxxxxxxxxxx` | Production Resend key |
-| `EMAIL_FROM` | `advance.al <noreply@advance.al>` | Must match verified Resend domain |
-| `OPENAI_API_KEY` | `sk-proj-xxxxxxxx` | For embeddings + CV generation |
-| `ADMIN_SEED_EMAIL` | `admin@advance.al` | Initial admin account email (format: email@domain.com) |
-| `ADMIN_SEED_PASSWORD` | Strong password | Initial admin account password (strong password) |
-
-### Backend (Railway) — Recommended:
-
-| Variable | Format | Notes |
-|----------|--------|-------|
-| `UPSTASH_REDIS_REST_URL` | `https://your-instance.upstash.io` | Caching, rate limits, pending registrations |
-| `UPSTASH_REDIS_REST_TOKEN` | Upstash REST token | |
-| `SENTRY_DSN` | `https://xxx@yyy.ingest.sentry.io/zzz` | Error tracking |
-| `BCRYPT_SALT_ROUNDS` | `12` | Password hashing cost |
-| `RATE_LIMIT_WINDOW_MS` | `900000` | 15 minutes |
-| `RATE_LIMIT_MAX_REQUESTS` | `100` | Per window per IP |
-| `PORT` | `3001` | Railway may override this |
-
-### Backend (Railway) — Optional:
-
-| Variable | Format | Notes |
-|----------|--------|-------|
-| `OPENAI_MODEL` | `gpt-4o-2024-08-06` | CV generation model |
-| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
-| `EMBEDDING_WORKER_ENABLED` | `true` | Enable background embedding worker |
-| `ALERT_EMAIL_ENABLED` | `false` | Email alerts for system issues |
-| `EMAIL_TEST_MODE` | `false` | **MUST be false in production** |
-| `LOG_LEVEL` | `info` | Winston log level |
-
-### Backend — Must NOT be set in production:
-
-| Variable | Reason |
-|----------|--------|
-| `DEBUG_EMBEDDINGS` | Leaks sensitive data in logs |
-| `DEBUG_WORKER` | Leaks sensitive data in logs |
-| `DEBUG_QUEUE` | Leaks sensitive data in logs |
-| `ENABLE_MOCK_PAYMENTS` | Should be false for real payments |
-
-> **Important:** `DEBUG_EMBEDDINGS`, `DEBUG_WORKER`, and `DEBUG_QUEUE` should ALL be explicitly set to `false` or completely removed in production — not just "not set". Some code paths may default to truthy if the variable exists but is empty.
-
-### Frontend (Vercel):
-
-| Variable | Format | Notes |
-|----------|--------|-------|
-| `VITE_API_URL` | `https://advance-al-backend.up.railway.app/api` | Backend API URL |
-| `VITE_SENTRY_DSN` | Sentry DSN for frontend | Optional |
-
-- [ ] All required variables set in Railway
-- [ ] All required variables set in Vercel
-- [ ] `EMAIL_TEST_MODE` is `false` (or not set)
-- [ ] No debug flags enabled
-- [ ] JWT secrets are unique, random, and different from each other
-- [ ] Frontend `VITE_API_URL` points to the production backend URL
+### Checklist:
+- [ ] All required environment variables set in Railway
+- [ ] All required environment variables set in Vercel
+- [ ] `EMAIL_TEST_MODE` is `false` in production
+- [ ] `JWT_SECRET` and `JWT_REFRESH_SECRET` are unique, strong, and different from each other
+- [ ] `FRONTEND_URL` is the actual production URL (not localhost)
+- [ ] OpenAI billing is active and has sufficient credits
+- [ ] Resend domain verified and SPF/DKIM configured
 
 ---
 
-## 3. Pre-Deploy: Third-Party Services
+## Phase 2: Pre-Deploy — External Services
 
-### MongoDB Atlas:
-- [ ] Production cluster is at least M10 (or M0 free for initial launch)
-- [ ] Database user created with appropriate permissions
-- [ ] Network access: Allow Railway IPs (or `0.0.0.0/0` with strong DB password)
-- [ ] Connection string uses `+srv` format
-- [ ] Backups enabled (Atlas has automatic daily snapshots on M10+)
-- [ ] Indexes verified: `jobs.embedding` (2dsphere), `applications.{jobId,jobSeekerId}` (unique partial), `users.email` (unique)
-- [ ] Connection pool sizing: 50 max, 10 min (configured in database.js)
+### MongoDB Atlas
+- [ ] Production cluster created (M10+ recommended for production)
+- [ ] Network access: Railway IP whitelist configured (or 0.0.0.0/0 with strong auth)
+- [ ] Database user created with appropriate permissions (readWrite on advance-al DB)
+- [ ] Connection string uses SRV format (`mongodb+srv://`)
+- [ ] Backups enabled (daily snapshots)
+- [ ] Alerts configured: high connections, slow queries, disk usage
 
-### Upstash Redis:
+### Upstash Redis
 - [ ] Production instance created
-- [ ] TLS enabled (Upstash REST uses HTTPS by default)
-- [ ] Correct URL and token in env vars
-- [ ] Eviction policy set (allkeys-lru recommended)
-- [ ] Test: cache a value and retrieve it → works over TLS
-- [ ] Plan: free tier supports up to 10,000 commands/day — sufficient for launch
+- [ ] TLS enabled
+- [ ] REST URL and token configured in env
+- [ ] Max memory policy set (allkeys-lru recommended)
 
-### Cloudinary:
-- [ ] Production account (not sandbox)
-- [ ] Upload preset configured (if using unsigned uploads)
-- [ ] Folder structure: `advance-al/resumes/`, `advance-al/logos/`, `advance-al/photos/`
+### Cloudinary
+- [ ] Production account (not free tier if heavy usage expected)
+- [ ] Upload preset configured for resume PDFs and images
+- [ ] Credentials in env
 
-### Resend (Email):
-- [ ] Production API key (not test/sandbox)
-- [ ] Domain `advance.al` verified in Resend dashboard
-- [ ] SPF record added to DNS: `v=spf1 include:_spf.resend.com ~all`
-- [ ] DKIM record added (Resend provides this)
-- [ ] DMARC record: `v=DMARC1; p=none; rua=mailto:dmarc@advance.al`
-- [ ] FROM address matches verified domain: `noreply@advance.al`
+### Resend
+- [ ] Production API key (not test key)
+- [ ] Domain `advance.al` verified
+- [ ] SPF record added to DNS
+- [ ] DKIM record added to DNS
+- [ ] Test email delivery from Resend dashboard
 
-### OpenAI:
+### OpenAI
 - [ ] Production API key with billing active
-- [ ] Billing limit set (e.g., $50/month to start)
-- [ ] Understand rate limits: text-embedding-3-small allows 3,000 RPM
+- [ ] Rate limits understood: 500 RPM for gpt-4o-mini, 3000 RPM for embeddings
+- [ ] Usage alerts configured in OpenAI dashboard
 
-### Sentry:
-- [ ] Production project created for both frontend and backend
-- [ ] DSNs set in environment variables
-- [ ] Alert rules configured (email on first occurrence of new issues)
-
-### DNS:
-- [ ] `advance.al` points to Vercel (A record or CNAME)
-- [ ] `www.advance.al` redirects to `advance.al` (Vercel config)
-- [ ] SSL certificate active (Vercel auto-provisions Let's Encrypt)
-- [ ] Backend URL is accessible (Railway auto-provides `*.up.railway.app`)
+### Sentry
+- [ ] Production project created
+- [ ] DSN configured in both backend and frontend envs
+- [ ] Alert rules configured (email on error spike)
+- [ ] Source maps uploaded (Vercel does this automatically)
 
 ---
 
-## 4. Deploy: Backend (Railway)
+## Phase 3: Pre-Deploy — DNS & SSL
+
+- [ ] Domain `advance.al` pointed to Vercel (A record or CNAME)
+- [ ] `www.advance.al` redirects to `advance.al` (or vice versa)
+- [ ] Backend subdomain (e.g., `api.advance.al`) pointed to Railway (if using custom domain)
+- [ ] SSL certificates active for both frontend and backend domains
+- [ ] HSTS headers will be set by infrastructure (Vercel/Railway handle this)
+- [ ] Test: `curl -I https://advance.al` returns 200 with `strict-transport-security` header
+- [ ] Test: `curl -I https://api.advance.al/health` returns 200
+
+---
+
+## Phase 4: Pre-Deploy — Code Verification
+
+- [ ] All audit fixes merged (C2-C6, H1-H7, M4-M5)
+- [ ] `npm run build` passes for both frontend and backend
+- [ ] No `console.log` in frontend production build (tree-shaken by Vite in production mode)
+- [ ] CORS configuration includes production domains
+- [ ] Rate limiting is ENABLED in production (not skipped like in dev)
+- [ ] API test suite passes: `node tests/api-tests.js`
+- [ ] No hardcoded localhost URLs in frontend code (search for `localhost:3001`)
+- [ ] `.env` files are NOT committed to git
+- [ ] `git status` is clean — all changes committed
+
+---
+
+## Phase 5: Deploy Backend (Railway)
 
 ### Steps:
-1. [ ] Push latest code to the repository (or the branch Railway watches)
-2. [ ] In Railway dashboard, trigger a deploy (or it auto-deploys on push)
-3. [ ] Watch the build logs:
-   - [ ] `npm install --omit=dev` completes without errors
-   - [ ] No build failures
-4. [ ] Watch the deploy logs:
-   - [ ] `MongoDB Connected: xxxxxx` appears
-   - [ ] `advance.al API running on port XXXX` appears
-   - [ ] No crash loops (container restarts)
-5. [ ] Test the health check:
-   ```
-   curl https://advance-al-backend.up.railway.app/health
-   ```
-   - [ ] Returns `{ "success": true, "message": "OK" }`
-   - [ ] `redis` field shows `connected` (or `not_configured` if not using Redis)
+1. [ ] Push code to the main branch (or trigger deployment branch)
+2. [ ] Railway auto-deploys from GitHub (if connected)
+   - OR: `railway up` from CLI
+3. [ ] Watch Railway deploy logs for errors
+4. [ ] VERIFY: No crash loops in logs
+5. [ ] VERIFY: "Server running on port XXXX" message appears
+6. [ ] VERIFY: "Connected to MongoDB" message appears
+7. [ ] VERIFY: No "Missing required environment variable" warnings
 
-### Verify:
-- [ ] Health check returns 200
-- [ ] No error logs in Railway dashboard
-- [ ] Memory usage is reasonable (< 200MB initially)
-
----
-
-## 5. Deploy: Frontend (Vercel)
-
-### Steps:
-1. [ ] Push latest code (or trigger deploy in Vercel dashboard)
-2. [ ] In Vercel dashboard, verify build succeeds:
-   - [ ] `npm run build` completes
-   - [ ] No TypeScript or build errors
-   - [ ] Bundle size is reasonable (check Vercel build output)
-3. [ ] Verify deployment:
-   ```
-   curl -I https://advance.al
-   ```
-   - [ ] Returns 200
-   - [ ] Has security headers (X-Content-Type-Options, etc.)
-4. [ ] Open `https://advance.al` in a browser
-   - [ ] Page loads correctly
-   - [ ] No console errors (DevTools)
-   - [ ] API calls succeed (Network tab shows 200 responses from backend)
-
-### Verify:
-- [ ] Homepage loads with job listings
-- [ ] API calls go to the correct backend URL (not localhost)
-- [ ] No mixed content warnings (all HTTPS)
-- [ ] SPA routing works (navigate to `/login`, refresh the page — should work, not 404)
-
----
-
-## 5.5 Security Verification
-
-Run these security checks after both frontend and backend are deployed:
-
-- [ ] Test CORS: curl from allowed origin → Access-Control-Allow-Origin header present
-  ```bash
-  curl -H "Origin: https://advance.al" -I https://advance-al-backend.up.railway.app/api/jobs
-  ```
-- [ ] Test CORS: curl from disallowed origin → No CORS headers / blocked
-  ```bash
-  curl -H "Origin: https://evil.com" -I https://advance-al-backend.up.railway.app/api/jobs
-  ```
-- [ ] Test rate limiting: hit /api/auth/login 20 times → 429 response
-- [ ] Test Helmet headers: curl -I → X-Content-Type-Options, Strict-Transport-Security, X-Frame-Options present
-  ```bash
-  curl -I https://advance-al-backend.up.railway.app/health
-  ```
-- [ ] Test CSP: Content-Security-Policy header present and not too permissive
-- [ ] Verify: no API keys in frontend bundle (search dist/ for `sk-`, `re_`, `mongodb+srv`)
-  ```bash
-  # After Vercel build, download and inspect the bundle:
-  curl -s https://advance.al/assets/*.js | grep -E 'sk-|re_|mongodb\+srv' && echo "LEAK FOUND!" || echo "Clean"
-  ```
-- [ ] Verify: localStorage tokens cleared on logout
-- [ ] Verify: no stack traces in production error responses (hit a bad endpoint, check response)
-  ```bash
-  curl https://advance-al-backend.up.railway.app/api/nonexistent-endpoint-test
-  # Should return a clean JSON error, NOT a stack trace
-  ```
-
----
-
-## 6. Post-Deploy: Smoke Tests (Production)
-
-Run these immediately after both frontend and backend are deployed:
-
-### API Quick Test:
+### Health Check:
 ```bash
-# Health check
-curl https://advance-al-backend.up.railway.app/health
-
-# Public endpoints
-curl https://advance-al-backend.up.railway.app/api/stats/public
-curl https://advance-al-backend.up.railway.app/api/locations
-curl https://advance-al-backend.up.railway.app/api/jobs?limit=5
-curl https://advance-al-backend.up.railway.app/api/companies?limit=5
-curl https://advance-al-backend.up.railway.app/api/configuration/public
-
-# Auth test (should return 401)
-curl https://advance-al-backend.up.railway.app/api/users/profile
-
-# Test auth flow
-curl -X POST https://advance-al-backend.up.railway.app/api/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"admin@advance.al","password":"<admin-password>"}'
-
-# Test CORS (should work from production frontend domain)
-curl -H "Origin: https://advance.al" -I https://advance-al-backend.up.railway.app/api/jobs
-
-# Test CORS rejection (should fail from unknown origin)
-curl -H "Origin: https://evil.com" -I https://advance-al-backend.up.railway.app/api/jobs
+curl https://api.advance.al/health
+# Expected: {"success":true,"message":"Server is running","redis":"connected",...}
 ```
-
-- [ ] Health check: 200
-- [ ] Stats: 200 with real data
-- [ ] Locations: 200 with locations
-- [ ] Jobs: 200 with jobs
-- [ ] Companies: 200 with companies
-- [ ] Config public: 200
-- [ ] Profile (no auth): 401
-- [ ] Auth login: returns JWT token
-- [ ] CORS from allowed origin: Access-Control-Allow-Origin header present
-- [ ] CORS from disallowed origin: No CORS headers / request blocked
-
-### Frontend Smoke Test:
-- [ ] Open `https://advance.al`
-- [ ] Browse jobs — list loads
-- [ ] Click a job — detail page works
-- [ ] Go to `/login` — form renders
-- [ ] Log in with admin account
-- [ ] Visit `/admin` — dashboard loads with stats
-- [ ] Log out — works correctly
-- [ ] Register a new test user (seeker)
-- [ ] Check email — verification code received
-- [ ] Complete registration — profile accessible
-
-### Frontend End-to-End Workflow Test:
-- [ ] Register a real test user with a real email
-- [ ] Apply to a job as that user
-- [ ] Change application status as employer
-- [ ] Verify notification was received
-- [ ] Test forgot password flow end-to-end with real email
-
-### Email Test:
-- [ ] Trigger a password reset email
-- [ ] VERIFY: Email arrives in inbox (not spam)
-- [ ] VERIFY: Email looks professional (HTML renders correctly)
-- [ ] VERIFY: Links in email point to production URL (not localhost)
-- [ ] VERIFY: Unsubscribe links work (for notification emails)
-
-### Sentry Test:
-- [ ] Trigger an error (e.g., visit a malformed URL that causes a 500)
-- [ ] VERIFY: Error appears in Sentry dashboard within 1 minute
+- [ ] Health check returns 200
+- [ ] Redis status is "connected"
+- [ ] No database connection errors in logs
 
 ---
 
-## 7. Post-Deploy: First 24 Hours Monitoring
+## Phase 6: Deploy Frontend (Vercel)
 
-### Every 2 hours for the first 8 hours:
-- [ ] Check Railway dashboard:
-  - Memory usage stable (not climbing)
-  - No crash restarts
-  - Response times normal
-- [ ] Check Sentry:
-  - No new critical errors
-  - No spike in error volume
-- [ ] Check MongoDB Atlas:
-  - Connection count stable (should be ~10-50)
-  - No slow queries flagged
-  - Storage usage normal
-- [ ] Check Upstash Redis (if configured):
-  - Connection count normal
-  - Memory usage normal
-  - No evictions (unless expected)
+### Steps:
+1. [ ] Push code to main branch (Vercel auto-deploys)
+   - OR: `vercel --prod` from CLI
+2. [ ] Watch Vercel build logs for errors
+3. [ ] VERIFY: Build completes without errors
+4. [ ] VERIFY: Preview URL works before promoting to production
 
-### After 24 hours:
-- [ ] Review all Sentry errors — categorize and prioritize
-- [ ] Review Railway logs for any warnings
-- [ ] Check email deliverability:
-  - Send test email to Gmail, Outlook, Yahoo
-  - Verify none land in spam
-- [ ] Verify cron jobs ran:
-  - Job expiry: check that expired jobs are marked as such
-  - Data retention: check Railway logs for retention entries
-  - Suspension auto-lift: if applicable
-- [ ] Check the embedding worker:
-  - `/admin/embeddings/status` shows healthy worker
-  - Jobs are getting embeddings generated
-- [ ] Send a small test bulk notification (to admins only)
-- [ ] VERIFY: Notification delivered via both in-app and email
+### Verification:
+- [ ] Visit `https://advance.al`
+- [ ] VERIFY: Home page loads fully (no blank screen)
+- [ ] VERIFY: No console errors in browser DevTools
+- [ ] VERIFY: API calls go to production backend (not localhost)
+- [ ] Check Network tab — all API requests to production URL
 
 ---
 
-## 8. Rollback Plan
+## Phase 7: Post-Deploy — Smoke Tests
 
-If something goes critically wrong:
+> Run these tests against the production environment. Read-only tests only — no destructive operations.
+
+### Core Flows:
+1. [ ] **Home page loads**: Visit `https://advance.al` — page renders, images load
+2. [ ] **Jobs page**: `/jobs` — jobs load with pagination
+3. [ ] **Job search**: Search for a term — results appear
+4. [ ] **Job detail**: Click a job — detail page loads
+5. [ ] **Registration flow**: Register a new test account → receive verification email → verify → logged in
+6. [ ] **Login flow**: Login with test account → see dashboard
+7. [ ] **Profile update**: Update profile bio → save → refresh → persists
+8. [ ] **Job creation**: Create a test job → verify it appears in listings
+9. [ ] **Application flow**: Apply to a job → verify in "My Applications"
+10. [ ] **Notifications**: Check notifications load
+11. [ ] **Privacy page**: `/privacy` — all 14 sections render
+12. [ ] **Terms page**: `/terms` — all 16 sections render
+13. [ ] **About page**: `/about` — page loads, contact section has ID
+
+### Email Verification:
+- [ ] Registration verification email received in real inbox (not spam)
+- [ ] Password reset email received
+- [ ] Notification emails received (if triggered)
+- [ ] Email sender shows as `advance.al <noreply@advance.al>`
+- [ ] SPF/DKIM pass (check email headers)
+
+### API Tests (read-only):
+```bash
+API_URL=https://api.advance.al node tests/api-tests.js
+```
+- [ ] All read-only tests pass (GET endpoints)
+- [ ] Auth endpoints work (login returns tokens)
+- [ ] Note: Write tests will create data — run selectively
+
+---
+
+## Phase 8: Post-Deploy — Monitoring (First 24 Hours)
+
+### Hour 1:
+- [ ] Check Sentry for any errors — should be minimal/zero
+- [ ] Check Railway logs — no crash loops, no unhandled rejections
+- [ ] Check MongoDB Atlas: connections count reasonable (< 50)
+- [ ] Check Upstash Redis: connections count reasonable, no errors
+
+### Hours 2-8:
+- [ ] Check Sentry error rate trend — should be flat/declining
+- [ ] Check Railway CPU and memory usage — stable, not climbing
+- [ ] MongoDB Atlas: query performance (no slow queries > 100ms)
+- [ ] Test email deliverability: send a test and check if it lands in inbox (not spam)
+
+### Hours 8-24:
+- [ ] Monitor for any user-reported issues
+- [ ] Check background jobs running:
+  - [ ] Job expiry cron (if jobs have expiry dates)
+  - [ ] Data retention cleanup
+  - [ ] Embedding worker processing queue
+- [ ] Verify cron jobs work by checking last-run timestamps in logs
+- [ ] Run API test suite again — all tests still pass
+
+---
+
+## Phase 9: Post-Deploy — Security Verification
+
+- [ ] HTTPS enforced: HTTP redirects to HTTPS
+- [ ] CORS: only `advance.al` and Vercel preview URLs allowed
+- [ ] Rate limiting active: rapid requests get 429 (test with `for i in {1..20}; do curl -s -o /dev/null -w "%{http_code}\n" https://api.advance.al/api/auth/login -X POST -H "Content-Type: application/json" -d '{"email":"test@test.com","password":"wrong"}'; done`)
+- [ ] Security headers present (check with `curl -I`):
+  - [ ] `X-Content-Type-Options: nosniff`
+  - [ ] `X-Frame-Options: DENY` or `SAMEORIGIN`
+  - [ ] `X-XSS-Protection: 1; mode=block`
+  - [ ] No `X-Powered-By` header (removed by helmet)
+- [ ] Admin endpoints reject non-admin tokens (test with regular user token)
+- [ ] Password reset tokens are single-use
+- [ ] No sensitive data in API error responses (no stack traces)
+
+---
+
+## Phase 10: Rollback Plan
+
+If critical issues are found after deployment:
 
 ### Backend Rollback (Railway):
-1. Go to Railway dashboard → Deployments
-2. Click on the previous successful deployment
-3. Click "Redeploy" to roll back
-4. Verify health check passes
+```bash
+# Option 1: Redeploy previous commit
+railway rollback
+
+# Option 2: Revert git commit and push
+git revert HEAD
+git push origin main
+```
 
 ### Frontend Rollback (Vercel):
-1. Go to Vercel dashboard → Deployments
-2. Click on the previous successful deployment
-3. Click "..." → "Promote to Production"
-4. Verify the site loads correctly
+```bash
+# Option 1: Promote previous deployment
+# Go to Vercel dashboard → Deployments → find previous deployment → "Promote to Production"
+
+# Option 2: Revert git commit
+git revert HEAD
+git push origin main
+```
 
 ### Database Rollback:
-- MongoDB Atlas has point-in-time recovery (M10+ clusters)
-- For M0: restore from the last daily snapshot in Atlas dashboard
+- MongoDB Atlas automatic daily backups
+- Point-in-time recovery available (M10+ clusters)
+- **CAUTION**: Database rollback may lose data created after the backup point
 
-### Emergency Contacts:
-- [ ] Note Railway support channel: https://railway.app/help
-- [ ] Note Vercel support: https://vercel.com/help
-- [ ] Note MongoDB Atlas support: https://cloud.mongodb.com/v2#/org/.../support
-
----
-
-## 9. Post-Launch Tasks (Within First Week)
-
-- [ ] Set up uptime monitoring (UptimeRobot, Pingdom, or similar):
-  - Monitor: `https://advance-al-backend.up.railway.app/health`
-  - Monitor: `https://advance.al`
-  - Alert: email + SMS on downtime
-- [ ] Set up Sentry alerts:
-  - New issue: email immediately
-  - High error volume: email + Slack
-- [ ] Review and optimize MongoDB indexes based on actual query patterns (Atlas Performance Advisor)
-- [ ] Review Cloudinary usage and set up auto-optimization
-- [ ] Plan httpOnly cookie migration for tokens (high-priority security improvement)
-- [ ] Set up automated database backups (if not on M10+)
-- [ ] Configure Railway auto-scaling rules (if available on your plan)
-- [ ] Review rate limiting thresholds based on actual traffic patterns
-- [ ] Verify admin report notifications are being delivered (fixed notifyAdmins bug)
-- [ ] Review MongoDB slow query log (Atlas Performance Advisor)
-- [ ] Test embedding generation: post a new job → verify embedding is generated within 5 minutes
-- [ ] Verify Redis caching: check /health endpoint shows redis: "connected"
-- [ ] Review Cloudinary storage usage and set up folder organization
-- [ ] Set up log retention policy in Railway (default is 14 days)
+### Rollback Decision Criteria:
+- **Immediate rollback**: Server crashes on startup, database connection failures, complete frontend blank screen
+- **Quick fix preferred**: Individual endpoint errors, UI glitches, non-critical feature issues
+- **Monitor**: Intermittent errors < 1% rate, performance degradation < 2x normal
 
 ---
 
-## Sign-Off
+## Contacts & Resources
 
-| Role | Name | Date | Signature |
-|------|------|------|-----------|
-| Developer | | | |
-| Tester | | | |
-| Product Owner | | | |
+| Resource | Location |
+|----------|----------|
+| Railway Dashboard | https://railway.app |
+| Vercel Dashboard | https://vercel.com |
+| MongoDB Atlas | https://cloud.mongodb.com |
+| Sentry Dashboard | https://sentry.io |
+| Upstash Console | https://console.upstash.com |
+| Cloudinary Console | https://console.cloudinary.com |
+| Resend Dashboard | https://resend.com |
+| OpenAI Dashboard | https://platform.openai.com |
+| Domain DNS | (wherever advance.al is registered) |

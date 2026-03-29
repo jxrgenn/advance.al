@@ -3,6 +3,7 @@ import { body, validationResult } from 'express-validator';
 import { Application, Job, User, Notification } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer } from '../middleware/auth.js';
 import resendEmailService from '../lib/resendEmailService.js';
+import mongoose from 'mongoose';
 import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
 import logger from '../config/logger.js';
 
@@ -90,15 +91,14 @@ router.post('/apply', authenticate, requireJobSeeker, applyValidation, handleVal
       });
     }
 
-    // Validate job seeker profile completeness for one-click apply
+    // Validate job seeker has at least first+last name to apply
     if (applicationMethod === 'one_click') {
       const user = req.user;
-      const profile = user.profile?.jobSeekerProfile;
 
-      if (!profile || !user.profile.firstName || !user.profile.lastName || !profile.title || !profile.resume) {
+      if (!user.profile?.firstName || !user.profile?.lastName) {
         return res.status(400).json({
           success: false,
-          message: 'Për aplikim me një klik duhet të keni emrin, mbiemrin, titullin e punës dhe CV-në në profil'
+          message: 'Për të aplikuar duhet të keni emrin dhe mbiemrin në profil'
         });
       }
     }
@@ -391,7 +391,7 @@ router.get('/employer/all', authenticate, requireEmployer, async (req, res) => {
 
     const filters = {};
     if (status) filters.status = status;
-    if (jobId) filters.jobId = jobId;
+    if (jobId && mongoose.isValidObjectId(jobId)) filters.jobId = jobId;
 
     const safeLimit3 = sanitizeLimit(limit, 200, 10);
     const safePage3 = Math.max(1, parseInt(page) || 1);

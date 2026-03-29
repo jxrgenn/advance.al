@@ -1,11 +1,72 @@
 # advance.al - DEVELOPMENT STATUS & ROADMAP
 
 **Date:** September 25-28, 2025
-**Last Updated:** March 28, 2026 (Comment out Kompanite, rewrite Privacy & Terms legal pages)
+**Last Updated:** March 29, 2026 (Onboarding system, sticky filter fix, CV upload UX improvements)
 **Platform:** Premier Job Marketplace for Albania
-**CURRENT STATUS:** 🟢 **DEPLOY-READY — QA in progress. 211/211 API tests, 15/15 audit fixes verified. Manual QA bugs being fixed (Rounds 1-3 complete).**
+**CURRENT STATUS:** 🟢 **DEPLOY-READY — Pre-deployment audit complete. 6 critical + 7 high + 2 medium fixes applied. Test suite, load tests, QA checklist, deployment checklist created.**
 **Phase:** QA & Deployment (see env var checklist below)
 **Brand:** advance.al (formerly Albania JobFlow)
+
+## ✅ **WEBSITE ONBOARDING SYSTEM — MARCH 29, 2026**
+
+### New Files:
+- `frontend/src/lib/profileUtils.ts` — Shared `getProfileCompleteness()` + `getNextProfileStep()` utilities
+- `frontend/src/hooks/useOnboarding.ts` — Custom hook: variant detection, localStorage dismiss logic, delay management
+- `frontend/src/components/OnboardingGuide.tsx` — Inline banner component with 3 visual variants (guest, new-user, returning-user)
+
+### Modified Files:
+- `frontend/src/components/ApplyModal.tsx` — Refactored to use shared `getProfileCompleteness()` from profileUtils
+- `frontend/src/pages/Index.tsx` — Added `<OnboardingGuide />`, fixed sticky filter `top-[9.5rem]` when premium carousel present, `top-20` otherwise
+- `frontend/src/components/ApplyModal.tsx` — Fixed CV button text (PDF → PDF/DOCX), added "Save CV to profile?" dialog, async background CV parse + profile auto-fill
+- `backend/src/routes/applications.js` — Removed title/resume requirement from apply — only firstName+lastName needed
+- `frontend/src/pages/Profile.tsx` — Added background CV parsing overlay (blocks editing while CV is being analyzed)
+
+### Features:
+- **No guest banner** — existing QuickUserBanner already handles guest nudges inline
+- **New user banner** (< 30% profile): Welcome message, progress bar, step dots, AI CV + profile CTAs
+- **Returning user nudge** (30-79%): Compact row with circular progress, next-step suggestion, smart re-emergence when % changes
+- **80%+ profile**: Nothing shown, localStorage cleaned up
+- **Employer/admin**: Never shown
+- **Animations**: framer-motion slide-in/out with AnimatePresence
+
+## ✅ **PRE-DEPLOYMENT AUDIT FIXES — MARCH 28, 2026**
+
+### Critical Fixes (C2-C6)
+- **C2:** Timing-safe verification code comparison using `crypto.timingSafeEqual()` (`auth.js`)
+- **C4:** Race condition on registration — try/catch for E11000 duplicate key error (`auth.js`)
+- **C5:** NoSQL injection prevention — `mongoose.isValidObjectId()` validation on application filters (`applications.js`)
+- **C6:** Account cleanup atomicity — MongoDB transactions with `session.withTransaction()`, bounded queries with `.limit(10000)` (`accountCleanup.js`)
+
+### High-Priority Fixes (H1-H7)
+- **H1:** Double-submit prevention — early-return loading guards on PostJob, EditJob, ApplyModal, Profile (4 files)
+- **H2/M4:** Database indexes — `{ employerId: 1, isDeleted: 1 }` and `{ applicationCount: -1 }` on Job model
+- **H4:** Slug collision prevention — random 4-char suffix added to slug generation (`Job.js`)
+- **H5:** Orphaned application prevention — `softDelete()` now rejects pending applications (`Job.js`)
+
+### Medium-Priority Fixes (M4-M5)
+- **M4:** Added performance indexes to Job model
+- **M5:** Report stats `avgResolutionTime` now computed via MongoDB aggregation instead of hardcoded "2.5 ditë" (`reports.js`)
+
+### Application Count Fix (C3)
+- Changed `applicationCount` increment from pre-save to post-save hook using `_wasNew` flag (`Application.js`)
+
+### Test Suite Created
+- `tests/api-tests.js` — Comprehensive API test suite covering all 157 endpoints
+- `tests/load-test.js` — k6 load test suite (normal, spike, stress, race condition scenarios)
+- `QA-MANUAL-CHECKLIST.md` — Manual frontend QA checklist (30+ test flows)
+- `DEPLOYMENT-CHECKLIST.md` — Production deployment checklist (10 phases)
+
+### Files Modified:
+- `backend/src/routes/auth.js` — C2 (timing-safe), C4 (race condition)
+- `backend/src/routes/applications.js` — C5 (NoSQL injection)
+- `backend/src/services/accountCleanup.js` — C6 (transactions)
+- `backend/src/models/Application.js` — C3 (post-save hook)
+- `backend/src/models/Job.js` — H2/M4 (indexes), H4 (slug), H5 (softDelete)
+- `backend/src/routes/reports.js` — M5 (computed avg resolution)
+- `frontend/src/pages/PostJob.tsx` — H1 (double-submit)
+- `frontend/src/pages/EditJob.tsx` — H1 (double-submit)
+- `frontend/src/components/ApplyModal.tsx` — H1 (double-submit)
+- `frontend/src/pages/Profile.tsx` — H1 (double-submit, 3 handlers)
 
 ## ✅ **KOMPANITE DISABLED, LEGAL PAGES REWRITE — MARCH 28, 2026**
 

@@ -269,9 +269,16 @@ applicationSchema.statics.getJobSeekerApplications = function(jobSeekerId, filte
     .sort({ appliedAt: -1 });
 };
 
-// Pre-save middleware to increment job application count
-applicationSchema.pre('save', async function(next) {
-  if (this.isNew) {
+// Track if this is a new application (for post-save hook)
+applicationSchema.pre('save', function(next) {
+  this._wasNew = this.isNew;
+  next();
+});
+
+// Post-save middleware to increment job application count
+// Using post-save ensures count only increments if the save actually succeeded
+applicationSchema.post('save', async function() {
+  if (this._wasNew) {
     try {
       const Job = mongoose.model('Job');
       await Job.findByIdAndUpdate(this.jobId, { $inc: { applicationCount: 1 } });
@@ -279,7 +286,6 @@ applicationSchema.pre('save', async function(next) {
       logger.error('Error incrementing job application count:', error.message);
     }
   }
-  next();
 });
 
 export default mongoose.model('Application', applicationSchema);

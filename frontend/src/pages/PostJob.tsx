@@ -255,6 +255,7 @@ const PostJob = () => {
 
   const handleSubmit = async () => {
     if (currentStep !== 3) return;
+    if (loading) return; // Prevent double-submit
 
     try {
       setLoading(true);

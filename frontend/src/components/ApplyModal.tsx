@@ -11,6 +11,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -30,12 +31,96 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Job, applicationsApi, usersApi } from '@/lib/api';
+import { getProfileCompleteness } from '@/lib/profileUtils';
 
 interface ApplyModalProps {
   job: Job | null;
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+}
+
+/**
+ * Uploads CV, parses it with AI, and auto-fills profile in the background.
+ * Sets localStorage flag so Profile page shows a loading state.
+ */
+async function backgroundCVSaveAndParse(
+  cvFile: File,
+  refreshUser: () => Promise<void>,
+  showToast: (opts: any) => void
+) {
+  localStorage.setItem('cv-parsing-in-progress', 'true');
+  try {
+    // Step 1: Upload + parse CV with AI
+    const formData = new FormData();
+    formData.append('resume', cvFile);
+    const response = await usersApi.parseResume(formData);
+
+    if (!response.success || !response.data?.parsedData) {
+      // Parsing failed but file was uploaded — still useful
+      await refreshUser();
+      return;
+    }
+
+    const parsed = response.data.parsedData;
+
+    // Step 2: Auto-apply parsed profile fields
+    const profileUpdate: any = {};
+    if (parsed.title) profileUpdate.title = parsed.title;
+    if (parsed.bio) profileUpdate.bio = parsed.bio;
+    if (parsed.experience) profileUpdate.experience = parsed.experience;
+    if (parsed.skills?.length > 0) profileUpdate.skills = parsed.skills;
+
+    if (Object.keys(profileUpdate).length > 0) {
+      await usersApi.updateProfile({ jobSeekerProfile: profileUpdate });
+    }
+
+    // Step 3: Add work experience entries
+    for (const work of (parsed.workExperience || [])) {
+      if (!work.position || !work.company) continue;
+      try {
+        await usersApi.addWorkExperience({
+          position: work.position,
+          company: work.company,
+          location: work.location || '',
+          startDate: work.startDate || '',
+          endDate: work.endDate || '',
+          isCurrentJob: work.isCurrentJob || false,
+          description: work.description || '',
+          achievements: work.achievements || ''
+        });
+      } catch { /* continue on error */ }
+    }
+
+    // Step 4: Add education entries
+    for (const edu of (parsed.education || [])) {
+      if (!edu.degree || !edu.institution) continue;
+      try {
+        await usersApi.addEducation({
+          degree: edu.degree,
+          institution: edu.institution,
+          fieldOfStudy: edu.fieldOfStudy || '',
+          location: edu.location || '',
+          startDate: edu.startDate || '',
+          endDate: edu.endDate || '',
+          isCurrentStudy: edu.isCurrentStudy || false,
+          gpa: edu.gpa || '',
+          description: edu.description || ''
+        });
+      } catch { /* continue on error */ }
+    }
+
+    await refreshUser();
+    showToast({
+      title: 'Profili u plotësua automatikisht!',
+      description: 'CV-ja u analizua dhe profili u përditësua me sukses.',
+      duration: 5000
+    });
+  } catch (error) {
+    console.error('Background CV parse error:', error);
+  } finally {
+    localStorage.removeItem('cv-parsing-in-progress');
+  }
 }
 
 const ApplyModal: React.FC<ApplyModalProps> = ({
@@ -56,7 +141,7 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
 
   // CV upload state
   const [cvFile, setCvFile] = useState<File | null>(null);
-  const [uploadingCV, setUploadingCV] = useState(false);
+  const [showSaveCVDialog, setShowSaveCVDialog] = useState(false);
 
   const userHasCV = !!user?.profile?.jobSeekerProfile?.resume;
 
@@ -68,6 +153,7 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
       setCustomAnswers({});
       setErrors({});
       setCvFile(null);
+      setShowSaveCVDialog(false);
 
       // Pre-fill custom answers
       if (job?.customQuestions) {
@@ -80,28 +166,7 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
     }
   }, [isOpen, job]);
 
-  // Profile completion check
-  // IMPORTANT: Keep in sync with backend users.js calculateProfileCompleteness and Profile.tsx
-  const getProfileCompleteness = () => {
-    if (!user?.profile) return 0;
-
-    let score = 0;
-
-    // Weighted fields (total = 100%)
-    if (user.profile.firstName && user.profile.lastName) score += 15;
-    if (user.profile.phone) score += 10;
-    if (user.profile.location?.city) score += 10;
-    if (user.profile.jobSeekerProfile?.title) score += 15;
-    if (user.profile.jobSeekerProfile?.bio) score += 15;
-    if (user.profile.jobSeekerProfile?.skills && user.profile.jobSeekerProfile.skills.length > 0) score += 15;
-    if (user.profile.jobSeekerProfile?.experience) score += 10;
-    if (user.profile.jobSeekerProfile?.resume) score += 10;
-
-    return Math.min(score, 100);
-  };
-
-  const profileCompleteness = getProfileCompleteness();
-  const isProfileIncomplete = profileCompleteness < 60;
+  const profileCompleteness = getProfileCompleteness(user ?? null);
 
   const handleCVSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -144,6 +209,7 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
 
   const handleSubmit = async () => {
     if (!job || !user) return;
+    if (isSubmitting) return; // Prevent double-submit
 
     if (!validateForm()) {
       toast({
@@ -154,20 +220,23 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
       return;
     }
 
+    // If user attached a CV and doesn't have one on profile, ask if they want to save it
+    if (cvFile && !userHasCV) {
+      setShowSaveCVDialog(true);
+      return;
+    }
+
+    await submitApplication(false);
+  };
+
+  const submitApplication = async (saveToProfile: boolean) => {
+    if (!job || !user) return;
+
     setIsSubmitting(true);
+    setShowSaveCVDialog(false);
 
     try {
-      // Step 1: Upload CV if user selected one and doesn't already have one
-      if (cvFile && !userHasCV) {
-        setUploadingCV(true);
-        const formData = new FormData();
-        formData.append('resume', cvFile);
-        await usersApi.uploadResume(formData);
-        await refreshUser();
-        setUploadingCV(false);
-      }
-
-      // Step 2: Submit application
+      // Submit application FIRST — don't wait for CV upload
       const applicationData: any = {
         jobId: job._id,
         applicationMethod: job.customQuestions && job.customQuestions.length > 0 ? 'custom_form' : 'one_click'
@@ -188,12 +257,19 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
 
       toast({
         title: 'Aplikimi u dërgua!',
-        description: 'Aplikimi juaj u dërgua me sukses. Do të kontaktoheni së shpejti.',
+        description: saveToProfile
+          ? 'Aplikimi u dërgua. CV-ja po ruhet dhe profili po plotësohet automatikisht...'
+          : 'Aplikimi juaj u dërgua me sukses. Do të kontaktoheni së shpejti.',
         duration: 5000
       });
 
       onSuccess();
       onClose();
+
+      // Fire-and-forget: save CV + parse + auto-fill profile in background
+      if (saveToProfile && cvFile) {
+        backgroundCVSaveAndParse(cvFile, refreshUser, toast);
+      }
     } catch (error: any) {
       console.error('Error applying for job:', error);
 
@@ -204,7 +280,6 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
       });
     } finally {
       setIsSubmitting(false);
-      setUploadingCV(false);
     }
   };
 
@@ -224,27 +299,15 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Profile Completeness Warning */}
-          {isProfileIncomplete && (
-            <Card className="border-yellow-200 bg-yellow-50">
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
-                  <div className="flex-1">
-                    <h4 className="font-medium text-yellow-800 mb-1">
-                      Profili juaj është {profileCompleteness}% i kompletuar
-                    </h4>
-                    <p className="text-sm text-yellow-700 mb-3">
-                      Një profil i kompletuar rrit shanset tuaja për t'u zgjedhur.
-                    </p>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => window.open('/profile', '_blank')}
-                    >
-                      Plotëso profilin
-                    </Button>
-                  </div>
+          {/* Profile Completeness Tip — non-blocking, just informational */}
+          {profileCompleteness < 40 && (
+            <Card className="border-blue-200 bg-blue-50">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                  <p className="text-sm text-blue-700">
+                    Plotëso profilin për shanse më të mira. <a href="/profile" target="_blank" className="underline font-medium">Shko te profili</a>
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -344,7 +407,7 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
                       className="w-full"
                     >
                       <Upload className="mr-2 h-4 w-4" />
-                      Ngarko CV (PDF, max 5MB)
+                      Ngarko CV (PDF ose DOCX, max 5MB)
                     </Button>
                   )}
                   {errors.cv && <p className="text-xs text-red-500">{errors.cv}</p>}
@@ -491,7 +554,7 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
             {isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {uploadingCV ? 'Duke ngarkuar CV-në...' : 'Duke dërguar aplikimin...'}
+                Duke dërguar aplikimin...
               </>
             ) : (
               <>
@@ -502,6 +565,45 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
           </Button>
         </div>
       </DialogContent>
+
+      {/* Save CV to Profile Confirmation Dialog */}
+      <Dialog open={showSaveCVDialog} onOpenChange={(open) => { if (!open && !isSubmitting) setShowSaveCVDialog(false); }}>
+        <DialogContent className="max-w-md p-5 m-4">
+          <DialogHeader className="space-y-2">
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary" />
+              Ruaj CV-në në profil?
+            </DialogTitle>
+            <DialogDescription>
+              CV-ja do të analizohet me AI dhe profili do të plotësohet automatikisht. Kjo ndodh në sfond — nuk do të prisni.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => submitApplication(false)}
+              disabled={isSubmitting}
+              className="w-full sm:w-auto"
+            >
+              Jo, vetëm apliko
+            </Button>
+            <Button
+              onClick={() => submitApplication(true)}
+              disabled={isSubmitting}
+              className="w-full sm:w-auto"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Duke dërguar...
+                </>
+              ) : (
+                'Po, ruaj dhe apliko'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 };

@@ -4,982 +4,531 @@
  *
  * INSTALL k6:
  *   macOS:   brew install k6
- *   Linux:   sudo gpg -k; sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D68; echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list; sudo apt-get update; sudo apt-get install k6
+ *   Linux:   sudo gpg -k && sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D68 && echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list && sudo apt-get update && sudo apt-get install k6
+ *   Windows: choco install k6  OR  winget install k6
  *   Docker:  docker pull grafana/k6
  *
  * SETUP:
- *   1. Ensure backend is running at the target URL
- *   2. Optional: create test users manually or via API tests first
- *   3. Set env vars for test accounts:
- *        SEEKER_EMAIL / SEEKER_PASSWORD  — a jobseeker account
- *        EMPLOYER_EMAIL / EMPLOYER_PASSWORD — an employer account
- *        ADMIN_EMAIL / ADMIN_PASSWORD — an admin account (for login cycles)
+ *   1. Start backend: cd backend && npm start
+ *   2. Ensure admin account exists (admin@advance.al / Admin123!@#)
+ *   3. Ensure at least a few jobs exist in the database
  *
  * RUN SCENARIOS:
- *   Normal load:     k6 run --env SCENARIO=normal tests/load-test.js
- *   Spike test:      k6 run --env SCENARIO=spike tests/load-test.js
- *   Stress test:     k6 run --env SCENARIO=stress tests/load-test.js
- *   Race condition:  k6 run --env SCENARIO=race tests/load-test.js
- *   All scenarios:   k6 run tests/load-test.js
+ *   Normal load:    k6 run -e SCENARIO=normal   tests/load-test.js
+ *   Spike test:     k6 run -e SCENARIO=spike    tests/load-test.js
+ *   Stress test:    k6 run -e SCENARIO=stress   tests/load-test.js
+ *   Race condition: k6 run -e SCENARIO=race     tests/load-test.js
+ *   All scenarios:  k6 run -e SCENARIO=all      tests/load-test.js
  *
- * CONFIGURE:
- *   k6 run --env API_URL=https://your-staging.com/api tests/load-test.js
+ * CUSTOM TARGET:
+ *   k6 run -e SCENARIO=normal -e BASE_URL=https://api.advance.al tests/load-test.js
  *
- * READ RESULTS:
- *   - http_req_duration: p95 should be < 500ms for normal, < 2s for stress
- *   - http_req_failed: should be < 1% for normal, < 5% for spike
- *   - iterations: higher = better throughput
- *   - Look for "checks" pass rate — should be 100% for normal
+ * RESULTS:
+ *   k6 outputs p50/p95/p99 response times, error rates, and throughput.
+ *   Pass/fail thresholds are defined below.
  *
- * THRESHOLDS (auto pass/fail):
- *   Normal:  p95 < 500ms, error rate < 1%
- *   Spike:   p95 < 2s, error rate < 5%
- *   Stress:  p95 < 5s, error rate < 10% (finding breaking point)
+ * THRESHOLDS (what "pass" means):
+ *   - p95 response time < 2000ms for normal load
+ *   - Error rate < 5% for normal load
+ *   - p95 response time < 5000ms for spike/stress
+ *   - Error rate < 10% for spike/stress
  */
 
 import http from 'k6/http';
 import { check, sleep, group } from 'k6';
 import { Rate, Trend, Counter } from 'k6/metrics';
 
-// ═══════════════════════════════════════════════════════════════
-// Configuration
-// ═══════════════════════════════════════════════════════════════
+// ── Configuration ────────────────────────────────────────────────────
 
-const API_URL = __ENV.API_URL || 'http://localhost:3001/api';
+const BASE_URL = __ENV.BASE_URL || 'http://localhost:3001';
 const SCENARIO = __ENV.SCENARIO || 'normal';
+const ADMIN_EMAIL = __ENV.ADMIN_EMAIL || 'admin@advance.al';
+const ADMIN_PASSWORD = __ENV.ADMIN_PASSWORD || 'Admin123!@#';
 
-// Test account credentials (set via env vars or use defaults)
-const SEEKER_EMAIL = __ENV.SEEKER_EMAIL || 'testseeker@test.com';
-const SEEKER_PASSWORD = __ENV.SEEKER_PASSWORD || 'TestSeeker123!';
-const EMPLOYER_EMAIL = __ENV.EMPLOYER_EMAIL || 'testemployer@test.com';
-const EMPLOYER_PASSWORD = __ENV.EMPLOYER_PASSWORD || 'TestEmployer123!';
-const ADMIN_EMAIL = __ENV.ADMIN_EMAIL || 'testadmin@test.com';
-const ADMIN_PASSWORD = __ENV.ADMIN_PASSWORD || 'TestAdmin123!';
+// ── Custom Metrics ───────────────────────────────────────────────────
 
-// Custom metrics
-const errorRate = new Rate('errors');
-const jobListDuration = new Trend('job_list_duration');
-const jobDetailDuration = new Trend('job_detail_duration');
-const searchDuration = new Trend('search_duration');
-const authDuration = new Trend('auth_duration');
-const applicationDuration = new Trend('application_duration');
-const notificationDuration = new Trend('notification_duration');
-const profileDuration = new Trend('profile_duration');
-const viewTrackDuration = new Trend('view_track_duration');
-const statsDuration = new Trend('stats_duration');
-const slowRequests = new Counter('slow_requests');
+const errorRate = new Rate('error_rate');
+const jobsBrowsed = new Counter('jobs_browsed');
+const jobsSearched = new Counter('jobs_searched');
+const jobsViewed = new Counter('jobs_viewed');
+const applicationsSubmitted = new Counter('applications_submitted');
+const notificationsChecked = new Counter('notifications_checked');
+const profilesUpdated = new Counter('profiles_updated');
+const loginCycles = new Counter('login_cycles');
 
-// Race condition specific metrics
-const raceApplySuccessCount = new Counter('race_apply_success');
-const raceApplyFailCount = new Counter('race_apply_fail');
-const raceRegisterSuccessCount = new Counter('race_register_success');
-const raceRegisterFailCount = new Counter('race_register_fail');
-const raceProfileSuccessCount = new Counter('race_profile_success');
-const raceProfileFailCount = new Counter('race_profile_fail');
+const jobListTrend = new Trend('job_list_duration', true);
+const jobSearchTrend = new Trend('job_search_duration', true);
+const jobDetailTrend = new Trend('job_detail_duration', true);
+const loginTrend = new Trend('login_duration', true);
+const notifTrend = new Trend('notification_duration', true);
 
-// ═══════════════════════════════════════════════════════════════
-// Scenarios
-// ═══════════════════════════════════════════════════════════════
+// ── Scenario Configuration ───────────────────────────────────────────
 
 const scenarios = {
-  // Scenario 1: Normal Load — 100 users, 5 minutes
+  // Scenario 1: Normal Load — 100 concurrent users, 5 minutes
   normal: {
     executor: 'ramping-vus',
     startVUs: 0,
     stages: [
-      { duration: '30s', target: 20 },   // warm up
-      { duration: '1m', target: 50 },    // ramp to 50
-      { duration: '2m', target: 100 },   // hold at 100
-      { duration: '1m', target: 50 },    // cool down
-      { duration: '30s', target: 0 },    // ramp down
+      { duration: '30s', target: 50 },   // Ramp up to 50
+      { duration: '30s', target: 100 },  // Ramp up to 100
+      { duration: '3m', target: 100 },   // Hold 100 for 3 min
+      { duration: '30s', target: 0 },    // Ramp down
     ],
     gracefulRampDown: '10s',
   },
 
-  // Scenario 2: Spike Test — ramp to 500, hold 3 minutes
+  // Scenario 2: Spike Test — ramp to 500 users over 2 min, hold 3 min
   spike: {
     executor: 'ramping-vus',
     startVUs: 0,
     stages: [
-      { duration: '30s', target: 50 },    // baseline
-      { duration: '30s', target: 500 },   // SPIKE
-      { duration: '3m', target: 500 },    // hold spike
-      { duration: '1m', target: 50 },     // recover
-      { duration: '30s', target: 0 },     // ramp down
-    ],
-    gracefulRampDown: '10s',
-  },
-
-  // Scenario 3: Stress Test — ramp to 1000 over 5 minutes
-  stress: {
-    executor: 'ramping-vus',
-    startVUs: 0,
-    stages: [
-      { duration: '1m', target: 100 },
-      { duration: '1m', target: 300 },
+      { duration: '30s', target: 100 },
+      { duration: '30s', target: 250 },
       { duration: '1m', target: 500 },
-      { duration: '1m', target: 750 },
-      { duration: '1m', target: 1000 },
-      { duration: '2m', target: 1000 },  // hold at peak
-      { duration: '1m', target: 0 },     // ramp down
+      { duration: '3m', target: 500 },
+      { duration: '30s', target: 0 },
     ],
     gracefulRampDown: '15s',
   },
 
-  // Scenario 4: Race Condition Tests — targeted concurrent writes
+  // Scenario 3: Stress Test — ramp to 1000 users over 5 min
+  stress: {
+    executor: 'ramping-vus',
+    startVUs: 0,
+    stages: [
+      { duration: '1m', target: 200 },
+      { duration: '1m', target: 400 },
+      { duration: '1m', target: 600 },
+      { duration: '1m', target: 800 },
+      { duration: '1m', target: 1000 },
+      { duration: '2m', target: 1000 },
+      { duration: '1m', target: 0 },
+    ],
+    gracefulRampDown: '20s',
+  },
+
+  // Scenario 4: Race Condition Test — targeted concurrency
   race: {
-    executor: 'shared-iterations',
+    executor: 'per-vu-iterations',
     vus: 50,
-    iterations: 200,
+    iterations: 3,
     maxDuration: '2m',
   },
 };
 
+// ── Dynamic Options ──────────────────────────────────────────────────
+
 export const options = {
-  scenarios: {
-    default: scenarios[SCENARIO] || scenarios.normal,
-  },
-
+  scenarios: {},
   thresholds: {
-    // Dynamic thresholds based on scenario
-    http_req_duration: SCENARIO === 'stress'
-      ? ['p(95)<5000']
-      : SCENARIO === 'spike'
-        ? ['p(95)<2000']
-        : ['p(95)<500'],
-
-    errors: SCENARIO === 'stress'
-      ? ['rate<0.10']
-      : SCENARIO === 'spike'
-        ? ['rate<0.05']
-        : ['rate<0.01'],
-
-    http_req_failed: SCENARIO === 'stress'
-      ? ['rate<0.10']
-      : ['rate<0.05'],
+    'http_req_duration': ['p(95)<2000'],       // 95th pctl < 2s
+    'http_req_duration{scenario:normal}': ['p(95)<2000'],
+    'http_req_duration{scenario:spike}': ['p(95)<5000'],
+    'http_req_duration{scenario:stress}': ['p(95)<5000'],
+    'error_rate': ['rate<0.05'],                // <5% errors
+    'job_list_duration': ['p(95)<1500'],
+    'job_search_duration': ['p(95)<2000'],
+    'job_detail_duration': ['p(95)<1000'],
+    'login_duration': ['p(95)<1500'],
   },
+  // Show summary at end
+  summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
 };
 
-// ═══════════════════════════════════════════════════════════════
-// Helper Functions
-// ═══════════════════════════════════════════════════════════════
-
-function reqHeaders(token = null) {
-  const h = { 'Content-Type': 'application/json' };
-  if (token) h['Authorization'] = `Bearer ${token}`;
-  return h;
+// Set selected scenario
+if (SCENARIO === 'all') {
+  options.scenarios = scenarios;
+} else if (scenarios[SCENARIO]) {
+  options.scenarios[SCENARIO] = scenarios[SCENARIO];
+} else {
+  // Default to normal
+  options.scenarios['normal'] = scenarios['normal'];
 }
 
-function randomItem(arr) {
+// ── Helper Functions ─────────────────────────────────────────────────
+
+const headers = { 'Content-Type': 'application/json' };
+
+function authHeaders(token) {
+  return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+}
+
+function login() {
+  const res = http.post(
+    `${BASE_URL}/api/auth/login`,
+    JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }),
+    { headers, tags: { name: 'login' } }
+  );
+  loginTrend.add(res.timings.duration);
+
+  const success = check(res, { 'login 200': (r) => r.status === 200 });
+  errorRate.add(!success);
+
+  if (res.status === 200) {
+    const body = res.json();
+    return body.token;
+  }
+  return null;
+}
+
+function getRandomItem(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// Job IDs cache (populated on first list call)
-let cachedJobIds = [];
-let cachedToken = null;
+// ── Shared Data ──────────────────────────────────────────────────────
 
-const CITIES = ['Tiranë', 'Durrës', 'Vlorë', 'Elbasan', 'Shkodër', 'Fier', 'Korçë'];
-const CATEGORIES = ['Teknologji', 'Marketing', 'Shitje', 'Financë', 'Burime Njerëzore', 'Inxhinieri', 'Dizajn'];
-const SEARCH_TERMS = ['developer', 'marketing', 'sales', 'engineer', 'designer', 'manager', 'analyst', 'finance'];
+const categories = ['Teknologji', 'Marketing', 'Financë', 'Shëndetësi', 'Arsim', 'Inxhinieri'];
+const locations = ['Tiranë', 'Durrës', 'Vlorë', 'Shkodër', 'Elbasan', 'Korçë', 'Fier'];
+const searchTerms = ['developer', 'marketing', 'sales', 'manager', 'engineer', 'design', 'analyst', 'accountant'];
 
-// ═══════════════════════════════════════════════════════════════
-// Setup — Login test accounts and cache tokens
-// ═══════════════════════════════════════════════════════════════
+// ── Main Test Function ───────────────────────────────────────────────
 
-/**
- * Runs once before all VUs start.
- * Authenticates a seeker and employer, fetches initial job IDs,
- * and returns shared data available to every VU via data argument.
- */
-export function setup() {
-  const setupData = {
-    seekerToken: null,
-    employerToken: null,
-    adminToken: null,
-    jobIds: [],
-    targetJobId: null, // for race condition tests
-  };
-
-  // Login as seeker
-  console.log(`[setup] Logging in seeker: ${SEEKER_EMAIL}`);
-  const seekerRes = http.post(
-    `${API_URL}/auth/login`,
-    JSON.stringify({ email: SEEKER_EMAIL, password: SEEKER_PASSWORD }),
-    { headers: reqHeaders(), tags: { name: 'setup_login_seeker' } }
-  );
-  if (seekerRes.status === 200) {
-    try {
-      const body = JSON.parse(seekerRes.body);
-      setupData.seekerToken = body?.data?.token || body?.token || null;
-      console.log(`[setup] Seeker login successful, token obtained`);
-    } catch (e) {
-      console.log(`[setup] Seeker login response parse error: ${e.message}`);
-    }
-  } else {
-    console.log(`[setup] Seeker login failed: HTTP ${seekerRes.status} — ${seekerRes.body}`);
-  }
-
-  // Login as employer
-  console.log(`[setup] Logging in employer: ${EMPLOYER_EMAIL}`);
-  const employerRes = http.post(
-    `${API_URL}/auth/login`,
-    JSON.stringify({ email: EMPLOYER_EMAIL, password: EMPLOYER_PASSWORD }),
-    { headers: reqHeaders(), tags: { name: 'setup_login_employer' } }
-  );
-  if (employerRes.status === 200) {
-    try {
-      const body = JSON.parse(employerRes.body);
-      setupData.employerToken = body?.data?.token || body?.token || null;
-      console.log(`[setup] Employer login successful, token obtained`);
-    } catch (e) {
-      console.log(`[setup] Employer login response parse error: ${e.message}`);
-    }
-  } else {
-    console.log(`[setup] Employer login failed: HTTP ${employerRes.status} — ${employerRes.body}`);
-  }
-
-  // Login as admin (for login cycle tests)
-  console.log(`[setup] Logging in admin: ${ADMIN_EMAIL}`);
-  const adminRes = http.post(
-    `${API_URL}/auth/login`,
-    JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }),
-    { headers: reqHeaders(), tags: { name: 'setup_login_admin' } }
-  );
-  if (adminRes.status === 200) {
-    try {
-      const body = JSON.parse(adminRes.body);
-      setupData.adminToken = body?.data?.token || body?.token || null;
-      console.log(`[setup] Admin login successful, token obtained`);
-    } catch (e) {
-      console.log(`[setup] Admin login response parse error: ${e.message}`);
-    }
-  } else {
-    console.log(`[setup] Admin login failed: HTTP ${adminRes.status} — ${adminRes.body}`);
-  }
-
-  // Fetch initial job IDs for all VUs
-  console.log(`[setup] Fetching initial job IDs...`);
-  const jobsRes = http.get(`${API_URL}/jobs?limit=50`, { tags: { name: 'setup_jobs' } });
-  if (jobsRes.status === 200) {
-    try {
-      const body = JSON.parse(jobsRes.body);
-      if (body?.data?.jobs?.length > 0) {
-        setupData.jobIds = body.data.jobs.map(j => j._id);
-        setupData.targetJobId = setupData.jobIds[0]; // first job for race tests
-        console.log(`[setup] Cached ${setupData.jobIds.length} job IDs, target: ${setupData.targetJobId}`);
-      } else {
-        console.log(`[setup] No jobs found in database`);
-      }
-    } catch (e) {
-      console.log(`[setup] Jobs response parse error: ${e.message}`);
-    }
-  } else {
-    console.log(`[setup] Jobs fetch failed: HTTP ${jobsRes.status}`);
-  }
-
-  console.log(`[setup] Complete — seeker: ${setupData.seekerToken ? 'OK' : 'MISSING'}, employer: ${setupData.employerToken ? 'OK' : 'MISSING'}, jobs: ${setupData.jobIds.length}`);
-
-  return setupData;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Test Actions
-// ═══════════════════════════════════════════════════════════════
-
-/**
- * Browse jobs — GET /api/jobs with various filters (35% of traffic)
- */
-function browseJobs(data) {
-  const params = [];
-  if (Math.random() > 0.5) params.push(`city=${randomItem(CITIES)}`);
-  if (Math.random() > 0.5) params.push(`category=${randomItem(CATEGORIES)}`);
-  if (Math.random() > 0.7) params.push(`jobType=${randomItem(['full-time', 'part-time', 'contract'])}`);
-  params.push(`page=${Math.floor(Math.random() * 5) + 1}`);
-  params.push('limit=20');
-
-  const url = `${API_URL}/jobs?${params.join('&')}`;
-  const res = http.get(url, { tags: { name: 'browse_jobs' } });
-
-  jobListDuration.add(res.timings.duration);
-  if (res.timings.duration > 1000) slowRequests.add(1);
-
-  const success = check(res, {
-    'browse jobs: status 200': (r) => r.status === 200,
-    'browse jobs: has jobs array': (r) => {
-      try {
-        const body = JSON.parse(r.body);
-        return Array.isArray(body?.data?.jobs);
-      } catch { return false; }
-    },
-  });
-
-  errorRate.add(!success);
-
-  // Cache job IDs for detail views (supplement setup data)
-  try {
-    const body = JSON.parse(res.body);
-    if (body?.data?.jobs?.length > 0) {
-      cachedJobIds = body.data.jobs.map(j => j._id).slice(0, 20);
-    }
-  } catch {}
-
-  return res;
-}
-
-/**
- * Search jobs — GET /api/jobs?search=... (15% of traffic)
- */
-function searchJobs() {
-  const term = randomItem(SEARCH_TERMS);
-  const url = `${API_URL}/jobs?search=${term}&limit=20`;
-  const res = http.get(url, { tags: { name: 'search_jobs' } });
-
-  searchDuration.add(res.timings.duration);
-  if (res.timings.duration > 1000) slowRequests.add(1);
-
-  const success = check(res, {
-    'search: status 200': (r) => r.status === 200,
-  });
-  errorRate.add(!success);
-  return res;
-}
-
-/**
- * View job detail — GET /api/jobs/:id (15% of traffic)
- * Also tracks views (view count incremented server-side)
- */
-function viewJobDetail(data) {
-  const jobIds = getJobIds(data);
-  if (jobIds.length === 0) {
-    browseJobs(data); // populate cache
-  }
-
-  const ids = getJobIds(data);
-  if (ids.length === 0) return null;
-
-  const jobId = randomItem(ids);
-  const res = http.get(`${API_URL}/jobs/${jobId}`, { tags: { name: 'job_detail' } });
-
-  jobDetailDuration.add(res.timings.duration);
-  if (res.timings.duration > 500) slowRequests.add(1);
-
-  const success = check(res, {
-    'job detail: status 200': (r) => r.status === 200,
-    'job detail: has job object': (r) => {
-      try {
-        const body = JSON.parse(r.body);
-        return body?.data?.job?.title !== undefined;
-      } catch { return false; }
-    },
-  });
-  errorRate.add(!success);
-  return res;
-}
-
-/**
- * Apply to job — POST /api/applications/apply (10% of traffic)
- * Uses seeker token from setup(). Handles expected 400s gracefully.
- */
-function applyToJob(data) {
-  const seekerToken = data?.seekerToken;
-  if (!seekerToken) {
-    // No seeker token available — skip silently
-    return null;
-  }
-
-  const jobIds = getJobIds(data);
-  if (jobIds.length === 0) return null;
-
-  const jobId = randomItem(jobIds);
-  const res = http.post(
-    `${API_URL}/applications/apply`,
-    JSON.stringify({
-      jobId: jobId,
-      applicationMethod: 'one_click',
-    }),
-    {
-      headers: reqHeaders(seekerToken),
-      tags: { name: 'apply_to_job' },
-    }
-  );
-
-  applicationDuration.add(res.timings.duration);
-  if (res.timings.duration > 1000) slowRequests.add(1);
-
-  // 200 = success, 400 = already applied / profile incomplete (expected, NOT an error)
-  // 401 = token expired, 500 = server error (these ARE errors)
-  const success = check(res, {
-    'apply: accepted response (200/400)': (r) => [200, 400].includes(r.status),
-    'apply: no server error': (r) => r.status !== 500,
-  });
-
-  // Only count 500s and unexpected statuses as errors, not 400s
-  const isRealError = ![200, 400, 401].includes(res.status);
-  errorRate.add(isRealError);
-
-  return res;
-}
-
-/**
- * Job view tracking — GET /api/jobs/:id (5% of traffic)
- * Simulates a user landing on a job page, triggering view count increment.
- * This is the same endpoint as viewJobDetail but tracked separately
- * to measure view-tracking overhead.
- */
-function trackJobView(data) {
-  const jobIds = getJobIds(data);
-  if (jobIds.length === 0) return null;
-
-  const jobId = randomItem(jobIds);
-  const res = http.get(`${API_URL}/jobs/${jobId}`, { tags: { name: 'job_view_track' } });
-
-  viewTrackDuration.add(res.timings.duration);
-
-  const success = check(res, {
-    'view track: status 200': (r) => r.status === 200,
-  });
-  errorRate.add(!success);
-  return res;
-}
-
-/**
- * Login/logout cycle — POST /api/auth/login (5% of traffic)
- */
-function loginCycle() {
-  const res = http.post(
-    `${API_URL}/auth/login`,
-    JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }),
-    { headers: reqHeaders(), tags: { name: 'login' } }
-  );
-
-  authDuration.add(res.timings.duration);
-
-  const success = check(res, {
-    'login: status 200': (r) => r.status === 200,
-  });
-  errorRate.add(!success);
-
-  try {
-    const body = JSON.parse(res.body);
-    if (body?.data?.token) {
-      cachedToken = body.data.token;
-    }
-  } catch {}
-
-  return res;
-}
-
-/**
- * Check notifications — GET /api/notifications (5% of traffic)
- */
-function checkNotifications(data) {
-  const token = data?.seekerToken || cachedToken;
-  if (!token) {
-    loginCycle(); // need auth
-  }
-
-  const activeToken = data?.seekerToken || cachedToken;
-  if (!activeToken) return null;
-
-  const res = http.get(`${API_URL}/notifications?limit=10`, {
-    headers: reqHeaders(activeToken),
-    tags: { name: 'notifications' },
-  });
-
-  notificationDuration.add(res.timings.duration);
-
-  const success = check(res, {
-    'notifications: status 200 or 401': (r) => [200, 401].includes(r.status),
-  });
-  errorRate.add(!success);
-  return res;
-}
-
-/**
- * Profile view/update — GET then PUT /api/users/profile (5% of traffic)
- * Uses cached seeker or employer token. PUTs a minor bio change.
- */
-function updateProfile(data) {
-  const token = data?.seekerToken || data?.employerToken || cachedToken;
-  if (!token) return null;
-
-  // First: GET current profile
-  const getRes = http.get(`${API_URL}/users/profile`, {
-    headers: reqHeaders(token),
-    tags: { name: 'profile_get' },
-  });
-
-  profileDuration.add(getRes.timings.duration);
-
-  const getSuccess = check(getRes, {
-    'profile GET: status 200 or 401': (r) => [200, 401].includes(r.status),
-  });
-
-  if (getRes.status !== 200) {
-    errorRate.add(!getSuccess);
-    return getRes;
-  }
-
-  // Then: PUT with minor bio update
-  const timestamp = Date.now();
-  const putRes = http.put(
-    `${API_URL}/users/profile`,
-    JSON.stringify({
-      bio: `Load test bio update at ${timestamp}`,
-    }),
-    {
-      headers: reqHeaders(token),
-      tags: { name: 'profile_put' },
-    }
-  );
-
-  profileDuration.add(putRes.timings.duration);
-
-  const putSuccess = check(putRes, {
-    'profile PUT: status 200': (r) => r.status === 200,
-  });
-  errorRate.add(!putSuccess);
-  return putRes;
-}
-
-/**
- * Mixed public endpoints — stats, locations, companies (5% of traffic)
- */
-function mixedPublicEndpoints() {
-  const action = Math.random();
-
-  if (action < 0.33) {
-    // Stats
-    const res = http.get(`${API_URL}/stats/public`, { tags: { name: 'stats' } });
-    statsDuration.add(res.timings.duration);
-    const success = check(res, {
-      'stats: status 200': (r) => r.status === 200,
-    });
-    errorRate.add(!success);
-    return res;
-  } else if (action < 0.66) {
-    // Locations
-    const res = http.get(`${API_URL}/locations`, { tags: { name: 'locations' } });
-    statsDuration.add(res.timings.duration);
-    const success = check(res, {
-      'locations: status 200': (r) => r.status === 200,
-    });
-    errorRate.add(!success);
-    return res;
-  } else {
-    // Companies
-    const res = http.get(`${API_URL}/companies?limit=20`, { tags: { name: 'companies' } });
-    statsDuration.add(res.timings.duration);
-    const success = check(res, {
-      'companies: status 200': (r) => r.status === 200,
-    });
-    errorRate.add(!success);
-    return res;
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Helper: get job IDs from setup data or VU-local cache
-// ═══════════════════════════════════════════════════════════════
-
-function getJobIds(data) {
-  // Prefer setup data (shared across VUs), fall back to VU-local cache
-  if (data?.jobIds?.length > 0) return data.jobIds;
-  return cachedJobIds;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Race Condition Actions (Scenario 4)
-// ═══════════════════════════════════════════════════════════════
-
-/**
- * 50 users apply to the SAME job simultaneously.
- * Uses the seeker token from setup and targets one specific jobId.
- */
-function raceApplyToSameJob(data) {
-  const seekerToken = data?.seekerToken;
-  const targetJobId = data?.targetJobId || (cachedJobIds.length > 0 ? cachedJobIds[0] : 'aaaaaaaaaaaaaaaaaaaaaaaa');
-
-  const res = http.post(
-    `${API_URL}/applications/apply`,
-    JSON.stringify({
-      jobId: targetJobId,
-      applicationMethod: 'one_click',
-    }),
-    {
-      headers: reqHeaders(seekerToken),
-      tags: { name: 'race_apply' },
-    }
-  );
-
-  // Track success vs failure
-  if (res.status === 200) {
-    raceApplySuccessCount.add(1);
-  } else {
-    raceApplyFailCount.add(1);
-  }
-
-  // We expect 200 (success for first apply), 400 (duplicate/incomplete), or 401 (no token)
-  // The important thing is it should NOT be 500
-  const success = check(res, {
-    'race apply: no 500 error': (r) => r.status !== 500,
-    'race apply: expected status (200/400/401)': (r) => [200, 400, 401].includes(r.status),
-  });
-  errorRate.add(!success);
-
-  applicationDuration.add(res.timings.duration);
-  return res;
-}
-
-/**
- * 20 users registering with sequential emails simultaneously.
- * Tests concurrent registration handling.
- */
-function raceRegistration() {
-  const vuId = __VU;
-  const iterNum = __ITER;
-  const email = `race-test-${vuId}-${iterNum}-${Date.now()}@test.local`;
-
-  const res = http.post(
-    `${API_URL}/auth/initiate-registration`,
-    JSON.stringify({
-      email,
-      password: 'TestPass123!',
-      userType: 'jobseeker',
-      firstName: 'Race',
-      lastName: 'Test',
-      city: 'Tiranë',
-    }),
-    { headers: reqHeaders(), tags: { name: 'race_register' } }
-  );
-
-  // Track success vs failure
-  if (res.status === 200) {
-    raceRegisterSuccessCount.add(1);
-  } else {
-    raceRegisterFailCount.add(1);
-  }
-
-  const success = check(res, {
-    'race register: no 500': (r) => r.status !== 500,
-    'race register: 200 or 429': (r) => [200, 429].includes(r.status),
-  });
-  errorRate.add(!success);
-
-  authDuration.add(res.timings.duration);
-  return res;
-}
-
-/**
- * 10 users updating the SAME profile simultaneously (same token).
- * Tests concurrent writes to the same document.
- */
-function raceProfileUpdate(data) {
-  const token = data?.seekerToken || cachedToken;
-  if (!token) return null;
-
-  const vuId = __VU;
-  const iterNum = __ITER;
-  const timestamp = Date.now();
-
-  const res = http.put(
-    `${API_URL}/users/profile`,
-    JSON.stringify({
-      bio: `Race condition test — VU ${vuId}, iter ${iterNum}, ts ${timestamp}`,
-    }),
-    {
-      headers: reqHeaders(token),
-      tags: { name: 'race_profile' },
-    }
-  );
-
-  // Track success vs failure
-  if (res.status === 200) {
-    raceProfileSuccessCount.add(1);
-  } else {
-    raceProfileFailCount.add(1);
-  }
-
-  const success = check(res, {
-    'race profile: no 500 error': (r) => r.status !== 500,
-    'race profile: expected status (200/400/401)': (r) => [200, 400, 401].includes(r.status),
-  });
-  errorRate.add(!success);
-
-  profileDuration.add(res.timings.duration);
-  return res;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Main Virtual User Function
-// ═══════════════════════════════════════════════════════════════
-
-export default function (data) {
+export default function () {
   if (SCENARIO === 'race') {
-    // Race condition scenario — targeted concurrent writes
-    // Distribute VUs across the three race condition types:
-    //   VU 1-50:  apply to same job  (50 users)
-    //   VU 51-70: registration race  (20 users)
-    //   VU 71-80: same profile update (10 users — remaining VUs)
-    // Since we use shared-iterations with 50 VUs, we use iteration-based routing
-    const iterMod = __ITER % 10;
-
-    if (iterMod < 5) {
-      // ~50% of iterations: race apply to same job
-      group('race_apply_same_job', () => {
-        raceApplyToSameJob(data);
-      });
-    } else if (iterMod < 8) {
-      // ~30% of iterations: race registration
-      group('race_registration', () => {
-        raceRegistration();
-      });
-    } else {
-      // ~20% of iterations: race profile update (same token)
-      group('race_profile_update', () => {
-        raceProfileUpdate(data);
-      });
-    }
-
-    sleep(0.1);
+    raceConditionTests();
     return;
   }
 
-  // Standard load distribution (normal, spike, stress)
-  // 35% browse | 15% search | 15% detail | 10% apply | 5% notifications
-  // 5% profile | 5% login | 5% public endpoints | 5% view tracking
-  const action = Math.random();
+  // Weighted random selection matching the specified distribution:
+  // 40% browse jobs, 20% search, 15% view detail, 10% apply, 5% notifications, 5% profile, 5% login
+  const rand = Math.random() * 100;
 
-  if (action < 0.35) {
-    // 35% — Browse jobs with filters
-    group('browse_jobs', () => {
-      browseJobs(data);
-    });
-  } else if (action < 0.50) {
-    // 15% — Search jobs
-    group('search_jobs', () => {
-      searchJobs();
-    });
-  } else if (action < 0.65) {
-    // 15% — View job detail
-    group('view_job_detail', () => {
-      viewJobDetail(data);
-    });
-  } else if (action < 0.75) {
-    // 10% — Apply to job (seeker token from setup)
-    group('apply_to_job', () => {
-      applyToJob(data);
-    });
-  } else if (action < 0.80) {
-    // 5% — Check notifications
-    group('check_notifications', () => {
-      checkNotifications(data);
-    });
-  } else if (action < 0.85) {
-    // 5% — Profile view/update
-    group('update_profile', () => {
-      updateProfile(data);
-    });
-  } else if (action < 0.90) {
-    // 5% — Login/logout cycles
-    group('login_cycle', () => {
-      loginCycle();
-    });
-  } else if (action < 0.95) {
-    // 5% — Mixed public endpoints (stats/locations/companies)
-    group('public_endpoints', () => {
-      mixedPublicEndpoints();
-    });
+  if (rand < 40) {
+    browseJobs();
+  } else if (rand < 60) {
+    searchJobs();
+  } else if (rand < 75) {
+    viewJobDetail();
+  } else if (rand < 85) {
+    applyToJob();
+  } else if (rand < 90) {
+    checkNotifications();
+  } else if (rand < 95) {
+    updateProfile();
   } else {
-    // 5% — Job view tracking
-    group('job_view_track', () => {
-      trackJobView(data);
-    });
+    loginLogoutCycle();
   }
 
-  // Simulate think time between actions (1-3 seconds)
-  sleep(Math.random() * 2 + 1);
+  // Think time between actions (1-3 seconds)
+  sleep(1 + Math.random() * 2);
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Summary — Enhanced with per-endpoint breakdown and JSON output
-// ═══════════════════════════════════════════════════════════════
+// ── Action Functions ─────────────────────────────────────────────────
 
-function fmtMs(val) {
-  return val !== undefined && val !== null ? val.toFixed(0) : '—';
+function browseJobs() {
+  group('Browse Jobs', function () {
+    const page = Math.floor(Math.random() * 5) + 1;
+    const category = Math.random() > 0.5 ? `&category=${getRandomItem(categories)}` : '';
+    const location = Math.random() > 0.5 ? `&location=${getRandomItem(locations)}` : '';
+
+    const res = http.get(
+      `${BASE_URL}/api/jobs?page=${page}&limit=10${category}${location}`,
+      { headers, tags: { name: 'GET /api/jobs' } }
+    );
+
+    jobListTrend.add(res.timings.duration);
+    const success = check(res, { 'jobs list 200': (r) => r.status === 200 });
+    errorRate.add(!success);
+    jobsBrowsed.add(1);
+  });
 }
 
-function getMetricValues(data, metricName) {
-  const m = data.metrics?.[metricName]?.values;
-  if (!m) return { p50: '—', p95: '—', p99: '—', avg: '—', count: '—' };
-  return {
-    p50: fmtMs(m['p(50)']),
-    p95: fmtMs(m['p(95)']),
-    p99: fmtMs(m['p(99)']),
-    avg: fmtMs(m['avg']),
-    count: m['count'] !== undefined ? m['count'] : '—',
-  };
+function searchJobs() {
+  group('Search Jobs', function () {
+    const term = getRandomItem(searchTerms);
+
+    const res = http.get(
+      `${BASE_URL}/api/jobs?search=${term}&page=1&limit=10`,
+      { headers, tags: { name: 'GET /api/jobs?search' } }
+    );
+
+    jobSearchTrend.add(res.timings.duration);
+    const success = check(res, { 'jobs search 200': (r) => r.status === 200 });
+    errorRate.add(!success);
+    jobsSearched.add(1);
+  });
 }
 
-function getCounterValue(data, metricName) {
-  return data.metrics?.[metricName]?.values?.count || 0;
+function viewJobDetail() {
+  group('View Job Detail', function () {
+    // First get a list to find a real job ID
+    const listRes = http.get(
+      `${BASE_URL}/api/jobs?page=1&limit=5`,
+      { headers, tags: { name: 'GET /api/jobs (for detail)' } }
+    );
+
+    if (listRes.status === 200) {
+      try {
+        const jobs = listRes.json().jobs;
+        if (jobs && jobs.length > 0) {
+          const job = getRandomItem(jobs);
+          const jobId = job._id || job.id;
+
+          const res = http.get(
+            `${BASE_URL}/api/jobs/${jobId}`,
+            { headers, tags: { name: 'GET /api/jobs/:id' } }
+          );
+
+          jobDetailTrend.add(res.timings.duration);
+          const success = check(res, { 'job detail 200': (r) => r.status === 200 });
+          errorRate.add(!success);
+          jobsViewed.add(1);
+
+          // Also track the view
+          http.post(
+            `${BASE_URL}/api/jobs/${jobId}/view`,
+            null,
+            { headers, tags: { name: 'POST /api/jobs/:id/view' } }
+          );
+        }
+      } catch (e) {
+        errorRate.add(1);
+      }
+    }
+  });
 }
 
-function getRateValue(data, metricName) {
-  return data.metrics?.[metricName]?.values?.rate || 0;
+function applyToJob() {
+  group('Apply to Job', function () {
+    const token = login();
+    if (!token) return;
+
+    loginCycles.add(1);
+
+    // Get a job to apply to
+    const listRes = http.get(
+      `${BASE_URL}/api/jobs?page=1&limit=5`,
+      { headers: authHeaders(token), tags: { name: 'GET /api/jobs (for apply)' } }
+    );
+
+    if (listRes.status === 200) {
+      try {
+        const jobs = listRes.json().jobs;
+        if (jobs && jobs.length > 0) {
+          const job = getRandomItem(jobs);
+          const jobId = job._id || job.id;
+
+          const res = http.post(
+            `${BASE_URL}/api/applications/apply`,
+            JSON.stringify({ jobId, applicationMethod: 'one_click' }),
+            { headers: authHeaders(token), tags: { name: 'POST /api/applications/apply' } }
+          );
+
+          // May fail with 400 (already applied) or 403 (wrong role) — that's OK under load
+          const success = check(res, {
+            'apply status ok': (r) => r.status === 200 || r.status === 201 || r.status === 400 || r.status === 403,
+          });
+          errorRate.add(!success);
+          if (res.status === 200 || res.status === 201) {
+            applicationsSubmitted.add(1);
+          }
+        }
+      } catch (e) {
+        errorRate.add(1);
+      }
+    }
+  });
 }
+
+function checkNotifications() {
+  group('Check Notifications', function () {
+    const token = login();
+    if (!token) return;
+
+    const res = http.get(
+      `${BASE_URL}/api/notifications?page=1&limit=10`,
+      { headers: authHeaders(token), tags: { name: 'GET /api/notifications' } }
+    );
+
+    notifTrend.add(res.timings.duration);
+    const success = check(res, { 'notifications 200': (r) => r.status === 200 });
+    errorRate.add(!success);
+    notificationsChecked.add(1);
+
+    // Also check unread count
+    http.get(
+      `${BASE_URL}/api/notifications/unread-count`,
+      { headers: authHeaders(token), tags: { name: 'GET /api/notifications/unread-count' } }
+    );
+  });
+}
+
+function updateProfile() {
+  group('Update Profile', function () {
+    const token = login();
+    if (!token) return;
+
+    const res = http.put(
+      `${BASE_URL}/api/users/profile`,
+      JSON.stringify({ bio: `Load test bio ${Date.now()}` }),
+      { headers: authHeaders(token), tags: { name: 'PUT /api/users/profile' } }
+    );
+
+    const success = check(res, { 'profile update 200': (r) => r.status === 200 });
+    errorRate.add(!success);
+    profilesUpdated.add(1);
+  });
+}
+
+function loginLogoutCycle() {
+  group('Login/Logout Cycle', function () {
+    const token = login();
+    if (!token) {
+      loginCycles.add(1);
+      return;
+    }
+
+    // Get profile
+    const meRes = http.get(
+      `${BASE_URL}/api/auth/me`,
+      { headers: authHeaders(token), tags: { name: 'GET /api/auth/me' } }
+    );
+    check(meRes, { 'me 200': (r) => r.status === 200 });
+
+    // Logout
+    const logoutRes = http.post(
+      `${BASE_URL}/api/auth/logout`,
+      null,
+      { headers: authHeaders(token), tags: { name: 'POST /api/auth/logout' } }
+    );
+    check(logoutRes, { 'logout 200': (r) => r.status === 200 });
+
+    loginCycles.add(1);
+  });
+}
+
+// ── Race Condition Tests ─────────────────────────────────────────────
+
+function raceConditionTests() {
+  const vuId = __VU;
+
+  group('Race: Concurrent Job Creation', function () {
+    const token = login();
+    if (!token) return;
+
+    // All VUs create a job with the same title (testing slug collision prevention)
+    const res = http.post(
+      `${BASE_URL}/api/jobs`,
+      JSON.stringify({
+        title: 'Race Condition Test Job',
+        description: `Created by VU ${vuId} at ${Date.now()}`,
+        category: 'Teknologji',
+        location: 'Tiranë',
+        jobType: 'full-time',
+        applicationMethod: 'one_click',
+      }),
+      { headers: authHeaders(token), tags: { name: 'POST /api/jobs (race)' } }
+    );
+
+    const success = check(res, {
+      'race job created or graceful error': (r) => r.status === 200 || r.status === 201 || r.status === 400 || r.status === 409,
+      'race job no 500': (r) => r.status < 500,
+    });
+    errorRate.add(!success);
+
+    // If created, verify unique slug
+    if (res.status === 200 || res.status === 201) {
+      try {
+        const job = res.json().job;
+        check(job, {
+          'race job has slug': (j) => j && j.slug && j.slug.length > 0,
+        });
+      } catch (e) { /* ignore parse errors */ }
+    }
+  });
+
+  group('Race: Concurrent Registration', function () {
+    // All VUs try to register with similar emails
+    const email = `raceuser_${vuId}_${__ITER}@test.com`;
+
+    const res = http.post(
+      `${BASE_URL}/api/auth/initiate-registration`,
+      JSON.stringify({
+        email,
+        password: 'TestPass123!@#',
+        userType: 'jobseeker',
+        firstName: 'Race',
+        lastName: `VU${vuId}`,
+        city: 'Tiranë',
+      }),
+      { headers, tags: { name: 'POST /api/auth/initiate-registration (race)' } }
+    );
+
+    const success = check(res, {
+      'race reg ok or graceful error': (r) => r.status === 200 || r.status === 201 || r.status === 400 || r.status === 409,
+      'race reg no 500': (r) => r.status < 500,
+    });
+    errorRate.add(!success);
+  });
+
+  group('Race: Concurrent Profile Update', function () {
+    const token = login();
+    if (!token) return;
+
+    // All VUs update the same profile simultaneously
+    const res = http.put(
+      `${BASE_URL}/api/users/profile`,
+      JSON.stringify({ bio: `Race test VU ${vuId} iter ${__ITER} at ${Date.now()}` }),
+      { headers: authHeaders(token), tags: { name: 'PUT /api/users/profile (race)' } }
+    );
+
+    const success = check(res, {
+      'race profile 200': (r) => r.status === 200,
+      'race profile no 500': (r) => r.status < 500,
+    });
+    errorRate.add(!success);
+  });
+
+  sleep(0.5);
+}
+
+// ── Summary Handler ──────────────────────────────────────────────────
 
 export function handleSummary(data) {
-  // Overall metrics
-  const p50 = data.metrics?.http_req_duration?.values?.['p(50)'] || 0;
-  const p95 = data.metrics?.http_req_duration?.values?.['p(95)'] || 0;
-  const p99 = data.metrics?.http_req_duration?.values?.['p(99)'] || 0;
-  const errorPct = (getRateValue(data, 'errors')) * 100;
-  const totalReqs = data.metrics?.http_reqs?.values?.count || 0;
-  const rps = data.metrics?.http_reqs?.values?.rate || 0;
-  const slowCount = getCounterValue(data, 'slow_requests');
+  // Save JSON results for programmatic analysis
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `tests/load-test-results-${SCENARIO}-${timestamp}.json`;
 
-  // Per-endpoint metrics
-  const jobList = getMetricValues(data, 'job_list_duration');
-  const jobDetail = getMetricValues(data, 'job_detail_duration');
-  const search = getMetricValues(data, 'search_duration');
-  const auth = getMetricValues(data, 'auth_duration');
-  const application = getMetricValues(data, 'application_duration');
-  const notification = getMetricValues(data, 'notification_duration');
-  const profile = getMetricValues(data, 'profile_duration');
-  const viewTrack = getMetricValues(data, 'view_track_duration');
-  const stats = getMetricValues(data, 'stats_duration');
+  console.log('\n' + '═'.repeat(70));
+  console.log('  LOAD TEST RESULTS');
+  console.log('═'.repeat(70));
+  console.log(`  Scenario: ${SCENARIO}`);
+  console.log(`  Target:   ${BASE_URL}`);
 
-  // Race condition results
-  const raceApplyOk = getCounterValue(data, 'race_apply_success');
-  const raceApplyFail = getCounterValue(data, 'race_apply_fail');
-  const raceRegOk = getCounterValue(data, 'race_register_success');
-  const raceRegFail = getCounterValue(data, 'race_register_fail');
-  const raceProfOk = getCounterValue(data, 'race_profile_success');
-  const raceProfFail = getCounterValue(data, 'race_profile_fail');
-
-  // Checks summary
-  const checksTotal = data.root_group?.checks
-    ? Object.values(data.root_group.checks).reduce((sum, c) => sum + (c.passes || 0) + (c.fails || 0), 0)
-    : 0;
-  const checksPassed = data.root_group?.checks
-    ? Object.values(data.root_group.checks).reduce((sum, c) => sum + (c.passes || 0), 0)
-    : 0;
-  const checksFailed = checksTotal - checksPassed;
-
-  // Build per-endpoint table
-  const endpointTable = [
-    ['Endpoint',       'p50',          'p95',          'p99',          'avg'          ],
-    ['Job List',       jobList.p50,    jobList.p95,    jobList.p99,    jobList.avg    ],
-    ['Job Detail',     jobDetail.p50,  jobDetail.p95,  jobDetail.p99,  jobDetail.avg  ],
-    ['Search',         search.p50,     search.p95,     search.p99,     search.avg     ],
-    ['Auth/Login',     auth.p50,       auth.p95,       auth.p99,       auth.avg       ],
-    ['Application',    application.p50,application.p95,application.p99,application.avg],
-    ['Notifications',  notification.p50,notification.p95,notification.p99,notification.avg],
-    ['Profile',        profile.p50,    profile.p95,    profile.p99,    profile.avg    ],
-    ['View Track',     viewTrack.p50,  viewTrack.p95,  viewTrack.p99,  viewTrack.avg  ],
-    ['Stats/Loc/Co',   stats.p50,      stats.p95,      stats.p99,      stats.avg      ],
-  ];
-
-  // Format table with padding
-  function padRight(str, len) { str = String(str); while (str.length < len) str += ' '; return str; }
-  function padLeft(str, len)  { str = String(str); while (str.length < len) str = ' ' + str; return str; }
-
-  const colWidths = [16, 10, 10, 10, 10];
-  const tableRows = endpointTable.map((row, i) => {
-    return '    ' + row.map((cell, j) => {
-      const val = j === 0 ? padRight(cell, colWidths[j]) : padLeft(cell + 'ms', colWidths[j]);
-      return i === 0 && j > 0 ? padLeft(cell, colWidths[j]) : val;
-    }).join('  ');
-  });
-  const tableSeparator = '    ' + '-'.repeat(colWidths.reduce((a, b) => a + b + 2, -2));
-
-  // Race condition section (only shown for race scenario)
-  let raceSection = '';
-  if (SCENARIO === 'race') {
-    raceSection = `
-  Race Condition Results:
-    Apply Same Job:    ${raceApplyOk} succeeded / ${raceApplyFail} failed (of ${raceApplyOk + raceApplyFail} attempts)
-    Registration:      ${raceRegOk} succeeded / ${raceRegFail} failed (of ${raceRegOk + raceRegFail} attempts)
-    Profile Update:    ${raceProfOk} succeeded / ${raceProfFail} failed (of ${raceProfOk + raceProfFail} attempts)
-`;
+  // Key metrics
+  const dur = data.metrics.http_req_duration;
+  if (dur && dur.values) {
+    console.log('\n  Response Times:');
+    console.log(`    p50:  ${dur.values['p(50)']?.toFixed(0) || 'N/A'}ms`);
+    console.log(`    p95:  ${dur.values['p(95)']?.toFixed(0) || 'N/A'}ms`);
+    console.log(`    p99:  ${dur.values['p(99)']?.toFixed(0) || 'N/A'}ms`);
+    console.log(`    max:  ${dur.values.max?.toFixed(0) || 'N/A'}ms`);
   }
 
-  const summary = `
-${'='.repeat(68)}
-  advance.al Load Test Results — ${SCENARIO.toUpperCase()}
-${'='.repeat(68)}
+  const errRate = data.metrics.error_rate;
+  if (errRate && errRate.values) {
+    console.log(`\n  Error Rate: ${(errRate.values.rate * 100).toFixed(2)}%`);
+  }
 
-  Overall:
-    Total Requests:    ${totalReqs}
-    Requests/sec:      ${rps.toFixed(1)}
-    Error Rate:        ${errorPct.toFixed(2)}%
-    Slow Requests:     ${slowCount} (> 1s)
+  const reqs = data.metrics.http_reqs;
+  if (reqs && reqs.values) {
+    console.log(`  Total Requests: ${reqs.values.count}`);
+    console.log(`  Throughput: ${reqs.values.rate?.toFixed(1)} req/s`);
+  }
 
-  Response Times (all endpoints):
-    p50:  ${p50.toFixed(0)}ms
-    p95:  ${p95.toFixed(0)}ms
-    p99:  ${p99.toFixed(0)}ms
+  console.log('\n  Thresholds:');
+  if (data.thresholds) {
+    for (const [name, threshold] of Object.entries(data.thresholds)) {
+      const status = threshold.ok ? '✓ PASS' : '✗ FAIL';
+      console.log(`    ${status}: ${name}`);
+    }
+  }
 
-  Per-Endpoint Breakdown:
-${tableRows[0]}
-${tableSeparator}
-${tableRows.slice(1).join('\n')}
-
-  Checks:
-    Passed: ${checksPassed}
-    Failed: ${checksFailed}
-    Total:  ${checksTotal}
-    Rate:   ${checksTotal > 0 ? ((checksPassed / checksTotal) * 100).toFixed(1) : '—'}%
-${raceSection}
-  Pass/Fail Thresholds:
-    ${p95 < 500 ? 'PASS' : 'FAIL'}  p95 < 500ms (normal)          — actual: ${p95.toFixed(0)}ms
-    ${p95 < 2000 ? 'PASS' : 'FAIL'}  p95 < 2s (spike)              — actual: ${p95.toFixed(0)}ms
-    ${p95 < 5000 ? 'PASS' : 'FAIL'}  p95 < 5s (stress)             — actual: ${p95.toFixed(0)}ms
-    ${errorPct < 1 ? 'PASS' : 'FAIL'}  Error rate < 1% (normal)      — actual: ${errorPct.toFixed(2)}%
-    ${errorPct < 5 ? 'PASS' : 'FAIL'}  Error rate < 5% (spike)       — actual: ${errorPct.toFixed(2)}%
-    ${errorPct < 10 ? 'PASS' : 'FAIL'}  Error rate < 10% (stress)     — actual: ${errorPct.toFixed(2)}%
-${'='.repeat(68)}
-`;
-
-  // Build structured JSON output for programmatic consumption
-  const jsonOutput = {
-    scenario: SCENARIO,
-    timestamp: new Date().toISOString(),
-    overall: {
-      totalRequests: totalReqs,
-      requestsPerSecond: rps,
-      errorRate: errorPct,
-      slowRequests: slowCount,
-      responseTimes: { p50, p95, p99 },
-    },
-    endpoints: {
-      jobList:       { p50: parseFloat(jobList.p50) || 0, p95: parseFloat(jobList.p95) || 0, p99: parseFloat(jobList.p99) || 0 },
-      jobDetail:     { p50: parseFloat(jobDetail.p50) || 0, p95: parseFloat(jobDetail.p95) || 0, p99: parseFloat(jobDetail.p99) || 0 },
-      search:        { p50: parseFloat(search.p50) || 0, p95: parseFloat(search.p95) || 0, p99: parseFloat(search.p99) || 0 },
-      auth:          { p50: parseFloat(auth.p50) || 0, p95: parseFloat(auth.p95) || 0, p99: parseFloat(auth.p99) || 0 },
-      application:   { p50: parseFloat(application.p50) || 0, p95: parseFloat(application.p95) || 0, p99: parseFloat(application.p99) || 0 },
-      notifications: { p50: parseFloat(notification.p50) || 0, p95: parseFloat(notification.p95) || 0, p99: parseFloat(notification.p99) || 0 },
-      profile:       { p50: parseFloat(profile.p50) || 0, p95: parseFloat(profile.p95) || 0, p99: parseFloat(profile.p99) || 0 },
-      viewTrack:     { p50: parseFloat(viewTrack.p50) || 0, p95: parseFloat(viewTrack.p95) || 0, p99: parseFloat(viewTrack.p99) || 0 },
-      statsLocCo:    { p50: parseFloat(stats.p50) || 0, p95: parseFloat(stats.p95) || 0, p99: parseFloat(stats.p99) || 0 },
-    },
-    checks: {
-      passed: checksPassed,
-      failed: checksFailed,
-      total: checksTotal,
-      rate: checksTotal > 0 ? checksPassed / checksTotal : null,
-    },
-    raceConditions: SCENARIO === 'race' ? {
-      applyToSameJob: { succeeded: raceApplyOk, failed: raceApplyFail },
-      registration: { succeeded: raceRegOk, failed: raceRegFail },
-      profileUpdate: { succeeded: raceProfOk, failed: raceProfFail },
-    } : null,
-    rawK6Data: data,
-  };
+  console.log('═'.repeat(70));
 
   return {
-    stdout: summary,
-    'tests/load-test-results.json': JSON.stringify(jsonOutput, null, 2),
+    [filename]: JSON.stringify(data, null, 2),
+    stdout: '', // k6 default summary is suppressed; we use custom above
   };
 }

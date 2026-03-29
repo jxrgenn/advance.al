@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import { User, Job, Application, QuickUser } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { escapeRegex, sanitizeLimit } from '../utils/sanitize.js';
@@ -568,6 +569,10 @@ router.patch('/users/:userId/manage', async (req, res) => {
     const { userId } = req.params;
     const { action, reason, duration } = req.body;
 
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ success: false, message: 'ID i pavlefshëm' });
+    }
+
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({
@@ -677,6 +682,10 @@ router.patch('/jobs/:jobId/manage', async (req, res) => {
   try {
     const { jobId } = req.params;
     const { action, reason } = req.body;
+
+    if (!mongoose.isValidObjectId(jobId)) {
+      return res.status(400).json({ success: false, message: 'ID i pavlefshëm' });
+    }
 
     const job = await Job.findById(jobId);
     if (!job) {

@@ -159,6 +159,8 @@ const loginValidation = [
     .normalizeEmail()
     .withMessage('Email i pavlefshëm'),
   body('password')
+    .isString()
+    .withMessage('Fjalëkalimi duhet të jetë tekst')
     .notEmpty()
     .withMessage('Fjalëkalimi është i detyrueshëm')
 ];
@@ -283,9 +285,9 @@ router.post('/register', authLimiter, async (req, res) => {
       });
     }
 
-    // Verify code
+    // Verify code (constant-time comparison to prevent timing attacks)
     const hashedInput = crypto.createHash('sha256').update(verificationCode).digest('hex');
-    if (hashedInput !== pending.hashedCode) {
+    if (!crypto.timingSafeEqual(Buffer.from(hashedInput, 'hex'), Buffer.from(pending.hashedCode, 'hex'))) {
       pending.attempts = (pending.attempts || 0) + 1;
       if (pending.attempts >= 5) {
         await deletePendingRegistration(normalizedEmail);
@@ -355,7 +357,18 @@ router.post('/register', authLimiter, async (req, res) => {
     }
 
     const user = new User(userData);
-    await user.save();
+    try {
+      await user.save();
+    } catch (saveError) {
+      if (saveError.code === 11000) {
+        await deletePendingRegistration(normalizedEmail);
+        return res.status(400).json({
+          success: false,
+          message: 'Një përdorues me këtë email tashmë ekziston'
+        });
+      }
+      throw saveError;
+    }
     await deletePendingRegistration(normalizedEmail);
 
     // Generate tokens

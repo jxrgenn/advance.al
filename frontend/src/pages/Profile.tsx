@@ -89,6 +89,21 @@ const Profile = () => {
   const [jobAlertsEnabled, setJobAlertsEnabled] = useState(false);
   const [savingJobAlerts, setSavingJobAlerts] = useState(false);
 
+  // Background CV parsing detection (from ApplyModal)
+  const [bgCVParsing, setBgCVParsing] = useState(() => localStorage.getItem('cv-parsing-in-progress') === 'true');
+
+  useEffect(() => {
+    if (!bgCVParsing) return;
+    // Poll localStorage to detect when background parsing finishes
+    const interval = setInterval(() => {
+      if (localStorage.getItem('cv-parsing-in-progress') !== 'true') {
+        setBgCVParsing(false);
+        refreshUser();
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [bgCVParsing]);
+
   // CV Parse & Auto-fill state
   const [parsingCV, setParsingCV] = useState(false);
   const [parsedCVData, setParsedCVData] = useState<any>(null);
@@ -338,6 +353,7 @@ const Profile = () => {
 
   // Save settings (salary, remote, privacy)
   const handleSaveSettings = async () => {
+    if (savingSettings) return; // Prevent double-submit
     const salaryMin = showSalaryPreference ? (parseInt(desiredSalaryMin) || 0) : 0;
     const salaryMax = showSalaryPreference ? (parseInt(desiredSalaryMax) || 0) : 0;
     if (showSalaryPreference && user?.userType === 'jobseeker' && salaryMin > 0 && salaryMax > 0 && salaryMin > salaryMax) {
@@ -941,6 +957,7 @@ const Profile = () => {
   };
 
   const handleSaveWorkExperience = async () => {
+    if (savingWorkExperience) return; // Prevent double-submit
     setSavingWorkExperience(true);
 
     try {
@@ -1020,6 +1037,7 @@ const Profile = () => {
   };
 
   const handleSaveEducation = async () => {
+    if (savingEducation) return; // Prevent double-submit
     setSavingEducation(true);
 
     try {
@@ -1712,6 +1730,21 @@ const Profile = () => {
 
       {/* Tutorial Overlay */}
       <TutorialOverlay />
+
+      {/* Background CV Parsing Overlay */}
+      {bgCVParsing && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center">
+          <Card className="max-w-sm mx-4 shadow-lg">
+            <CardContent className="p-6 text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-3" />
+              <h3 className="font-semibold text-lg mb-1">CV-ja po analizohet...</h3>
+              <p className="text-sm text-muted-foreground">
+                Profili juaj po plotësohet automatikisht nga CV-ja. Ju lutem prisni pak.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <div className="container py-8 pt-20">
         {/* Tutorial Help Button */}

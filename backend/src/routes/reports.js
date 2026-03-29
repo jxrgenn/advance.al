@@ -456,6 +456,31 @@ router.get('/admin/stats',
         }
       ]);
 
+      // Calculate actual average resolution time from resolved reports
+      const avgResolutionResult = await Report.aggregate([
+        {
+          $match: {
+            'resolution.resolvedAt': { $exists: true },
+            createdAt: { $gte: new Date(Date.now() - parseInt(timeframe) * 24 * 60 * 60 * 1000) }
+          }
+        },
+        {
+          $project: {
+            resolutionMs: { $subtract: ['$resolution.resolvedAt', '$createdAt'] }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            avgMs: { $avg: '$resolutionMs' }
+          }
+        }
+      ]);
+      const avgDays = avgResolutionResult.length > 0
+        ? (avgResolutionResult[0].avgMs / (1000 * 60 * 60 * 24)).toFixed(1)
+        : '0';
+      const averageResolutionTime = `${avgDays} ditë`;
+
       res.json({
         success: true,
         data: {
@@ -464,7 +489,7 @@ router.get('/admin/stats',
             resolvedReports,
             pendingReports,
             resolutionRate: `${resolutionRate}%`,
-            averageResolutionTime: '2.5 ditë'
+            averageResolutionTime
           },
           reportStats,
           actionStats,

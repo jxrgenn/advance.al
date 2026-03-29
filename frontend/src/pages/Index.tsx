@@ -7,6 +7,7 @@ import CoreFilters from "@/components/CoreFilters";
 import RecentlyViewedJobs from "@/components/RecentlyViewedJobs";
 import PremiumJobsCarousel from "@/components/PremiumJobsCarousel";
 import { QuickUserBanner } from "@/components/QuickUserBanner";
+import OnboardingGuide from "@/components/OnboardingGuide";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -688,7 +689,7 @@ const Index = () => {
               onFilterChange={handleCoreFilterChange}
               onShowAllFilters={handleShowFilters}
               showAllFilters={showAllFilters}
-              className={premiumJobs.length > 0 ? "sticky top-[17rem] z-20" : "sticky top-20 z-20"}
+              className={premiumJobs.length > 0 ? "hidden lg:block sticky top-[9.5rem] z-10" : "hidden lg:block sticky top-20 z-10"}
             />
 
             {/* Expandable Filter Section - Below CoreFilters */}
@@ -1046,6 +1047,9 @@ const Index = () => {
             {!loading && !searchQuery && selectedLocations.length === 0 && !selectedType && !Object.values(coreFilters).some(Boolean) && isAuthenticated && (
               <RecentlyViewedJobs className="mb-6" limit={4} />
             )}
+
+            {/* Onboarding Guide — inline, not overlay */}
+            <OnboardingGuide />
 
             {/* Active Filters */}
             {(selectedLocations.length > 0 || selectedType || Object.values(coreFilters).some(Boolean)) && (
