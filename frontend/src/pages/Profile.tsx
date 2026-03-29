@@ -26,6 +26,7 @@ const Profile = () => {
   }, []);
 
   const [uploadingCV, setUploadingCV] = useState(false);
+  const [deletingCV, setDeletingCV] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [currentCV, setCurrentCV] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
@@ -2082,6 +2083,37 @@ const Profile = () => {
                           >
                             <FileText className="mr-2 h-4 w-4" />
                             Shiko CV
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={deletingCV}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                            onClick={async () => {
+                              if (!confirm('Jeni i sigurt që dëshironi të fshini CV-në nga profili?')) return;
+                              setDeletingCV(true);
+                              try {
+                                const res = await usersApi.deleteResume();
+                                if (res.success) {
+                                  setCurrentCV(null);
+                                  await refreshUser();
+                                  toast({ title: 'CV u fshi', description: 'CV-ja u hoq nga profili juaj.' });
+                                } else {
+                                  throw new Error(res.message);
+                                }
+                              } catch (err: any) {
+                                toast({ title: 'Gabim', description: err.message || 'Nuk mund të fshihet CV-ja', variant: 'destructive' });
+                              } finally {
+                                setDeletingCV(false);
+                              }
+                            }}
+                          >
+                            {deletingCV ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="mr-2 h-4 w-4" />
+                            )}
+                            Fshi CV
                           </Button>
                         </div>
                       ) : (

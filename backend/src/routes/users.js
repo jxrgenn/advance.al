@@ -702,6 +702,56 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
   }
 });
 
+// @route   DELETE /api/users/resume
+// @desc    Remove resume/CV from profile
+// @access  Private (Job Seekers only)
+router.delete('/resume', authenticate, requireJobSeeker, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Përdoruesi nuk u gjet'
+      });
+    }
+
+    const resumeUrl = user.profile.jobSeekerProfile?.resume;
+    if (!resumeUrl) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nuk keni CV të ngarkuar'
+      });
+    }
+
+    // Clean up file from Cloudinary or local storage
+    await cleanupOldCloudinaryFile(resumeUrl, 'raw');
+
+    if (!resumeUrl.startsWith('http')) {
+      // Local file — try to delete
+      const localPath = path.join(process.cwd(), resumeUrl);
+      try { fs.unlinkSync(localPath); } catch { /* file may not exist */ }
+    }
+
+    // Clear resume from profile
+    user.profile.jobSeekerProfile.resume = null;
+    await user.save();
+
+    logger.info('Resume deleted', { userId: req.user._id });
+
+    res.json({
+      success: true,
+      message: 'CV u fshi me sukses',
+      data: { user }
+    });
+  } catch (error) {
+    logger.error('Delete resume error:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Gabim në fshirjen e CV-së'
+    });
+  }
+});
+
 // Rate limiter for CV parsing (uses OpenAI credits)
 const parseResumeLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour

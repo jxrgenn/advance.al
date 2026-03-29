@@ -19,7 +19,9 @@
 - `frontend/src/pages/Index.tsx` — Added `<OnboardingGuide />`, fixed sticky filter `top-[9.5rem]` when premium carousel present, `top-20` otherwise
 - `frontend/src/components/ApplyModal.tsx` — Fixed CV button text (PDF → PDF/DOCX), added "Save CV to profile?" dialog, async background CV parse + profile auto-fill
 - `backend/src/routes/applications.js` — Removed title/resume requirement from apply — only firstName+lastName needed
-- `frontend/src/pages/Profile.tsx` — Added background CV parsing overlay (blocks editing while CV is being analyzed)
+- `frontend/src/pages/Profile.tsx` — Added background CV parsing overlay, delete CV button
+- `backend/src/routes/users.js` — Added `DELETE /api/users/resume` endpoint (cleans up Cloudinary/local file)
+- `frontend/src/lib/api.ts` — Added `deleteResume()` API function
 
 ### Features:
 - **No guest banner** — existing QuickUserBanner already handles guest nudges inline

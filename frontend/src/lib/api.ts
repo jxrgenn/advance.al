@@ -784,6 +784,13 @@ export const usersApi = {
     });
   },
 
+  // Delete resume/CV from profile
+  deleteResume: async (): Promise<ApiResponse<{ user: User }>> => {
+    return apiRequest<{ user: User }>('/users/resume', {
+      method: 'DELETE'
+    });
+  },
+
   // Upload resume/CV and parse with AI for profile auto-fill
   parseResume: async (formData: FormData): Promise<ApiResponse<{ resumeUrl: string; parsedData: any; user?: User }>> => {
     return apiRequest<{ resumeUrl: string; parsedData: any; user?: User }>('/users/parse-resume', {
