@@ -27,6 +27,7 @@ const Profile = () => {
 
   const [uploadingCV, setUploadingCV] = useState(false);
   const [deletingCV, setDeletingCV] = useState(false);
+  const [showDeleteCVDialog, setShowDeleteCVDialog] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [currentCV, setCurrentCV] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
@@ -2089,24 +2090,7 @@ const Profile = () => {
                             size="sm"
                             disabled={deletingCV}
                             className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                            onClick={async () => {
-                              if (!confirm('Jeni i sigurt që dëshironi të fshini CV-në nga profili?')) return;
-                              setDeletingCV(true);
-                              try {
-                                const res = await usersApi.deleteResume();
-                                if (res.success) {
-                                  setCurrentCV(null);
-                                  await refreshUser();
-                                  toast({ title: 'CV u fshi', description: 'CV-ja u hoq nga profili juaj.' });
-                                } else {
-                                  throw new Error(res.message);
-                                }
-                              } catch (err: any) {
-                                toast({ title: 'Gabim', description: err.message || 'Nuk mund të fshihet CV-ja', variant: 'destructive' });
-                              } finally {
-                                setDeletingCV(false);
-                              }
-                            }}
+                            onClick={() => setShowDeleteCVDialog(true)}
                           >
                             {deletingCV ? (
                               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -3287,6 +3271,53 @@ const Profile = () => {
             <AlertDialogCancel>Anulo</AlertDialogCancel>
             <AlertDialogAction onClick={() => { confirmDialog.action(); setConfirmDialog(prev => ({ ...prev, open: false })); }}>
               Konfirmo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete CV Confirmation Dialog */}
+      <AlertDialog open={showDeleteCVDialog} onOpenChange={setShowDeleteCVDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Fshi CV-në?</AlertDialogTitle>
+            <AlertDialogDescription>
+              CV-ja do të fshihet nga profili juaj. Nuk do të mund ta përdorni për aplikime derisa të ngarkoni një të re.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingCV}>Anulo</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deletingCV}
+              className="bg-red-600 hover:bg-red-700"
+              onClick={async (e) => {
+                e.preventDefault();
+                setDeletingCV(true);
+                try {
+                  const res = await usersApi.deleteResume();
+                  if (res.success) {
+                    setCurrentCV(null);
+                    await refreshUser();
+                    toast({ title: 'CV u fshi', description: 'CV-ja u hoq nga profili juaj.' });
+                    setShowDeleteCVDialog(false);
+                  } else {
+                    throw new Error(res.message);
+                  }
+                } catch (err: any) {
+                  toast({ title: 'Gabim', description: err.message || 'Nuk mund të fshihet CV-ja', variant: 'destructive' });
+                } finally {
+                  setDeletingCV(false);
+                }
+              }}
+            >
+              {deletingCV ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Duke fshirë...
+                </>
+              ) : (
+                'Fshi CV'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
