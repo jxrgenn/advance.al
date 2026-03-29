@@ -31,7 +31,7 @@ class JobEmbeddingService {
     this.apiTimeout = parseInt(process.env.OPENAI_API_TIMEOUT || '30000');
     this.batchSize = parseInt(process.env.EMBEDDING_BATCH_SIZE || '500');
     this.similarityTopN = parseInt(process.env.SIMILARITY_TOP_N || '10');
-    this.similarityMinScore = parseFloat(process.env.SIMILARITY_MIN_SCORE || '0.7');
+    this.similarityMinScore = parseFloat(process.env.SIMILARITY_MIN_SCORE || '0.55');
   }
 
   /**
@@ -46,7 +46,7 @@ class JobEmbeddingService {
    * @param {number} priority - 1-10 (lower = higher priority)
    * @returns {Promise<Object>} Queue item
    */
-  async queueEmbeddingGeneration(jobId, priority = 10) {
+  async queueEmbeddingGeneration(jobId, priority = 10, extraMetadata = {}) {
     const debugId = debugLogger.generateDebugId();
 
     try {
@@ -79,7 +79,7 @@ class JobEmbeddingService {
         taskType: 'generate_embedding',
         status: 'pending',
         priority,
-        metadata: { debugId, queuedAt: new Date() }
+        metadata: { debugId, queuedAt: new Date(), ...extraMetadata }
       });
 
       debugLogger.success(debugId, 'QUEUE', 'queue_embedding', {
@@ -476,8 +476,8 @@ class JobEmbeddingService {
     try {
       debugLogger.start(debugId, 'EMBEDDING', 'compute_similarity', { jobId });
 
-      // Fetch job with embedding
-      const job = await Job.findById(jobId);
+      // Fetch job with embedding (vector is select:false by default)
+      const job = await Job.findById(jobId).select('+embedding.vector');
 
       if (!job) {
         throw new Error(`Job ${jobId} not found`);

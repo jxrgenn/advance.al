@@ -1,11 +1,45 @@
 # advance.al - DEVELOPMENT STATUS & ROADMAP
 
 **Date:** September 25-28, 2025
-**Last Updated:** March 29, 2026 (Onboarding system, sticky filter fix, CV upload UX improvements)
+**Last Updated:** March 29, 2026 (Database enrichment, vector embedding fixes, onboarding system)
 **Platform:** Premier Job Marketplace for Albania
 **CURRENT STATUS:** 🟢 **DEPLOY-READY — Pre-deployment audit complete. 6 critical + 7 high + 2 medium fixes applied. Test suite, load tests, QA checklist, deployment checklist created.**
 **Phase:** QA & Deployment (see env var checklist below)
 **Brand:** advance.al (formerly Albania JobFlow)
+
+## ✅ **DATABASE ENRICHMENT & VECTOR EMBEDDING FIXES — MARCH 29, 2026**
+
+### Database Enrichment
+- **Script:** `backend/scripts/enrich-database.js` — 6-phase one-time enrichment
+- **Phase 1:** Cleaned test/garbage data — deleted 39 test employers, 55 test jobseekers, 67 orphaned jobs, 15 garbage jobs, 328 stale queue items, 421 stale notifications
+- **Phase 2:** Fixed existing employers — assigned logos, updated industries, removed duplicates
+- **Phase 3:** Created 3 new employers (Spitali Amerikan, Universiteti i Tiranës, ALBtransport) with full profiles
+- **Phase 4:** Created 73 realistic jobs across all 14 categories and all 13 cities
+- **Phase 5:** Created 16 new jobseeker profiles (6 full 80%+, 5 partial 40-70%, 5 minimal 33%)
+- **Phase 6:** Queued embeddings for all new jobs + recount location stats
+- **Result:** 19 employers, 25 jobseekers, 95 active jobs (was heavily polluted with test data)
+
+### Vector Embedding Fixes (5 issues resolved)
+1. **CRITICAL — Notification race condition fixed:** Job creation no longer fires notifications 2s after queueing (before embedding exists). Instead, notifications are sent AFTER embedding generation completes in the worker via `metadata.notifyUsers` flag.
+   - `backend/src/routes/jobs.js` — Removed broken 2s delay + notification call, passes `notifyUsers: job.status === 'active'` to queue
+   - `backend/src/workers/embeddingWorker.js` — Added notification logic after `processEmbeddingGeneration()`, imports Job + notificationService
+2. **HIGH — Similar jobs threshold:** Lowered from 0.7 → 0.55 (`jobEmbeddingService.js` line 34) for better job-job matching
+3. **HIGH — Admin backfill endpoints added:**
+   - `POST /api/admin/backfill-user-embeddings` — Finds all jobseekers with pending/failed/missing embeddings, generates them
+   - `POST /api/admin/backfill-job-embeddings` — Finds all active jobs with pending/failed/missing embeddings, queues them
+   - `backend/src/routes/admin.js` — Two new routes added with userEmbeddingService import
+4. **MEDIUM — Location city change trigger:** City changes now trigger embedding regeneration for jobseekers
+   - `backend/src/routes/users.js` — Changed condition to detect `location.city` changes alongside jobSeekerProfile field changes
+5. **BUG — computeSimilarities missing select('+embedding.vector'):** `Job.findById(jobId)` in `computeSimilarities()` didn't select the hidden vector field → all similarity computations failed silently
+   - `backend/src/services/jobEmbeddingService.js` — Added `.select('+embedding.vector')` to main job fetch in `computeSimilarities()`
+   - **Result:** 70/95 active jobs now have populated similarJobs (remaining 25 have no matches above 0.55 threshold)
+
+### Files Modified:
+- `backend/src/routes/jobs.js` — Race condition fix (notification moved to worker)
+- `backend/src/workers/embeddingWorker.js` — Post-embedding notification, new imports
+- `backend/src/services/jobEmbeddingService.js` — Similarity threshold 0.7→0.55, extraMetadata param, select fix
+- `backend/src/routes/admin.js` — Two new backfill endpoints
+- `backend/src/routes/users.js` — Location city change triggers embedding regen
 
 ## ✅ **WEBSITE ONBOARDING SYSTEM — MARCH 29, 2026**
 

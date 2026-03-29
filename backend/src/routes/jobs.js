@@ -1079,25 +1079,15 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
     // Populate employer info for response
     await job.populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.firstName profile.lastName profile.location');
 
-    // Queue embedding generation first, then notify matching users (async, non-blocking)
-    // Embedding must be generated before notifications so semantic matching works
+    // Queue embedding generation (async, non-blocking)
+    // Notifications are sent AFTER embedding completes (in the worker) to avoid race condition
     setImmediate(async () => {
       try {
-        await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10); // Priority 10 (normal)
+        await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10, {
+          notifyUsers: job.status === 'active' // Worker will notify matching users after embedding
+        });
       } catch (error) {
         logger.error('Error queueing embedding for job:', error.message);
-      }
-
-      // Only notify users for active jobs (not pending_payment), and after embedding is queued
-      if (job.status === 'active') {
-        try {
-          // Short delay to allow embedding generation to complete
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          const populatedJob = await Job.findById(job._id).populate('employerId', 'profile.employerProfile.companyName');
-          await notificationService.notifyMatchingUsers(populatedJob);
-        } catch (error) {
-          logger.error('Error in job notification process:', error.message);
-        }
       }
     });
 

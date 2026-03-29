@@ -17,7 +17,9 @@ import 'dotenv/config';
 import mongoose from 'mongoose';
 import JobQueue from '../models/JobQueue.js';
 import WorkerStatus from '../models/WorkerStatus.js';
+import Job from '../models/Job.js';
 import jobEmbeddingService from '../services/jobEmbeddingService.js';
+import notificationService from '../lib/notificationService.js';
 import alertService from '../services/alertService.js';
 import debugLogger from '../services/debugLogger.js';
 import errorSanitizer from '../services/errorSanitizer.js';
@@ -355,6 +357,26 @@ Starting in 3 seconds...
       workerId: this.workerId,
       jobId: task.jobId
     });
+
+    // Notify matching users AFTER embedding is generated (not before — fixes race condition)
+    if (task.metadata?.notifyUsers) {
+      try {
+        const populatedJob = await Job.findById(task.jobId)
+          .select('+embedding.vector')
+          .populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo');
+        if (populatedJob && populatedJob.status === 'active') {
+          debugLogger.log(debugId, 'info', 'WORKER', 'notify_users_start', { jobId: task.jobId });
+          const result = await notificationService.notifyMatchingUsers(populatedJob);
+          debugLogger.log(debugId, 'info', 'WORKER', 'notify_users_complete', {
+            jobId: task.jobId,
+            stats: result.stats
+          });
+        }
+      } catch (notifyError) {
+        // Don't fail the embedding task over notification errors
+        console.error('[WORKER] Notification error (non-fatal):', notifyError.message);
+      }
+    }
   }
 
   /**

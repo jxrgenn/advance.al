@@ -382,10 +382,10 @@ router.put('/profile', authenticate, async (req, res) => {
     await user.save();
 
     // Regenerate embedding if jobseeker updated semantically relevant fields (async, non-blocking)
-    if (user.userType === 'jobseeker' && jobSeekerProfile) {
-      const semanticFields = ['title', 'skills', 'bio', 'experience'];
-      const hasSemanticChange = semanticFields.some(f => jobSeekerProfile[f] !== undefined);
-      if (hasSemanticChange) {
+    if (user.userType === 'jobseeker') {
+      const hasProfileChange = jobSeekerProfile && ['title', 'skills', 'bio', 'experience'].some(f => jobSeekerProfile[f] !== undefined);
+      const hasLocationChange = location && location.city !== undefined;
+      if (hasProfileChange || hasLocationChange) {
         setImmediate(async () => {
           try {
             await userEmbeddingService.generateJobSeekerEmbedding(user._id);

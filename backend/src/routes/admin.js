@@ -5,6 +5,7 @@ import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { escapeRegex, sanitizeLimit } from '../utils/sanitize.js';
 import notificationService from '../lib/notificationService.js';
 import jobEmbeddingService from '../services/jobEmbeddingService.js';
+import userEmbeddingService from '../services/userEmbeddingService.js';
 import logger from '../config/logger.js';
 
 const router = express.Router();
@@ -1029,6 +1030,88 @@ router.get('/jobs/pending', async (req, res) => {
       success: false,
       message: 'Gabim në marrjen e punëve në pritje'
     });
+  }
+});
+
+// @route   POST /api/admin/backfill-user-embeddings
+// @desc    Regenerate embeddings for all jobseekers missing or with failed embeddings
+// @access  Private (Admin only)
+router.post('/backfill-user-embeddings', async (req, res) => {
+  try {
+    const users = await User.find({
+      userType: 'jobseeker',
+      isDeleted: false,
+      status: 'active',
+      $or: [
+        { 'profile.jobSeekerProfile.embedding.status': { $in: ['pending', 'failed'] } },
+        { 'profile.jobSeekerProfile.embedding.status': { $exists: false } },
+        { 'profile.jobSeekerProfile.embedding': { $exists: false } }
+      ]
+    }).select('_id email profile.firstName profile.lastName');
+
+    let succeeded = 0;
+    let failed = 0;
+    const errors = [];
+
+    for (const user of users) {
+      try {
+        const result = await userEmbeddingService.generateJobSeekerEmbedding(user._id);
+        if (result) {
+          succeeded++;
+        } else {
+          failed++;
+          errors.push({ userId: user._id, email: user.email, reason: 'Not enough profile data' });
+        }
+      } catch (err) {
+        failed++;
+        errors.push({ userId: user._id, email: user.email, reason: err.message });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Backfill complete: ${succeeded} succeeded, ${failed} failed out of ${users.length} total`,
+      data: { total: users.length, succeeded, failed, errors: errors.slice(0, 20) }
+    });
+  } catch (error) {
+    logger.error('Backfill user embeddings error:', error.message);
+    res.status(500).json({ success: false, message: 'Gabim në backfill' });
+  }
+});
+
+// @route   POST /api/admin/backfill-job-embeddings
+// @desc    Queue embedding generation for all active jobs missing embeddings
+// @access  Private (Admin only)
+router.post('/backfill-job-embeddings', async (req, res) => {
+  try {
+    const jobs = await Job.find({
+      isDeleted: { $ne: true },
+      status: 'active',
+      $or: [
+        { 'embedding.status': { $in: ['pending', 'failed'] } },
+        { 'embedding.status': { $exists: false } },
+        { 'embedding': { $exists: false } }
+      ]
+    }).select('_id title');
+
+    let queued = 0;
+    for (const job of jobs) {
+      try {
+        await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10);
+        queued++;
+      } catch (err) {
+        // Already queued or other issue — continue
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Queued ${queued}/${jobs.length} jobs for embedding generation`,
+      data: { total: jobs.length, queued }
+    });
+  } catch (error) {
+    logger.error('Backfill job embeddings error:', error.message);
+    res.status(500).json({ success: false, message: 'Gabim në backfill' });
   }
 });
 
