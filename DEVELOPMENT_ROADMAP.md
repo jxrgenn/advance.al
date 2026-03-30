@@ -1,11 +1,31 @@
 # advance.al - DEVELOPMENT STATUS & ROADMAP
 
 **Date:** September 25-28, 2025
-**Last Updated:** March 29, 2026 (Comprehensive Human QA Checklist created — 450+ test items across 37 sections)
+**Last Updated:** March 30, 2026 (Performance optimizations + 4 UX fixes: custom industry, draft jobs, tutorial fixes)
 **Platform:** Premier Job Marketplace for Albania
 **CURRENT STATUS:** 🟢 **PRODUCTION-READY — Full security audit + deep audit round 2, 216 runtime tests passing, 60 security attacks blocked, 11 bugs found and fixed. See FINAL-REPORT.md.**
 **Phase:** QA & Deployment (frontend manual QA + production config remaining)
 **Brand:** advance.al (formerly Albania JobFlow)
+
+## ✅ **UX IMPROVEMENTS & PERFORMANCE — MARCH 30, 2026**
+
+### Backend Performance Optimization (14 endpoints, 24-50% faster):
+- Parallelized DB queries with `Promise.all()` on jobs, companies, applications, notifications, admin routes
+- Added `.lean()` and `.select()` for faster Mongoose reads
+- Fire-and-forget view count increment on job detail
+- See `PERF-FINAL.md` for full before/after benchmarks
+
+### 4 UX Fixes:
+1. **Custom industry on employer registration** — When "Tjetër" selected, text input appears for custom industry name. Validated, saved to DB as-is. (`EmployerRegister.tsx`)
+2. **Draft job saving for unverified employers** — Form data auto-saved to localStorage. "Ruaj Draft" button always visible. Unverified employers see "Ruaj për Më Vonë" instead of "Posto Punën". Draft loads automatically on return. Cleared on successful post. (`PostJob.tsx`)
+3. **Dashboard settings tutorial fixed** — Added 3 missing tutorial steps: Logo upload, Contact info (Phone/WhatsApp), Contact preferences (toggles). Added `data-tutorial` attributes to all missing elements. (`EmployerDashboard.tsx`)
+4. **Profile tutorial bugs fixed** — Fixed backward tab switching (now searches both directions), added recursion limit on auto-skip (max 5 skips), fixed unmount cleanup (scroll lock + timers), added `isTransitioning` to useEffect deps. (`Profile.tsx`)
+
+### Files Modified:
+- `frontend/src/pages/EmployerRegister.tsx` — Custom industry field
+- `frontend/src/pages/PostJob.tsx` — Draft save/load system
+- `frontend/src/pages/EmployerDashboard.tsx` — Tutorial steps + data-tutorial attributes
+- `frontend/src/pages/Profile.tsx` — Tutorial bug fixes
 
 ## ✅ **COMPREHENSIVE HUMAN QA CHECKLIST — MARCH 29, 2026**
 

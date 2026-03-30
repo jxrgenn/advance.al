@@ -1161,116 +1161,62 @@ const Profile = () => {
     });
   };
 
-  // Tutorial functions with proper fixes
-  const timersRef = useRef<number[]>([]);
+  // Tutorial functions — simplified: instant scroll, no timing bugs
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const transitionTimer = useRef<number | null>(null);
 
-  // Cleanup timers on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      timersRef.current.forEach(timer => clearTimeout(timer));
+      if (transitionTimer.current) clearTimeout(transitionTimer.current);
+      isScrollLockedRef.current = false;
       document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.top = '';
+      document.body.style.paddingRight = '';
     };
   }, []);
 
-  // Auto-advance tutorial when user manually switches tabs (not during transitions)
-  useEffect(() => {
-    if (!showTutorial || isTransitioning) return;
-
-    const currentStep = allTutorialSteps[tutorialStep];
-    if (!currentStep) return;
-
-    // Check if we're on the right tab for the current step
-    if (currentStep.requiresTab === currentTab) {
-      // We're on the correct tab, highlight the element
-      highlightElement(tutorialStep);
-    } else {
-      // We're on the wrong tab (user manually switched), check if there's a matching step for this tab
-      const nextStepForCurrentTab = allTutorialSteps.findIndex(
-        (step, index) => index > tutorialStep && step.requiresTab === currentTab
-      );
-
-      if (nextStepForCurrentTab !== -1) {
-        // Found a step for this tab, jump to it
-        setTutorialStep(nextStepForCurrentTab);
-        setTimeout(() => highlightElement(nextStepForCurrentTab), 400);
-      }
-    }
-  }, [currentTab, showTutorial]);
-
-  // Wait for element to be visible in DOM
-  const waitForElement = (selector: string, maxAttempts = 15): Promise<Element | null> => {
-    return new Promise((resolve) => {
-      let attempts = 0;
-      const check = () => {
-        const element = document.querySelector(selector);
-        if (element && element.offsetParent !== null) {
-          resolve(element);
-        } else if (attempts < maxAttempts) {
-          attempts++;
-          requestAnimationFrame(check);
-        } else {
-          resolve(null);
-        }
-      };
-      requestAnimationFrame(check);
-    });
-  };
-
-  // Proper scroll lock with event prevention (both desktop and mobile)
+  // Scroll lock while tutorial is open
   useEffect(() => {
     if (!showTutorial) return;
-
-    const preventScroll = (e: Event) => {
-      if (!isScrollLockedRef.current) return;
-      e.preventDefault();
-      e.stopPropagation();
-      return false;
-    };
-
-    const preventKeyScroll = (e: KeyboardEvent) => {
-      if (!isScrollLockedRef.current) return;
-      if ([32, 33, 34, 35, 36, 37, 38, 39, 40].includes(e.keyCode)) {
-        e.preventDefault();
-      }
-    };
-
-    document.addEventListener('wheel', preventScroll, { passive: false });
-    document.addEventListener('touchmove', preventScroll, { passive: false });
-    document.addEventListener('keydown', preventKeyScroll, { passive: false });
-
+    const prevent = (e: Event) => { if (isScrollLockedRef.current) { e.preventDefault(); e.stopPropagation(); } };
+    const preventKey = (e: KeyboardEvent) => { if (isScrollLockedRef.current && [32,33,34,35,36,37,38,39,40].includes(e.keyCode)) e.preventDefault(); };
+    document.addEventListener('wheel', prevent, { passive: false });
+    document.addEventListener('touchmove', prevent, { passive: false });
+    document.addEventListener('keydown', preventKey, { passive: false });
     return () => {
-      document.removeEventListener('wheel', preventScroll);
-      document.removeEventListener('touchmove', preventScroll);
-      document.removeEventListener('keydown', preventKeyScroll);
+      document.removeEventListener('wheel', prevent);
+      document.removeEventListener('touchmove', prevent);
+      document.removeEventListener('keydown', preventKey);
     };
   }, [showTutorial]);
 
+  // When user manually switches tabs during tutorial, jump to first step for that tab
+  useEffect(() => {
+    if (!showTutorial || isTransitioning) return;
+    const cur = allTutorialSteps[tutorialStep];
+    if (cur && cur.requiresTab === currentTab) {
+      // Correct tab — re-highlight (handles scroll)
+      goToStep(tutorialStep);
+    } else {
+      // Wrong tab — find first step for this tab
+      const idx = allTutorialSteps.findIndex(s => s.requiresTab === currentTab);
+      if (idx !== -1) goToStep(idx);
+    }
+  }, [currentTab]);
+
   const startTutorial = () => {
-    // Find first step for current tab
     const startIndex = allTutorialSteps.findIndex(s => s.requiresTab === currentTab);
     const startStep = startIndex >= 0 ? startIndex : 0;
-
-    setTutorialStep(startStep);
     setShowTutorial(true);
-
-    // Hide scrollbar without layout shift
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-    document.body.style.overflow = 'hidden';
-    document.body.style.paddingRight = `${scrollbarWidth}px`;
-
-    // Enable scroll lock
     isScrollLockedRef.current = true;
-
-    setTimeout(() => highlightElement(startStep), 150);
+    document.body.style.overflow = 'hidden';
+    // Small delay for DOM to settle
+    setTimeout(() => goToStep(startStep), 100);
   };
 
   const closeTutorial = () => {
-    // Disable scroll lock
     isScrollLockedRef.current = false;
-
+    if (transitionTimer.current) clearTimeout(transitionTimer.current);
     setShowTutorial(false);
     setTutorialStep(0);
     setHighlightedElement(null);
@@ -1281,255 +1227,106 @@ const Profile = () => {
     setIsTransitioning(false);
     document.body.style.overflow = '';
     document.body.style.paddingRight = '';
-    timersRef.current.forEach(timer => clearTimeout(timer));
-    timersRef.current = [];
   };
 
-  const nextTutorialStep = () => {
-    if (isTransitioning) {
+  // Core: go to a specific step, handling tab switch + scroll + highlight
+  const goToStep = (stepIndex: number) => {
+    if (stepIndex < 0 || stepIndex >= allTutorialSteps.length) {
+      closeTutorial();
       return;
     }
 
-    // Normal step progression
-    if (tutorialStep < allTutorialSteps.length - 1) {
-      const nextStep = allTutorialSteps[tutorialStep + 1];
+    const step = allTutorialSteps[stepIndex];
+    setTutorialStep(stepIndex);
 
-      // Check if next step requires a different tab
-      if (nextStep && nextStep.requiresTab !== currentTab) {
-        // Automatically switch tabs
-        setIsTransitioning(true);
-        setCurrentTab(nextStep.requiresTab);
-        setTutorialStep(tutorialStep + 1);
-
-        // Wait for tab to render, then highlight the element
-        const timer = setTimeout(async () => {
-          await highlightElement(tutorialStep + 1);
-          setIsTransitioning(false);
-        }, 350);
-        timersRef.current.push(timer);
-        return;
-      }
-
+    // If step needs a different tab, switch first
+    if (step.requiresTab !== currentTab) {
       setIsTransitioning(true);
-      setTutorialStep(tutorialStep + 1);
-      highlightElement(tutorialStep + 1);
+      // Hide spotlight during tab switch
+      setHighlightedElement(null);
+      setElementPosition(null);
+      setCurrentTab(step.requiresTab);
 
-      const timer = setTimeout(() => setIsTransitioning(false), 350);
-      timersRef.current.push(timer);
+      // Wait for tab content to render, then highlight
+      transitionTimer.current = window.setTimeout(() => {
+        highlightStep(stepIndex);
+        setIsTransitioning(false);
+      }, 300);
+      return;
+    }
+
+    highlightStep(stepIndex);
+  };
+
+  // Find and highlight the element for a step — instant scroll, no smooth timing issues
+  const highlightStep = (stepIndex: number, skipCount = 0) => {
+    const step = allTutorialSteps[stepIndex];
+    if (!step) { closeTutorial(); return; }
+
+    const element = document.querySelector(step.selector) as HTMLElement | null;
+    if (!element || element.offsetParent === null) {
+      // Element not found — skip (max 5 to prevent infinite loop)
+      if (skipCount < 5 && stepIndex < allTutorialSteps.length - 1) {
+        setTutorialStep(stepIndex + 1);
+        highlightStep(stepIndex + 1, skipCount + 1);
+      } else {
+        closeTutorial();
+      }
+      return;
+    }
+
+    const rect = element.getBoundingClientRect();
+    const vh = window.innerHeight;
+
+    // Check if element is reasonably visible (with margin for card)
+    const inView = step.skipScroll || (rect.top >= 60 && rect.bottom <= vh - 120);
+
+    if (!inView) {
+      // Hide spotlight/card so they don't flash at old position
+      setHighlightedElement(null);
+      setElementPosition(null);
+
+      // Unlock scroll, instant scroll to element center, re-lock
+      isScrollLockedRef.current = false;
+      document.body.style.overflow = '';
+
+      element.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'nearest' });
+
+      // Use rAF to let the browser finish layout after scroll
+      requestAnimationFrame(() => {
+        const freshRect = element.getBoundingClientRect();
+        document.body.style.overflow = 'hidden';
+        isScrollLockedRef.current = true;
+
+        setHighlightedElement(element);
+        setElementPosition(freshRect);
+        setIsAnimating(true);
+        setIsSpotlightAnimating(true);
+        setTimeout(() => { setIsAnimating(false); setIsSpotlightAnimating(false); }, 300);
+      });
+    } else {
+      // Already visible — animate spotlight to new position
+      if (elementPosition) setPreviousElementPosition(elementPosition);
+      setHighlightedElement(element);
+      setElementPosition(rect);
+      setIsAnimating(true);
+      setIsSpotlightAnimating(true);
+      setTimeout(() => { setIsAnimating(false); setIsSpotlightAnimating(false); }, 300);
+    }
+  };
+
+  const nextTutorialStep = () => {
+    if (isTransitioning) return;
+    if (tutorialStep < allTutorialSteps.length - 1) {
+      goToStep(tutorialStep + 1);
     } else {
       closeTutorial();
     }
   };
 
   const previousTutorialStep = () => {
-    if (isTransitioning || tutorialStep === 0) {
-      return;
-    }
-
-    const prevStep = allTutorialSteps[tutorialStep - 1];
-
-    // Check if previous step requires a different tab
-    if (prevStep && prevStep.requiresTab !== currentTab) {
-      // Automatically switch tabs
-      setIsTransitioning(true);
-      setCurrentTab(prevStep.requiresTab);
-      setTutorialStep(tutorialStep - 1);
-
-      // Wait for tab to render, then highlight
-      const timer = setTimeout(async () => {
-        // Don't scroll to top - let highlightElement handle scrolling
-        await highlightElement(tutorialStep - 1);
-        setIsTransitioning(false);
-      }, 350);
-      timersRef.current.push(timer);
-      return;
-    }
-
-    setIsTransitioning(true);
-    setTutorialStep(tutorialStep - 1);
-    highlightElement(tutorialStep - 1);
-
-    const timer = setTimeout(() => setIsTransitioning(false), 350);
-    timersRef.current.push(timer);
-  };
-
-  const highlightElement = async (stepIndex: number) => {
-    const step = allTutorialSteps[stepIndex];
-
-    if (!step) {
-      console.error('No step found at index:', stepIndex);
-      return;
-    }
-
-    // Tab switch steps don't need highlighting
-    if (step.isTabSwitch) {
-      return;
-    }
-
-    if (elementPosition) {
-      setPreviousElementPosition(elementPosition);
-    }
-
-    // Wait for element to be available and visible
-    const element = await waitForElement(step.selector);
-    if (!element) {
-      // Tutorial element not found or hidden
-      // Skip this step if element doesn't exist
-      if (tutorialStep < allTutorialSteps.length - 1) {
-        nextTutorialStep();
-      }
-      return;
-    }
-
-    const rect = element.getBoundingClientRect();
-    const viewportHeight = window.innerHeight;
-    const viewportWidth = window.innerWidth;
-    const isMobile = viewportWidth < 768;
-
-    // Check if element is already sufficiently visible
-    const elementVisibleHeight = Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0);
-    const visibilityPercent = elementVisibleHeight / rect.height;
-
-    // For large elements or already visible, don't scroll
-    const isLargeElement = step.isLargeElement || rect.height > viewportHeight * 0.5;
-
-    // Mobile needs stricter requirements to account for tutorial card
-    const isReasonablyVisible = isMobile
-      ? false  // On mobile, ALWAYS scroll to position element+card optimally
-      : rect.top >= 50 &&
-        rect.bottom <= viewportHeight - 180 &&
-        visibilityPercent > 0.6;
-
-    // Skip scrolling if step has skipScroll flag
-    if (!step.skipScroll && !isReasonablyVisible) {
-      // Need to scroll - temporarily show scrollbar
-      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-      document.body.style.overflow = '';
-      document.body.style.paddingRight = '0px';
-
-      if (isMobile) {
-        // Mobile: Calculate scroll to show BOTH element and card
-        const currentScroll = window.pageYOffset;
-        const elementTop = rect.top + currentScroll;
-
-        // Calculate estimated card position
-        const minCardHeight = 240;
-        const cardHeight = Math.min(450, Math.max(minCardHeight, viewportHeight * 0.45));
-        const gap = 8;
-
-        const elementBottom = rect.bottom;
-        const spaceBelow = viewportHeight - elementBottom;
-        const spaceAbove = rect.top;
-
-        // Determine if card will be above or below
-        const fitsBelow = spaceBelow >= cardHeight + gap + 16;
-
-        let targetScroll: number;
-        const scrollOffsetValue = step.scrollOffset || 0;
-
-        if (fitsBelow) {
-          // Card will be BELOW element
-          // Position element at 25% from top, card will be below it
-          const elementTargetPosition = viewportHeight * 0.25;
-          targetScroll = (rect.top + currentScroll) - elementTargetPosition + scrollOffsetValue;
-        } else {
-          // Card will be ABOVE element
-          // For large elements: calculate optimal position to show as much as possible
-          // For normal elements: position just below card to keep them visible
-          // ALL elements when card is ABOVE: position to show FULL element including bottom
-          const elementHeight = rect.height;
-          const bottomMargin = 16;
-
-          // Calculate constraints:
-          // 1. Element must be below the card
-          const minElementTop = cardHeight + gap + 8;
-
-          // 2. Element bottom must fit in viewport (accounting for scrollOffset)
-          // We want: (elementTop - scrollOffset) + elementHeight <= viewportHeight - bottomMargin
-          // So: elementTop <= viewportHeight - bottomMargin - elementHeight + scrollOffset
-          const maxElementTop = viewportHeight - bottomMargin - elementHeight + scrollOffsetValue;
-
-          // Use the minimum of maxElementTop and a centered position
-          // This ensures the element bottom is always visible
-          const centeredTop = cardHeight + gap + ((viewportHeight - cardHeight - gap - elementHeight) / 2);
-          const elementTopInViewport = Math.max(minElementTop, Math.min(centeredTop, maxElementTop));
-
-          targetScroll = (rect.top + currentScroll) - elementTopInViewport + scrollOffsetValue;
-        }
-
-        // Temporarily unlock scroll for tutorial animation
-        isScrollLockedRef.current = false;
-
-        window.scrollTo({
-          top: Math.max(0, targetScroll),
-          behavior: 'smooth'
-        });
-
-        // Re-lock after scroll completes
-        const lockTimer = setTimeout(() => {
-          isScrollLockedRef.current = true;
-        }, 400);
-        timersRef.current.push(lockTimer);
-      } else {
-        // Desktop: use scrollIntoView then apply optional scrollOffset
-        const scrollBehavior = isLargeElement ? 'start' : 'nearest';
-
-        // Temporarily unlock scroll for tutorial animation
-        isScrollLockedRef.current = false;
-
-        element.scrollIntoView({
-          behavior: 'smooth',
-          block: scrollBehavior,
-          inline: 'nearest'
-        });
-
-        // Apply scrollOffset if specified
-        if (step.scrollOffset) {
-          // Wait for scroll to complete, then apply offset
-          await new Promise(resolve => {
-            const timer = setTimeout(() => {
-              window.scrollBy({
-                top: step.scrollOffset,
-                behavior: 'smooth'
-              });
-              resolve(undefined);
-            }, 500);
-            timersRef.current.push(timer);
-          });
-        }
-
-        // Re-lock after scroll completes
-        const lockTimer = setTimeout(() => {
-          isScrollLockedRef.current = true;
-        }, 400);
-        timersRef.current.push(lockTimer);
-      }
-
-      // Wait for scroll to complete
-      await new Promise(resolve => {
-        const timer = setTimeout(resolve, 350);
-        timersRef.current.push(timer);
-      });
-    }
-
-    // Get fresh rect after scroll
-    const newRect = element.getBoundingClientRect();
-    setHighlightedElement(element);
-    setElementPosition(newRect);
-
-    // Hide scrollbar again without layout shift
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-    document.body.style.overflow = 'hidden';
-    document.body.style.paddingRight = `${scrollbarWidth}px`;
-
-    setIsAnimating(true);
-    setIsSpotlightAnimating(true);
-
-    const timer = setTimeout(() => {
-      setIsAnimating(false);
-      setIsSpotlightAnimating(false);
-    }, 300);
-    timersRef.current.push(timer);
+    if (isTransitioning || tutorialStep === 0) return;
+    goToStep(tutorialStep - 1);
   };
 
   // Tutorial Overlay Component with smart positioning

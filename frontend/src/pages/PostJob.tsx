@@ -27,16 +27,20 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { Plus, X, Loader2, CheckCircle, ArrowLeft, ArrowRight, Briefcase, HelpCircle, Lightbulb, Users, Play, AlertTriangle } from "lucide-react";
+import { Plus, X, Loader2, CheckCircle, ArrowLeft, ArrowRight, Briefcase, HelpCircle, Lightbulb, Users, Play, AlertTriangle, Save, ShieldX } from "lucide-react";
 import { locationsApi, Location, jobsApi, isAuthenticated, getUserType } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import Footer from "@/components/Footer";
 import { validateForm, postJobRules, formatValidationErrors } from "@/lib/formValidation";
 import { TextAreaWithCounter, InputWithCounter } from "@/components/CharacterCounter";
 
+const JOB_DRAFT_KEY = 'postjob-draft';
+
 const PostJob = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const isUnverified = user?.userType === 'employer' && !user?.profile?.employerProfile?.verified;
+  const [showUnverifiedDialog, setShowUnverifiedDialog] = useState(false);
 
   // Reset scroll lock on unmount
   useEffect(() => {
@@ -242,6 +246,57 @@ const PostJob = () => {
     }
   }, [navigate, user]);
 
+  // Load saved draft on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(JOB_DRAFT_KEY);
+      if (saved) {
+        const draft = JSON.parse(saved);
+        if (draft.formValues) {
+          Object.entries(draft.formValues).forEach(([key, value]) => {
+            jobForm.setFieldValue(key, value);
+          });
+        }
+        if (draft.requirements?.length) setRequirements(draft.requirements);
+        if (draft.benefits?.length) setBenefits(draft.benefits);
+        if (draft.tags?.length) setTags(draft.tags);
+        if (draft.customQuestions?.length) setCustomQuestions(draft.customQuestions);
+        if (draft.salaryPeriod) setSalaryPeriod(draft.salaryPeriod);
+        notifications.show({
+          title: 'Draft i ngarkuar',
+          message: 'Të dhënat e ruajtura nga hera e fundit u ngarkuan automatikisht.',
+          color: 'blue',
+          autoClose: 4000,
+        });
+      }
+    } catch {
+      // Ignore corrupt draft
+    }
+  }, []);
+
+  const saveDraft = () => {
+    const draft = {
+      formValues: jobForm.values,
+      requirements,
+      benefits,
+      tags,
+      customQuestions,
+      salaryPeriod,
+      savedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(JOB_DRAFT_KEY, JSON.stringify(draft));
+    notifications.show({
+      title: 'Draft u ruajt!',
+      message: 'Të dhënat e punës u ruajtën. Mund t\'i ngarkoni kur të ktheheni.',
+      color: 'green',
+      autoClose: 4000,
+    });
+  };
+
+  const clearDraft = () => {
+    localStorage.removeItem(JOB_DRAFT_KEY);
+  };
+
   const loadLocations = async () => {
     try {
       const response = await locationsApi.getLocations();
@@ -364,6 +419,7 @@ const PostJob = () => {
       const response = await jobsApi.createJob(jobData);
 
       if (response.success) {
+        clearDraft();
         notifications.show({
           title: "Puna u postua!",
           message: "Puna juaj u postua me sukses dhe është tani e dukshme për kandidatët.",
@@ -1500,12 +1556,12 @@ const PostJob = () => {
       <Container size="lg" pt={90} pb="xl">
         <Stack gap="md" maw={960} mx="auto">
               {/* Unverified employer warning */}
-              {user?.userType === 'employer' && !user?.profile?.employerProfile?.verified && (
+              {isUnverified && (
                 <Paper shadow="xs" p="md" radius="md" withBorder style={{ borderColor: '#f59e0b', backgroundColor: '#fffbeb' }}>
                   <Group gap="sm" wrap="nowrap">
                     <AlertTriangle size={20} color="#d97706" style={{ flexShrink: 0 }} />
                     <Text size="sm" c="dark">
-                      <strong>Llogaria juaj nuk është verifikuar ende.</strong> Ju nuk mund të postoni punë derisa administratori të verifikojë llogarinë tuaj. Nëse sapo jeni regjistruar, ju lutemi prisni deri sa llogaria juaj të aprovohet.
+                      <strong>Llogaria juaj nuk është verifikuar ende.</strong> Mund ta plotësoni formularin dhe ta ruani si draft. Kur llogaria juaj të aprovohet, mund ta postoni direkt.
                     </Text>
                   </Group>
                 </Paper>
@@ -1584,7 +1640,13 @@ const PostJob = () => {
                     ) : (
                       <Button
                         rightSection={<CheckCircle size={16} />}
-                        onClick={handleSubmit}
+                        onClick={() => {
+                          if (isUnverified) {
+                            setShowUnverifiedDialog(true);
+                          } else {
+                            handleSubmit();
+                          }
+                        }}
                         loading={loading}
                         color="green"
                         size="sm"
@@ -1597,6 +1659,59 @@ const PostJob = () => {
               </Paper>
         </Stack>
       </Container>
+
+      {/* Unverified employer — save draft confirmation dialog */}
+      {showUnverifiedDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 overflow-hidden">
+            {/* Red error-style header */}
+            <div className="bg-red-50 px-6 py-4 border-b border-red-100">
+              <div className="flex items-center gap-3">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                  <ShieldX className="w-5 h-5 text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900">Nuk mund të postohet</h3>
+                  <p className="text-sm text-red-600">Llogaria nuk është verifikuar</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-4">
+              <p className="text-sm text-gray-600">
+                Llogaria juaj nuk është verifikuar ende nga administratori. Nuk mund të postoni punë derisa të aprovohet.
+              </p>
+              <p className="text-sm text-gray-600 mt-2">
+                Dëshironi ta ruani këtë postim si draft? Të dhënat do të ruhen dhe mund ta postoni sapo llogaria të verifikohet.
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3">
+              <Button
+                variant="subtle"
+                color="gray"
+                size="sm"
+                onClick={() => setShowUnverifiedDialog(false)}
+              >
+                Jo, Kthehu
+              </Button>
+              <Button
+                leftSection={<Save size={16} />}
+                color="blue"
+                size="sm"
+                onClick={() => {
+                  saveDraft();
+                  setShowUnverifiedDialog(false);
+                }}
+              >
+                Ruaj si Draft
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Footer />
     </Box>

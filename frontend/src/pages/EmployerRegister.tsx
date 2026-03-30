@@ -68,6 +68,7 @@ const EmployerRegister = () => {
   const [location, setLocation] = useState('');
   const [companySize, setCompanySize] = useState('1-10');
   const [industry, setIndustry] = useState('');
+  const [customIndustry, setCustomIndustry] = useState('');
   const [description, setDescription] = useState('');
 
   const validateStep1 = (): string | null => {
@@ -84,6 +85,7 @@ const EmployerRegister = () => {
   const validateStep2 = (): string | null => {
     if (!location.trim()) return 'Vendndodhja është e detyrueshme';
     if (!industry) return 'Sektori i kompanisë është i detyrueshëm';
+    if (industry === 'Tjetër' && !customIndustry.trim()) return 'Shkruani sektorin e kompanisë';
     return null;
   };
 
@@ -117,7 +119,7 @@ const EmployerRegister = () => {
     lastName: contactLastName.trim(),
     city: location.trim(),
     companyName: companyName.trim(),
-    industry,
+    industry: industry === 'Tjetër' ? customIndustry.trim() : industry,
     companySize,
     description: description.trim() || undefined,
   });
@@ -320,6 +322,21 @@ const EmployerRegister = () => {
                         ))}
                       </select>
                     </div>
+
+                    {industry === 'Tjetër' && (
+                      <div className="relative">
+                        <Briefcase className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          id="custom-industry"
+                          placeholder="Shkruani sektorin e kompanisë *"
+                          className="pl-10"
+                          value={customIndustry}
+                          onChange={(e) => setCustomIndustry(e.target.value)}
+                          maxLength={50}
+                          required
+                        />
+                      </div>
+                    )}
 
                     <div className="relative">
                       <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />

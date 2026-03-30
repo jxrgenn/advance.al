@@ -235,6 +235,27 @@ const EmployerDashboard = () => {
       shouldScroll: false
     },
     {
+      selector: '[data-tutorial="company-logo"]',
+      title: "Logo e Kompanisë",
+      content: "Ngarkoni logon e kompanisë suaj. Kjo do të shfaqet në postimet e punës dhe profilin e kompanisë. Formati: JPG ose PNG, deri në 5MB.",
+      position: "top" as const,
+      shouldScroll: false
+    },
+    {
+      selector: '[data-tutorial="contact-info"]',
+      title: "Informacioni i Kontaktit",
+      content: "Shtoni numrin e telefonit dhe WhatsApp-in e kompanisë. Kandidatët mund t'ju kontaktojnë direkt nëse e aktivizoni.",
+      position: "top" as const,
+      shouldScroll: false
+    },
+    {
+      selector: '[data-tutorial="contact-preferences"]',
+      title: "Preferencat e Kontaktit",
+      content: "Kontrolloni si mund t'ju kontaktojnë kandidatët. Aktivizoni/çaktivizoni kontaktin me telefon, WhatsApp, ose email sipas preferencës suaj.",
+      position: "top" as const,
+      shouldScroll: false
+    },
+    {
       selector: '[data-tutorial="save-profile"]',
       title: "Ruaj Ndryshimet",
       content: "Pasi të keni përditësuar informacionet, mos harroni të klikoni këtu për të ruajtur ndryshimet.",
@@ -367,44 +388,9 @@ const EmployerDashboard = () => {
     }
   };
 
-  // Tutorial management functions
-  const startTutorial = () => {
-    setShowTutorial(true);
-    setTutorialStep(0);
-    isScrollLockedRef.current = true; // Lock scrolling using ref
-    document.body.style.overflow = 'hidden';
-    // Small delay to ensure DOM is ready
-    setTimeout(() => {
-      highlightElement(0);
-    }, 100);
-  };
-
-  const nextTutorialStep = () => {
-    const now = Date.now();
-    if (now - lastClickTime < 150) return;
-    setLastClickTime(now);
-
-    const steps = getCurrentTutorialSteps();
-    if (tutorialStep < steps.length - 1) {
-      const newStep = tutorialStep + 1;
-      setTutorialStep(newStep);
-    } else {
-      closeTutorial();
-    }
-  };
-
-  const previousTutorialStep = () => {
-    const now = Date.now();
-    if (now - lastClickTime < 150) return;
-    setLastClickTime(now);
-
-    if (tutorialStep > 0) {
-      const newStep = tutorialStep - 1;
-      setTutorialStep(newStep);
-    }
-  };
-
+  // Tutorial system — direct step management, no useEffect chains
   const closeTutorial = () => {
+    isScrollLockedRef.current = false;
     setShowTutorial(false);
     setTutorialStep(0);
     setHighlightedElement(null);
@@ -413,205 +399,114 @@ const EmployerDashboard = () => {
     setIsAnimating(false);
     setIsSpotlightAnimating(false);
     setLastClickTime(0);
-    isScrollLockedRef.current = false; // Unlock scrolling using ref
     document.body.style.overflow = '';
+  };
+
+  const startTutorial = () => {
+    setShowTutorial(true);
+    setTutorialStep(0);
+    isScrollLockedRef.current = true;
+    document.body.style.overflow = 'hidden';
+    // Let DOM settle, then highlight first step
+    setTimeout(() => highlightStep(0), 50);
+  };
+
+  // Core highlight function — finds element, scrolls if needed, sets position
+  const highlightStep = (stepIndex: number, skipCount = 0) => {
+    const steps = getCurrentTutorialSteps();
+    const step = steps[stepIndex];
+    if (!step) { closeTutorial(); return; }
+
+    const element = document.querySelector(step.selector) as HTMLElement | null;
+    if (!element) {
+      // Skip missing element (max 5 to prevent infinite loop)
+      if (skipCount < 5 && stepIndex < steps.length - 1) {
+        setTutorialStep(stepIndex + 1);
+        highlightStep(stepIndex + 1, skipCount + 1);
+      } else {
+        closeTutorial();
+      }
+      return;
+    }
+
+    const rect = element.getBoundingClientRect();
+    const vh = window.innerHeight;
+    const inView = rect.top >= 60 && rect.bottom <= vh - 120;
+
+    if (!inView) {
+      // Hide old spotlight/card so they don't flash at wrong position
+      setHighlightedElement(null);
+      setElementPosition(null);
+
+      // Instant scroll to center element
+      isScrollLockedRef.current = false;
+      document.body.style.overflow = '';
+      element.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'nearest' });
+
+      // After layout, capture correct position
+      requestAnimationFrame(() => {
+        const freshRect = element.getBoundingClientRect();
+        document.body.style.overflow = 'hidden';
+        isScrollLockedRef.current = true;
+
+        setTutorialStep(stepIndex);
+        setHighlightedElement(element);
+        setElementPosition(freshRect);
+        setIsAnimating(true);
+        setIsSpotlightAnimating(true);
+        setTimeout(() => { setIsAnimating(false); setIsSpotlightAnimating(false); }, 400);
+      });
+    } else {
+      // Already visible — set immediately
+      if (elementPosition) setPreviousElementPosition(elementPosition);
+      setTutorialStep(stepIndex);
+      setHighlightedElement(element);
+      setElementPosition(rect);
+      setIsAnimating(true);
+      setIsSpotlightAnimating(true);
+      setTimeout(() => { setIsAnimating(false); setIsSpotlightAnimating(false); }, 400);
+    }
+  };
+
+  const nextTutorialStep = () => {
+    const steps = getCurrentTutorialSteps();
+    if (tutorialStep < steps.length - 1) {
+      highlightStep(tutorialStep + 1);
+    } else {
+      closeTutorial();
+    }
+  };
+
+  const previousTutorialStep = () => {
+    if (tutorialStep > 0) {
+      highlightStep(tutorialStep - 1);
+    }
   };
 
   // Close tutorial when switching tabs
   useEffect(() => {
-    if (showTutorial) {
-      closeTutorial();
-    }
+    if (showTutorial) closeTutorial();
   }, [currentTab]);
 
-  // Highlight element whenever tutorial step changes
-  useEffect(() => {
-    if (showTutorial) {
-      const steps = getCurrentTutorialSteps();
-      if (tutorialStep < steps.length) {
-        const timer = setTimeout(() => {
-          highlightElement(tutorialStep);
-        }, 100);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [tutorialStep, showTutorial]);
-
-  // Track element position changes
-  useEffect(() => {
-    if (!highlightedElement || !showTutorial) return;
-
-    const updateElementPosition = () => {
-      if (highlightedElement) {
-        const rect = highlightedElement.getBoundingClientRect();
-        setElementPosition(rect);
-      }
-    };
-
-    updateElementPosition();
-
-    const handleResize = () => {
-      updateElementPosition();
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => {
-      window.removeEventListener('resize', handleResize);
-    };
-  }, [highlightedElement, showTutorial]);
-
-  // Proper scroll lock with event prevention (both desktop and mobile)
+  // Scroll lock
   useEffect(() => {
     if (!showTutorial) return;
-
-    // Prevent ALL user-initiated scrolling ONLY when scroll is locked
-    const preventScroll = (e: Event) => {
-      // Check the ref - if scrolling is allowed for tutorial animation, don't prevent
-      if (!isScrollLockedRef.current) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-      return false;
-    };
-
-    const preventKeyScroll = (e: KeyboardEvent) => {
-      // Check the ref - if scrolling is allowed for tutorial animation, don't prevent
-      if (!isScrollLockedRef.current) return;
-
-      // Prevent arrow keys, page up/down, space, home, end from scrolling
-      if ([32, 33, 34, 35, 36, 37, 38, 39, 40].includes(e.keyCode)) {
-        e.preventDefault();
-      }
-    };
-
-    // Add listeners with { passive: false } to allow preventDefault
-    document.addEventListener('wheel', preventScroll, { passive: false });
-    document.addEventListener('touchmove', preventScroll, { passive: false });
-    document.addEventListener('keydown', preventKeyScroll, { passive: false });
-
+    const prevent = (e: Event) => { if (isScrollLockedRef.current) { e.preventDefault(); e.stopPropagation(); } };
+    const preventKey = (e: KeyboardEvent) => { if (isScrollLockedRef.current && [32,33,34,35,36,37,38,39,40].includes(e.keyCode)) e.preventDefault(); };
+    document.addEventListener('wheel', prevent, { passive: false });
+    document.addEventListener('touchmove', prevent, { passive: false });
+    document.addEventListener('keydown', preventKey, { passive: false });
     return () => {
-      document.removeEventListener('wheel', preventScroll);
-      document.removeEventListener('touchmove', preventScroll);
-      document.removeEventListener('keydown', preventKeyScroll);
+      document.removeEventListener('wheel', prevent);
+      document.removeEventListener('touchmove', prevent);
+      document.removeEventListener('keydown', preventKey);
     };
   }, [showTutorial]);
 
-  // Cleanup scroll lock on unmount
+  // Cleanup on unmount
   useEffect(() => {
-    return () => {
-      document.body.style.overflow = '';
-    };
+    return () => { document.body.style.overflow = ''; };
   }, []);
-
-  const highlightElement = (stepIndex: number) => {
-    const steps = getCurrentTutorialSteps();
-    const step = steps[stepIndex];
-    if (!step) return;
-
-    const element = document.querySelector(step.selector);
-    if (!element) {
-      // Tutorial element not found, skip
-      return;
-    }
-
-    // Store previous position for smooth transition
-    if (elementPosition) {
-      setPreviousElementPosition(elementPosition);
-    }
-
-    // Check if element is visible in viewport
-    const rect = element.getBoundingClientRect();
-    const viewportHeight = window.innerHeight;
-    const viewportWidth = window.innerWidth;
-    
-    const isMobile = viewportWidth < 768;
-    
-    // Relaxed margins
-    const topMargin = isMobile ? 60 : 80;
-    const bottomMargin = isMobile ? 180 : 200;
-    
-    // Detect if this is the first step (container/list overview)
-    const isFirstStep = stepIndex === 0;
-    
-    let isVisible;
-    if (isFirstStep && isMobile) {
-      // On mobile, for lists: very lenient - only scroll if REALLY not enough is showing
-      // Check if just 50px of list is visible (super lenient = less scroll)
-      isVisible = rect.top >= 0 && rect.top + 50 <= viewportHeight - bottomMargin;
-    } else if (isFirstStep) {
-      // Desktop: For first step (list containers), check if ANY part is visible
-      isVisible = rect.top < viewportHeight - bottomMargin && rect.bottom > topMargin;
-    } else {
-      // For individual items: very lenient check on desktop to avoid scrolling
-      const checkMargin = isMobile ? topMargin : 20; // Desktop: VERY lenient (just 20px from top)
-      const checkBottom = isMobile ? bottomMargin : 100; // Desktop: VERY lenient
-      isVisible = rect.top >= checkMargin && 
-                 rect.bottom <= viewportHeight - checkBottom;
-    }
-
-    // Only scroll if element is REALLY not visible or explicitly required
-    if (!isVisible || step.shouldScroll) {
-      // Unlock for tutorial scroll
-      isScrollLockedRef.current = false;
-      document.body.style.overflow = '';
-
-      // Special handling for mobile first step - minimal manual scroll
-      if (isMobile && isFirstStep) {
-        // Manual scroll - just scroll down by 250px
-        const currentScroll = window.pageYOffset;
-        window.scrollTo({
-          top: currentScroll + 250,
-          behavior: 'smooth'
-        });
-      } else {
-        // Normal scrollIntoView for everything else
-        let scrollBlock: ScrollLogicalPosition;
-        if (isMobile) {
-          scrollBlock = 'center';
-        } else {
-          scrollBlock = 'nearest';
-        }
-
-        element.scrollIntoView({
-          behavior: 'smooth',
-          block: scrollBlock,
-          inline: 'center'
-        });
-      }
-
-      // Shorter wait for scroll
-      setTimeout(() => {
-        const newRect = element.getBoundingClientRect();
-        setHighlightedElement(element);
-        setElementPosition(newRect);
-
-        // Re-lock scroll after tutorial scroll completes
-        document.body.style.overflow = 'hidden';
-        isScrollLockedRef.current = true;
-
-        // Start animations immediately
-        setIsAnimating(true);
-        setIsSpotlightAnimating(true);
-
-        setTimeout(() => {
-          setIsAnimating(false);
-          setIsSpotlightAnimating(false);
-        }, 400);
-      }, 400);
-    } else {
-      // Element visible, highlight immediately
-      setHighlightedElement(element);
-      setElementPosition(rect);
-      
-      setIsAnimating(true);
-      setIsSpotlightAnimating(true);
-      
-      setTimeout(() => {
-        setIsAnimating(false);
-        setIsSpotlightAnimating(false);
-      }, 400);
-    }
-  };
 
 
   const handleUploadLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1804,7 +1699,7 @@ const EmployerDashboard = () => {
                   </div>
 
                   {/* Logo Upload */}
-                  <div>
+                  <div data-tutorial="company-logo">
                     <Label>Logo e Kompanisë</Label>
                     <div className="flex items-center gap-4 mt-2">
                       <div className="h-16 w-16 rounded-lg bg-muted flex items-center justify-center overflow-hidden border">
@@ -1841,7 +1736,7 @@ const EmployerDashboard = () => {
                   {/* Contact Information */}
                   <div>
                     <h4 className="text-sm font-medium mb-3">Informacioni i Kontaktit</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" data-tutorial="contact-info">
                       <div>
                         <Label htmlFor="emp-phone">Telefon</Label>
                         <Input
@@ -1865,7 +1760,7 @@ const EmployerDashboard = () => {
                   </div>
 
                   {/* Contact Preferences */}
-                  <div>
+                  <div data-tutorial="contact-preferences">
                     <h4 className="text-sm font-medium mb-3">Preferencat e Kontaktit</h4>
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
@@ -1901,7 +1796,7 @@ const EmployerDashboard = () => {
                     </div>
                   </div>
 
-                  <div className="flex justify-end pt-4">
+                  <div className="flex justify-end pt-4" data-tutorial="save-profile">
                     <Button onClick={handleProfileSave} disabled={savingProfile}>
                       {savingProfile ? (
                         <>
