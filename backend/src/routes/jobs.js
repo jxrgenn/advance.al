@@ -319,41 +319,14 @@ router.get('/', optionalAuth, async (req, res) => {
 
     query = query.sort(sortOptions).skip(skip).limit(safeLimit);
 
-    // Execute query with .lean() for 5x performance improvement (read-only)
-    const jobs = await query.lean().exec();
+    // Build count query using the same filter as searchJobs (reuse query conditions)
+    const countFilter = query.getFilter();
 
-    // Get total count for pagination
-    const countQuery = {
-      isDeleted: false,
-      status: 'active',
-      expiresAt: { $gt: new Date() },
-      ...(safeSearch && { $or: [
-        { title: { $regex: safeSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
-        { description: { $regex: safeSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
-        { category: { $regex: safeSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
-        { 'location.city': { $regex: safeSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
-        { tags: { $regex: safeSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }
-      ] }),
-      ...(city && { 'location.city': Array.isArray(filters.city) ? { $in: filters.city } : city }),
-      ...(categories && Array.isArray(filters.categories) && { category: { $in: filters.categories } }),
-      ...(category && !categories && { category }),
-      ...(jobType && { jobType: Array.isArray(filters.jobType) ? { $in: filters.jobType } : jobType }),
-      ...(company && mongoose.Types.ObjectId.isValid(company) && { employerId: company }),
-      ...(filters.seniority && { seniority: filters.seniority }),
-      ...(filters.remote && { 'location.remote': true }),
-      ...(filters.postedAfter && { postedAt: { $gte: filters.postedAfter } }),
-      ...(filters.minSalary && { 'salary.max': { $gte: parseFloat(filters.minSalary) } }),
-      ...(filters.maxSalary && { 'salary.min': { $lte: parseFloat(filters.maxSalary) } }),
-      ...(filters.currency && { 'salary.currency': filters.currency }),
-      ...(diaspora === 'true' && { 'platformCategories.diaspora': true }),
-      ...(ngaShtepia === 'true' && { 'platformCategories.ngaShtepia': true }),
-      ...(partTime === 'true' && { 'platformCategories.partTime': true }),
-      ...(administrata === 'true' && { 'platformCategories.administrata': true }),
-      ...(sezonale === 'true' && { 'platformCategories.sezonale': true }),
-      ...(filters.tier && { tier: filters.tier })
-    };
-
-    const totalJobs = await Job.countDocuments(countQuery);
+    // Execute find + count in parallel for ~2x speedup
+    const [jobs, totalJobs] = await Promise.all([
+      query.lean().exec(),
+      Job.countDocuments(countFilter)
+    ]);
 
     const totalPages = Math.ceil(totalJobs / safeLimit);
 
@@ -628,13 +601,15 @@ router.get('/employer/my-jobs', authenticate, requireEmployer, async (req, res) 
     const empPage = Math.max(1, parseInt(page) || 1);
     const skip = (empPage - 1) * empLimit;
 
-    const jobs = await Job.find(query)
-      .sort(sortOptions)
-      .skip(skip)
-      .limit(empLimit)
-      .lean();
-
-    const totalJobs = await Job.countDocuments(query);
+    // Run find + count in parallel
+    const [jobs, totalJobs] = await Promise.all([
+      Job.find(query)
+        .sort(sortOptions)
+        .skip(skip)
+        .limit(empLimit)
+        .lean(),
+      Job.countDocuments(query)
+    ]);
     const totalPages = Math.ceil(totalJobs / empLimit);
 
     res.json({
@@ -668,7 +643,8 @@ router.get('/:id', validateObjectId('id'), optionalAuth, async (req, res) => {
     const job = await Job.findOne({
       _id: req.params.id,
       isDeleted: false
-    }).populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.employerProfile.phone profile.employerProfile.whatsapp profile.location profile.employerProfile.description profile.employerProfile.website email profile.firstName profile.lastName');
+    }).populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.employerProfile.phone profile.employerProfile.whatsapp profile.location profile.employerProfile.description profile.employerProfile.website email profile.firstName profile.lastName')
+      .lean();
 
     if (!job) {
       return res.status(404).json({
@@ -677,9 +653,9 @@ router.get('/:id', validateObjectId('id'), optionalAuth, async (req, res) => {
       });
     }
 
-    // Increment view count (but not for the employer who posted it)
+    // Increment view count fire-and-forget (don't block response)
     if (!req.user || !req.user._id.equals(job.employerId._id)) {
-      await job.incrementViewCount();
+      Job.updateOne({ _id: job._id }, { $inc: { viewCount: 1 } }).catch(() => {});
     }
 
     res.json({

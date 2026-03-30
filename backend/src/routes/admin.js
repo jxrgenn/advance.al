@@ -72,41 +72,40 @@ router.get('/dashboard-stats', async (req, res) => {
     const applicationGrowth = newApplicationsPrevious30 > 0 ? ((newApplicationsLast30 - newApplicationsPrevious30) / newApplicationsPrevious30) * 100 :
                              newApplicationsLast30 > 0 ? 100 : 0;
 
-    // Get real top categories from active jobs
-    const topCategories = await Job.aggregate([
-      { $match: { status: 'active' } },
-      { $group: { _id: '$category', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 5 },
-      { $project: { name: '$_id', count: 1, _id: 0 } }
-    ]);
-
-    // Get real top cities from active jobs
-    const topCities = await Job.aggregate([
-      { $match: { status: 'active' } },
-      { $group: { _id: '$location.city', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 5 },
-      { $project: { name: '$_id', count: 1, _id: 0 } }
-    ]);
-
-    // Get real recent activity (last 10 activities)
-    const [recentJobs, recentUsers, recentApplications] = await Promise.all([
+    // Run aggregates + recent activity in parallel
+    const [topCategories, topCities, recentJobs, recentUsers, recentApplications] = await Promise.all([
+      Job.aggregate([
+        { $match: { status: 'active' } },
+        { $group: { _id: '$category', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 5 },
+        { $project: { name: '$_id', count: 1, _id: 0 } }
+      ]),
+      Job.aggregate([
+        { $match: { status: 'active' } },
+        { $group: { _id: '$location.city', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 5 },
+        { $project: { name: '$_id', count: 1, _id: 0 } }
+      ]),
       Job.find()
         .sort({ postedAt: -1 })
         .limit(5)
         .populate('employerId', 'profile.employerProfile.companyName')
-        .select('title postedAt employerId'),
+        .select('title postedAt employerId')
+        .lean(),
       User.find({ userType: { $in: ['employer', 'jobseeker'] } })
         .sort({ createdAt: -1 })
         .limit(3)
-        .select('profile.firstName profile.lastName userType createdAt'),
+        .select('profile.firstName profile.lastName userType createdAt')
+        .lean(),
       Application.find()
         .sort({ appliedAt: -1 })
         .limit(5)
         .populate('jobId', 'title')
         .populate('jobSeekerId', 'profile.firstName profile.lastName')
         .select('jobId jobSeekerId appliedAt')
+        .lean()
     ]);
 
     // Create real recent activity array

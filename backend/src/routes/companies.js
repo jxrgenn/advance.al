@@ -120,10 +120,11 @@ router.get('/', optionalAuth, async (req, res) => {
       { $limit: sanitizedLimit }
     ];
 
-    const companies = await User.aggregate(pipeline);
-
-    // Get total count for pagination
-    const totalCompanies = await User.countDocuments(matchQuery);
+    // Execute aggregate + count in parallel
+    const [companies, totalCompanies] = await Promise.all([
+      User.aggregate(pipeline),
+      User.countDocuments(matchQuery)
+    ]);
     const totalPages = Math.ceil(totalCompanies / sanitizedLimit);
 
     // Format response
@@ -181,7 +182,7 @@ router.get('/:id', validateObjectId('id'), optionalAuth, async (req, res) => {
       userType: 'employer',
       status: 'active',
       isDeleted: false
-    }).select('-password -refreshTokens');
+    }).select('profile.employerProfile profile.location createdAt').lean();
 
     if (!company) {
       return res.status(404).json({
@@ -190,39 +191,39 @@ router.get('/:id', validateObjectId('id'), optionalAuth, async (req, res) => {
       });
     }
 
-    // Get company's active jobs
-    const jobs = await Job.find({
+    // Run jobs fetch + stats aggregation in parallel
+    const jobFilter = {
       employerId: company._id,
       status: 'active',
       isDeleted: false,
       expiresAt: { $gt: new Date() }
-    }).sort({ postedAt: -1 }).limit(20);
+    };
 
-    // Get job statistics
-    const jobStats = await Job.aggregate([
-      {
-        $match: {
-          employerId: company._id,
-          isDeleted: false
+    const [jobs, jobStats] = await Promise.all([
+      Job.find(jobFilter)
+        .select('title category jobType location salary postedAt applicationDeadline viewCount applicationCount')
+        .sort({ postedAt: -1 })
+        .limit(20)
+        .lean(),
+      Job.aggregate([
+        { $match: { employerId: company._id, isDeleted: false } },
+        {
+          $group: {
+            _id: null,
+            totalJobs: { $sum: 1 },
+            activeJobs: {
+              $sum: {
+                $cond: [
+                  { $and: [{ $eq: ['$status', 'active'] }, { $gt: ['$expiresAt', new Date()] }] },
+                  1, 0
+                ]
+              }
+            },
+            totalViews: { $sum: '$viewCount' },
+            totalApplications: { $sum: '$applicationCount' }
+          }
         }
-      },
-      {
-        $group: {
-          _id: null,
-          totalJobs: { $sum: 1 },
-          activeJobs: {
-            $sum: {
-              $cond: [
-                { $and: [{ $eq: ['$status', 'active'] }, { $gt: ['$expiresAt', new Date()] }] },
-                1,
-                0
-              ]
-            }
-          },
-          totalViews: { $sum: '$viewCount' },
-          totalApplications: { $sum: '$applicationCount' }
-        }
-      }
+      ])
     ]);
 
     const stats = jobStats[0] || {
@@ -286,31 +287,16 @@ router.get('/:id/jobs', validateObjectId('id'), optionalAuth, async (req, res) =
       sortOrder = 'desc'
     } = req.query;
 
-    // Verify company exists
-    const company = await User.findOne({
-      _id: req.params.id,
-      userType: 'employer',
-      status: 'active',
-      isDeleted: false
-    });
-
-    if (!company) {
-      return res.status(404).json({
-        success: false,
-        message: 'Kompania nuk u gjet'
-      });
-    }
-
     // Build query
-    const query = {
+    const jobQuery = {
       employerId: req.params.id,
       isDeleted: false
     };
 
     if (status !== 'all') {
-      query.status = status;
+      jobQuery.status = status;
       if (status === 'active') {
-        query.expiresAt = { $gt: new Date() };
+        jobQuery.expiresAt = { $gt: new Date() };
       }
     }
 
@@ -325,12 +311,29 @@ router.get('/:id/jobs', validateObjectId('id'), optionalAuth, async (req, res) =
     const currentPage = Math.max(1, parseInt(page) || 1);
     const skip = (currentPage - 1) * sanitizedLimit;
 
-    const jobs = await Job.find(query)
-      .sort(sortOptions)
-      .skip(skip)
-      .limit(sanitizedLimit);
+    // Run company verify + jobs fetch + count in parallel
+    const [company, jobs, totalJobs] = await Promise.all([
+      User.findOne({
+        _id: req.params.id,
+        userType: 'employer',
+        status: 'active',
+        isDeleted: false
+      }).select('profile.employerProfile.companyName profile.employerProfile.logo').lean(),
+      Job.find(jobQuery)
+        .select('title category jobType location salary postedAt applicationDeadline viewCount applicationCount')
+        .sort(sortOptions)
+        .skip(skip)
+        .limit(sanitizedLimit)
+        .lean(),
+      Job.countDocuments(jobQuery)
+    ]);
 
-    const totalJobs = await Job.countDocuments(query);
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: 'Kompania nuk u gjet'
+      });
+    }
     const totalPages = Math.ceil(totalJobs / sanitizedLimit);
 
     res.json({

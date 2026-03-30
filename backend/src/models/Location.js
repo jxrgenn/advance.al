@@ -64,14 +64,16 @@ locationSchema.index({ displayOrder: 1 });
 // Static method to get active locations
 locationSchema.statics.getActiveLocations = function() {
   return this.find({ isActive: true })
-    .sort({ displayOrder: 1, city: 1 });
+    .sort({ displayOrder: 1, city: 1 })
+    .lean();
 };
 
 // Static method to get popular locations (by job count)
 locationSchema.statics.getPopularLocations = function(limit = 10) {
   return this.find({ isActive: true })
     .sort({ jobCount: -1, city: 1 })
-    .limit(limit);
+    .limit(limit)
+    .lean();
 };
 
 export default mongoose.model('Location', locationSchema);

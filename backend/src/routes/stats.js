@@ -55,6 +55,7 @@ router.get('/public', async (req, res) => {
         .sort({ postedAt: -1 })
         .limit(6)
         .select('title location category salary postedAt employerId')
+        .lean()
     ]);
 
     const stats = {

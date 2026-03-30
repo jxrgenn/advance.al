@@ -214,7 +214,7 @@ router.get('/applied-jobs', authenticate, requireJobSeeker, async (req, res) => 
     const applications = await Application.find({
       jobSeekerId: req.user._id,
       withdrawn: false
-    }).select('jobId');
+    }).select('jobId').lean();
 
     const jobIds = applications.map(app => app.jobId.toString());
 
@@ -256,12 +256,16 @@ router.get('/my-applications', authenticate, requireJobSeeker, async (req, res) 
     const safeSortBy = allowedSorts.includes(sortBy) ? sortBy : 'appliedAt';
     const sortOptions = { [safeSortBy]: sortOrder === 'desc' ? -1 : 1 };
 
-    // DB-level pagination (not in-memory)
-    const totalApplications = await Application.countDocuments({ jobSeekerId: req.user._id, withdrawn: false, ...filters });
-    const paginatedApplications = await Application.getJobSeekerApplications(req.user._id, filters)
-      .sort(sortOptions)
-      .skip(skip)
-      .limit(safeLimit);
+    // Run count + find in parallel
+    const countFilter = { jobSeekerId: req.user._id, withdrawn: false, ...filters };
+    const [totalApplications, paginatedApplications] = await Promise.all([
+      Application.countDocuments(countFilter),
+      Application.getJobSeekerApplications(req.user._id, filters)
+        .sort(sortOptions)
+        .skip(skip)
+        .limit(safeLimit)
+        .lean()
+    ]);
 
     const totalPages = Math.ceil(totalApplications / safeLimit);
 
@@ -302,20 +306,6 @@ router.get('/job/:jobId', validateObjectId('jobId'), authenticate, requireEmploy
       sortOrder = 'desc'
     } = req.query;
 
-    // Verify job belongs to employer
-    const job = await Job.findOne({
-      _id: jobId,
-      employerId: req.user._id,
-      isDeleted: false
-    });
-
-    if (!job) {
-      return res.status(404).json({
-        success: false,
-        message: 'Puna nuk u gjet ose nuk keni të drejtë ta shikoni'
-      });
-    }
-
     // Apply sorting and pagination
     const safeLimit2 = sanitizeLimit(limit, 50, 10);
     const safePage2 = Math.max(1, parseInt(page) || 1);
@@ -326,23 +316,32 @@ router.get('/job/:jobId', validateObjectId('jobId'), authenticate, requireEmploy
     const safeSortBy2 = allowedSorts2.includes(sortBy) ? sortBy : 'appliedAt';
     sortOptions[safeSortBy2] = sortOrder === 'desc' ? -1 : 1;
 
-    const paginatedApplications = await Application.find({
+    const appFilter = {
       jobId,
       employerId: req.user._id,
       withdrawn: false,
       ...(status && { status })
-    })
-      .populate('jobSeekerId', 'profile.firstName profile.lastName profile.jobSeekerProfile profile.location')
-      .sort(sortOptions)
-      .skip(skip)
-      .limit(safeLimit2);
+    };
 
-    const totalApplications = await Application.countDocuments({
-      jobId,
-      employerId: req.user._id,
-      withdrawn: false,
-      ...(status && { status })
-    });
+    // Run job verify + applications find + count in parallel
+    const [job, paginatedApplications, totalApplications] = await Promise.all([
+      Job.findOne({ _id: jobId, employerId: req.user._id, isDeleted: false })
+        .select('title location category').lean(),
+      Application.find(appFilter)
+        .populate('jobSeekerId', 'profile.firstName profile.lastName profile.jobSeekerProfile profile.location')
+        .sort(sortOptions)
+        .skip(skip)
+        .limit(safeLimit2)
+        .lean(),
+      Application.countDocuments(appFilter)
+    ]);
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: 'Puna nuk u gjet ose nuk keni të drejtë ta shikoni'
+      });
+    }
 
     const totalPages = Math.ceil(totalApplications / safeLimit2);
 
@@ -401,13 +400,16 @@ router.get('/employer/all', authenticate, requireEmployer, async (req, res) => {
     const safeSortBy3 = allowedSorts3.includes(sortBy) ? sortBy : 'appliedAt';
     const sortOptions = { [safeSortBy3]: sortOrder === 'desc' ? -1 : 1 };
 
-    // DB-level pagination
+    // Run count + find in parallel
     const countQuery = { employerId: req.user._id, withdrawn: false, ...(status && { status }), ...(jobId && { jobId }) };
-    const totalApplications = await Application.countDocuments(countQuery);
-    const paginatedApplications = await Application.getEmployerApplications(req.user._id, filters)
-      .sort(sortOptions)
-      .skip(skip)
-      .limit(safeLimit3);
+    const [totalApplications, paginatedApplications] = await Promise.all([
+      Application.countDocuments(countQuery),
+      Application.getEmployerApplications(req.user._id, filters)
+        .sort(sortOptions)
+        .skip(skip)
+        .limit(safeLimit3)
+        .lean()
+    ]);
 
     const totalPages = Math.ceil(totalApplications / safeLimit3);
 

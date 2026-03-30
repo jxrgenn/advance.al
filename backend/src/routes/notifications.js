@@ -49,18 +49,19 @@ router.get('/', authenticate, async (req, res) => {
     const currentPage = Math.max(1, parseInt(page) || 1);
     const skip = (currentPage - 1) * sanitizedLimit;
 
-    const notifications = await Notification.getUserNotifications(req.user._id, {
-      limit: sanitizedLimit,
-      skip,
-      unreadOnly: unreadOnly === 'true'
-    });
-
-    const totalNotifications = await Notification.countDocuments({
-      userId: req.user._id,
-      ...(unreadOnly === 'true' && { read: false })
-    });
-
-    const unreadCount = await Notification.getUnreadCount(req.user._id);
+    // Run all 3 queries in parallel
+    const [notifications, totalNotifications, unreadCount] = await Promise.all([
+      Notification.getUserNotifications(req.user._id, {
+        limit: sanitizedLimit,
+        skip,
+        unreadOnly: unreadOnly === 'true'
+      }).lean(),
+      Notification.countDocuments({
+        userId: req.user._id,
+        ...(unreadOnly === 'true' && { read: false })
+      }),
+      Notification.getUnreadCount(req.user._id)
+    ]);
 
     const totalPages = Math.ceil(totalNotifications / sanitizedLimit);
 
