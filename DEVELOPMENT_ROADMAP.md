@@ -1,12 +1,50 @@
 # advance.al - DEVELOPMENT STATUS & ROADMAP
 
 **Date:** September 25-28, 2025
-**Last Updated:** April 7, 2026 (Full production audit — 28 fixes across 25 files)
+**Last Updated:** April 29, 2026 (Phase 1+2+6+8 backend truth pass + Phase 7 honesty report — 319/319 integration tests passing across 28 spec files)
 **Platform:** Premier Job Marketplace for Albania
-**CURRENT STATUS:** 🟢 **PRODUCTION-READY — Full production audit complete. 28 issues fixed. Comprehensive QA guide (880+ test items) created.**
-**Phase:** QA & Deployment (frontend manual QA + production config remaining)
-**QA Guide:** `FULL-QA-TESTING-GUIDE.md` — 880+ test items across 28 categories, includes embedding testing
+**CURRENT STATUS:** 🟢 **PRODUCTION-READY — 319/319 backend integration tests passing. F-1 PII data-leak fixed. Auth middleware hardened. Full tenant-isolation matrix verified. F-5 + F-8 race conditions confirmed (fixes tracked); F-7 verified not broken; F-11 was audit error.**
+**Phase:** Phases 1, 2, 6, 7, 8 complete. Phase 3 (frontend E2E), Phase 4 (AI/OpenAI), Phase 5 (email inbox) deferred — see `tests/results/HONEST_TEST_RESULTS.md` for rationale + recommended priority order.
+**QA Guide:** `tests/results/HONEST_TEST_RESULTS.md` (canonical, evidence-backed) supersedes all prior testing claims (211/211, 338, 880+, 61 AI, 4/4 k6) which had no reproducible artifacts.
 **Brand:** advance.al (formerly Albania JobFlow)
+
+## 🟡 **PRODUCTION LAUNCH — SEO/GEO FOUNDATION — APRIL 28, 2026 (IN PROGRESS)**
+
+User purchased `advance.al` domain and wants comprehensive deployment + maximum LLM/search-engine discoverability with **zero React/TS code changes** and **$0/mo tooling**. Plan at `/Users/user/.claude/plans/rosy-noodling-stallman.md`.
+
+### Static SEO files added (zero-code, deployed via Vercel `public/`):
+- `frontend/public/robots.txt` — replaced. Explicit allows for `GPTBot`, `ClaudeBot`, `PerplexityBot`, `Google-Extended`, `Applebot-Extended`, `Bytespider`, `CCBot`, `Amazonbot`, `Diffbot`, `cohere-ai`. Disallows admin/employer/profile/api paths. References sitemap.
+- `frontend/public/llms.txt` — new. Describes site purpose, key sections, canonical URLs for LLM crawlers (newer convention).
+- `frontend/public/sitemap.xml` — new. Initial static seed (homepage + static pages). Job detail URLs added by `scripts/generate-sitemap.mjs`.
+- `frontend/public/.well-known/security.txt` — new. Security disclosure contact.
+
+### Tooling additions:
+- `scripts/generate-sitemap.mjs` — new. Local one-off Node script. Fetches active jobs from production API, regenerates `frontend/public/sitemap.xml`. Run periodically (`node scripts/generate-sitemap.mjs`) or before redeploys. NOT part of build pipeline (avoids backend dependency at build time).
+
+### Dashboard / external work (user-driven, not code):
+- Domain DNS at registrar: A `@` → 76.76.21.21, CNAME `www` → cname.vercel-dns.com
+- Email DNS at registrar: SPF, DKIM (Resend), DMARC TXT records
+- Vercel: domain attached, env vars `VITE_API_URL` + `VITE_SENTRY_DSN`, Vercel Analytics enabled, Prerender.io integration installed
+- Railway: env vars `FRONTEND_URL=https://advance.al`, `SENTRY_DSN`, `SENTRY_ENABLED=true`
+- Google Search Console: verified, sitemap submitted
+- Bing Webmaster Tools: verified, sitemap submitted (powers ChatGPT Search index)
+- IndexNow: API key registered (instant indexing for Bing/Yandex)
+- Sentry: project + DSN
+- UptimeRobot: `/health` monitor every 5 min
+- Resend: domain verified, deliverability tested via mail-tester.com
+
+### Why Prerender.io
+The site is a Vite SPA. LLM crawlers (GPTBot, ClaudeBot, PerplexityBot, etc.) don't execute JS and currently see empty `<div id="root">`. Prerender.io renders the SPA in headless Chrome and serves bots the post-JS HTML; humans get the SPA. **Free tier: 1,000 monthly renders** (sufficient for early traffic). 1-click Vercel integration. Single biggest LLM-discoverability unlock without code changes.
+
+### Robots.txt scope
+39 distinct User-agent rules covering: training crawlers (GPTBot, ClaudeBot, CCBot, anthropic-ai, AI2Bot, Bytespider, Amazonbot, cohere-ai, Diffbot, Meta-ExternalAgent, MistralAI-User, ImagesiftBot, etc.), search/retrieval bots (OAI-SearchBot, Claude-SearchBot, PerplexityBot, ChatGPT-User, Claude-User, Perplexity-User), traditional engines (Googlebot, Bingbot, DuckDuckBot, YandexBot), and social previewers (Twitterbot, facebookexternalhit, LinkedInBot, Slackbot, WhatsApp, TelegramBot). All disallow admin/employer-dashboard/profile/api paths.
+
+### Build verification
+`npm run build` from `frontend/` — passes (4.07s, 0 errors). Static files in `public/` are copied as-is to `dist/`; no compilation impact.
+
+### Deferred / opt-in (future code phase):
+- **Phase 10**: Programmatic SEO landing pages — `/punë-në/:city`, `/punë/:industry`, `/punë-në/:city/:industry`. ~200-1500 pages from real DB. Pure addition (no refactor). Reuses existing `GET /api/jobs?city=X&category=Y` endpoint. Adds `react-helmet-async` for per-page meta + `JobPosting` JSON-LD. Estimated 3-7 days. **Not started — user opt-in required.**
+- Salary insight pages — explicitly excluded per user privacy preference
 
 ## ✅ **FULL PRODUCTION AUDIT — APRIL 7, 2026**
 

@@ -1,8 +1,267 @@
+# robots.txt for advance.al — Albania's job portal
+# Last updated: 2026-04-28
+
+# ============================================================
+# LLM / AI crawlers — explicit allow
+# These bots index content for ChatGPT, Claude, Perplexity, etc.
+# ============================================================
+
+User-agent: GPTBot
+Allow: /
+Disallow: /admin
+Disallow: /admin/
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /saved-jobs
+Disallow: /post-job
+Disallow: /edit-job/
+Disallow: /api/
+Disallow: /reset-password
+Disallow: /forgot-password
+Disallow: /unsubscribe
+Disallow: /preferences
+Disallow: /report-user
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: Claude-User
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: Claude-SearchBot
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: Claude-Web
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: anthropic-ai
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: Perplexity-User
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: Meta-ExternalAgent
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: Meta-ExternalFetcher
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: FacebookBot
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: AI2Bot
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: AI2Bot-Dolma
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: MistralAI-User
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: Timpibot
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: PanguBot
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: ICC-Crawler
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: ImagesiftBot
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: YouBot
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: Applebot-Extended
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: Bytespider
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: CCBot
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: Amazonbot
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: cohere-ai
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: Diffbot
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+# ============================================================
+# Traditional search engines
+# ============================================================
+
 User-agent: Googlebot
 Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /saved-jobs
+Disallow: /post-job
+Disallow: /edit-job/
+Disallow: /api/
+Disallow: /reset-password
+Disallow: /forgot-password
+Disallow: /unsubscribe
+Disallow: /preferences
+Disallow: /report-user
 
 User-agent: Bingbot
 Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /saved-jobs
+Disallow: /post-job
+Disallow: /edit-job/
+Disallow: /api/
+Disallow: /reset-password
+Disallow: /forgot-password
+Disallow: /unsubscribe
+Disallow: /preferences
+Disallow: /report-user
+
+User-agent: DuckDuckBot
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+User-agent: YandexBot
+Allow: /
+Disallow: /admin
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /api/
+
+# ============================================================
+# Social previewers (need OG tags)
+# ============================================================
 
 User-agent: Twitterbot
 Allow: /
@@ -10,5 +269,40 @@ Allow: /
 User-agent: facebookexternalhit
 Allow: /
 
+User-agent: LinkedInBot
+Allow: /
+
+User-agent: Slackbot
+Allow: /
+
+User-agent: WhatsApp
+Allow: /
+
+User-agent: TelegramBot
+Allow: /
+
+# ============================================================
+# Default — everyone else
+# ============================================================
+
 User-agent: *
 Allow: /
+Disallow: /admin
+Disallow: /admin/
+Disallow: /employer-dashboard
+Disallow: /profile
+Disallow: /saved-jobs
+Disallow: /post-job
+Disallow: /edit-job/
+Disallow: /api/
+Disallow: /reset-password
+Disallow: /forgot-password
+Disallow: /unsubscribe
+Disallow: /preferences
+Disallow: /report-user
+
+# ============================================================
+# Sitemap location
+# ============================================================
+
+Sitemap: https://advance.al/sitemap.xml
