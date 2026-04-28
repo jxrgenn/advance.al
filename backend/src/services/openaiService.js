@@ -13,6 +13,20 @@ const openai = new OpenAI({
  * @param {string} targetLanguage - Target language for CV generation ('sq' or 'en')
  * @returns {Promise<{success: boolean, data: object, usage: object}>}
  */
+// Retry wrapper with exponential backoff
+async function withRetry(fn, maxRetries = 2, baseDelay = 2000) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt === maxRetries) throw error;
+      const delay = baseDelay * Math.pow(2, attempt);
+      logger.warn(`OpenAI call failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`, { error: error.message });
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+}
+
 export async function extractCVDataFromText(naturalLanguageText, targetLanguage = 'sq') {
   try {
     const languageName = targetLanguage === 'sq' ? 'ALBANIAN' : 'ENGLISH';
@@ -20,7 +34,7 @@ export async function extractCVDataFromText(naturalLanguageText, targetLanguage 
       ? '- Generate ALL professional descriptions in Albanian\n- Use Albanian terminology: "Përgjegjësi", "Arritje", "Aftësi", "Përvojë profesionale"\n- Dates: "Janar", "Shkurt", "Mars", etc. for months\n- Set language field to "sq"'
       : '- Generate ALL professional descriptions in English\n- Use English terminology: "Responsibilities", "Achievements", "Skills", "Professional Experience"\n- Dates: "January", "February", "March", etc. for months\n- Set language field to "en"';
 
-    const completion = await openai.chat.completions.create({
+    const completion = await withRetry(() => openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       messages: [
         {
@@ -180,7 +194,7 @@ Now, read the user's input 3 times, understand their intent deeply, and craft an
       ],
       response_format: zodResponseFormat(cvSchema, 'cv_extraction'),
       // Note: temperature parameter not supported with structured outputs for gpt-4o-mini
-    });
+    }));
 
     // Parse the response - with structured outputs, the response will be in parsed form
     const messageContent = completion.choices[0].message.content;

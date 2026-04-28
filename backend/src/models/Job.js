@@ -384,11 +384,17 @@ jobSchema.pre('validate', async function(next) {
     
     let slug = baseSlug;
     let counter = 1;
-    
-    // Ensure slug is unique
+    const maxRetries = 50;
+
+    // Ensure slug is unique (with retry limit to prevent infinite loops)
     while (await this.constructor.findOne({ slug, _id: { $ne: this._id } })) {
       slug = `${baseSlug}-${counter}`;
       counter++;
+      if (counter > maxRetries) {
+        // Fallback: append timestamp for guaranteed uniqueness
+        slug = `${baseSlug}-${Date.now()}`;
+        break;
+      }
     }
     
     this.slug = slug;

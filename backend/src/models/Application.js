@@ -210,9 +210,12 @@ applicationSchema.methods.withdraw = async function(reason = '') {
     this.withdrawalReason = reason;
   }
   await this.save();
-  // Decrement the job's application count
+  // Decrement the job's application count (floor at 0 to prevent negative)
   const Job = mongoose.model('Job');
-  await Job.findByIdAndUpdate(this.jobId, { $inc: { applicationCount: -1 } });
+  await Job.findByIdAndUpdate(
+    this.jobId,
+    [{ $set: { applicationCount: { $max: [0, { $add: ['$applicationCount', -1] }] } } }]
+  );
   return this;
 };
 

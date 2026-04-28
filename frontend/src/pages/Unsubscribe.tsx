@@ -36,13 +36,13 @@ const Unsubscribe = () => {
         } else {
           const data = await res.json().catch(() => null);
           setErrorMessage(
-            data?.message || "Ndodhi nje gabim gjate cregjistrimit."
+            data?.message || "Ndodhi një gabim gjatë çregjistrimit."
           );
           setStatus("error");
         }
       })
       .catch(() => {
-        setErrorMessage("Nuk mund te lidheshim me serverin. Provoni perseri me vone.");
+        setErrorMessage("Nuk mund të lidheshim me serverin. Provoni përsëri më vonë.");
         setStatus("error");
       });
   };
@@ -72,7 +72,7 @@ const Unsubscribe = () => {
               <>
                 <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
                 <p className="text-muted-foreground">
-                  Duke procesuar kerkesen tuaj...
+                  Duke procesuar kërkesën tuaj...
                 </p>
               </>
             )}
@@ -84,7 +84,7 @@ const Unsubscribe = () => {
                   U çregjistruat me sukses
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Nuk do te merrni me email njoftime nga ne.
+                  Nuk do të merrni më email njoftime nga ne.
                 </p>
               </>
             )}
@@ -103,7 +103,7 @@ const Unsubscribe = () => {
 
             <Link to="/">
               <Button variant="outline" className="mt-2">
-                Kthehu ne faqen kryesore
+                Kthehu në faqen kryesore
               </Button>
             </Link>
           </CardContent>

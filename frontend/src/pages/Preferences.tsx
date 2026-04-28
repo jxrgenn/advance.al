@@ -67,7 +67,7 @@ const Preferences = () => {
         } else {
           const data = await res.json().catch(() => null);
           setErrorMessage(
-            data?.message || "Nuk mund të ngarkoheshin preferencat."
+            data?.message || "Nuk mundën të ngarkoheshin preferencat."
           );
           setStatus("error");
         }

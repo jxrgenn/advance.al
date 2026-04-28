@@ -59,6 +59,7 @@ const locationSchema = new Schema({
 // Indexes
 // locationSchema.index({ city: 1 }); // Removed: city already has unique: true
 locationSchema.index({ isActive: 1 });
+locationSchema.index({ isActive: 1, jobCount: -1 });
 locationSchema.index({ displayOrder: 1 });
 
 // Static method to get active locations

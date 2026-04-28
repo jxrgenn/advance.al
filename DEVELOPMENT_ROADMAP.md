@@ -1,11 +1,65 @@
 # advance.al - DEVELOPMENT STATUS & ROADMAP
 
 **Date:** September 25-28, 2025
-**Last Updated:** March 30, 2026 (Performance optimizations + 4 UX fixes: custom industry, draft jobs, tutorial fixes)
+**Last Updated:** April 7, 2026 (Full production audit — 28 fixes across 25 files)
 **Platform:** Premier Job Marketplace for Albania
-**CURRENT STATUS:** 🟢 **PRODUCTION-READY — Full security audit + deep audit round 2, 216 runtime tests passing, 60 security attacks blocked, 11 bugs found and fixed. See FINAL-REPORT.md.**
+**CURRENT STATUS:** 🟢 **PRODUCTION-READY — Full production audit complete. 28 issues fixed. Comprehensive QA guide (880+ test items) created.**
 **Phase:** QA & Deployment (frontend manual QA + production config remaining)
+**QA Guide:** `FULL-QA-TESTING-GUIDE.md` — 880+ test items across 28 categories, includes embedding testing
 **Brand:** advance.al (formerly Albania JobFlow)
+
+## ✅ **FULL PRODUCTION AUDIT — APRIL 7, 2026**
+
+### Critical Production Fixes (A1-A3):
+- **Email test mode block** — `resendEmailService.js` now calls `process.exit(1)` if `EMAIL_TEST_MODE=true` in production (was only logging a warning)
+- **Local file upload fallbacks removed** — 5 endpoints in `users.js` + `quickusers.js` no longer fall back to `fs.writeFileSync()` when Cloudinary fails. Returns 503 instead (local disk is ephemeral on Railway)
+- **HTTP compression added** — `compression` middleware added to `server.js`, 82% reduction on JSON responses
+
+### Performance & Scale (C1-C15):
+- **Job search cached** — Redis cache with 60s TTL on `GET /api/jobs` (MD5 hash of query params as key)
+- **Admin dashboard cached** — Redis cache with 5min TTL on `GET /api/admin/dashboard-stats`
+- **MongoDB pool increased** — `maxPoolSize: 50→100`, `minPoolSize: 10→20`
+- **Verification interval .unref()** — `verification.js` setInterval no longer blocks Node shutdown
+- **Debug flags force-disabled in production** — `debugLogger.js` ignores env vars when `NODE_ENV=production`
+- **Application count floor** — `Application.js` withdraw uses `$max: [0, ...]` to prevent negative counts
+- **Slug retry limit** — `Job.js` slug generation capped at 50 retries, falls back to timestamp
+- **Notification semantic match try-catch** — `notificationService.js` catches semantic failures, falls back to keyword-only
+- **OpenAI CV extraction retry** — `openaiService.js` 2-retry wrapper with exponential backoff
+- **Admin recompute batch limit** — `admin/embeddings.js` capped at 500 jobs per recompute
+- **Saved jobs count fix** — `users.js` uses `Job.countDocuments()` instead of `savedJobs.length` (excludes deleted)
+
+### Frontend Fixes (B1-B9):
+- **Platform name fixed** — `EmployerRegister.tsx`: "PunaShqip" → "advance.al"
+- **Albanian diacritics fixed** — `Unsubscribe.tsx` + `Preferences.tsx`: 6 strings corrected
+- **JobDetail null pointer fixed** — `JobDetail.tsx`: optional chaining on `job.employerId?.email` in onClick
+- **Profile dedup null pointer fixed** — `Profile.tsx`: `?.trim()` after `?.toLowerCase()`
+- **Dead sidebar code deleted** — `Index.tsx`: 123 lines of commented-out event sidebar removed
+- **StairsScene.tsx deleted** — Orphan three.js component never imported (132 lines)
+- **Bundle splitting** — `vite.config.ts`: manual chunks for vendor (162KB), mantine (241KB), ui (128KB). Main bundle dropped from 536KB to 198KB
+
+### Cleanup & Polish (D1-D5):
+- **.env.example updated** — Added `DEBUG_EMBEDDINGS`, `DEBUG_WORKER`, `DEBUG_QUEUE`, `ENABLE_MOCK_PAYMENTS`, `LOG_LEVEL`
+- **SMTP timeouts** — `emailService.js`: `connectionTimeout: 5000`, `socketTimeout: 10000`
+- **Location index added** — `Location.js`: compound index `{ isActive: 1, jobCount: -1 }`
+- **Emergency audit logging** — `business-control.js`: emergency actions now log to `ConfigurationAudit`
+
+### Files Modified (25 files):
+`server.js`, `resendEmailService.js`, `users.js`, `quickusers.js`, `jobs.js`, `admin.js`, `database.js`, `verification.js`, `debugLogger.js`, `Application.js`, `Job.js`, `notificationService.js`, `openaiService.js`, `admin/embeddings.js`, `emailService.js`, `Location.js`, `business-control.js`, `.env.example`, `EmployerRegister.tsx`, `Unsubscribe.tsx`, `Preferences.tsx`, `JobDetail.tsx`, `Profile.tsx`, `Index.tsx`, `vite.config.ts` + deleted `StairsScene.tsx`
+
+### Runtime Test Results:
+- Backend: Health ✓, Compression ✓, Job search ✓, Stats ✓, Locations ✓, Auth rejection ✓
+- Frontend: TypeScript ✓, Build ✓, Bundle sizes improved
+
+## ✅ **MOBILE UI FIXES & VERIFICATION BUG — APRIL 3, 2026**
+
+### Bug Fixes
+- **CRITICAL: Verification code resend bug** — `getPendingRegistration()` in `auth.js` returned raw `cacheGet()` without parsing safety check. If Upstash returned a JSON string (not auto-parsed object), `pending.hashedCode` was undefined → 500 error → codes "not accepted" after resend. Fixed with `typeof` check matching `cacheGetOrSet` pattern. Also added in-memory fallback when Redis fails silently, and `deletePendingRegistration` now cleans both Redis and in-memory.
+
+### Mobile UI Improvements
+- **About page hero text** (`about_us_actual_landing.tsx`) — Reduced mobile font from `text-[1.75rem]` to `text-xl`, removed restrictive `wordBreak: 'keep-all'` inline styles that prevented natural wrapping on small screens
+- **Contact cards equal sizing** (`RotatingContact.tsx`) — Equalized mobile padding from mismatched `px-16`/`px-12` to consistent `px-8 sm:px-16` on both cards
+- **75% stat card layout** (`CompaniesComponent.tsx`) — Changed from horizontal-only (`flex items-start`) to responsive (`flex-col items-center md:flex-row md:items-start`), matching the 92% card's mobile layout with circle centered on top
+- **CV textarea placeholder** (`JobSeekersPage.tsx`) — Replaced long example placeholder text with clean short placeholder
 
 ## ✅ **UX IMPROVEMENTS & PERFORMANCE — MARCH 30, 2026**
 

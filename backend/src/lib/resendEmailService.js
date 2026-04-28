@@ -17,10 +17,11 @@ class ResendEmailService {
 
     this.testEmail = 'advance.al123456@gmail.com'; // TODO: Remove in production — only for development testing
 
-    // Production safety: warn loudly if test mode is on or FROM address is sandbox
+    // Production safety: CRASH if test mode is on — emails must go to real users
     if (process.env.NODE_ENV === 'production') {
       if (process.env.EMAIL_TEST_MODE === 'true') {
-        logger.error('EMAIL_TEST_MODE is TRUE in production — all emails will go to test address instead of real users!');
+        logger.error('FATAL: EMAIL_TEST_MODE=true in production — refusing to start. Set EMAIL_TEST_MODE=false.');
+        process.exit(1);
       }
       const emailFrom = process.env.EMAIL_FROM || '';
       if (emailFrom.includes('resend.dev')) {

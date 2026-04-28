@@ -780,16 +780,16 @@ const Profile = () => {
   const isDuplicateWork = (entry: any) => {
     const existing = user?.profile?.jobSeekerProfile?.workHistory || [];
     return existing.some((w: any) =>
-      w.company?.toLowerCase().trim() === entry.company?.toLowerCase().trim() &&
-      w.position?.toLowerCase().trim() === entry.position?.toLowerCase().trim()
+      w.company?.toLowerCase()?.trim() === entry.company?.toLowerCase()?.trim() &&
+      w.position?.toLowerCase()?.trim() === entry.position?.toLowerCase()?.trim()
     );
   };
 
   const isDuplicateEducation = (entry: any) => {
     const existing = user?.profile?.jobSeekerProfile?.education || [];
     return existing.some((e: any) =>
-      e.institution?.toLowerCase().trim() === entry.institution?.toLowerCase().trim() &&
-      e.degree?.toLowerCase().trim() === entry.degree?.toLowerCase().trim()
+      e.institution?.toLowerCase()?.trim() === entry.institution?.toLowerCase()?.trim() &&
+      e.degree?.toLowerCase()?.trim() === entry.degree?.toLowerCase()?.trim()
     );
   };
 

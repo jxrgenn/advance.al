@@ -6,6 +6,8 @@ import { authenticate, requireEmployer, requireVerifiedEmployer, optionalAuth } 
 import notificationService from '../lib/notificationService.js';
 import jobEmbeddingService from '../services/jobEmbeddingService.js';
 import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
+import { cacheGet, cacheSet } from '../config/redis.js';
+import crypto from 'crypto';
 import logger from '../config/logger.js';
 
 const router = express.Router();
@@ -200,6 +202,21 @@ router.get('/', optionalAuth, async (req, res) => {
     // Strip null bytes from search to prevent MongoDB regex crash
     const safeSearch = search ? search.replace(/\0/g, '') : '';
 
+    // Redis cache — 60s TTL for public job search results
+    const cacheKey = `jobs:search:${crypto.createHash('md5').update(JSON.stringify({
+      search: safeSearch, city, category, categories, jobType, minSalary, maxSalary,
+      currency, company, experience, seniority, remote, tier, postedAfter,
+      page: safePage, limit: safeLimit, sortBy, sortOrder,
+      diaspora, ngaShtepia, partTime, administrata, sezonale
+    })).digest('hex')}`;
+    try {
+      const cached = await cacheGet(cacheKey);
+      if (cached) {
+        const data = typeof cached === 'string' ? JSON.parse(cached) : cached;
+        return res.json(data);
+      }
+    } catch { /* cache miss — proceed with DB query */ }
+
     // Build search filters
     const filters = {};
 
@@ -330,7 +347,7 @@ router.get('/', optionalAuth, async (req, res) => {
 
     const totalPages = Math.ceil(totalJobs / safeLimit);
 
-    res.json({
+    const responseData = {
       success: true,
       data: {
         jobs,
@@ -350,7 +367,12 @@ router.get('/', optionalAuth, async (req, res) => {
           maxSalary: maxSalary ? parseInt(maxSalary) : null
         }
       }
-    });
+    };
+
+    // Cache for 60 seconds
+    cacheSet(cacheKey, responseData, 60).catch(() => {});
+
+    res.json(responseData);
 
   } catch (error) {
     logger.error('Get jobs error:', error.message);

@@ -6,6 +6,7 @@ import { escapeRegex, sanitizeLimit } from '../utils/sanitize.js';
 import notificationService from '../lib/notificationService.js';
 import jobEmbeddingService from '../services/jobEmbeddingService.js';
 import userEmbeddingService from '../services/userEmbeddingService.js';
+import { cacheGet, cacheSet } from '../config/redis.js';
 import logger from '../config/logger.js';
 
 const router = express.Router();
@@ -19,6 +20,15 @@ router.use(requireAdmin);
 // @access  Private (Admin only)
 router.get('/dashboard-stats', async (req, res) => {
   try {
+    // Cache dashboard stats for 5 minutes (admin-only, heavy query)
+    try {
+      const cached = await cacheGet('admin:dashboard');
+      if (cached) {
+        const data = typeof cached === 'string' ? JSON.parse(cached) : cached;
+        return res.json(data);
+      }
+    } catch { /* cache miss */ }
+
     // Get basic counts with real data
     const [
       totalUsers,
@@ -155,10 +165,12 @@ router.get('/dashboard-stats', async (req, res) => {
       recentActivity
     };
 
-    res.json({
-      success: true,
-      data: dashboardStats
-    });
+    const responseData = { success: true, data: dashboardStats };
+
+    // Cache for 5 minutes
+    cacheSet('admin:dashboard', responseData, 300).catch(() => {});
+
+    res.json(responseData);
 
   } catch (error) {
     logger.error('Dashboard stats error:', error.message);

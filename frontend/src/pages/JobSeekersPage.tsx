@@ -1571,7 +1571,7 @@ Telefoni: _______________`;
 
             <Grid.Col span={12}>
               <Textarea
-                placeholder={useTemplate ? "" : "Shembull: Emri: Alban Hoxha, Qyteti: Tiranë, Email: alban@email.com, Tel: +355 69 123 4567\n\nKam punuar si zhvillues web për 5 vjet në XYZ ku kam zhvilluar aplikacione me React dhe Node.js. Para kësaj kam qenë asistent IT për 2 vjet.\n\nDiplomuar në Inxhinieri Kompjuterike nga Universiteti Politeknik i Tiranës në vitin 2018.\n\nAftësi: JavaScript, React, Node.js, MongoDB, Anglisht C1, Italisht B2."}
+                placeholder={useTemplate ? "" : "Shkruani informacionet tuaja këtu..."}
                 minRows={useTemplate ? 20 : 7}
                 maxRows={useTemplate ? 30 : 15}
                 autosize

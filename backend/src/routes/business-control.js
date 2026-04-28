@@ -1,7 +1,7 @@
 import express from 'express';
 import { body, query, validationResult } from 'express-validator';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
-import { BusinessCampaign, PricingRule, RevenueAnalytics, Job, User, SystemConfiguration } from '../models/index.js';
+import { BusinessCampaign, PricingRule, RevenueAnalytics, Job, User, SystemConfiguration, ConfigurationAudit } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { escapeRegex, sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
 import logger from '../config/logger.js';
@@ -697,6 +697,20 @@ router.post('/platform/emergency', authenticate, requireAdmin, async (req, res) 
           success: false,
           message: 'Veprim emergjence i pavlefshëm'
         });
+    }
+
+    // Log emergency action to audit trail
+    try {
+      await ConfigurationAudit.create({
+        configKey: `emergency:${action}`,
+        action: 'emergency_control',
+        newValue: { action, reason },
+        changedBy: req.user._id,
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent')
+      });
+    } catch (auditErr) {
+      logger.error('Failed to log emergency audit:', auditErr.message);
     }
 
     res.json({

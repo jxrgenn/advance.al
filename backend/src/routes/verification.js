@@ -108,7 +108,7 @@ setInterval(() => {
   for (const [key, value] of verificationCodesMemory.entries()) {
     if (value.expiry < now) verificationCodesMemory.delete(key);
   }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref();
 
 // Email sending function
 const sendEmail = async (email, code) => {

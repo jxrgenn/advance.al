@@ -31,6 +31,12 @@ frontend/.env.production
 test-mongodb*
 test-*.js
 
+# User uploads — never commit (may contain sensitive resumes/photos)
+uploads/
+
+# QA test artifacts — generated per run
+tests/results/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

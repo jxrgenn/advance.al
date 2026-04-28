@@ -296,22 +296,29 @@ advance.al - Platforma #1 e Punës në Shqipëri
       const jobForSemantic = jobWithVector || job;
 
       // ── 1. Semantic matching (QuickUsers + full jobseekers) ──────────────────
-      const { quickUsers: semanticQuickUsers, jobSeekers: semanticJobSeekers } =
-        await userEmbeddingService.findSemanticMatchesForJob(jobForSemantic);
+      let semanticQuickUsers = [];
+      let semanticJobSeekers = [];
+      try {
+        const semanticResult = await userEmbeddingService.findSemanticMatchesForJob(jobForSemantic);
+        semanticQuickUsers = semanticResult.quickUsers || [];
+        semanticJobSeekers = semanticResult.jobSeekers || [];
+      } catch (semanticError) {
+        logger.error('Semantic matching failed, falling back to keyword-only:', semanticError.message);
+      }
 
       // ── 2. Keyword fallback for QuickUsers (always run, deduplicated later) ──
       let keywordQuickUsers = [];
       keywordQuickUsers = await QuickUser.findMatchesForJob(job);
 
       // ── 3. Merge & deduplicate QuickUser lists ───────────────────────────────
-      const semanticQuickUserIds = new Set(semanticQuickUsers.map(e => e.user._id.toString()));
+      const semanticQuickUserIds = new Set((semanticQuickUsers || []).map(e => e.user._id.toString()));
       // Extract raw user docs (semantic results are { user, score } objects)
-      const semanticQuickUserDocs = semanticQuickUsers.map(e => e.user);
+      const semanticQuickUserDocs = (semanticQuickUsers || []).map(e => e.user);
       const newKeywordUsers = keywordQuickUsers.filter(
         u => !semanticQuickUserIds.has(u._id.toString())
       );
       const allQuickUsers = [...semanticQuickUserDocs, ...newKeywordUsers];
-      const allJobSeekers = semanticJobSeekers.map(e => e.user);
+      const allJobSeekers = (semanticJobSeekers || []).map(e => e.user);
 
       const totalTargets = allQuickUsers.length + allJobSeekers.length;
 

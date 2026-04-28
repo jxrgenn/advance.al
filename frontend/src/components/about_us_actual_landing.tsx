@@ -429,10 +429,10 @@ export default function AdvanceLanding() {
         <div className="container mx-auto px-2 sm:px-4">
           <div className="flex flex-col lg:flex-row items-center lg:items-center justify-between gap-12 lg:gap-16">
             {/* Left Content */}
-            <div className="flex-1 w-full lg:max-w-[650px] text-center lg:text-left relative pt-6 sm:pt-8 lg:pt-0">
+            <div className="flex-1 w-full lg:max-w-[650px] text-center lg:text-left relative pt-10 sm:pt-12 lg:pt-0">
               <div className="hidden lg:block absolute -left-8 top-0 w-1 h-20 bg-gradient-to-b from-primary to-transparent rounded-full opacity-60"></div>
-              
-              <h1 className="text-[1.75rem] sm:text-[2rem] lg:text-[2.75rem] font-bold leading-[1.2] mb-6 lg:mb-7 text-foreground tracking-tight" style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}>
+
+              <h1 className="text-[1.4rem] sm:text-[2rem] lg:text-[2.75rem] font-bold leading-[1.25] mb-6 lg:mb-7 text-foreground tracking-tight">
                 <span className="text-primary font-extrabold relative inline-block">
                   Advance.al
                   <span className="absolute -bottom-1 left-0 right-0 h-1 bg-primary/20 rounded-full"></span>
@@ -440,7 +440,7 @@ export default function AdvanceLanding() {
                 {' '}është platforma e vetme në Shqipëri e përkushtuar totalisht në tregun e punës.
               </h1>
               
-              <p className="text-lg sm:text-xl lg:text-[1.25rem] text-muted-foreground mb-8 lg:mb-10 leading-relaxed font-light" style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}>
+              <p className="text-[1.05rem] sm:text-xl lg:text-[1.25rem] text-muted-foreground mb-8 lg:mb-10 leading-relaxed font-light">
                 Advance.al bashkon kompanitë më të mira me talentet më të specializuar për të ndërtuar biznese te suksesshme dhe karriera të shkëlqyera!
               </p>
               

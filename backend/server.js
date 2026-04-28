@@ -18,6 +18,7 @@ if (process.env.SENTRY_DSN) {
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import { mkdirSync } from 'fs';
@@ -91,6 +92,9 @@ const PORT = process.env.PORT || 3001;
 await connectDB();
 
 // Security Middleware
+// HTTP compression — gzip/brotli for all responses
+app.use(compression());
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {

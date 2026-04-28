@@ -951,7 +951,7 @@ const JobDetail = () => {
                       variant="outline"
                       size="lg"
                       className="text-base py-6 hover:bg-orange-50 hover:border-orange-300 border-2"
-                      onClick={() => openContactModal('email', job.employerId.email)}
+                      onClick={() => openContactModal('email', job.employerId?.email)}
                     >
                       <Mail className="mr-2 h-6 w-6 text-orange-600" />
                       Email

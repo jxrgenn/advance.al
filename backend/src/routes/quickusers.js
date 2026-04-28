@@ -252,12 +252,8 @@ router.post('/', quickUserLimiter, handleMultipart, quickUserValidation, handleV
           resumeUrl = cloudResult.secure_url;
           logger.info('QuickUser resume uploaded to Cloudinary', { quickUserId: quickUser._id });
         } catch (cloudError) {
-          logger.error('Cloudinary upload failed, falling back to local', { error: cloudError.message });
-          const fallbackDir = path.join(process.cwd(), 'uploads', 'resumes');
-          fs.mkdirSync(fallbackDir, { recursive: true });
-          const fallbackName = `quickuser-resume-${quickUser._id}-${Date.now()}${path.extname(req.file.originalname)}`;
-          fs.writeFileSync(path.join(fallbackDir, fallbackName), req.file.buffer);
-          resumeUrl = `/uploads/resumes/${fallbackName}`;
+          logger.error('Cloudinary upload failed', { error: cloudError.message });
+          // Do NOT fall back to local disk — ephemeral storage is unsafe in production
         }
       } else if (req.file.filename) {
         resumeUrl = `/uploads/resumes/${req.file.filename}`;

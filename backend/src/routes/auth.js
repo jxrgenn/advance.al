@@ -30,9 +30,15 @@ setInterval(() => {
 }, PENDING_REG_CLEANUP_INTERVAL).unref();
 
 async function getPendingRegistration(email) {
+  // Try Redis first
   if (redis) {
-    return await cacheGet(`pending_reg:${email}`);
+    const data = await cacheGet(`pending_reg:${email}`);
+    if (data) {
+      // cacheGet may return a raw JSON string or parsed object depending on Upstash behavior
+      return typeof data === 'string' ? JSON.parse(data) : data;
+    }
   }
+  // Fallback to in-memory (also checked when Redis returns null)
   const entry = pendingRegistrationsMap.get(email);
   if (entry && entry.expiresAt < Date.now()) {
     pendingRegistrationsMap.delete(email);
@@ -41,32 +47,42 @@ async function getPendingRegistration(email) {
   return entry || null;
 }
 
+function setInMemoryPending(email, data) {
+  // Evict expired entries if at capacity
+  if (pendingRegistrationsMap.size >= PENDING_REG_MAX_SIZE) {
+    const now = Date.now();
+    for (const [key, entry] of pendingRegistrationsMap) {
+      if (entry.expiresAt < now) pendingRegistrationsMap.delete(key);
+      if (pendingRegistrationsMap.size < PENDING_REG_MAX_SIZE) break;
+    }
+  }
+  if (pendingRegistrationsMap.size >= PENDING_REG_MAX_SIZE) {
+    throw new Error('Registration system temporarily at capacity. Please try again later.');
+  }
+  pendingRegistrationsMap.set(email, { ...data, expiresAt: Date.now() + 10 * 60 * 1000 });
+}
+
 async function setPendingRegistration(email, data) {
+  let redisOk = false;
   if (redis) {
-    await cacheSet(`pending_reg:${email}`, data, 600); // 10 min TTL
-  } else {
-    // Evict oldest expired entries if at capacity
-    if (pendingRegistrationsMap.size >= PENDING_REG_MAX_SIZE) {
-      const now = Date.now();
-      for (const [key, entry] of pendingRegistrationsMap) {
-        if (entry.expiresAt < now) pendingRegistrationsMap.delete(key);
-        if (pendingRegistrationsMap.size < PENDING_REG_MAX_SIZE) break;
-      }
+    try {
+      await cacheSet(`pending_reg:${email}`, data, 600); // 10 min TTL
+      redisOk = true;
+    } catch {
+      // Redis write failed — fall through to in-memory
     }
-    // If still at capacity after cleanup, reject to prevent memory exhaustion
-    if (pendingRegistrationsMap.size >= PENDING_REG_MAX_SIZE) {
-      throw new Error('Registration system temporarily at capacity. Please try again later.');
-    }
-    pendingRegistrationsMap.set(email, { ...data, expiresAt: Date.now() + 10 * 60 * 1000 });
+  }
+  if (!redisOk) {
+    setInMemoryPending(email, data);
   }
 }
 
 async function deletePendingRegistration(email) {
+  // Clean both stores to avoid stale data
   if (redis) {
     await cacheDelete(`pending_reg:${email}`);
-  } else {
-    pendingRegistrationsMap.delete(email);
   }
+  pendingRegistrationsMap.delete(email);
 }
 
 // Helper: send verification code email (standalone, no user object needed)

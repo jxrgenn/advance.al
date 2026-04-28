@@ -249,7 +249,7 @@ router.get('/workers', async (req, res) => {
  */
 router.post('/recompute-all', async (req, res) => {
   try {
-    const jobs = await Job.find({ isDeleted: false }).select('_id');
+    const jobs = await Job.find({ isDeleted: false }).select('_id').limit(500);
 
     let queuedCount = 0;
     let errorCount = 0;

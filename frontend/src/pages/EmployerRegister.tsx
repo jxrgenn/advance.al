@@ -160,7 +160,7 @@ const EmployerRegister = () => {
       await register(verificationEmail, verificationCode);
       setVerificationOpen(false);
       toast({
-        title: 'Mirësevini në PunaShqip!',
+        title: 'Mirësevini në advance.al!',
         description: 'Llogaria juaj u krijua me sukses.',
       });
       navigate('/employer-dashboard');

@@ -8,11 +8,11 @@ const RotatingContact: React.FC<{ className?: string }> = ({ className = '' }) =
           Na Kontaktoni
         </h2>
 
-        {/* Business Card - two separated panels */}
-        <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
+        {/* Business Card - two separated panels, equal height on mobile */}
+        <div className="grid grid-rows-2 sm:grid-rows-1 sm:grid-cols-[45%_1fr] gap-4 sm:gap-6">
           {/* Left Panel - Blue with logo */}
-          <div className="bg-[#2e5fb2] flex flex-col items-center justify-center px-16 py-14 sm:w-[45%] shadow-md">
-            <div className="w-36 h-36 md:w-44 md:h-44 rounded-full overflow-hidden bg-white mb-6">
+          <div className="bg-[#2e5fb2] flex flex-col items-center justify-center px-8 sm:px-16 py-10 sm:py-14 shadow-md">
+            <div className="w-28 h-28 sm:w-36 sm:h-36 md:w-44 md:h-44 rounded-full overflow-hidden bg-white mb-4 sm:mb-6">
               <img
                 src="/logo_V2.png"
                 alt="Advance.al logo"
@@ -26,7 +26,7 @@ const RotatingContact: React.FC<{ className?: string }> = ({ className = '' }) =
           </div>
 
           {/* Right Panel - White with contact details */}
-          <div className="bg-white border border-gray-200 flex flex-col items-center justify-center px-12 md:px-16 py-14 sm:w-[55%] shadow-md text-center">
+          <div className="bg-white border border-gray-200 flex flex-col items-center justify-center px-8 sm:px-16 py-10 sm:py-14 shadow-md text-center">
             <p className="text-lg md:text-xl text-foreground font-medium tracking-wide">Cel. 00355 68 661 1796</p>
             <a href="mailto:Advanc@gmail.com" className="text-lg md:text-xl text-foreground hover:text-primary transition-colors block font-medium tracking-wide mb-6">
               Advanc@gmail.com

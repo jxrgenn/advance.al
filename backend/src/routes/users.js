@@ -646,17 +646,20 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
         resumeUrl = cloudResult.secure_url;
         logger.info('Resume uploaded to Cloudinary', { userId: req.user._id, url: resumeUrl });
       } catch (cloudError) {
-        logger.error('Cloudinary resume upload failed, falling back to local', { error: cloudError.message });
-        // Fallback: save buffer to disk
-        const fallbackDir = path.join(process.cwd(), 'uploads', 'resumes');
-        fs.mkdirSync(fallbackDir, { recursive: true });
-        const fallbackName = `resume-${req.user._id}-${Date.now()}${path.extname(req.file.originalname)}`;
-        fs.writeFileSync(path.join(fallbackDir, fallbackName), req.file.buffer);
-        resumeUrl = `/uploads/resumes/${fallbackName}`;
+        logger.error('Cloudinary resume upload failed', { error: cloudError.message });
+        return res.status(503).json({
+          success: false,
+          message: 'Shërbimi i ngarkimit të skedarëve nuk është i disponueshëm momentalisht. Provoni përsëri më vonë.'
+        });
       }
-    } else {
-      // Local storage (multer already saved the file to disk)
+    } else if (!isProduction && req.file.filename) {
+      // Local storage only in development (multer already saved the file to disk)
       resumeUrl = `/uploads/resumes/${req.file.filename}`;
+    } else {
+      return res.status(503).json({
+        success: false,
+        message: 'Shërbimi i ngarkimit të skedarëve nuk është i konfiguruar.'
+      });
     }
 
     // Update user profile with resume URL
@@ -815,15 +818,19 @@ router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter,
         resumeUrl = cloudResult.secure_url;
         logger.info('Resume uploaded to Cloudinary (parse-resume)', { userId: req.user._id, url: resumeUrl });
       } catch (cloudError) {
-        logger.error('Cloudinary resume upload failed, falling back to local', { error: cloudError.message });
-        const fallbackDir = path.join(process.cwd(), 'uploads', 'resumes');
-        fs.mkdirSync(fallbackDir, { recursive: true });
-        const fallbackName = `resume-${req.user._id}-${Date.now()}${path.extname(req.file.originalname)}`;
-        fs.writeFileSync(path.join(fallbackDir, fallbackName), req.file.buffer);
-        resumeUrl = `/uploads/resumes/${fallbackName}`;
+        logger.error('Cloudinary resume upload failed', { error: cloudError.message });
+        return res.status(503).json({
+          success: false,
+          message: 'Shërbimi i ngarkimit të skedarëve nuk është i disponueshëm momentalisht. Provoni përsëri më vonë.'
+        });
       }
-    } else {
+    } else if (!isProduction && req.file.filename) {
       resumeUrl = `/uploads/resumes/${req.file.filename}`;
+    } else {
+      return res.status(503).json({
+        success: false,
+        message: 'Shërbimi i ngarkimit të skedarëve nuk është i konfiguruar.'
+      });
     }
 
     // Update user profile with resume URL
@@ -936,17 +943,19 @@ router.post('/upload-logo', authenticate, requireEmployer, imageUpload.single('l
         logoUrl = cloudResult.secure_url;
         logger.info('Logo uploaded to Cloudinary', { userId: req.user._id, url: logoUrl });
       } catch (cloudError) {
-        logger.error('Cloudinary logo upload failed, falling back to local', { error: cloudError.message });
-        // Fallback: save buffer to disk
-        const fallbackDir = path.join(process.cwd(), 'uploads', 'images');
-        fs.mkdirSync(fallbackDir, { recursive: true });
-        const fallbackName = `logo-${req.user._id}-${Date.now()}${path.extname(req.file.originalname)}`;
-        fs.writeFileSync(path.join(fallbackDir, fallbackName), req.file.buffer);
-        logoUrl = `/uploads/images/${fallbackName}`;
+        logger.error('Cloudinary logo upload failed', { error: cloudError.message });
+        return res.status(503).json({
+          success: false,
+          message: 'Shërbimi i ngarkimit të skedarëve nuk është i disponueshëm momentalisht. Provoni përsëri më vonë.'
+        });
       }
-    } else {
-      // Local storage (multer already saved the file to disk)
+    } else if (!isProduction && req.file.filename) {
       logoUrl = `/uploads/images/${req.file.filename}`;
+    } else {
+      return res.status(503).json({
+        success: false,
+        message: 'Shërbimi i ngarkimit të skedarëve nuk është i konfiguruar.'
+      });
     }
 
     // Update employer profile with logo URL
@@ -1043,17 +1052,20 @@ router.post('/upload-profile-photo', authenticate, requireJobSeeker, imageUpload
         photoUrl = cloudResult.secure_url;
         logger.info('Profile photo uploaded to Cloudinary', { userId: req.user._id, url: photoUrl });
       } catch (cloudError) {
-        logger.error('Cloudinary photo upload failed, falling back to local', { error: cloudError.message });
-        // Fallback: save buffer to disk
-        const fallbackDir = path.join(process.cwd(), 'uploads', 'images');
-        fs.mkdirSync(fallbackDir, { recursive: true });
-        const fallbackName = `photo-${req.user._id}-${Date.now()}${path.extname(req.file.originalname)}`;
-        fs.writeFileSync(path.join(fallbackDir, fallbackName), req.file.buffer);
+        logger.error('Cloudinary photo upload failed', { error: cloudError.message });
+        return res.status(503).json({
+          success: false,
+          message: 'Shërbimi i ngarkimit të skedarëve nuk është i disponueshëm momentalisht. Provoni përsëri më vonë.'
+        });
         photoUrl = `/uploads/images/${fallbackName}`;
       }
-    } else {
-      // Local storage (multer already saved the file to disk)
+    } else if (!isProduction && req.file.filename) {
       photoUrl = `/uploads/images/${req.file.filename}`;
+    } else {
+      return res.status(503).json({
+        success: false,
+        message: 'Shërbimi i ngarkimit të skedarëve nuk është i konfiguruar.'
+      });
     }
 
     // Update job seeker profile with photo URL
@@ -1729,7 +1741,7 @@ router.get('/saved-jobs', authenticate, requireJobSeeker, async (req, res) => {
       .skip(skip)
       .limit(sanitizedLimit);
 
-    const totalSavedJobs = user.savedJobs.length;
+    const totalSavedJobs = await Job.countDocuments({ _id: { $in: user.savedJobs }, isDeleted: false });
     const totalPages = Math.ceil(totalSavedJobs / sanitizedLimit);
 
     res.json({

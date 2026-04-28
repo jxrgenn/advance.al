@@ -14,10 +14,11 @@ import crypto from 'crypto';
 
 class DebugLogger {
   constructor() {
-    // Read debug flags from environment
-    this.debugEmbeddings = process.env.DEBUG_EMBEDDINGS === 'true';
-    this.debugWorker = process.env.DEBUG_WORKER === 'true';
-    this.debugQueue = process.env.DEBUG_QUEUE === 'true';
+    // Read debug flags from environment — force-disable in production to prevent data leaks
+    const isProd = process.env.NODE_ENV === 'production';
+    this.debugEmbeddings = !isProd && process.env.DEBUG_EMBEDDINGS === 'true';
+    this.debugWorker = !isProd && process.env.DEBUG_WORKER === 'true';
+    this.debugQueue = !isProd && process.env.DEBUG_QUEUE === 'true';
   }
 
   /**

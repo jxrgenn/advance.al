@@ -252,21 +252,21 @@ export function Companies() {
               </div>
 
               {/* Single Card Below */}
-              <motion.div 
-                className="bg-gradient-to-br from-primary to-primary/80 p-8 rounded-2xl flex items-start gap-6 text-primary-foreground shadow-2xl"
+              <motion.div
+                className="bg-gradient-to-br from-primary to-primary/80 p-8 rounded-2xl flex flex-col items-center text-center md:flex-row md:items-start md:text-left gap-4 md:gap-6 text-primary-foreground shadow-2xl"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4, duration: 0.6 }}
                 whileHover={{ scale: 1.02 }}
               >
-                <div className="bg-background/20 rounded-full w-24 h-24 flex items-center justify-center shadow-md flex-shrink-0 border border-primary-foreground/20">
-                  <span className="text-4xl font-bold text-primary-foreground">75%</span>
+                <div className="bg-background/20 rounded-full w-20 h-20 md:w-24 md:h-24 flex items-center justify-center shadow-md flex-shrink-0 border border-primary-foreground/20">
+                  <span className="text-3xl md:text-4xl font-bold text-primary-foreground">75%</span>
                 </div>
-                <div className="pt-2">
-                  <p className="text-lg font-medium">
+                <div>
+                  <p className="text-base md:text-lg font-medium">
                     E kandidatëve do të aplikonin për punë të një kompani me markë të konsoliduar, e regjjistruar dhe të verifikuar.
                   </p>
-                  <p className="text-lg mt-2 font-medium">
+                  <p className="text-base md:text-lg mt-2 font-medium">
                     Regjistrohu si kompani, rrit besueshmërinë.
                   </p>
                 </div>
