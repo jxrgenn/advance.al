@@ -47,3 +47,8 @@ tests/results/
 *.njsproj
 *.sln
 *.sw?
+
+# Claude Code: local agent state, plans, memory, settings
+# These can contain session notes, internal infrastructure references,
+# and project history that should never end up in a public repo.
+.claude/
