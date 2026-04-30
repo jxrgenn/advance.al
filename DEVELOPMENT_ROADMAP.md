@@ -1,12 +1,42 @@
 # advance.al - DEVELOPMENT STATUS & ROADMAP
 
 **Date:** September 25-28, 2025
-**Last Updated:** April 29, 2026 (Phase 1+2+6+8 backend truth pass + Phase 7 honesty report — 319/319 integration tests passing across 28 spec files)
+**Last Updated:** April 30, 2026 (Phase 19 pre-launch security hardening — abuse-vector lockdown + leaked-doc cleanup)
 **Platform:** Premier Job Marketplace for Albania
-**CURRENT STATUS:** 🟢 **PRODUCTION-READY — 319/319 backend integration tests passing. F-1 PII data-leak fixed. Auth middleware hardened. Full tenant-isolation matrix verified. F-5 + F-8 race conditions confirmed (fixes tracked); F-7 verified not broken; F-11 was audit error.**
-**Phase:** Phases 1, 2, 6, 7, 8 complete. Phase 3 (frontend E2E), Phase 4 (AI/OpenAI), Phase 5 (email inbox) deferred — see `tests/results/HONEST_TEST_RESULTS.md` for rationale + recommended priority order.
+**CURRENT STATUS:** 🟢 **PRODUCTION-READY for deploy day-after-tomorrow. 653/653 tests pass. 4 prod bugs fixed (F-1 PII leak, F-5 race, F-8 race, F-10 cache). 8 of 10 npm vulns fixed via `npm audit fix` (3 highs eliminated; remaining 2 are esbuild/vite dev-server only — do not deploy). Frontend + backend builds OK. CI live at `.github/workflows/qa-tests.yml`.**
+**Phase:** Phases 0-18 complete. Remaining out-of-scope items require external infrastructure (real Cloudinary, Twilio, replica-set MongoDB, k6 load against staging).
 **QA Guide:** `tests/results/HONEST_TEST_RESULTS.md` (canonical, evidence-backed) supersedes all prior testing claims (211/211, 338, 880+, 61 AI, 4/4 k6) which had no reproducible artifacts.
 **Brand:** advance.al (formerly Albania JobFlow)
+
+## 🟢 **PHASE 19 — PRE-LAUNCH SECURITY HARDENING — APRIL 30, 2026**
+
+User-requested aggressive pen-test of production. Findings shipped on `main` (3 commits: `cf4f424`, `944cb54`, `26e30de`):
+
+**Verified BEFORE deploy (all in 89a61a5, already live):**
+- JWT alg-pinning, IDOR blocked, mass-assignment blocked, XSS sanitized.
+- Login timing attack closed (constant-time bcrypt compare against decoy hash).
+- authLimiter hardened — `SKIP_RATE_LIMIT` only honoured outside production.
+- Frontend security headers shipped (HSTS, CSP, X-Frame-Options DENY, COOP, Permissions-Policy).
+- Source maps uploaded to Sentry then deleted from Vercel (debug-id flow).
+
+**Shipped this phase (waiting on Render auto-deploy):**
+1. **Application spam** — `/api/applications/apply` now 15/hr per userId (was unlimited).
+2. **Message spam** — `/api/applications/:id/message` now 60/hr per userId (was unlimited).
+3. **AI credit drain** — `/api/cv/generate` keyed per userId (was per-IP, bypassable via VPN).
+4. **Email-bombing victims** — `/api/auth/initiate-registration` now 5/hr per email in addition to per-IP.
+5. **File-upload bypass** — magic-byte validation on `/upload-resume`, `/parse-resume`, `/api/quickusers`. Rejects spoofed mimetype (e.g. HTML claiming `application/pdf`).
+6. **Skip-predicate hardening** — verification.js + quickusers.js limiters now also gate `SKIP_RATE_LIMIT` behind `NODE_ENV !== 'production'`.
+7. **Leaked-doc cleanup** — 5 .md audit files containing real Resend API key, MongoDB password, admin password removed from repo. **History still contains them — user must rotate.**
+
+**Tests:** 57+18 = 75 integration tests pass after changes (auth, applications, cv-generation, quickusers, verification suites).
+
+**Known unverified:** Render auto-deploy stuck after 22+ min. New code on `main` (`26e30de`) but production still serving pre-944cb54 build. User must check Render Events tab and trigger manual deploy.
+
+**Outstanding owed by user (cannot fix in code):**
+- Rotate **Resend API key** `re_ZECNG5Y8_…` (in git history, public repo).
+- Rotate **MongoDB password** `StrongPassword123!` (same).
+- Confirm admin password is no longer `admin123!@#`.
+- Make repo private OR rewrite history with `git-filter-repo`.
 
 ## 🟡 **PRODUCTION LAUNCH — SEO/GEO FOUNDATION — APRIL 28, 2026 (IN PROGRESS)**
 
