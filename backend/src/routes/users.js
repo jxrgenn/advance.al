@@ -371,27 +371,23 @@ router.put('/profile', authenticate, async (req, res) => {
       employerProfile.website = w.match(/^https?:\/\//) ? w : `https://${w}`;
     }
 
-    // Update employer specific fields (only if not verified to prevent fraud)
+    // Update employer specific fields with strict allowlist on BOTH verified
+    // and unverified paths. Earlier the unverified path used `{ ...stored,
+    // ...employerProfile, verified, ... }` which let an unverified employer
+    // set sensitive schema fields (subscriptionTier, isAdministrataAccount,
+    // candidateMatchingEnabled, candidateMatchingJobs) that are otherwise
+    // admin-controlled — a free path to premium features and category bypass.
     if (user.userType === 'employer' && employerProfile) {
-      if (user.profile.employerProfile.verified) {
-        // Only allow certain fields to be updated for verified employers
-        // companyName and industry are restricted to prevent fraud
-        const allowedFields = ['description', 'website', 'companySize', 'phone', 'whatsapp', 'contactPreferences'];
-        Object.keys(employerProfile).forEach(key => {
-          if (allowedFields.includes(key)) {
-            user.profile.employerProfile[key] = employerProfile[key];
-          }
-        });
-      } else {
-        // Unverified employers can update most fields
-        user.profile.employerProfile = {
-          ...user.profile.employerProfile,
-          ...employerProfile,
-          verified: user.profile.employerProfile.verified, // Keep verification status
-          verificationDate: user.profile.employerProfile.verificationDate,
-          verificationStatus: user.profile.employerProfile.verificationStatus
-        };
-      }
+      const verifiedAllowed = ['description', 'website', 'companySize', 'phone', 'whatsapp', 'contactPreferences'];
+      // Unverified employers also need to be able to set companyName, industry,
+      // and logo during initial profile completion.
+      const unverifiedAllowed = [...verifiedAllowed, 'companyName', 'industry', 'logo'];
+      const allowedFields = user.profile.employerProfile.verified ? verifiedAllowed : unverifiedAllowed;
+      Object.keys(employerProfile).forEach(key => {
+        if (allowedFields.includes(key)) {
+          user.profile.employerProfile[key] = employerProfile[key];
+        }
+      });
     }
 
     await user.save();

