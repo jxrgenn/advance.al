@@ -12,10 +12,16 @@ import userEmbeddingService from '../services/userEmbeddingService.js';
 
 const router = express.Router();
 
-// Rate limiting for CV generation (expensive OpenAI calls)
+// Rate limiting for CV generation (expensive OpenAI calls).
+// Keyed on the authenticated userId so rotating IPs / Tor exits cannot bypass
+// the cost ceiling. Falls back to IP only if (somehow) called pre-auth.
 const cvGenerateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5, // 5 requests per hour per IP
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id || req.ip,
+  skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
   message: {
     success: false,
     message: 'Keni arritur limitin e gjenerimit të CV. Provoni përsëri pas 1 ore.'
@@ -23,7 +29,7 @@ const cvGenerateLimiter = rateLimit({
 });
 
 // POST /api/cv/generate - Generate CV from natural language
-router.post('/generate', cvGenerateLimiter, authenticate, requireJobSeeker, async (req, res) => {
+router.post('/generate', authenticate, requireJobSeeker, cvGenerateLimiter, async (req, res) => {
   try {
     const { naturalLanguageInput, targetLanguage = 'sq' } = req.body;
 

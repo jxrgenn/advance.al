@@ -148,6 +148,28 @@ const DECOY_PASSWORD_HASH = bcrypt.hashSync(
   parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12
 );
 
+// Per-email limiter for initiate-registration. The IP-based authLimiter alone
+// can't stop an attacker rotating IPs to flood ONE victim's inbox with
+// "verify your account" emails. Keying on the target email caps that to
+// 5 mails / hour per address regardless of source IP.
+const initiateRegistrationByEmailLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const email = (req.body?.email || '').toString().trim().toLowerCase();
+    return email ? `email:${email}` : `ip:${req.ip}`;
+  },
+  skip: () =>
+    process.env.NODE_ENV !== 'production' &&
+    process.env.SKIP_RATE_LIMIT === 'true',
+  message: {
+    success: false,
+    message: 'Shumë tentativa regjistrimi për këtë email. Provoni përsëri pas një ore.'
+  }
+});
+
 // Registration validation rules
 const registerValidation = [
   body('email')
@@ -216,7 +238,7 @@ const handleValidationErrors = (req, res, next) => {
 // @route   POST /api/auth/initiate-registration
 // @desc    Step 1: Validate data, cache it, send verification code
 // @access  Public
-router.post('/initiate-registration', authLimiter, registerValidation, handleValidationErrors, async (req, res) => {
+router.post('/initiate-registration', authLimiter, initiateRegistrationByEmailLimiter, registerValidation, handleValidationErrors, async (req, res) => {
   try {
     const { email: rawEmail, password, userType, firstName, lastName, city, phone, companyName, industry, companySize, description, website } = req.body;
 

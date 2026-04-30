@@ -1,13 +1,44 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
+import rateLimit from 'express-rate-limit';
 import { Application, Job, User, Notification } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer } from '../middleware/auth.js';
 import resendEmailService from '../lib/resendEmailService.js';
+import { cacheDelete } from '../config/redis.js';
 import mongoose from 'mongoose';
 import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
 import logger from '../config/logger.js';
 
 const router = express.Router();
+
+// Per-user rate limit on /apply — blocks rapid mass applications.
+// Keyed on req.user.id so VPN/IP rotation can't bypass it.
+const applyLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id || req.ip,
+  skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
+  message: {
+    success: false,
+    message: 'Keni aplikuar në shumë vende shumë shpejt. Provoni përsëri pas një ore.'
+  }
+});
+
+// Per-user rate limit on /message — prevents stored-spam in employer dashboards.
+const messageLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 60, // 1 message/min average
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id || req.ip,
+  skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
+  message: {
+    success: false,
+    message: 'Po dërgoni shumë mesazhe shumë shpejt. Provoni përsëri pas një ore.'
+  }
+});
 
 // Validation middleware
 const handleValidationErrors = (req, res, next) => {
@@ -50,7 +81,7 @@ const applyValidation = [
 // @route   POST /api/applications/apply
 // @desc    Apply for a job
 // @access  Private (Job Seekers only)
-router.post('/apply', authenticate, requireJobSeeker, applyValidation, handleValidationErrors, async (req, res) => {
+router.post('/apply', authenticate, requireJobSeeker, applyLimiter, applyValidation, handleValidationErrors, async (req, res) => {
   try {
     const { jobId, applicationMethod, customAnswers = [], coverLetter = '' } = req.body;
 
@@ -181,6 +212,9 @@ router.post('/apply', authenticate, requireJobSeeker, applyValidation, handleVal
         logger.error('Error sending new application email to employer:', err);
       }
     });
+
+    // F-10 fix: invalidate admin:dashboard cache on apply
+    cacheDelete('admin:dashboard').catch(() => {});
 
     res.status(201).json({
       success: true,
@@ -563,6 +597,9 @@ router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmploye
       hired: 'Aplikuesi u pranua për punë'
     };
 
+    // F-10 fix: invalidate admin:dashboard cache on application status change
+    cacheDelete('admin:dashboard').catch(() => {});
+
     res.json({
       success: true,
       message: statusMessages[status],
@@ -581,7 +618,7 @@ router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmploye
 // @route   POST /api/applications/:id/message
 // @desc    Send message about application
 // @access  Private (Application participants only)
-router.post('/:id/message', validateObjectId('id'), authenticate, async (req, res) => {
+router.post('/:id/message', validateObjectId('id'), authenticate, messageLimiter, async (req, res) => {
   try {
     // Soft gate: require verified email to send messages
     if (!req.user.emailVerified) {
@@ -749,6 +786,9 @@ router.delete('/:id', validateObjectId('id'), authenticate, requireJobSeeker, as
     }
 
     await application.withdraw(reason);
+
+    // F-10 fix: invalidate admin:dashboard cache on withdraw
+    cacheDelete('admin:dashboard').catch(() => {});
 
     res.json({
       success: true,

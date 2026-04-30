@@ -54,12 +54,29 @@ const resumeUpload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB
 });
 
+// Validate the actual file bytes (mimetype is client-controlled and trivially
+// spoofable — without this an attacker can upload .exe/.html/anything and have
+// it served back from Cloudinary as a "resume").
+const validateResumeMagicBytes = (buffer) => {
+  if (!buffer || buffer.length < 5) return false;
+  // PDF: %PDF-
+  if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46 && buffer[4] === 0x2D) return true;
+  // DOCX (ZIP): PK\x03\x04
+  if (buffer[0] === 0x50 && buffer[1] === 0x4B && buffer[2] === 0x03 && buffer[3] === 0x04) return true;
+  // Legacy .doc (OLE compound)
+  if (buffer.length >= 8 &&
+      buffer[0] === 0xD0 && buffer[1] === 0xCF && buffer[2] === 0x11 && buffer[3] === 0xE0 &&
+      buffer[4] === 0xA1 && buffer[5] === 0xB1 && buffer[6] === 0x1A && buffer[7] === 0xE1) return true;
+  return false;
+};
+
 const router = express.Router();
 
 // Rate limiting for quick user operations
 const quickUserLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: process.env.NODE_ENV === 'development' ? 10000 : 20, // 20 requests per window in prod
+  skip: () => process.env.SKIP_RATE_LIMIT === 'true',
   message: {
     error: 'Shumë kërkesa për regjistrimin e shpejtë, ju lutemi provoni përsëri pas 15 minutash.',
   }
@@ -190,6 +207,16 @@ const handleMultipart = (req, res, next) => {
 // @access  Public
 router.post('/', quickUserLimiter, handleMultipart, quickUserValidation, handleValidationErrors, async (req, res) => {
   try {
+    // Magic-byte validation BEFORE we touch the DB or Cloudinary.
+    // multer only checked the client-supplied mimetype; here we verify the
+    // actual file header bytes match a real PDF / DOCX / DOC.
+    if (req.file?.buffer && !validateResumeMagicBytes(req.file.buffer)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Skedari nuk është një PDF ose Word i vlefshëm.'
+      });
+    }
+
     const {
       firstName,
       lastName,

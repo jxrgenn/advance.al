@@ -120,6 +120,21 @@ const validateImageMagicBytes = (buffer) => {
   return false;
 };
 
+// Validate resume file magic bytes — accepts only real PDF or real DOCX/DOC.
+// Defends against a client lying about its mimetype to upload .exe/.html/etc.
+// PDF starts with "%PDF-" (25 50 44 46 2D)
+// DOCX is a ZIP, starts with "PK\x03\x04" (50 4B 03 04)
+// Legacy .doc (OLE compound) starts with D0 CF 11 E0 A1 B1 1A E1
+const validateResumeMagicBytes = (buffer) => {
+  if (!buffer || buffer.length < 5) return false;
+  if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46 && buffer[4] === 0x2D) return true;
+  if (buffer[0] === 0x50 && buffer[1] === 0x4B && buffer[2] === 0x03 && buffer[3] === 0x04) return true;
+  if (buffer.length >= 8 &&
+      buffer[0] === 0xD0 && buffer[1] === 0xCF && buffer[2] === 0x11 && buffer[3] === 0xE0 &&
+      buffer[4] === 0xA1 && buffer[5] === 0xB1 && buffer[6] === 0x1A && buffer[7] === 0xE1) return true;
+  return false;
+};
+
 // Image upload multer config (for logos and profile photos) — production requires Cloudinary
 const imageDiskStorage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -619,6 +634,15 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
       }
     } catch { /* use default multer limit if config unavailable */ }
 
+    // Magic-byte validation: mimetype is client-controlled. Verify the actual
+    // bytes are a real PDF / DOCX / DOC before storing or parsing.
+    if (req.file.buffer && !validateResumeMagicBytes(req.file.buffer)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Skedari nuk është një PDF ose Word i vlefshëm.'
+      });
+    }
+
     const user = await User.findById(req.user._id);
     if (!user) {
       return res.status(404).json({
@@ -790,6 +814,15 @@ router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter,
         });
       }
     } catch { /* use default multer limit if config unavailable */ }
+
+    // Magic-byte validation: mimetype is client-controlled. Verify the actual
+    // bytes are a real PDF / DOCX / DOC before storing or parsing.
+    if (req.file.buffer && !validateResumeMagicBytes(req.file.buffer)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Skedari nuk është një PDF ose Word i vlefshëm.'
+      });
+    }
 
     const user = await User.findById(req.user._id);
     if (!user) {
@@ -1816,6 +1849,40 @@ router.get('/resume/:filename', (req, res, next) => {
     return res.status(400).json({
       success: false,
       message: 'Emri i skedarit nuk është i vlefshëm'
+    });
+  }
+
+  // Filename pattern: resume-<userId>-<timestamp>.<ext>
+  // Authorize: owner, admin, or an employer who has at least one application from this jobseeker.
+  const ownerIdMatch = filename.match(/^resume-([a-f0-9]{24})-/i);
+  if (!ownerIdMatch) {
+    return res.status(400).json({
+      success: false,
+      message: 'Emri i skedarit nuk është i vlefshëm'
+    });
+  }
+  const ownerId = ownerIdMatch[1];
+  const callerId = req.user._id.toString();
+
+  let authorized = false;
+  if (callerId === ownerId) {
+    authorized = true;
+  } else if (req.user.userType === 'admin') {
+    authorized = true;
+  } else if (req.user.userType === 'employer') {
+    const { Application } = await import('../models/index.js');
+    const hasApplication = await Application.exists({
+      jobSeekerId: ownerId,
+      employerId: req.user._id,
+      withdrawn: false
+    });
+    if (hasApplication) authorized = true;
+  }
+
+  if (!authorized) {
+    return res.status(403).json({
+      success: false,
+      message: 'Nuk keni të drejtë ta shikoni këtë skedar'
     });
   }
 
