@@ -16,6 +16,7 @@ const verificationCodesMemory = new Map();
 const verificationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: process.env.NODE_ENV === 'development' ? 10000 : 5, // limit each IP to 5 verification requests per window
+  skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
   message: {
     success: false,
     error: 'Shumë kërkesa për verifikim, ju lutemi provoni përsëri pas 15 minutash.',
@@ -26,6 +27,7 @@ const verificationLimiter = rateLimit({
 const codeVerificationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: process.env.NODE_ENV === 'development' ? 10000 : 10, // limit each IP to 10 code verification attempts per window
+  skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
   message: {
     success: false,
     error: 'Shumë tentativa verifikimi, ju lutemi provoni përsëri pas 15 minutash.',
@@ -268,6 +270,11 @@ router.post('/request', verificationLimiter, verificationRequestValidation, hand
 
     // Store the code (Redis with in-memory fallback)
     await storeVerificationCode(identifier, code, method);
+
+    // Dev-only log so test side-channel can capture (matches auth.js pattern)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[DEV] Verification code for ${identifier}: ${code}`);
+    }
 
     // Send verification code
     try {

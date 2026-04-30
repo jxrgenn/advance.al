@@ -76,7 +76,7 @@ const router = express.Router();
 const quickUserLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: process.env.NODE_ENV === 'development' ? 10000 : 20, // 20 requests per window in prod
-  skip: () => process.env.SKIP_RATE_LIMIT === 'true',
+  skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
   message: {
     error: 'Shumë kërkesa për regjistrimin e shpejtë, ju lutemi provoni përsëri pas 15 minutash.',
   }
