@@ -1,5 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import { body, validationResult } from 'express-validator';
 import rateLimit from 'express-rate-limit';
 import { User, QuickUser } from '../models/index.js';
@@ -121,16 +122,31 @@ async function sendVerificationCode(user) {
   await sendVerificationCodeEmail(user.email, user.profile?.firstName, code);
 }
 
-// Stricter rate limiting for auth routes
+// Stricter rate limiting for auth routes.
+// SKIP_RATE_LIMIT=true is honoured only outside production (tests/dev).
+// In production the limiter ALWAYS runs — even if the env var is misset —
+// to defend against credential stuffing.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: process.env.NODE_ENV === 'development' ? 10000 : 15, // 15 attempts per 15 min per IP in prod
+  skip: () =>
+    process.env.NODE_ENV !== 'production' &&
+    process.env.SKIP_RATE_LIMIT === 'true',
   message: {
     error: 'Shumë tentativa kyçjeje, ju lutemi provoni përsëri pas 15 minutash.',
   },
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// Constant-time decoy hash used in the login handler when the requested email
+// does not exist. Without this, an attacker can enumerate registered emails by
+// timing the response: real users trigger bcrypt.compare (slow), unknown users
+// short-circuit (fast). Generated once at module load.
+const DECOY_PASSWORD_HASH = bcrypt.hashSync(
+  'decoy-' + crypto.randomBytes(16).toString('hex'),
+  parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12
+);
 
 // Registration validation rules
 const registerValidation = [
@@ -424,6 +440,9 @@ router.post('/register', authLimiter, async (req, res) => {
       }
     });
 
+    // F-10 fix: invalidate admin:dashboard cache (user count changed)
+    cacheDelete('admin:dashboard').catch(() => {});
+
     res.status(201).json({
       success: true,
       message: data.userType === 'employer'
@@ -462,6 +481,9 @@ router.post('/login', authLimiter, loginValidation, handleValidationErrors, asyn
     const user = await User.findOne({ email }).select('+password');
 
     if (!user) {
+      // Constant-time defense: run bcrypt against a decoy hash so the response
+      // time matches a real password check. Prevents email enumeration by timing.
+      await bcrypt.compare(password, DECOY_PASSWORD_HASH);
       return res.status(401).json({
         success: false,
         message: 'Email ose fjalëkalim i gabuar'
@@ -700,6 +722,10 @@ router.put('/change-password', authenticate, [
     user.password = newPassword;
     await user.save();
 
+    // F-21 fix: invalidate all refresh tokens after password change.
+    // Forces re-login on every device — defense against stolen tokens.
+    await user.removeAllRefreshTokens();
+
     res.json({
       success: true,
       message: 'Fjalëkalimi u ndryshua me sukses'
@@ -750,6 +776,11 @@ router.post('/forgot-password', authLimiter, [
       // Build reset URL
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
       const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+
+      // Dev-only log so tests + local debugging can capture token (matches verification.js pattern)
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[DEV] Password reset token for ${email}: ${resetToken}`);
+      }
 
       // Send email (non-blocking)
       setImmediate(async () => {
