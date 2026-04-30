@@ -6,7 +6,7 @@ import { authenticate, requireEmployer, requireVerifiedEmployer, optionalAuth } 
 import notificationService from '../lib/notificationService.js';
 import jobEmbeddingService from '../services/jobEmbeddingService.js';
 import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
-import { cacheGet, cacheSet } from '../config/redis.js';
+import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
 import crypto from 'crypto';
 import logger from '../config/logger.js';
 
@@ -662,10 +662,15 @@ router.get('/employer/my-jobs', authenticate, requireEmployer, async (req, res) 
 // @access  Public
 router.get('/:id', validateObjectId('id'), optionalAuth, async (req, res) => {
   try {
+    // Public single-job detail. Do NOT populate the employer's login email
+    // here — anonymous callers would get a list of every employer's auth email
+    // by scraping job pages, enabling credential-stuffing attacks.
+    // companyName / website / description / phone / whatsapp are intentionally
+    // shown so applicants can contact the employer.
     const job = await Job.findOne({
       _id: req.params.id,
       isDeleted: false
-    }).populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.employerProfile.phone profile.employerProfile.whatsapp profile.location profile.employerProfile.description profile.employerProfile.website email profile.firstName profile.lastName')
+    }).populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.employerProfile.phone profile.employerProfile.whatsapp profile.location profile.employerProfile.description profile.employerProfile.website profile.firstName profile.lastName')
       .lean();
 
     if (!job) {
@@ -1091,6 +1096,9 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
       }
     });
 
+    // F-10 fix: invalidate admin:dashboard cache on create
+    cacheDelete('admin:dashboard').catch(() => {});
+
     res.status(201).json({
       success: true,
       message: 'Puna u postua me sukses',
@@ -1208,6 +1216,9 @@ router.put('/:id', validateObjectId('id'), authenticate, requireEmployer, requir
       }
     });
 
+    // F-10 fix: invalidate admin:dashboard cache on update
+    cacheDelete('admin:dashboard').catch(() => {});
+
     res.json({
       success: true,
       message: 'Puna u përditësua me sukses',
@@ -1242,6 +1253,9 @@ router.delete('/:id', validateObjectId('id'), authenticate, requireEmployer, asy
     }
 
     await job.softDelete();
+
+    // F-10 fix: invalidate admin:dashboard cache on delete
+    cacheDelete('admin:dashboard').catch(() => {});
 
     res.json({
       success: true,
@@ -1286,6 +1300,9 @@ router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmploye
 
     job.status = status;
     await job.save();
+
+    // F-10 fix: invalidate admin:dashboard cache on status change
+    cacheDelete('admin:dashboard').catch(() => {});
 
     const statusMessages = {
       active: 'Puna u aktivizua me sukses',

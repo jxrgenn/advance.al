@@ -269,9 +269,13 @@ router.get('/',
       const limit = sanitizeLimit(req.query.limit, 50, 10);
       const skip = (page - 1) * limit;
 
-      // Get user's submitted reports
+      // Get user's submitted reports.
+      // Do not return the reported user's login email — the reporter knows
+      // who they reported (name + role is enough to display the list).
+      // Returning email here would let users harvest auth emails by submitting
+      // reports, then credential-stuff against /login.
       const reports = await Report.find({ reportingUser: userId })
-        .populate('reportedUser', 'firstName lastName email userType')
+        .populate('reportedUser', 'firstName lastName userType')
         .select('category description status priority createdAt updatedAt')
         .sort({ createdAt: -1 })
         .limit(limit)
