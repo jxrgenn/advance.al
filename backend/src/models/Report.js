@@ -383,28 +383,59 @@ reportSchema.methods.addAdminNote = async function(adminId, note) {
   return this.save();
 };
 
-// Pre-save middleware to auto-escalate based on rules
+// Pre-save no-op for backwards compatibility (escalation moved to post-save for race-safety per F-8 fix).
 reportSchema.pre('save', function(next) {
-  // Auto-escalate if multiple reports against same user
-  if (this.isNew) {
-    this.constructor.countDocuments({
-      reportedUser: this.reportedUser,
-      status: { $in: ['pending', 'under_review'] }
-    }).then(count => {
-      if (count >= 3 && this.priority !== 'critical') {
-        this.priority = 'high';
-      }
-      if (count >= 5) {
-        this.escalated = true;
-        this.escalatedAt = new Date();
-        this.escalationReason = 'Multiple reports against same user';
-        this.priority = 'critical';
-      }
-      next();
-    }).catch(next);
-  } else {
-    next();
+  this._isNewForEscalation = this.isNew;
+  next();
+});
+
+// F-8 fix: Post-save atomic re-check + conditional update.
+// The race in the old pre-save was: countDocuments() read BEFORE this report's
+// own insert — concurrent reports both read N and both decided not to escalate.
+// Now: AFTER this report saves, count again (which now INCLUDES this report
+// and any concurrent ones that also saved), and use findOneAndUpdate with the
+// guard `escalated: false` so only one of the concurrent post-save handlers
+// actually applies the escalation, preventing duplicate escalations.
+reportSchema.post('save', async function(doc, next) {
+  // Run only for new reports (not subsequent updates)
+  if (!doc._isNewForEscalation) {
+    if (next) next();
+    return;
   }
+  if (!doc.reportedUser) {
+    if (next) next();
+    return;
+  }
+  try {
+    const count = await mongoose.model('Report').countDocuments({
+      reportedUser: doc.reportedUser,
+      status: { $in: ['pending', 'under_review'] }
+    });
+
+    // count now reflects post-insert state (this report is included)
+    if (count >= 5) {
+      await mongoose.model('Report').findOneAndUpdate(
+        { _id: doc._id, escalated: false },
+        {
+          $set: {
+            escalated: true,
+            escalatedAt: new Date(),
+            escalationReason: 'Multiple reports against same user',
+            priority: 'critical'
+          }
+        }
+      );
+    } else if (count >= 3 && doc.priority !== 'critical') {
+      await mongoose.model('Report').findOneAndUpdate(
+        { _id: doc._id, priority: { $in: [null, 'low', 'medium'] } },
+        { $set: { priority: 'high' } }
+      );
+    }
+  } catch (err) {
+    // Swallow; escalation is best-effort.
+    logger.error('Report escalation post-save error:', err?.message);
+  }
+  if (next) next();
 });
 
 // Post-save middleware for notifications

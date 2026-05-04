@@ -4,7 +4,7 @@ import rateLimit from 'express-rate-limit';
 import crypto from 'crypto';
 import { User } from '../models/index.js';
 import resendEmailService from '../lib/resendEmailService.js';
-import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
+import { cacheGet, cacheSet, cacheDelete, redis } from '../config/redis.js';
 import logger from '../config/logger.js';
 
 const router = express.Router();
@@ -45,15 +45,16 @@ const VERIFY_PREFIX = 'verify:';
 async function storeVerificationCode(identifier, code, method) {
   const data = { code, method, attempts: 0, createdAt: Date.now() };
   const key = VERIFY_PREFIX + identifier;
-  try {
-    await cacheSet(key, data, 600); // 10 minutes
-    return;
-  } catch {
-    // fallback
+  if (redis) {
+    try {
+      await cacheSet(key, data, 600); // 10 minutes
+      return;
+    } catch {
+      // fall through to memory
+    }
   }
   // Cap in-memory store to prevent memory exhaustion DoS
   if (verificationCodesMemory.size >= 10000) {
-    // Evict oldest entries
     const firstKey = verificationCodesMemory.keys().next().value;
     verificationCodesMemory.delete(firstKey);
   }
@@ -82,14 +83,15 @@ async function getVerificationCode(identifier) {
 
 async function updateVerificationCode(identifier, data) {
   const key = VERIFY_PREFIX + identifier;
-  try {
-    // Re-store with remaining TTL (~10 min from creation)
-    const elapsed = Math.floor((Date.now() - data.createdAt) / 1000);
-    const remaining = Math.max(600 - elapsed, 60);
-    await cacheSet(key, { code: data.code, method: data.method, attempts: data.attempts, createdAt: data.createdAt }, remaining);
-    return;
-  } catch {
-    // fallback
+  if (redis) {
+    try {
+      const elapsed = Math.floor((Date.now() - data.createdAt) / 1000);
+      const remaining = Math.max(600 - elapsed, 60);
+      await cacheSet(key, { code: data.code, method: data.method, attempts: data.attempts, createdAt: data.createdAt }, remaining);
+      return;
+    } catch {
+      // fall through to memory
+    }
   }
   verificationCodesMemory.set(identifier, data);
 }
@@ -378,12 +380,19 @@ router.post('/verify', codeVerificationLimiter, codeVerificationValidation, hand
     // Generate a verification token for subsequent registration
     const verificationToken = crypto.randomBytes(32).toString('hex');
 
-    // Store verification token temporarily (30 minutes) in Redis
+    // Store verification token temporarily (30 minutes) in Redis or memory
     const tokenData = { identifier, method, verified: true, createdAt: Date.now() };
     const tokenKey = VERIFY_PREFIX + `token_${verificationToken}`;
-    try {
-      await cacheSet(tokenKey, tokenData, 1800); // 30 minutes
-    } catch {
+    let tokenStored = false;
+    if (redis) {
+      try {
+        await cacheSet(tokenKey, tokenData, 1800);
+        tokenStored = true;
+      } catch {
+        // fall through to memory
+      }
+    }
+    if (!tokenStored) {
       const tokenExpiry = new Date(Date.now() + 30 * 60 * 1000);
       verificationCodesMemory.set(`token_${verificationToken}`, { ...tokenData, expiry: tokenExpiry });
     }

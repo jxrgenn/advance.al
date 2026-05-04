@@ -5,7 +5,7 @@ import { Job, User, Location, PricingRule, BusinessCampaign, RevenueAnalytics, S
 import { authenticate, requireEmployer, requireVerifiedEmployer, optionalAuth } from '../middleware/auth.js';
 import notificationService from '../lib/notificationService.js';
 import jobEmbeddingService from '../services/jobEmbeddingService.js';
-import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
+import { sanitizeLimit, validateObjectId, stripHtml, normalizeOneLine } from '../utils/sanitize.js';
 import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
 import crypto from 'crypto';
 import logger from '../config/logger.js';
@@ -32,7 +32,7 @@ const handleValidationErrors = (req, res, next) => {
 const createJobValidation = [
   body('title')
     .trim()
-    .customSanitizer(v => stripHtml(v))
+    .customSanitizer(v => normalizeOneLine(stripHtml(v)))
     .isLength({ min: 5, max: 100 })
     .withMessage('Titulli duhet të ketë midis 5-100 karaktere'),
   body('description')
@@ -97,7 +97,7 @@ const updateJobValidation = [
   body('title')
     .optional()
     .trim()
-    .customSanitizer(v => stripHtml(v))
+    .customSanitizer(v => normalizeOneLine(stripHtml(v)))
     .isLength({ min: 5, max: 100 })
     .withMessage('Titulli duhet të ketë midis 5-100 karaktere'),
   body('description')

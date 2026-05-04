@@ -15,21 +15,26 @@ const STATS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes (ms for in-memory)
 // @access  Public
 router.get('/public', async (req, res) => {
   try {
-    // Try Redis cache first
-    const redisCached = await cacheGet('stats:public');
-    if (redisCached) {
-      return res.json({
-        success: true,
-        data: typeof redisCached === 'string' ? JSON.parse(redisCached) : redisCached
-      });
-    }
+    // In non-production, skip caches so test runs see fresh DB state.
+    const skipCache = process.env.NODE_ENV !== 'production';
 
-    // Fallback to in-memory cache if Redis is not available
-    if (statsCache && Date.now() < statsCacheExpiry) {
-      return res.json({
-        success: true,
-        data: statsCache
-      });
+    if (!skipCache) {
+      // Try Redis cache first
+      const redisCached = await cacheGet('stats:public');
+      if (redisCached) {
+        return res.json({
+          success: true,
+          data: typeof redisCached === 'string' ? JSON.parse(redisCached) : redisCached
+        });
+      }
+
+      // Fallback to in-memory cache if Redis is not available
+      if (statsCache && Date.now() < statsCacheExpiry) {
+        return res.json({
+          success: true,
+          data: statsCache
+        });
+      }
     }
 
     // Run all queries in parallel for better performance
@@ -76,12 +81,14 @@ router.get('/public', async (req, res) => {
       }))
     };
 
-    // Cache in Redis (5 minutes)
-    await cacheSet('stats:public', stats, 300);
+    if (!skipCache) {
+      // Cache in Redis (5 minutes)
+      await cacheSet('stats:public', stats, 300);
 
-    // Also keep in-memory fallback
-    statsCache = stats;
-    statsCacheExpiry = Date.now() + STATS_CACHE_TTL;
+      // Also keep in-memory fallback
+      statsCache = stats;
+      statsCacheExpiry = Date.now() + STATS_CACHE_TTL;
+    }
 
     res.json({
       success: true,

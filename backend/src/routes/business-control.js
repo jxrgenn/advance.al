@@ -311,9 +311,12 @@ const pricingRuleValidation = [
 // @access  Private (Admins only)
 router.post('/pricing-rules', authenticate, requireAdmin, businessControlLimit, pricingRuleValidation, handleValidationErrors, async (req, res) => {
   try {
-    const { name, type, conditions, adjustment, priority, isActive, description } = req.body;
+    // F-22 fix: handler now matches PricingRule schema (was destructuring
+    // nonexistent fields and the schema's required category/rules.basePrice/
+    // rules.multiplier never reached the doc → ValidationError → 500).
+    const { name, category, rules, priority, isActive, description, validFrom, validTo } = req.body;
     const ruleData = {
-      name, type, conditions, adjustment, priority, isActive, description,
+      name, category, rules, priority, isActive, description, validFrom, validTo,
       createdBy: req.user._id
     };
 

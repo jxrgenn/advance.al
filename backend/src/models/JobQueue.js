@@ -144,8 +144,9 @@ jobQueueSchema.statics.failTask = async function(queueId, error) {
   const retryDelay = retryDelays[Math.min(task.attempts - 1, retryDelays.length - 1)];
   const nextRetryAt = new Date(Date.now() + retryDelay);
 
-  // If max attempts reached, mark as failed permanently
-  const status = task.attempts >= task.maxAttempts ? 'failed' : 'failed';
+  // Always 'failed'; retry vs terminal-failure is distinguished by nextRetryAt + attempts<maxAttempts
+  // in getNextTask's retry-eligibility filter. Setting 'pending' here would skip the backoff delay.
+  const status = 'failed';
 
   return await this.findByIdAndUpdate(
     queueId,

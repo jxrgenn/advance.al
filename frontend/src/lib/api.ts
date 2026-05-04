@@ -774,6 +774,11 @@ export const usersApi = {
     });
   },
 
+  // GDPR Article 20: Right to Data Portability — fetch full user data as JSON
+  exportData: async (): Promise<ApiResponse<any>> => {
+    return apiRequest('/users/export');
+  },
+
   // Upload resume/CV
   uploadResume: async (formData: FormData): Promise<ApiResponse<{ resumeUrl: string; user?: User }>> => {
     return apiRequest<{ resumeUrl: string; user?: User }>('/users/upload-resume', {

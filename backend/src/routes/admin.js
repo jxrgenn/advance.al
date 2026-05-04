@@ -6,7 +6,7 @@ import { escapeRegex, sanitizeLimit } from '../utils/sanitize.js';
 import notificationService from '../lib/notificationService.js';
 import jobEmbeddingService from '../services/jobEmbeddingService.js';
 import userEmbeddingService from '../services/userEmbeddingService.js';
-import { cacheGet, cacheSet } from '../config/redis.js';
+import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
 import logger from '../config/logger.js';
 
 const router = express.Router();
@@ -611,6 +611,7 @@ router.patch('/users/:userId/manage', async (req, res) => {
             { $set: { status: 'closed' } }
           );
         }
+        cacheDelete('admin:dashboard').catch(() => {});
         return res.json({ success: true, data: { user }, message: 'Përdoruesi u pezullua me sukses' });
       case 'ban':
         await user.ban(reason || 'Ndaluar nga administratori', req.user._id);
@@ -621,6 +622,7 @@ router.patch('/users/:userId/manage', async (req, res) => {
             { $set: { isDeleted: true, status: 'closed' } }
           );
         }
+        cacheDelete('admin:dashboard').catch(() => {});
         return res.json({ success: true, data: { user }, message: 'Përdoruesi u ndalua me sukses' });
       case 'activate':
         user.status = 'active';
@@ -667,6 +669,7 @@ router.patch('/users/:userId/manage', async (req, res) => {
             { $set: { isDeleted: true, status: 'closed' } }
           );
         }
+        cacheDelete('admin:dashboard').catch(() => {});
         return res.json({
           success: true,
           message: 'Përdoruesi u fshi me sukses'

@@ -2,7 +2,7 @@ import { QuickUser, User, Job } from '../models/index.js';
 import resendEmailService from './resendEmailService.js';
 import emailService from './emailService.js'; // kept for SMS only
 import userEmbeddingService from '../services/userEmbeddingService.js';
-import { escapeHtml } from '../utils/sanitize.js';
+import { escapeHtml, safeSubject } from '../utils/sanitize.js';
 import logger from '../config/logger.js';
 
 class NotificationService {
@@ -37,7 +37,7 @@ class NotificationService {
     const safeCategory = escapeHtml(job.category);
     const safeInterests = user.allInterests ? user.allInterests.map(i => escapeHtml(i)).join(', ') : '';
 
-    const subject = `Punë e re: ${safeJobTitle} në ${safeCity}`;
+    const subject = safeSubject(`Punë e re: ${job.title || ''} në ${job.location?.city || ''}`);
 
     const textContent = `
 Përshëndetje ${user.firstName},
@@ -142,7 +142,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
     const safeDescription = escapeHtml(job.description?.substring(0, 300));
     const safeCategory = escapeHtml(job.category);
 
-    const subject = `Punë e re: ${safeJobTitle} në ${safeCity}`;
+    const subject = safeSubject(`Punë e re: ${job.title || ''} në ${job.location?.city || ''}`);
 
     const textContent = `
 Përshëndetje ${firstName},
@@ -623,9 +623,9 @@ Ekipi i advance.al
       const admins = await User.find({ userType: 'admin', isDeleted: false }).select('email profile.firstName').lean();
       if (admins.length === 0) return { success: true, message: 'No admins to notify' };
 
-      const subject = type === 'new_report'
+      const subject = safeSubject(type === 'new_report'
         ? `Raportim i ri në advance.al — ${report.reason || 'Pa arsye'}`
-        : `Njoftim admin: ${type}`;
+        : `Njoftim admin: ${type}`);
 
       for (const admin of admins) {
         const name = admin.profile?.firstName || 'Admin';

@@ -415,6 +415,16 @@ router.put('/profile', authenticate, async (req, res) => {
 
   } catch (error) {
     logger.error('Update profile error:', error.message);
+    // Mongoose validation errors → 400 (not 500). Catches over-length
+    // skills/bio/etc that violate schema-level constraints.
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors || {}).map(e => e.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Të dhënat e profilit nuk janë të vlefshme',
+        errors
+      });
+    }
     res.status(500).json({
       success: false,
       message: 'Gabim në përditësimin e profilit'
@@ -1307,14 +1317,14 @@ router.post('/work-experience', authenticate, requireJobSeeker, [
 
     const experienceData = {
       id: randomUUID(),
-      position: req.body.position,
-      company: req.body.company,
-      location: req.body.location || '',
+      position: stripHtml(req.body.position || ''),
+      company: stripHtml(req.body.company || ''),
+      location: stripHtml(req.body.location || ''),
       startDate: req.body.startDate || '',
       endDate: req.body.isCurrentJob ? null : req.body.endDate || '',
       isCurrentJob: req.body.isCurrentJob || false,
-      description: req.body.description || '',
-      achievements: req.body.achievements || '',
+      description: stripHtml(req.body.description || ''),
+      achievements: stripHtml(req.body.achievements || ''),
       createdAt: new Date()
     };
 
@@ -1374,15 +1384,15 @@ router.post('/education', authenticate, requireJobSeeker, [
 
     const educationData = {
       id: randomUUID(),
-      degree: req.body.degree,
-      fieldOfStudy: req.body.fieldOfStudy || '',
-      institution: req.body.institution,
-      location: req.body.location || '',
+      degree: stripHtml(req.body.degree || ''),
+      fieldOfStudy: stripHtml(req.body.fieldOfStudy || ''),
+      institution: stripHtml(req.body.institution || ''),
+      location: stripHtml(req.body.location || ''),
       startDate: req.body.startDate || '',
       endDate: req.body.isCurrentStudy ? null : req.body.endDate || '',
       isCurrentStudy: req.body.isCurrentStudy || false,
       gpa: req.body.gpa || '',
-      description: req.body.description || '',
+      description: stripHtml(req.body.description || ''),
       createdAt: new Date()
     };
 

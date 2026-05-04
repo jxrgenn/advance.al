@@ -601,7 +601,7 @@ const Index = () => {
               <Input
                 ref={searchInputRef}
                 type="text"
-                placeholder="Job title"
+                placeholder="Titulli i punës"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setShowSuggestions(true)}
@@ -657,7 +657,7 @@ const Index = () => {
                 }}
               >
                 <SelectTrigger className="flex-1 border-0 shadow-none focus:ring-0 focus:ring-offset-0 h-auto px-0">
-                  <SelectValue placeholder={selectedLocations.length > 0 ? `${selectedLocations.length} qytete` : "Location"} />
+                  <SelectValue placeholder={selectedLocations.length > 0 ? `${selectedLocations.length} qytete` : "Vendndodhja"} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="_all_">Të gjitha qytetet</SelectItem>
@@ -675,7 +675,7 @@ const Index = () => {
               onClick={() => handleInstantSearch(searchQuery)}
               className="ml-0 rounded-xl bg-black px-8 py-3.5 font-medium text-white transition-colors hover:bg-gray-800 md:ml-4 md:mt-0"
             >
-              Search
+              Kërko
             </Button>
           </div>
         </div>

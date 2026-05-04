@@ -1,5 +1,5 @@
 import { Resend } from 'resend';
-import { escapeHtml } from '../utils/sanitize.js';
+import { escapeHtml, safeSubject } from '../utils/sanitize.js';
 import logger from '../config/logger.js';
 
 class ResendEmailService {
@@ -13,6 +13,21 @@ class ResendEmailService {
     } else {
       this.resend = new Resend(apiKey);
       this.enabled = true;
+
+      // Test-only instrumentation: log every send to stdout so the test
+      // harness can assert delivery via stdout-grep without IMAP polling.
+      // Gated on EMAIL_TEST_MODE — zero production impact.
+      if (process.env.EMAIL_TEST_MODE === 'true') {
+        const originalSend = this.resend.emails.send.bind(this.resend.emails);
+        this.resend.emails.send = async (args) => {
+          try {
+            const to = Array.isArray(args.to) ? args.to[0] : args.to;
+            // eslint-disable-next-line no-console
+            console.log('[EMAIL_LOG] ' + JSON.stringify({ to, subject: args.subject, from: args.from }));
+          } catch { /* never break send on logging */ }
+          return originalSend(args);
+        };
+      }
     }
 
     this.testEmail = 'advance.al123456@gmail.com'; // TODO: Remove in production — only for development testing
@@ -561,7 +576,7 @@ advance.al - Platforma e Punës në Shqipëri
         update: '#8b5cf6'
       };
 
-      const subject = `${typeIcons[type] || '📢'} ${safeTitle} - advance.al`;
+      const subject = safeSubject(`${typeIcons[type] || '📢'} ${title || ''} - advance.al`);
 
       const htmlContent = `
 <!DOCTYPE html>
@@ -716,7 +731,7 @@ Ky email u dërgua në ${toEmail}
       const safeCompanyName = escapeHtml(job.companyName || 'N/A');
       const safeMessage = escapeHtml(message);
 
-      const subject = `${typeLabel} për aplikimin tuaj - ${safeJobTitle}`;
+      const subject = safeSubject(`${typeLabel} për aplikimin tuaj - ${job.title || ''}`);
 
       const htmlContent = `
 <!DOCTYPE html>
@@ -1044,7 +1059,7 @@ advance.al - Platforma e Punës në Shqipëri`;
       };
 
       const statusInfo = statusLabels[newStatus] || { label: newStatus, icon: '📋', color: '#6b7280' };
-      const subject = `${statusInfo.icon} Aplikimi juaj ${statusInfo.label} — ${safeJobTitle}`;
+      const subject = safeSubject(`${statusInfo.icon} Aplikimi juaj ${statusInfo.label} — ${job.title || ''}`);
 
       const htmlContent = `
 <!DOCTYPE html>
@@ -1128,7 +1143,7 @@ advance.al`;
       const safeApplicantName = escapeHtml(`${applicant.profile?.firstName || ''} ${applicant.profile?.lastName || ''}`.trim());
       const safeJobTitle = escapeHtml(job.title || '');
 
-      const subject = `📩 Aplikim i ri për "${safeJobTitle}" — advance.al`;
+      const subject = safeSubject(`📩 Aplikim i ri për "${job.title || ''}" — advance.al`);
 
       const htmlContent = `
 <!DOCTYPE html>

@@ -60,6 +60,36 @@ export function stripHtml(str) {
 }
 
 /**
+ * Collapse all whitespace runs (incl. CR, LF, tab, vertical tab, form feed)
+ * into a single space and trim. Use as a .customSanitizer() on fields that
+ * must be a single line of text (titles, company names, city names — anything
+ * that may flow into outbound email subjects or HTTP headers).
+ */
+export function normalizeOneLine(str) {
+  if (!str) return '';
+  return String(str).replace(/[\r\n\t\v\f]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Defense-in-depth helper for any string that will be interpolated into an
+ * outbound email Subject line. Strips CR/LF (which would inject extra
+ * SMTP headers via "Subject: foo\r\nBcc: attacker@..."), strips other
+ * control chars, collapses whitespace, and clamps to a reasonable length.
+ * Apply at the email-construction site even if the source field was already
+ * sanitized at write — old DB rows may pre-date the validator.
+ */
+export function safeSubject(str, max = 255) {
+  if (!str) return '';
+  return String(str)
+    .replace(/[\r\n]+/g, ' ')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x1F\x7F]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
+/**
  * Sanitize and clamp pagination limit parameter.
  * Prevents ?limit=1000000 from dumping the entire database.
  */

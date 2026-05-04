@@ -95,6 +95,7 @@ const quickUserValidation = [
     .isLength({ min: 2, max: 50 })
     .withMessage('Mbiemri duhet të ketë midis 2-50 karaktere'),
   body('email')
+    .trim()
     .isEmail()
     .normalizeEmail()
     .withMessage('Email i pavlefshëm'),

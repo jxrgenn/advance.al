@@ -4,6 +4,8 @@
  * Runs after environment setup, before each test file
  */
 
+import { jest, expect } from '@jest/globals';
+
 // Increase test timeout for database operations
 jest.setTimeout(30000);
 

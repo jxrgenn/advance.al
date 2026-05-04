@@ -34,15 +34,18 @@ function randomAlbanianCity() {
 
 /**
  * Create Jobseeker User
+ *
+ * NOTE: We pass the plain password and rely on User.js's pre-save hook to
+ * hash it. Earlier the factory bcrypt-hashed it before saving — the hook
+ * then ran on top, double-hashing and breaking login.
  */
 export async function createJobseeker(overrides = {}) {
   const password = overrides.password || 'password123';
-  const hashedPassword = await bcrypt.hash(password, 10);
 
   const city = overrides.city || randomAlbanianCity();
   const user = await User.create({
     email: overrides.email || faker.internet.email().toLowerCase(),
-    password: hashedPassword,
+    password,
     userType: 'jobseeker',
     profile: {
       firstName: overrides.firstName || faker.person.firstName(),
@@ -52,18 +55,18 @@ export async function createJobseeker(overrides = {}) {
         city: city,
         region: city // Simplified - in real app, regions are mapped
       },
-      jobseekerProfile: {
+      jobSeekerProfile: {
         title: faker.person.jobTitle(),
         bio: faker.lorem.paragraph(),
         skills: overrides.skills || ['JavaScript', 'React', 'Node.js', 'MongoDB'],
-        experienceLevel: faker.helpers.arrayElement(['0-2 vjet', '2-5 vjet', '5+ vjet']),
+        experience: faker.helpers.arrayElement(['0-1 vjet', '1-2 vjet', '2-5 vjet', '5-10 vjet', '10+ vjet']),
         desiredSalary: {
           min: 800,
           max: 1500,
           currency: 'EUR'
         },
         openToRemote: faker.datatype.boolean(),
-        availability: faker.helpers.arrayElement(['immediately', '2-weeks', '1-month']),
+        availability: faker.helpers.arrayElement(['immediately', '2weeks', '1month', '3months']),
         education: [
           {
             degree: 'Bachelor in Computer Science',
@@ -96,12 +99,12 @@ export async function createJobseeker(overrides = {}) {
  */
 export async function createEmployer(overrides = {}) {
   const password = overrides.password || 'password123';
-  const hashedPassword = await bcrypt.hash(password, 10);
 
   const city = overrides.city || randomAlbanianCity();
+  const isVerified = overrides.verified !== undefined ? overrides.verified : true;
   const user = await User.create({
     email: overrides.email || faker.internet.email().toLowerCase(),
-    password: hashedPassword,
+    password,
     userType: 'employer',
     profile: {
       firstName: overrides.firstName || faker.person.firstName(),
@@ -117,14 +120,17 @@ export async function createEmployer(overrides = {}) {
           'Teknologji', 'Marketing', 'Financë', 'Shëndetësi',
           'Arsim', 'Ndërtim', 'Turizëm'
         ]),
-        companySize: faker.helpers.arrayElement(['1-10', '10-50', '50-200', '200+']),
+        companySize: faker.helpers.arrayElement(['1-10', '11-50', '51-200', '201-500', '501+']),
         description: faker.company.catchPhrase(),
         website: faker.internet.url(),
-        logo: null
+        logo: null,
+        verified: isVerified,
+        verificationStatus: isVerified ? 'approved' : 'pending',
+        verificationDate: isVerified ? new Date() : undefined
       }
     },
     status: 'active',
-    verified: overrides.verified !== undefined ? overrides.verified : true,
+    verified: isVerified,
     freePostingEnabled: overrides.freePostingEnabled || false,
     candidateMatchingEnabled: overrides.candidateMatchingEnabled || false,
     ...overrides
@@ -138,16 +144,16 @@ export async function createEmployer(overrides = {}) {
  */
 export async function createAdmin(overrides = {}) {
   const password = overrides.password || 'admin123';
-  const hashedPassword = await bcrypt.hash(password, 10);
 
   const user = await User.create({
-    email: overrides.email || 'admin@advance.al',
-    password: hashedPassword,
+    email: overrides.email || `admin-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@advance.al`,
+    password,
     userType: 'admin',
     profile: {
       firstName: overrides.firstName || 'Admin',
       lastName: overrides.lastName || 'User',
-      phone: randomAlbanianPhone()
+      phone: randomAlbanianPhone(),
+      location: { city: 'Tiranë', region: 'Tiranë' }
     },
     status: 'active',
     verified: true,

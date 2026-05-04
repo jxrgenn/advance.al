@@ -173,6 +173,7 @@ const initiateRegistrationByEmailLimiter = rateLimit({
 // Registration validation rules
 const registerValidation = [
   body('email')
+    .trim()
     .isEmail()
     .normalizeEmail()
     .withMessage('Email i pavlefshëm'),
@@ -209,6 +210,7 @@ const registerValidation = [
 // Login validation rules
 const loginValidation = [
   body('email')
+    .trim()
     .isEmail()
     .normalizeEmail()
     .withMessage('Email i pavlefshëm'),
@@ -283,9 +285,14 @@ router.post('/initiate-registration', authLimiter, initiateRegistrationByEmailLi
       ? (website.trim().match(/^https?:\/\//) ? website.trim() : `https://${website.trim()}`)
       : undefined;
 
+    // Sanitize free-text fields to prevent stored XSS (companyName, industry, description)
+    const safeCompanyName = companyName ? stripHtml(String(companyName)).trim() : companyName;
+    const safeIndustry = industry ? stripHtml(String(industry)).trim() : industry;
+    const safeDescription = description ? stripHtml(String(description)).trim() : description;
+
     // Cache registration data with 10-minute TTL
     await setPendingRegistration(email, {
-      data: { email, password, userType, firstName, lastName, city, phone, companyName, industry, companySize, description, website: normalizedWebsite },
+      data: { email, password, userType, firstName, lastName, city, phone, companyName: safeCompanyName, industry: safeIndustry, companySize, description: safeDescription, website: normalizedWebsite },
       hashedCode,
       attempts: 0
     });
@@ -512,7 +519,19 @@ router.post('/login', authLimiter, loginValidation, handleValidationErrors, asyn
       });
     }
 
-    // Check if account is deleted
+    // Validate password BEFORE revealing any account-state info.
+    // This prevents account-enumeration via the suspended/banned/deleted/pending
+    // response paths — anyone hitting wrong password gets the generic 401 regardless.
+    const isPasswordValid = await user.comparePassword(password);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Email ose fjalëkalim i gabuar'
+      });
+    }
+
+    // Credentials confirmed — now safe to surface account-state details.
     if (user.isDeleted || user.status === 'deleted') {
       return res.status(401).json({
         success: false,
@@ -523,7 +542,6 @@ router.post('/login', authLimiter, loginValidation, handleValidationErrors, asyn
     // Check and update suspension status (auto-lift expired suspensions)
     await user.checkSuspensionStatus();
 
-    // Check if account is suspended or banned
     if (user.status === 'suspended') {
       const expiryDate = user.suspensionDetails.expiresAt;
       const expiryText = expiryDate
@@ -543,17 +561,6 @@ router.post('/login', authLimiter, loginValidation, handleValidationErrors, asyn
       });
     }
 
-    // Validate password
-    const isPasswordValid = await user.comparePassword(password);
-    
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        message: 'Email ose fjalëkalim i gabuar'
-      });
-    }
-
-    // Check if employer needs verification
     if (user.userType === 'employer' && user.status === 'pending_verification') {
       return res.status(401).json({
         success: false,
@@ -765,7 +772,7 @@ router.put('/change-password', authenticate, [
 // @desc    Request password reset email
 // @access  Public
 router.post('/forgot-password', authLimiter, [
-  body('email').isEmail().normalizeEmail().withMessage('Email i pavlefshëm')
+  body('email').trim().isEmail().normalizeEmail().withMessage('Email i pavlefshëm')
 ], handleValidationErrors, async (req, res) => {
   try {
     const { email } = req.body;

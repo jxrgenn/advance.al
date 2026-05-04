@@ -28,7 +28,7 @@ const albanianCities = [
 /**
  * Job types
  */
-const jobTypes = ['full-time', 'part-time', 'contract', 'internship'];
+const jobTypes = ['full-time', 'part-time', 'internship'];
 
 /**
  * Seniority levels

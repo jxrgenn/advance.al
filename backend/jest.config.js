@@ -18,8 +18,8 @@ export default {
   ],
 
   // Transform settings for ES modules
+  // Note: extensionsToTreatAsEsm is unnecessary because package.json declares "type": "module"
   transform: {},
-  extensionsToTreatAsEsm: ['.js'],
 
   // Module paths
   moduleNameMapper: {
@@ -36,8 +36,8 @@ export default {
     '!**/tests/**'
   ],
 
-  // Coverage thresholds
-  coverageThresholds: {
+  // Coverage threshold (singular per Jest spec)
+  coverageThreshold: {
     global: {
       branches: 80,
       functions: 80,

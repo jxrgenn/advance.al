@@ -1369,8 +1369,7 @@ const EmployersPage = () => {
                     Keni tashmë llogari?{' '}
                     <Button
                       variant="subtle"
-                      size="sm"
-                      compact
+                      size="compact-sm"
                       onClick={() => navigate('/login')}
                     >
                       Kyçuni këtu

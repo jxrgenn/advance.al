@@ -96,7 +96,7 @@ export const authenticate = async (req, res, next) => {
       });
     }
 
-    if (error.name === 'JsonWebTokenError') {
+    if (error.name === 'JsonWebTokenError' || error.name === 'NotBeforeError' || error.name === 'SyntaxError') {
       return res.status(401).json({
         success: false,
         message: 'Token i pavlefshëm'

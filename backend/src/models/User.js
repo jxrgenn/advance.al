@@ -537,10 +537,10 @@ userSchema.methods.softDelete = function() {
 // Hash a refresh token for secure storage
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
-// Refresh token management methods — use atomic $pull/$push to avoid Mongoose change detection issues
+// Refresh token management methods — use atomic $pull/$push to avoid Mongoose change detection issues.
+// FIFO cap of 5 active tokens enforced via $slice so concurrent logins cannot exceed the limit.
 userSchema.methods.addRefreshToken = async function(token) {
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  // Remove expired tokens and add new one atomically
   await this.constructor.updateOne(
     { _id: this._id },
     {
@@ -550,7 +550,12 @@ userSchema.methods.addRefreshToken = async function(token) {
   await this.constructor.updateOne(
     { _id: this._id },
     {
-      $push: { refreshTokens: { token: hashToken(token), createdAt: new Date() } }
+      $push: {
+        refreshTokens: {
+          $each: [{ token: hashToken(token), createdAt: new Date() }],
+          $slice: -5
+        }
+      }
     }
   );
 };

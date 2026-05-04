@@ -4,26 +4,27 @@
  * Tests all job-related endpoints with real database operations
  */
 
+import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
 import request from 'supertest';
 import app from '../../server.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
+import { seedLocations } from '../fixtures/locations.fixture.js';
 import { createEmployer, createJobseeker, createVerifiedEmployer } from '../factories/user.factory.js';
 import { createJob, createJobs, createPremiumJob, createRemoteJob } from '../factories/job.factory.js';
 import { createAuthHeaders, createPublicHeaders } from '../helpers/auth.helper.js';
 import Job from '../../src/models/Job.js';
 
 describe('Jobs API - Integration Tests', () => {
-  // Setup: Connect to test database before all tests
   beforeAll(async () => {
     await connectTestDB();
+    await seedLocations();
   });
 
-  // Cleanup: Clear database after each test
   afterEach(async () => {
     await clearTestDB();
+    await seedLocations();
   });
 
-  // Teardown: Close database connection after all tests
   afterAll(async () => {
     await closeTestDB();
   });
@@ -291,7 +292,7 @@ describe('Jobs API - Integration Tests', () => {
       const { user: employer } = await createVerifiedEmployer();
       await createJob(employer, { jobType: 'full-time' });
       await createJob(employer, { jobType: 'part-time' });
-      await createJob(employer, { jobType: 'contract' });
+      await createJob(employer, { jobType: 'internship' });
 
       // Act
       const response = await request(app)
@@ -310,7 +311,6 @@ describe('Jobs API - Integration Tests', () => {
       const { user: employer } = await createVerifiedEmployer();
       await createJob(employer, { jobType: 'full-time' });
       await createJob(employer, { jobType: 'part-time' });
-      await createJob(employer, { jobType: 'contract' });
       await createJob(employer, { jobType: 'internship' });
 
       // Act

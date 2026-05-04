@@ -1185,7 +1185,7 @@ const AdminDashboard = () => {
                         <div className="grid grid-cols-2 gap-4 pt-4">
                           <div className="text-center">
                             <div className="text-2xl font-bold text-blue-600">{dashboardStats.quickUsers}</div>
-                            <div className="text-xs text-muted-foreground">Quick Users</div>
+                            <div className="text-xs text-muted-foreground">Përdorues të Shpejtë</div>
                           </div>
                           <div className="text-center">
                             <div className="text-2xl font-bold text-purple-600">{pendingEmployers.length}</div>
@@ -2806,7 +2806,7 @@ const AdminDashboard = () => {
                     size="sm"
                     onClick={() => setNotificationForm(prev => ({ ...prev, targetAudience: 'quick_users' }))}
                   >
-                    Quick Users
+                    Përdorues të Shpejtë
                   </Button>
                 </div>
               </div>

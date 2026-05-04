@@ -37,6 +37,23 @@ uploads/
 # QA test artifacts — generated per run
 tests/results/
 
+# Playwright reports and test results — heavy binaries (videos, traces, screenshots)
+frontend/playwright-report/
+frontend/playwright-exploration-report/
+frontend/playwright-overnight-report/
+frontend/playwright-walker-report/
+frontend/playwright-walker-report-desktop/
+frontend/playwright-walker-report-pixel5/
+frontend/playwright-walker-report-iphone12/
+frontend/test-results/
+frontend/test-results-phase-14/
+frontend/walker-screenshots/
+
+# Local-only directories
+backups/
+instagram-launch/
+backend/backend/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

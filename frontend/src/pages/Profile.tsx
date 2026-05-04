@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { User, Mail, Phone, MapPin, Upload, FileText, Briefcase, Award, Loader2, RefreshCw, Lightbulb, X, Play, Trash2, Lock, Sparkles, Check, AlertTriangle, Globe } from "lucide-react";
+import { User, Mail, Phone, MapPin, Upload, FileText, Briefcase, Award, Loader2, RefreshCw, Lightbulb, X, Play, Trash2, Lock, Sparkles, Check, AlertTriangle, Globe, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { usersApi, applicationsApi, authApi } from "@/lib/api";
@@ -395,6 +395,32 @@ const Profile = () => {
       toast({ title: 'Gabim në ruajtjen e cilësimeve', description: error.message, variant: 'destructive' });
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  // GDPR Article 20 data export handler
+  const [exportingData, setExportingData] = useState(false);
+  const handleExportData = async () => {
+    if (exportingData) return;
+    setExportingData(true);
+    try {
+      const response = await usersApi.exportData();
+      if (!response.success) throw new Error(response.message || 'Eksportimi dështoi');
+      const blob = new Blob([JSON.stringify(response.data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const stamp = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `advance-al-data-export-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast({ title: 'Të dhënat u shkarkuan', description: 'Skedari JSON u ruajt në kompjuterin tuaj' });
+    } catch (error: any) {
+      toast({ title: 'Gabim në eksportimin e të dhënave', description: error.message, variant: 'destructive' });
+    } finally {
+      setExportingData(false);
     }
   };
 
@@ -2338,6 +2364,25 @@ const Profile = () => {
                     <Button onClick={handleChangePassword} disabled={changingPassword || !currentPassword || !newPassword || !confirmNewPassword}>
                       {changingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />}
                       {changingPassword ? 'Duke ndryshuar...' : 'Ndrysho Fjalëkalimin'}
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* GDPR Article 20 — Right to Data Portability */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Download className="h-5 w-5" />
+                      Eksporto të Dhënat
+                    </CardTitle>
+                    <CardDescription>
+                      Sipas GDPR-së, ju mund të kërkoni një kopje të të dhënave tuaja personale në format JSON. Skedari përmban profilin, aplikimet, mesazhet dhe njoftimet tuaja.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button onClick={handleExportData} disabled={exportingData} variant="outline">
+                      {exportingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                      {exportingData ? 'Duke përgatitur...' : 'Shkarko të Dhënat e Mia (JSON)'}
                     </Button>
                   </CardContent>
                 </Card>

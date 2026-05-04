@@ -155,7 +155,18 @@ const jobSchema = new Schema({
     type: Boolean,
     default: false
   },
-  
+
+  // F-23 fix: admin moderation fields the admin manage handler writes.
+  // Missing fields were silently dropped due to mongoose strict mode.
+  adminApproved: {
+    type: Boolean,
+    default: false
+  },
+  rejectionReason: {
+    type: String,
+    maxlength: 500
+  },
+
   // Application Settings
   applicationMethod: {
     type: String,
@@ -409,7 +420,21 @@ jobSchema.pre('save', function(next) {
   }
   // Track if location-count-relevant fields changed (for post-save hook)
   this._locationCountChanged = this.isNew || this.isModified('status') || this.isModified('isDeleted') || this.isModified('location.city');
+  // Capture pre-save active+city state so post-save hook can compute exact delta
+  // via atomic $inc instead of read-modify-write countDocuments (fixes F-5 race).
+  this._wasActiveBeforeSave = !this.isNew && this._priorState ? this._priorState.isActive : false;
+  this._isActiveAfterSave = this.status === 'active' && !this.isDeleted;
+  this._priorCity = this._priorState?.city;
+  this._currentCity = this.location?.city;
   next();
+});
+
+// Capture prior state on document init (load from DB) so post-save can detect transitions
+jobSchema.post('init', function() {
+  this._priorState = {
+    isActive: this.status === 'active' && !this.isDeleted,
+    city: this.location?.city
+  };
 });
 
 // Increment view count (atomic to prevent race conditions)
@@ -560,21 +585,41 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
     .sort(sort);
 };
 
-// Post-save hook to update Location.jobCount (only when relevant fields change)
+// Post-save hook to update Location.jobCount via atomic $inc (fixes F-5 race).
+// Computes exactly which delta to apply based on the active+city transition that
+// just occurred, instead of doing a read-modify-write countDocuments() that races
+// with concurrent inserts in the same city.
 jobSchema.post('save', async function() {
   if (!this._locationCountChanged) return;
   try {
-    const city = this.location?.city;
-    if (city) {
-      const Location = mongoose.model('Location');
-      const Job = mongoose.model('Job');
-      const count = await Job.countDocuments({ 'location.city': city, status: 'active', isDeleted: { $ne: true } });
-      await Location.updateOne({ city }, { $set: { jobCount: count } });
-      // Invalidate location cache so API returns fresh data
-      await cacheDelete('locations:all').catch(() => {});
-      await cacheDelete('locations:popular:5').catch(() => {});
-      await cacheDelete('locations:popular:10').catch(() => {});
+    const Location = mongoose.model('Location');
+    const wasActive = this._wasActiveBeforeSave;
+    const isActiveNow = this._isActiveAfterSave;
+    const oldCity = this._priorCity;
+    const newCity = this._currentCity;
+
+    if (this.isNew) {
+      if (isActiveNow && newCity) {
+        await Location.updateOne({ city: newCity }, { $inc: { jobCount: 1 } });
+      }
+    } else {
+      if (wasActive && !isActiveNow && oldCity) {
+        // active → inactive (closed/expired/deleted)
+        await Location.updateOne({ city: oldCity }, { $inc: { jobCount: -1 } });
+      } else if (!wasActive && isActiveNow && newCity) {
+        // inactive → active (e.g. paused → active)
+        await Location.updateOne({ city: newCity }, { $inc: { jobCount: 1 } });
+      } else if (wasActive && isActiveNow && oldCity !== newCity) {
+        // city changed while active
+        if (oldCity) await Location.updateOne({ city: oldCity }, { $inc: { jobCount: -1 } });
+        if (newCity) await Location.updateOne({ city: newCity }, { $inc: { jobCount: 1 } });
+      }
     }
+
+    // Invalidate location cache so API returns fresh data
+    await cacheDelete('locations:all').catch(() => {});
+    await cacheDelete('locations:popular:5').catch(() => {});
+    await cacheDelete('locations:popular:10').catch(() => {});
   } catch (err) {
     logger.error('Error in Job post-save Location hook:', err.message);
   }

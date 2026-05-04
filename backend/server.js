@@ -89,22 +89,37 @@ app.set('trust proxy', 1); // Trust first proxy hop (required for Render/PaaS �
 const PORT = process.env.PORT || 3001;
 
 // Connect to Database — must complete before accepting requests
-await connectDB();
+// Skipped in test mode; tests manage their own DB via tests/setup/testDb.js
+if (process.env.NODE_ENV !== 'test') {
+  await connectDB();
+}
 
 // Security Middleware
 // HTTP compression — gzip/brotli for all responses
 app.use(compression());
 
+// Security headers — comprehensive CSP + cross-origin policies.
+// Backend rarely serves HTML (mostly JSON), but the CSP applies on the few
+// HTML responses (error pages, file downloads with HTML preview, etc).
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:", "https:"],
+      imgSrc: ["'self'", "data:", "https://res.cloudinary.com", "https://*.cloudinary.com"],
       scriptSrc: ["'self'"],
+      connectSrc: ["'self'"],
+      frameAncestors: ["'none'"],   // disallow embedding in iframes (clickjacking)
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: [],
     },
   },
+  crossOriginEmbedderPolicy: false, // would block Cloudinary images otherwise
+  referrerPolicy: { policy: 'no-referrer' },
+  permittedCrossDomainPolicies: { permittedPolicies: 'none' },
 }));
 
 // CORS Configuration - Allow all origins in development
@@ -151,6 +166,19 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// CORS error handler — turn the thrown "Not allowed by CORS" into a clean 403
+// JSON response instead of a generic 500. Must come right after the cors()
+// middleware so it catches its errors specifically.
+app.use((err, req, res, next) => {
+  if (err && err.message === 'Not allowed by CORS') {
+    return res.status(403).json({
+      success: false,
+      message: 'Origin not allowed'
+    });
+  }
+  next(err);
+});
 
 // Rate Limiting - Environment-aware configuration
 const limiter = rateLimit({
@@ -339,7 +367,8 @@ app.use((err, req, res, next) => {
 // Track intervals for graceful shutdown cleanup
 const activeIntervals = [];
 
-// Start Server
+// Start Server (skipped in test mode — tests use supertest against the imported app)
+if (process.env.NODE_ENV !== 'test') {
 const server = app.listen(PORT, () => {
   logger.info(`advance.al API running on port ${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
@@ -442,5 +471,6 @@ process.on('uncaughtException', (err) => {
 
 // Request-level timeout (30s default — prevents hung connections)
 server.setTimeout(30000);
+} // end NODE_ENV !== 'test' guard
 
 export default app;
