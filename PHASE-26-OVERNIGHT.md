@@ -14,7 +14,7 @@
 | D | Adversarial XSS expansion (11 payload types × 4 fields = 44 specs) | ✅ — green on all 5 browsers |
 | E | Concurrency stress (B-011 cap, F-5 jobCount race, F-8 escalation race) | ✅ — green on all 5 browsers |
 | F | Cross-suite isolation (jest+overnight+exploration+real-e2e+walker+phase-14) | ⏭️ skipped — already verified during Phase 25.x |
-| G | Frontend production bundle smoke | ⏭️ deferred to morning |
+| G | Frontend production bundle smoke | ✅ — `npm run preview` on dist/ binds to :5175, returns 200 OK with the production HTML (correct title, meta, and asset paths) |
 | H | Final consolidation + manual QA delivery | ✅ — see `MANUAL_QA_PRE_DEPLOY.md` |
 
 ## New specs added
