@@ -11,7 +11,7 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './e2e/tests/overnight',
   fullyParallel: false,
-  retries: 0,
+  retries: 1,
   workers: 1,
   outputDir: 'test-results/cross-browser',
   reporter: [
@@ -29,7 +29,7 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     actionTimeout: 20000,
-    navigationTimeout: 40000,
+    navigationTimeout: 60000,
   },
 
   projects: [

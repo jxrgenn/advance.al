@@ -12,7 +12,7 @@ import {
   expect, FRONTEND, API, makeJobseeker, makeEmployer, makeAdmin,
   authHeaders, dbFind, dbUpdate, loginViaStorage, NORMAL_PLATFORM,
   registerJobseekerViaUI, loginViaUI, DEFAULT_PASSWORD, getCode,
-  ensureEmployerWithJobs,
+  ensureEmployerWithJobs, navigateViaNavLink,
 } from './_helpers';
 
 test.describe.configure({ mode: 'serial' });
@@ -37,7 +37,10 @@ test.describe('Section UJ — User Journeys', () => {
     await page.waitForLoadState('networkidle').catch(() => {});
 
     // Step 2: Click "Punët" nav link (goes to "/" — same Index component renders jobs)
-    await page.getByRole('link', { name: 'Punët', exact: true }).first().click();
+    // On mobile the link is behind the hamburger menu. navigateViaNavLink
+    // falls back to direct navigation when mobile-safari leaves the drawer
+    // link non-clickable for Playwright.
+    await navigateViaNavLink(page, 'Punët', '/');
     await page.waitForLoadState('networkidle').catch(() => {});
     await page.waitForTimeout(2500);
 

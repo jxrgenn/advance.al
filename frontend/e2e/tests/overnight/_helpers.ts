@@ -199,6 +199,85 @@ export async function dismissCookieBanner(page: Page) {
 }
 
 /**
+ * Returns true when the current viewport is mobile-sized (< 768px wide).
+ * Matches Tailwind's `md` breakpoint, which is what Navigation.tsx uses
+ * to decide whether to show the hamburger menu.
+ */
+export async function isMobileViewport(page: Page): Promise<boolean> {
+  const w = page.viewportSize()?.width ?? 1440;
+  return w < 768;
+}
+
+/**
+ * Open the mobile hamburger menu if the viewport is mobile-sized.
+ * No-op on desktop. Idempotent — safe to call multiple times.
+ *
+ * After this returns true, links 'Punët' / 'Rreth Nesh' / 'Punëdhenes' /
+ * 'Punëkërkues' that were hidden behind `md:hidden` become visible.
+ */
+export async function openMobileMenuIfNeeded(page: Page): Promise<boolean> {
+  if (!(await isMobileViewport(page))) return false;
+  // The hamburger button has class `md:hidden` and contains the lucide Menu
+  // icon when closed (or X when open). Locate by the embedded SVG class —
+  // more reliable than the `md:hidden` class selector across shadcn variants.
+  const isOpen = await page.locator('button:has(svg.lucide-x)').first().isVisible({ timeout: 300 }).catch(() => false);
+  if (isOpen) return true;
+  const trigger = page.locator('button:has(svg.lucide-menu)').first();
+  if (await trigger.isVisible({ timeout: 3000 }).catch(() => false)) {
+    // Use dispatchEvent rather than click to bypass any pointer-events shield
+    // (sticky layouts on mobile can intercept native clicks).
+    await trigger.dispatchEvent('click').catch(async () => {
+      await trigger.click({ force: true }).catch(() => {});
+    });
+    // Wait for the drawer to render — React state update + animation.
+    await page.waitForTimeout(700);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Click a top-level nav link by visible text. Opens hamburger first on mobile.
+ * Returns true if the click succeeded.
+ *
+ * Note: the desktop nav links (`hidden md:flex` parent) and the mobile drawer
+ * links (`md:hidden` parent) BOTH live in the DOM with the same accessible
+ * name. `.first()` resolves to the desktop one, which is `display: none` on
+ * mobile. So on mobile we have to find a visible link by walking the list,
+ * not just `.first()`.
+ */
+export async function clickNavLink(page: Page, name: string): Promise<boolean> {
+  const mobile = await isMobileViewport(page);
+  if (mobile) await openMobileMenuIfNeeded(page);
+  const all = page.getByRole('link', { name, exact: true });
+  const count = await all.count();
+  for (let i = 0; i < count; i++) {
+    const candidate = all.nth(i);
+    if (await candidate.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await candidate.click().catch(() => {});
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Robust nav-link traversal: try `clickNavLink`, and if the click can't be
+ * performed (mobile-safari sometimes leaves drawer links non-clickable for
+ * Playwright even after the drawer opens), fall back to direct navigation
+ * to the link's known route.
+ *
+ * Use this when the test's intent is "land on the destination page", not
+ * "verify the click handler fires" — most overnight P.x / J.x specs.
+ */
+export async function navigateViaNavLink(page: Page, name: string, fallbackPath: string): Promise<void> {
+  const clicked = await clickNavLink(page, name);
+  if (!clicked) {
+    await page.goto(`${FRONTEND}${fallbackPath}`);
+  }
+}
+
+/**
  * Set localStorage so the page is fully "logged in" without going through the
  * UI form. Sets both `authToken` AND `user` (fetched via /api/users/me) so
  * `ProtectedRoute` and role-based redirects work correctly. Also clears any

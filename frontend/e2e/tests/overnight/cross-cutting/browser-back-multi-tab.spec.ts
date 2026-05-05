@@ -7,7 +7,7 @@
 
 import { test } from '@playwright/test';
 import { dbClear } from '../../../real-backend/db-helpers';
-import { FRONTEND, loginViaStorage, ensureEmployerWithJobs } from '../_helpers';
+import { FRONTEND, loginViaStorage, ensureEmployerWithJobs, openMobileMenuIfNeeded } from '../_helpers';
 import { makeJobseeker, makeEmployer } from '../../../real-backend/factory-helpers';
 import { expect } from '@playwright/test';
 
@@ -116,6 +116,7 @@ test.describe('Cross-cutting / browser back + multi-tab', () => {
   test('BB.8 Punët nav link is present (App.tsx mounts both `/` and `/jobs` to same component)', async ({ page }) => {
     await page.goto(FRONTEND);
     await page.waitForTimeout(1500);
+    await openMobileMenuIfNeeded(page);
     const link = page.getByRole('link', { name: 'Punët', exact: true }).first();
     const href = await link.getAttribute('href');
     expect(href, 'Punët link must have an href').toBeTruthy();

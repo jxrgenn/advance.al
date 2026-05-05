@@ -10,7 +10,7 @@ import { dbClear, dbUpdate } from '../../real-backend/db-helpers';
 import {
   expect, FRONTEND, API, makeJobseeker, makeEmployer, makeAdmin, ensureEmployerWithJobs,
   authHeaders, dbFind, loginViaStorage, NORMAL_PLATFORM, registerJobseekerViaUI,
-  uniqEmail, DEFAULT_PASSWORD,
+  uniqEmail, DEFAULT_PASSWORD, isMobileViewport,
 } from './_helpers';
 
 test.describe.configure({ mode: 'serial' });
@@ -46,16 +46,29 @@ test.describe('Section UJ-DEEP — additional multi-step real-UI flows', () => {
     await page.waitForTimeout(2000);
     const initial = calls.length;
 
-    const chip1 = page.getByRole('button', { name: /^Diaspora$/i }).first();
-    const chip2 = page.getByRole('button', { name: /Nga shtëpia/i }).first();
-    if (await chip1.count() && await chip1.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await chip1.click();
-      await page.waitForTimeout(1500);
+    // WebKit sometimes resolves the button's accessible name to the icon's
+    // empty alt instead of the inner span. Match the inner span instead.
+    const chip1 = page.locator('button:has(span:text-is("Diaspora"))').first();
+    const chip2 = page.locator('button:has(span:text-is("Nga shtëpia"))').first();
+    const mobile = await isMobileViewport(page);
+    // Make absolutely sure the chips are reachable: scroll, force-click via
+    // dispatch if the layout pushed them offscreen on mobile.
+    expect(await chip1.count(), 'Diaspora chip must exist').toBeGreaterThan(0);
+    expect(await chip2.count(), 'Nga shtëpia chip must exist').toBeGreaterThan(0);
+
+    // Click via Playwright's dispatchEvent which fires a proper synthetic
+    // MouseEvent that React's event delegation picks up — bypasses pointer
+    // event interception on mobile sticky layouts.
+    if (mobile) {
+      await chip1.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
     }
-    if (await chip2.count() && await chip2.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await chip2.click();
-      await page.waitForTimeout(1500);
+    await chip1.dispatchEvent('click').catch(() => {});
+    await page.waitForTimeout(1500);
+    if (mobile) {
+      await chip2.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
     }
+    await chip2.dispatchEvent('click').catch(() => {});
+    await page.waitForTimeout(1500);
     expect(calls.length, 'two filter chip clicks should fire ≥2 API calls').toBeGreaterThanOrEqual(initial + 1);
   });
 

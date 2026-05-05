@@ -9,7 +9,7 @@ import { test } from '@playwright/test';
 import { dbClear } from '../../real-backend/db-helpers';
 import {
   expect, FRONTEND, API, makeJobseeker, makeEmployer, authHeaders, dbFind,
-  loginViaStorage, NORMAL_PLATFORM,
+  loginViaStorage, NORMAL_PLATFORM, openMobileMenuIfNeeded,
 } from './_helpers';
 
 test.describe.configure({ mode: 'serial' });
@@ -143,7 +143,9 @@ test.describe('Section K — Edge cases', () => {
     await page.waitForLoadState('networkidle').catch(() => {});
     await page.evaluate(() => { (document.body.style as any).zoom = '200%'; });
     await page.waitForTimeout(800);
-    // Page should still respond — verify nav still clickable
+    // Page should still respond — verify nav still clickable.
+    // On mobile the link is behind the hamburger; open it first.
+    await openMobileMenuIfNeeded(page);
     const navVisible = await page.getByRole('link', { name: 'Punët', exact: true }).first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(navVisible).toBe(true);
   });

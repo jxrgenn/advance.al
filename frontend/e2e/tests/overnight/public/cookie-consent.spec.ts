@@ -8,7 +8,7 @@
 
 import { test } from '@playwright/test';
 import { dbClear, dbFindOne } from '../../../real-backend/db-helpers';
-import { FRONTEND } from '../_helpers';
+import { FRONTEND, openMobileMenuIfNeeded } from '../_helpers';
 import { makeJobseeker, authHeaders, API } from '../../../real-backend/factory-helpers';
 import { expect } from '@playwright/test';
 
@@ -98,6 +98,8 @@ test.describe('Public / cookie consent (GDPR)', () => {
       await accept.click();
       await page.waitForTimeout(1000);
       // Page should still be functional — Punët nav link visible
+      // (open hamburger first on mobile)
+      await openMobileMenuIfNeeded(page);
       const nav = page.getByRole('link', { name: 'Punët', exact: true }).first();
       await expect(nav).toBeVisible({ timeout: 3000 });
     }

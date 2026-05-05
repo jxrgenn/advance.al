@@ -7,7 +7,7 @@
 
 import { test } from '@playwright/test';
 import { dbClear } from '../../../real-backend/db-helpers';
-import { FRONTEND } from '../_helpers';
+import { FRONTEND, openMobileMenuIfNeeded } from '../_helpers';
 import { ensureEmployerWithJobs } from '../_helpers';
 import { expect } from '@playwright/test';
 
@@ -22,6 +22,7 @@ test.describe('Public / homepage', () => {
   test('HP.1 navigation links present', async ({ page }) => {
     await page.goto(FRONTEND);
     await page.waitForTimeout(1500);
+    await openMobileMenuIfNeeded(page);
     for (const linkText of ['Punët', 'Rreth Nesh', 'Punëdhenes', 'Punëkërkues']) {
       const link = page.getByRole('link', { name: linkText, exact: true }).first();
       await expect(link, `nav link "${linkText}" must exist`).toBeVisible({ timeout: 5000 });
@@ -38,6 +39,7 @@ test.describe('Public / homepage', () => {
   test('HP.3 Punët nav link is rendered and clickable', async ({ page }) => {
     await page.goto(FRONTEND);
     await page.waitForTimeout(1500);
+    await openMobileMenuIfNeeded(page);
     const punet = page.getByRole('link', { name: 'Punët', exact: true }).first();
     // Both `/` and `/jobs` mount the same <Index /> component, so the link
     // may target either path. We only assert the link exists and has any href.

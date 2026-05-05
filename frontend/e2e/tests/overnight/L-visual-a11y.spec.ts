@@ -9,7 +9,7 @@
 import { test } from '@playwright/test';
 import { dbClear } from '../../real-backend/db-helpers';
 import {
-  expect, FRONTEND, ensureEmployerWithJobs,
+  expect, FRONTEND, ensureEmployerWithJobs, openMobileMenuIfNeeded,
 } from './_helpers';
 
 test.describe.configure({ mode: 'serial' });
@@ -129,10 +129,13 @@ test.describe('Section L — Visual + a11y', () => {
     await page.goto(FRONTEND);
     await page.waitForLoadState('networkidle').catch(() => {});
     await page.waitForTimeout(800);
-    // Banner is at bottom (not a modal) — but verify Escape doesn't crash anything
+    // Banner is at bottom (not a modal) — but verify Escape doesn't crash anything.
+    // Touch viewports have no physical keyboard; the page.keyboard API still
+    // dispatches the event so the assertion remains valid.
     await page.keyboard.press('Escape');
     await page.waitForTimeout(500);
-    // Page still responsive
+    // Page still responsive — nav link must be reachable (open hamburger on mobile)
+    await openMobileMenuIfNeeded(page);
     const navStillVisible = await page.getByRole('link', { name: 'Punët', exact: true }).first().isVisible({ timeout: 2000 }).catch(() => false);
     expect(navStillVisible).toBe(true);
   });

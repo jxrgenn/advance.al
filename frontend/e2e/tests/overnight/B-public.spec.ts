@@ -7,7 +7,7 @@
 
 import { test } from '@playwright/test';
 import { dbClear } from '../../real-backend/db-helpers';
-import { ensureEmployerWithJobs, FRONTEND, dismissCookieBanner, expect } from './_helpers';
+import { ensureEmployerWithJobs, FRONTEND, dismissCookieBanner, openMobileMenuIfNeeded, expect } from './_helpers';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -32,7 +32,9 @@ test.describe('Section B — Public pages', () => {
     await page.goto(FRONTEND);
     await page.waitForLoadState('networkidle').catch(() => {});
 
-    // Navigation links present (exact text matches — Albanian accents matter)
+    // Navigation links present (exact text matches — Albanian accents matter).
+    // On mobile the nav lives behind the hamburger; open it first.
+    await openMobileMenuIfNeeded(page);
     for (const linkText of ['Punët', 'Rreth Nesh', 'Punëdhenes', 'Punëkërkues']) {
       const link = page.getByRole('link', { name: linkText, exact: true }).first();
       await expect(link, `nav link "${linkText}" should exist`).toBeVisible({ timeout: 5000 });
