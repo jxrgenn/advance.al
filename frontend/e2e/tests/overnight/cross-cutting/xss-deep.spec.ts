@@ -58,18 +58,27 @@ test.describe('Cross-cutting / XSS deep payload matrix', () => {
           industry: 'Teknologji', companySize: '11-50'
         })
       });
-      // Init may 4xx if validation rejects entirely — also acceptable.
+      // Either rejection (4xx) or acceptance with a sanitized stored value
+      // is OK. A 5xx is NEVER OK. The test must always reach a real
+      // assertion — no silent skips.
+      expect(r.status, `init-registration status for ${p.id}`).toBeLessThan(500);
       if (r.status === 200) {
         const code = await waitForVerificationCode(email).catch(() => null);
-        if (code) {
-          await fetch(`${API}/auth/register`, {
-            method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ email, verificationCode: code }),
-          });
-          const stored = await dbFindOne('users', { email });
-          const cn = stored?.profile?.employerProfile?.companyName ?? '';
-          expect(isSafe(cn, p.value), `companyName must not contain raw XSS for ${p.id} — got: ${cn}`).toBe(true);
-        }
+        expect(code, `verification code captured for ${p.id} (init returned 200)`).toBeTruthy();
+        const reg = await fetch(`${API}/auth/register`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email, verificationCode: code }),
+        });
+        expect(reg.status, `register status for ${p.id}`).toBeLessThan(500);
+        const stored = await dbFindOne('users', { email });
+        expect(stored, `user persisted for ${p.id}`).toBeTruthy();
+        const cn = stored?.profile?.employerProfile?.companyName ?? '';
+        expect(isSafe(cn, p.value), `companyName must not contain raw XSS for ${p.id} — got: ${cn}`).toBe(true);
+      } else {
+        // Rejection path: assert it's a 4xx with a real error message,
+        // not a silent pass.
+        expect(r.status, `if not 200, must be a deliberate 4xx for ${p.id}`).toBeGreaterThanOrEqual(400);
+        expect(r.status).toBeLessThan(500);
       }
     });
   }
@@ -88,12 +97,14 @@ test.describe('Cross-cutting / XSS deep payload matrix', () => {
           platformCategories: { diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false }
         })
       });
+      expect(jr.status, `job create status for ${p.id}`).toBeLessThan(500);
       if (jr.status === 201 || jr.status === 200) {
         const job = (await jr.json()).data?.job;
-        if (job?._id) {
-          const stored = await dbFindOne('jobs', { _id: job._id });
-          expect(isSafe(stored?.title ?? '', p.value), `jobTitle must not contain raw XSS for ${p.id}`).toBe(true);
-        }
+        expect(job?._id, `job created for ${p.id}`).toBeTruthy();
+        const stored = await dbFindOne('jobs', { _id: job._id });
+        expect(isSafe(stored?.title ?? '', p.value), `jobTitle must not contain raw XSS for ${p.id}`).toBe(true);
+      } else {
+        expect(jr.status, `if not 201/200, must be deliberate 4xx for ${p.id}`).toBeGreaterThanOrEqual(400);
       }
     });
   }
@@ -112,12 +123,14 @@ test.describe('Cross-cutting / XSS deep payload matrix', () => {
           platformCategories: { diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false }
         })
       });
+      expect(jr.status, `job create status for ${p.id}`).toBeLessThan(500);
       if (jr.status === 201 || jr.status === 200) {
         const job = (await jr.json()).data?.job;
-        if (job?._id) {
-          const stored = await dbFindOne('jobs', { _id: job._id });
-          expect(isSafe(stored?.description ?? '', p.value), `jobDescription must not contain raw XSS for ${p.id}`).toBe(true);
-        }
+        expect(job?._id, `job created for ${p.id}`).toBeTruthy();
+        const stored = await dbFindOne('jobs', { _id: job._id });
+        expect(isSafe(stored?.description ?? '', p.value), `jobDescription must not contain raw XSS for ${p.id}`).toBe(true);
+      } else {
+        expect(jr.status, `if not 201/200, must be deliberate 4xx for ${p.id}`).toBeGreaterThanOrEqual(400);
       }
     });
   }

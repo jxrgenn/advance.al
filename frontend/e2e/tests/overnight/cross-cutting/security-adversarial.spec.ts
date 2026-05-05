@@ -125,20 +125,19 @@ test.describe('Cross-cutting / security adversarial', () => {
         platformCategories: { diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false }
       })
     });
-    // Either rejected (400) or accepted with sanitized title (no \r\n in stored).
+    // Either rejected (4xx) or accepted with sanitized title (no \r\n stored).
+    expect(r.status, 'CRLF title must not 5xx').toBeLessThan(500);
     if (r.status === 201 || r.status === 200) {
       const body = await r.json();
       const job = body.data?.job;
-      if (job?._id) {
-        const stored = await dbFindOne('jobs', { _id: job._id });
-        // Header injection requires CRLF — without it, even literal "Bcc:"
-        // text is harmless because emails build subject lines from this field
-        // via `safeSubject` which would normalize to a single line anyway.
-        expect(stored?.title?.includes('\r'), 'stored title must not contain \\r').toBe(false);
-        expect(stored?.title?.includes('\n'), 'stored title must not contain \\n').toBe(false);
-      }
+      expect(job?._id, 'CRLF accepted → job must be created').toBeTruthy();
+      const stored = await dbFindOne('jobs', { _id: job._id });
+      expect(stored, 'job must be persisted').toBeTruthy();
+      // Header injection requires CRLF — assert both bytes are stripped.
+      expect(stored?.title?.includes('\r'), 'stored title must not contain \\r').toBe(false);
+      expect(stored?.title?.includes('\n'), 'stored title must not contain \\n').toBe(false);
     } else {
-      expect(r.status).toBeLessThan(500);
+      expect(r.status, 'rejection must be deliberate 4xx').toBeGreaterThanOrEqual(400);
     }
   });
 
@@ -174,7 +173,9 @@ test.describe('Cross-cutting / security adversarial', () => {
         platformCategories: { diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false }
       })
     });
-    expect(r.status).toBeLessThan(500);
+    // Must be a deliberate 4xx (validator rejects 100k-char body), never 5xx.
+    expect(r.status, '100k-char description must reject as 4xx').toBeGreaterThanOrEqual(400);
+    expect(r.status, '100k-char description must not 5xx').toBeLessThan(500);
   });
 
   test('SA.13 Unicode preserved exactly: çëŠÇë in job title', async () => {
@@ -191,10 +192,10 @@ test.describe('Cross-cutting / security adversarial', () => {
         platformCategories: { diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false }
       })
     });
-    if (r.ok) {
-      const stored = await dbFindOne('jobs', { title });
-      expect(stored?.title, 'unicode preserved').toBe(title);
-    }
+    expect(r.ok, 'Unicode title must be accepted').toBe(true);
+    const stored = await dbFindOne('jobs', { title });
+    expect(stored, 'job persisted with Unicode title').toBeTruthy();
+    expect(stored?.title, 'Unicode preserved exactly through DB roundtrip').toBe(title);
   });
 
   // --- Rate-limit smoke (won't trigger the real limit since SKIP is on) ---

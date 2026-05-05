@@ -225,6 +225,8 @@ test.describe('Cross-cutting / concurrency stress', () => {
 
     const finalApp = await dbFindOne('applications', { _id: app._id });
     const msgs = finalApp?.messages ?? [];
-    expect(msgs.length, `all ${N} messages should be persisted`).toBeGreaterThanOrEqual(N - 2);
+    // The message thread is supposed to be atomic — every concurrent send
+    // must persist. Earlier ≥N-2 tolerance hid real races.
+    expect(msgs.length, `all ${N} concurrent messages should be persisted (thread is atomic)`).toBe(N);
   });
 });
