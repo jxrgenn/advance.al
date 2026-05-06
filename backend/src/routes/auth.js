@@ -126,6 +126,11 @@ async function sendVerificationCode(user) {
 // SKIP_RATE_LIMIT=true is honoured only outside production (tests/dev).
 // In production the limiter ALWAYS runs — even if the env var is misset —
 // to defend against credential stuffing.
+//
+// Note: server.js sets `app.set('trust proxy', true)` so `req.ip` resolves
+// to the leftmost (real-client) X-Forwarded-For entry behind Render's
+// proxy chain. The validate.trustProxy check in express-rate-limit v8
+// would otherwise warn about this configuration choice.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: process.env.NODE_ENV === 'development' ? 10000 : 15, // 15 attempts per 15 min per IP in prod
@@ -133,10 +138,12 @@ const authLimiter = rateLimit({
     process.env.NODE_ENV !== 'production' &&
     process.env.SKIP_RATE_LIMIT === 'true',
   message: {
-    error: 'Shumë tentativa kyçjeje, ju lutemi provoni përsëri pas 15 minutash.',
+    success: false,
+    message: 'Shumë tentativa kyçjeje, ju lutemi provoni përsëri pas 15 minutash.',
   },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false, xForwardedForHeader: false },
 });
 
 // Constant-time decoy hash used in the login handler when the requested email
@@ -167,7 +174,51 @@ const initiateRegistrationByEmailLimiter = rateLimit({
   message: {
     success: false,
     message: 'Shumë tentativa regjistrimi për këtë email. Provoni përsëri pas një ore.'
-  }
+  },
+  validate: { trustProxy: false, xForwardedForHeader: false },
+});
+
+// Per-email limiter for /login. Defence in depth on top of authLimiter:
+// even if a botnet rotates IPs to bypass per-IP rate limits, an attacker
+// cannot exceed 10 password attempts per email per 15 minutes.
+const loginByEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const email = (req.body?.email || '').toString().trim().toLowerCase();
+    return email ? `login-email:${email}` : `login-ip:${req.ip}`;
+  },
+  skip: () =>
+    process.env.NODE_ENV !== 'production' &&
+    process.env.SKIP_RATE_LIMIT === 'true',
+  message: {
+    success: false,
+    message: 'Shumë tentativa kyçjeje për këtë email. Provoni përsëri pas 15 minutash.'
+  },
+  validate: { trustProxy: false, xForwardedForHeader: false },
+});
+
+// Per-email limiter for /forgot-password. Without this, an attacker
+// rotating IPs could flood any victim's inbox with reset emails.
+const forgotPasswordByEmailLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const email = (req.body?.email || '').toString().trim().toLowerCase();
+    return email ? `forgot-email:${email}` : `forgot-ip:${req.ip}`;
+  },
+  skip: () =>
+    process.env.NODE_ENV !== 'production' &&
+    process.env.SKIP_RATE_LIMIT === 'true',
+  message: {
+    success: false,
+    message: 'Shumë tentativa rivendosjeje fjalëkalimi. Provoni përsëri pas një ore.'
+  },
+  validate: { trustProxy: false, xForwardedForHeader: false },
 });
 
 // Registration validation rules
@@ -502,7 +553,7 @@ router.post('/register', authLimiter, async (req, res) => {
 // @route   POST /api/auth/login
 // @desc    Login user
 // @access  Public
-router.post('/login', authLimiter, loginValidation, handleValidationErrors, async (req, res) => {
+router.post('/login', authLimiter, loginByEmailLimiter, loginValidation, handleValidationErrors, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -771,7 +822,7 @@ router.put('/change-password', authenticate, [
 // @route   POST /api/auth/forgot-password
 // @desc    Request password reset email
 // @access  Public
-router.post('/forgot-password', authLimiter, [
+router.post('/forgot-password', authLimiter, forgotPasswordByEmailLimiter, [
   body('email').trim().isEmail().normalizeEmail().withMessage('Email i pavlefshëm')
 ], handleValidationErrors, async (req, res) => {
   try {

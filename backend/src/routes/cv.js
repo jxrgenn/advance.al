@@ -31,6 +31,17 @@ const cvGenerateLimiter = rateLimit({
 // POST /api/cv/generate - Generate CV from natural language
 router.post('/generate', authenticate, requireJobSeeker, cvGenerateLimiter, async (req, res) => {
   try {
+    // Fail fast with 503 (not 500) when OpenAI isn't configured.
+    // Without this guard, every request would 500 deep inside the OpenAI
+    // SDK and confuse users with "internal server error" instead of
+    // "feature unavailable".
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(503).json({
+        success: false,
+        message: 'Gjenerimi i CV-së me AI nuk është i disponueshëm për momentin'
+      });
+    }
+
     const { naturalLanguageInput, targetLanguage = 'sq' } = req.body;
 
     // Validate input length

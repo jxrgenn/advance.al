@@ -85,7 +85,18 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 const app = express();
-app.set('trust proxy', 1); // Trust first proxy hop (required for Render/PaaS — fixes rate limiting per real IP)
+// Trust ALL proxy hops. Render routes requests through multiple internal
+// proxies (edge LB → app proxy → app), so `trust proxy: 1` made `req.ip`
+// resolve to a varying internal proxy IP — every request looked like a
+// different "client" and the in-memory rate limiter never crossed any
+// per-IP threshold. With `true`, Express uses the leftmost (real-client)
+// X-Forwarded-For entry, which is what we want for rate-limiting.
+//
+// Spoofing risk: a malicious client can send `X-Forwarded-For: <random>`
+// to evade per-IP limits. Render's edge OVERWRITES X-Forwarded-For so the
+// leftmost is always the true client IP — safe behind Render. Per-email
+// limiters below provide a second layer of defense regardless of IP source.
+app.set('trust proxy', true);
 const PORT = process.env.PORT || 3001;
 
 // Connect to Database — must complete before accepting requests

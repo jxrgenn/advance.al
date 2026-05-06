@@ -119,13 +119,19 @@ async function startMongo() {
 
 function startBackend(uri) {
   return new Promise((resolve, reject) => {
+    // Allow targeted tests (e.g., rate-limit verification) to override
+    // NODE_ENV and SKIP_RATE_LIMIT via the parent process's env. Defaults
+    // preserve the launcher's normal dev behaviour for the regular suite.
+    const overrideNodeEnv = process.env.LAUNCHER_NODE_ENV || 'development';
+    const overrideSkipRate = process.env.LAUNCHER_SKIP_RATE_LIMIT || 'true';
+    const overrideEmailTestMode = process.env.LAUNCHER_EMAIL_TEST_MODE || 'true';
     const env = {
       ...process.env,
-      NODE_ENV: 'development',           // logs verification codes
+      NODE_ENV: overrideNodeEnv,         // logs verification codes when 'development'
       MONGODB_URI: uri,
       PORT: '3001',
-      SKIP_RATE_LIMIT: 'true',
-      EMAIL_TEST_MODE: 'true',           // diverts emails (still calls Resend)
+      SKIP_RATE_LIMIT: overrideSkipRate,
+      EMAIL_TEST_MODE: overrideEmailTestMode,  // diverts emails (still calls Resend)
       JWT_SECRET: 'test-only-jwt-secret-32-bytes-min-aaaaaaaa',
       JWT_REFRESH_SECRET: 'test-only-refresh-secret-32-bytes-min-bbbbbbbb',
       FRONTEND_URL: 'http://localhost:5174',

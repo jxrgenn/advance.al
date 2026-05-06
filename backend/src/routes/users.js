@@ -803,6 +803,14 @@ const parseResumeLimiter = rateLimit({
 // @access  Private (Job Seekers only)
 router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter, upload.single('resume'), async (req, res) => {
   try {
+    // Fail fast with 503 when OpenAI isn't configured (the parser needs it).
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(503).json({
+        success: false,
+        message: 'Skanimi i CV-së me AI nuk është i disponueshëm për momentin'
+      });
+    }
+
     if (!req.file) {
       return res.status(400).json({
         success: false,

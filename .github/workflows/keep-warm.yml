@@ -1,0 +1,36 @@
+name: Keep Render backend warm
+
+# Render's hobby tier sleeps the dyno after ~15 minutes of inactivity. The
+# first request after sleep takes ~45-68 seconds (cold start). Pinging
+# /health every 10 minutes keeps the dyno warm so real users never wait.
+#
+# GitHub Actions cron is free, but minimum granularity is 5 minutes and
+# scheduled runs can be delayed up to ~15 min during peak load. 10-minute
+# schedule gives us margin against Render's 15-minute idle threshold.
+#
+# If the backend ever moves off Render's hobby tier (always-on Starter+),
+# this workflow becomes unnecessary and can be deleted.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping /health
+        run: |
+          set -e
+          for i in 1 2 3; do
+            if curl -fsS --max-time 90 https://advance-al.onrender.com/health; then
+              echo "✅ backend awake"
+              exit 0
+            fi
+            echo "ping $i failed, retrying..."
+            sleep 5
+          done
+          echo "❌ backend did not respond after 3 attempts"
+          exit 1

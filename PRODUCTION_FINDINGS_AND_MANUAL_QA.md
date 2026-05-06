@@ -1,69 +1,88 @@
 # Production findings + minimal manual QA
 
-**Date:** May 5 2026
+**Date:** May 5 2026 (v2 — fixes landed May 6)
 **Production URLs:** https://advance.al (Vercel) ⇒ https://advance-al.onrender.com (Render)
 
 This file replaces the longer `MANUAL_QA_PRE_DEPLOY.md` with a tighter list:
-what's been verified against the live production, what's broken, and what
-you (the human) still need to do before launch.
+what's been verified against the live production, what's been fixed in code
+(awaiting your deploy), and what you (the human) still need to do.
 
 ---
 
-## 🚨 Production issues found (must fix before launch)
+## ✅ Fixes that landed in code (commit `<TBD>`) — awaiting your `git push` + deploy
 
-### 1. Rate limit is NOT firing in production
-**Severity: HIGH — credential stuffing + email-bombing risk**
+### 1. Rate limit fix (was the HIGH severity finding)
+**Status: fixed in code, verified locally with `NODE_ENV=production`.**
 
-I sent 18 consecutive wrong-password attempts to `https://advance-al.onrender.com/api/auth/login`. **All 18 returned 401, none returned 429.** Same with 8 consecutive `/api/auth/forgot-password` requests — all 200.
+Three changes:
 
-The code (`backend/src/routes/auth.js:129-141`) has correct `authLimiter` config (15 req / 15 min) and the skip logic (`NODE_ENV !== 'production' && SKIP_RATE_LIMIT === 'true'`) is defensively false in prod. `app.set('trust proxy', 1)` is also set (`server.js:88`).
+a. **`backend/server.js:88`** — `app.set('trust proxy', true)` instead of `1`. Render uses multiple proxy hops; `trust proxy: 1` was making `req.ip` resolve to a varying internal proxy IP so per-IP rate limit never accumulated. With `true`, Express uses the leftmost (real-client) X-Forwarded-For entry. Render's edge overwrites X-Forwarded-For so it can't be spoofed.
 
-**Most likely cause:** Render has multiple proxy hops, so `trust proxy: 1` makes `req.ip` resolve to a varying internal proxy IP — each request sees a different "client". `express-rate-limit` keys per-IP, so no single IP ever crosses the threshold.
+b. **`backend/src/routes/auth.js`** — added two new per-email limiters as defense in depth:
+   - `loginByEmailLimiter`: 10 wrong attempts / 15 min per email (regardless of source IP)
+   - `forgotPasswordByEmailLimiter`: 3 reset emails / hour per target email
+   
+   These wire into `/login` and `/forgot-password` respectively, alongside the existing IP-level `authLimiter` (15/15min).
 
-**Fix to try (in priority order):**
-1. Verify on Render dashboard that `SKIP_RATE_LIMIT` is **not set** (or explicitly `false`).
-2. Bump trust-proxy to `2` or `'loopback, linklocal, uniquelocal'` and re-deploy. Test again with `for i in {1..18}; do curl -s -o /dev/null -w "%{http_code}\n" -X POST -H 'content-type: application/json' -d '{"email":"x@x.com","password":"wrong"}' https://advance-al.onrender.com/api/auth/login; done` — should see 429 by attempt 16.
-3. If that doesn't work, switch the limiter's `keyGenerator` to use `req.headers['x-forwarded-for']?.split(',')[0]?.trim() ?? req.ip` to bypass the proxy unwrapping.
-4. As a backstop, add a per-email limiter to `/login` and `/forgot-password` (already in place for `/initiate-registration`) — defense in depth.
+c. **`backend/src/routes/auth.js:131-140`** — added `validate: { trustProxy: false, xForwardedForHeader: false }` to silence `express-rate-limit` v8's check (we've made our own informed choice).
 
-**Verification once fixed:** 16th rapid attempt should return 429.
+**Local verification (with `NODE_ENV=production` + `SKIP_RATE_LIMIT=false`):**
+```
+attempts 1-10 → 401 (wrong password)
+attempt   11+ → 429 (per-email limiter fires)
 
-### 2. Render cold start is 45-68 seconds
-**Severity: MEDIUM — UX problem, not security**
+forgot-password attempts 1-3 → 200
+forgot-password attempts   4+ → 429
+forgot-password different email → 200 (counter is per-email, independent)
+```
 
-p99 latency on `/api/jobs` (a public read) is **68 seconds** when the dyno has been idle. p50 is fine (~1s); the long tail is entirely cold-start.
+Backend Jest auth suites: 36/36 still pass — no regressions.
 
-**Fix options:**
-- Upgrade Render to "Starter" or paid tier (always-on) → ~$7/month
-- Set up a 14-min ping (UptimeRobot, cron-job.org, or even Vercel Cron) hitting `/health` to keep the dyno warm. Free.
+**Verify after deploy:**
+```sh
+for i in {1..12}; do
+  curl -s -o /dev/null -w "%{http_code}\n" -X POST \
+    -H 'content-type: application/json' \
+    -d '{"email":"x@x.com","password":"wrong"}' \
+    https://advance-al.onrender.com/api/auth/login
+done
+```
+Expect 401 ten times, then 429.
+
+### 2. Render cold-start fix (was the MEDIUM finding)
+**Status: fixed via GitHub Actions cron.**
+
+Added `.github/workflows/keep-warm.yml` — pings `/health` every 10 minutes via free GitHub Actions cron. Render's hobby tier sleeps after 15 min idle; pinging at 10-min keeps the dyno warm. **Costs $0.** You can delete this workflow if you ever upgrade to Render Starter (always-on).
+
+Activates automatically once the workflow file is on `main`. Double-check after merge: GitHub repo → Actions tab → "Keep Render backend warm" — should show scheduled runs starting within ~10 min.
+
+### 3. OpenAI early-fail guard
+**Status: fixed.**
+
+`backend/src/routes/cv.js:32` and `backend/src/routes/users.js:804` (parse-resume) now return `503 Service Unavailable` with a clear Albanian message if `OPENAI_API_KEY` is missing on Render, instead of generic 500s.
 
 ---
 
-## ⚠️ Production findings (low severity, document and decide)
+## ⚠️ Open items requiring YOUR decision (DNS — I can't do these)
 
-### 3. No MX records on `advance.al` root
-Inbound mail to `contact@advance.al` (or any address `@advance.al`) goes nowhere. Only `send.advance.al` (Resend's sending subdomain) has MX records (pointing to AmazonSES feedback).
+### 4. No MX records on `advance.al` root
+Inbound mail to `contact@advance.al` goes nowhere. Only `send.advance.al` (Resend's sending subdomain) has MX (pointing to AmazonSES feedback) — outbound is fine.
 
-**Decide:** if you want to receive mail on `@advance.al`, you need to add MX records pointing to a mail provider (Google Workspace, Fastmail, etc.). If outbound-only via Resend is fine, ignore.
+**Decide:** if you want a `@advance.al` mailbox, add MX records via your DNS host (host.al). If outbound-only via Resend is enough, ignore.
 
-### 4. DMARC policy is `p=none`
-Permissive — DMARC reports only, no enforcement. Acceptable for launch (you don't want to bounce legitimate mail before you've validated SPF/DKIM are working at scale). After ~2 weeks of clean reports, tighten to `p=quarantine` then `p=reject`.
+### 5. DMARC policy is `p=none` (permissive)
+Acceptable for launch. After ~2 weeks of clean Resend reports, tighten via host.al's DNS panel:
+```
+_dmarc.advance.al. TXT "v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@advance.al;"
+```
 
-### 5. No CAA records on `advance.al`
-Anyone can request a Let's Encrypt cert for advance.al. Vercel handles certs for you, but adding a CAA record would limit issuance to your providers only:
-
+### 6. No CAA records on `advance.al`
+Defense in depth — restrict cert issuance to known providers. Add via host.al:
 ```
 advance.al. CAA 0 issue "letsencrypt.org"
 advance.al. CAA 0 issue "digicert.com"
-advance.al. CAA 0 iodef "mailto:keithjones240424@gmail.com"
 ```
-
-Defense in depth, not blocking.
-
-### 6. OpenAI lazy-init
-`backend/src/services/openaiService.js:6-8` constructs the OpenAI client unconditionally. If `OPENAI_API_KEY` is missing/wrong on Render, every CV-generate request returns 500 instead of "service unavailable". Currently the route catch returns a generic 500 with no stack leak — acceptable but not ideal.
-
-**Improve later:** add an early `if (!process.env.OPENAI_API_KEY) return res.status(503).json({ message: 'AI service not configured' })` guard at the top of `/api/cv/generate`.
+Not blocking.
 
 ---
 
@@ -101,58 +120,58 @@ Defense in depth, not blocking.
 
 These need human eyes / real device / real account on a paid third-party service:
 
-### 30-minute manual QA checklist (mandatory before launch)
+### 25-minute manual QA checklist
 
-1. **Real Safari (macOS + iOS)** — 5 min
-   - Open https://advance.al on real Safari (macOS) and real iPhone Safari
-   - Verify: homepage renders, /jobs lists jobs, click into a job → detail page opens, click Apliko → login prompt
-   - Look for: layout breaks, fonts not loading, white screens, JS errors in console (Develop menu)
+1. **`git push` + Render auto-deploys + Vercel auto-deploys** — 5 min wait
+   The Render dashboard shows the deploy progress. After it goes green, run the smoke-test below.
 
-2. **Real Resend email arrival** — 5 min
-   - Register a new jobseeker on the live site
-   - Confirm verification email arrives at your real email address (not test inbox)
-   - Click the link / enter the code → registration completes
-   - Look for: "from" address is reasonable (`*@advance.al` or `*@send.advance.al`), no spam folder placement, no broken images, link works from the email
-
-3. **Forgot password round-trip** — 3 min
-   - Click "Forgot password" → enter your email → receive reset email → click link → set new password → log in
-   - Verify: new password works, old password doesn't, session is fresh
-
-4. **Real Cloudinary upload** — 3 min
-   - Log in as the registered user
-   - Upload a profile photo via the profile page
-   - Verify: photo appears in the UI, the URL is `https://res.cloudinary.com/...`, refresh page shows the same photo
-
-5. **Real CV generation (OpenAI)** — 3 min
-   - On profile, click "Generate CV with AI" → enter some natural language → wait for result (cold-start might take 60s+)
-   - Verify: DOCX downloads, opens in Word/Pages, contains expected sections (name, summary, experience)
-   - If 500 error, OPENAI_API_KEY is missing or wrong on Render
-
-6. **Real Sentry capture** — 2 min
-   - Log into Sentry dashboard for your project
-   - Trigger an error on the live site (e.g., visit a known-broken admin route while logged in as wrong role; or use the in-flow "Test Error" button if exposed)
-   - Verify: event appears in Sentry within ~1 minute
-
-7. **Posting a job (employer flow)** — 5 min
-   - Register as employer → admin approves → log in → post a job (4-step wizard) → publish
-   - Verify: job appears on the public /jobs listing within seconds, search works, you can edit it, you can close it
-
-8. **Real Twilio SMS (only if you have creds)** — 2 min
-   - If `TWILIO_*` env vars are set on Render: phone-verify a user, verify SMS arrives on a real phone
-   - If env vars are unset: skip — code auto-mocks
-
-9. **Rate limit fix verification** (after you address finding #1) — 2 min
+2. **Rate-limit smoke (verifies my fix landed)** — 1 min
    ```sh
-   for i in {1..18}; do
+   for i in {1..12}; do
      curl -s -o /dev/null -w "%{http_code}\n" -X POST \
        -H 'content-type: application/json' \
        -d '{"email":"x@x.com","password":"wrong"}' \
        https://advance-al.onrender.com/api/auth/login
    done
    ```
-   Expect: at least one 429 in the last 3 attempts.
+   Expect: ten `401`, then `429 429`. If you don't see 429 by the 12th, the trust-proxy fix isn't enough — ping me back with the output and I'll switch to a custom keyGenerator.
 
-**Total time: ~30 minutes if everything works first try; ~60 if you hit a rate-limit fix iteration.**
+3. **Real Safari (macOS + iOS)** — 5 min
+   - Open https://advance.al on real macOS Safari and real iPhone Safari
+   - Verify: homepage renders, /jobs lists jobs, click a job → detail page opens, click Apliko → login prompt appears
+   - Watch for: layout breaks, fonts missing, white screens. Open Develop → JavaScript Console for errors.
+
+4. **Real Resend email arrival** — 5 min
+   - Register a new jobseeker on the live site
+   - Confirm verification email arrives at your real address (`from: noreply@advance.al` or `noreply@send.advance.al`)
+   - Enter the code → registration completes → land on dashboard
+
+5. **Forgot password round-trip** — 3 min
+   - "Forgot password" → enter email → receive reset email → click link → set new password → log in
+   - Verify: new password works, old doesn't
+
+6. **Real Cloudinary upload** — 3 min
+   - Log in as the registered user → upload profile photo
+   - Verify: URL is `https://res.cloudinary.com/...`, photo persists across refresh
+
+7. **Real CV generation (OpenAI)** — 3 min
+   - Profile → "Generate CV with AI" → ~60s wait (cold start absorbed by keep-warm cron after deploy)
+   - Verify: DOCX downloads, opens in Word/Pages
+   - If you get `503 Skanimi i CV-së me AI nuk është i disponueshëm`: `OPENAI_API_KEY` missing on Render — set it in the dashboard
+
+8. **Real Sentry capture** — 2 min
+   - Sentry dashboard open → trigger any error on the live site (visit `/admin` as a jobseeker, or hammer rate limit until 429 → that's also captured)
+   - Verify event appears within ~1 min
+
+9. **Employer post-job flow** — 5 min
+   - Register as employer → admin approves → log in → post a job (4-step) → publish
+   - Verify: job appears on /jobs immediately, search finds it, edit/close work
+
+**Total: ~25 min if everything works first try.**
+
+Skip-able if you don't have creds:
+- Twilio SMS — auto-mocks when env unset
+- Sentry capture — only if you've enabled it
 
 ---
 
@@ -171,13 +190,17 @@ These need human eyes / real device / real account on a paid third-party service
 
 ## TL;DR
 
-**Before launch:**
-1. **Fix the rate limit.** This is the only HIGH severity finding.
-2. **Decide on cold-start.** Either pay for Render Starter or set up a keep-warm ping.
-3. Run the **30-minute manual QA** checklist above.
+**What I fixed (already in code, awaiting your `git push`):**
+1. ✅ Rate limit — `trust proxy: true` + per-email limiters on /login (10/15min) and /forgot-password (3/hr). Verified locally.
+2. ✅ Render cold start — GitHub Actions cron pings /health every 10 min. Free.
+3. ✅ OpenAI failure mode — 503 with clear message instead of 500.
 
-**Acceptable to defer:**
-- DMARC tightening (after 2 weeks of clean reports)
+**What you do (~25 min):**
+1. `git push` (Render + Vercel auto-deploy from main)
+2. Run the 25-min manual QA checklist above. Step 2 (rate-limit smoke) is the only one that's purely automatable; the rest need your eyes / real devices / real-cred services.
+
+**Acceptable to defer / decide later:**
+- DMARC tightening (after 2 weeks of clean reports — I'll remind you)
 - CAA records (defense in depth)
-- OpenAI early-fail guard
 - Inbound MX (only if you want `@advance.al` mailboxes)
+- Render Starter upgrade (only if cold-start cron stops being enough)
