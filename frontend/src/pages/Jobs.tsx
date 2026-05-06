@@ -814,7 +814,7 @@ const Jobs = () => {
                     value={advancedFilters.currency}
                     onValueChange={(value) => setAdvancedFilters(prev => ({ ...prev, currency: value }))}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger aria-label="Zgjidhni monedhën">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -849,7 +849,7 @@ const Jobs = () => {
                 value={advancedFilters.experience}
                 onValueChange={(value) => setAdvancedFilters(prev => ({ ...prev, experience: value }))}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Zgjidhni nivelin e përvojës">
                   <SelectValue placeholder="Zgjidhni nivelin e përvojës" />
                 </SelectTrigger>
                 <SelectContent>
@@ -941,7 +941,7 @@ const Jobs = () => {
                 value={advancedFilters.postedWithin}
                 onValueChange={(value) => setAdvancedFilters(prev => ({ ...prev, postedWithin: value }))}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Zgjidhni periudhën kohore">
                   <SelectValue placeholder="Zgjidhni periudhën kohore" />
                 </SelectTrigger>
                 <SelectContent>
@@ -963,7 +963,7 @@ const Jobs = () => {
                 value={advancedFilters.sortBy}
                 onValueChange={(value) => setAdvancedFilters(prev => ({ ...prev, sortBy: value }))}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Renditja e rezultateve">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

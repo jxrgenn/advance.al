@@ -32,8 +32,8 @@ const Footer = () => {
               Platforma më moderne e punës në Shqipëri. Lidhim punëkërkuesit me punëdhënësit më të mirë.
             </p>
             <div className="flex gap-3">
-              <a href="mailto:info@advance.al" className="text-muted-foreground hover:text-primary transition-colors">
-                <Mail className="h-5 w-5" />
+              <a href="mailto:info@advance.al" aria-label="Na shkruani në info@advance.al" className="text-muted-foreground hover:text-primary transition-colors">
+                <Mail className="h-5 w-5" aria-hidden="true" />
               </a>
             </div>
           </div>

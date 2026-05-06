@@ -59,6 +59,8 @@ const PageLoader = () => (
   </div>
 );
 
+// Note: Mantine's default `dimmed` color (#868e96) fails WCAG AA contrast on
+// white — overridden globally in src/index.css via `--mantine-color-dimmed`.
 const App = () => (
   <ErrorBoundary>
     <MantineProvider>

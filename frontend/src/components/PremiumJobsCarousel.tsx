@@ -162,16 +162,18 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
           {premiumJobs.length > 1 && (
             <>
               <Button variant="outline" size="icon"
+                aria-label="Punët e mëparshme"
                 className={`absolute left-0 top-1/2 -translate-y-1/2 z-10 rounded-full bg-background/80 backdrop-blur-sm hover:bg-background hidden md:flex transition-all duration-300 ease-out ${isStuck ? 'h-6 w-6' : 'h-8 w-8'}`}
                 onClick={scrollPrev}
               >
-                <ChevronLeft className="h-4 w-4" />
+                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
               </Button>
               <Button variant="outline" size="icon"
+                aria-label="Punët e mëpasme"
                 className={`absolute right-0 top-1/2 -translate-y-1/2 z-10 rounded-full bg-background/80 backdrop-blur-sm hover:bg-background hidden md:flex transition-all duration-300 ease-out ${isStuck ? 'h-6 w-6' : 'h-8 w-8'}`}
                 onClick={scrollNext}
               >
-                <ChevronRight className="h-4 w-4" />
+                <ChevronRight className="h-4 w-4" aria-hidden="true" />
               </Button>
             </>
           )}

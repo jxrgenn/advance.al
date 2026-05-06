@@ -656,7 +656,7 @@ const Index = () => {
                   }
                 }}
               >
-                <SelectTrigger className="flex-1 border-0 shadow-none focus:ring-0 focus:ring-offset-0 h-auto px-0">
+                <SelectTrigger aria-label="Zgjidhni vendndodhjen" className="flex-1 border-0 shadow-none focus:ring-0 focus:ring-offset-0 h-auto px-0">
                   <SelectValue placeholder={selectedLocations.length > 0 ? `${selectedLocations.length} qytete` : "Vendndodhja"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -800,7 +800,7 @@ const Index = () => {
                                 value={pendingAdvancedFilters.currency}
                                 onValueChange={(value) => setPendingAdvancedFilters(prev => ({ ...prev, currency: value }))}
                               >
-                                <SelectTrigger>
+                                <SelectTrigger aria-label="Zgjidhni monedhën">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -845,7 +845,7 @@ const Index = () => {
                             value={pendingAdvancedFilters.experience || "all"}
                             onValueChange={(value) => setPendingAdvancedFilters(prev => ({ ...prev, experience: value === "all" ? "" : value }))}
                           >
-                            <SelectTrigger>
+                            <SelectTrigger aria-label="Zgjidhni nivelin e përvojës">
                               <SelectValue placeholder="Zgjidhni nivelin e përvojës" />
                             </SelectTrigger>
                             <SelectContent>
@@ -975,7 +975,7 @@ const Index = () => {
                             value={pendingAdvancedFilters.postedWithin || "all"}
                             onValueChange={(value) => setPendingAdvancedFilters(prev => ({ ...prev, postedWithin: value === "all" ? "" : value }))}
                           >
-                            <SelectTrigger>
+                            <SelectTrigger aria-label="Zgjidhni periudhën kohore">
                               <SelectValue placeholder="Zgjidhni periudhën kohore" />
                             </SelectTrigger>
                             <SelectContent>
@@ -1007,7 +1007,7 @@ const Index = () => {
                             value={pendingAdvancedFilters.sortBy}
                             onValueChange={(value) => setPendingAdvancedFilters(prev => ({ ...prev, sortBy: value }))}
                           >
-                            <SelectTrigger>
+                            <SelectTrigger aria-label="Renditja e rezultateve">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>

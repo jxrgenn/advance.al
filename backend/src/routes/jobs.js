@@ -220,29 +220,37 @@ router.get('/', optionalAuth, async (req, res) => {
     // Build search filters
     const filters = {};
 
+    // Coerce array-typed query params (e.g. ?city=A&city=B → ['A','B']) to a CSV
+    // string so .split(',') works uniformly. Avoids 500s on HTTP Parameter Pollution.
+    const csv = (v) => (Array.isArray(v) ? v.join(',') : (typeof v === 'string' ? v : ''));
+
     // City filter with OR logic (comma-separated)
-    if (city) {
-      const cities = city.split(',').map(c => c.trim()).filter(Boolean);
+    const cityCsv = csv(city);
+    if (cityCsv) {
+      const cities = cityCsv.split(',').map(c => c.trim()).filter(Boolean);
       if (cities.length > 0) {
         filters.city = cities; // Pass array for OR logic
       }
     }
 
     // Category filter - support both single category and multiple categories (comma-separated)
-    if (categories) {
+    const categoriesCsv = csv(categories);
+    const categoryStr = csv(category);
+    if (categoriesCsv) {
       // Multiple categories with OR logic
-      const categoryList = categories.split(',').map(c => c.trim()).filter(Boolean);
+      const categoryList = categoriesCsv.split(',').map(c => c.trim()).filter(Boolean);
       if (categoryList.length > 0) {
         filters.categories = categoryList; // Pass array for OR logic
       }
-    } else if (category) {
+    } else if (categoryStr) {
       // Single category (backward compatibility)
-      filters.category = category;
+      filters.category = categoryStr;
     }
 
     // JobType filter (comma-separated - OR logic via $in)
-    if (jobType) {
-      const jobTypes = jobType.split(',').map(t => t.trim()).filter(Boolean);
+    const jobTypeCsv = csv(jobType);
+    if (jobTypeCsv) {
+      const jobTypes = jobTypeCsv.split(',').map(t => t.trim()).filter(Boolean);
       if (jobTypes.length > 0) {
         filters.jobType = jobTypes; // Pass array for OR logic ($in)
       }

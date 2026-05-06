@@ -1290,8 +1290,8 @@ Telefoni: _______________`;
                         {...fullForm.getInputProps('password')}
                         required
                         rightSection={
-                          <ActionIcon variant="subtle" color="gray" onClick={() => setShowPassword(!showPassword)} tabIndex={-1}>
-                            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                          <ActionIcon variant="subtle" color="gray" onClick={() => setShowPassword(!showPassword)} tabIndex={-1} aria-label={showPassword ? "Fshih fjalëkalimin" : "Shfaq fjalëkalimin"}>
+                            {showPassword ? <EyeOff size={16} aria-hidden /> : <Eye size={16} aria-hidden />}
                           </ActionIcon>
                         }
                       />

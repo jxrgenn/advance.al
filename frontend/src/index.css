@@ -2,7 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+/* WCAG AA color overrides for Mantine defaults that fail 4.5:1 contrast.
+ *
+ *   --mantine-color-dimmed:
+ *     default   #868e96 → 3.32:1 white, 3.15:1 #f8f9fa (fail)
+ *     overridden #5c636a → 5.45:1 white, 5.18:1 #f8f9fa, 4.81:1 #e7f5ff (pass)
+ *
+ *   --mantine-color-blue-6 (used for Button bg, light-variant text, links):
+ *     default   #228be6 → 3.55:1 (fail)
+ *     overridden #1864ab → 7.3:1 white-on-blue, 7.3:1 blue-on-white,
+ *                          5.32:1 on #e9f3fd (Mantine light bg) — all pass
+ *
+ * Specificity: :root[data-mantine-color-scheme] runs after Mantine's own
+ * color vars are set, so our override wins.
+ */
+:root,
+:root[data-mantine-color-scheme] {
+  --mantine-color-dimmed: #5c636a !important;
+  --mantine-color-blue-6: #1864ab !important;
+  --mantine-primary-color-filled: #1864ab !important;
+  --mantine-primary-color-filled-hover: #155186 !important;
+  --mantine-primary-color-light-color: #1864ab !important;
+}
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here.
 All colors MUST be HSL.
 */
 
