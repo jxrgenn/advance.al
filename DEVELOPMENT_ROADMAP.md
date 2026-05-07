@@ -70,14 +70,21 @@ Manually tightened ~146 ORs in worst-offender files (8 prod-smoke files, 5 overn
 
 Endpoint inventory + ~50-80 new boundary tests. Significant scope, deferred to follow-up sprint.
 
-### Phase 6 (coverage push) — IN PROGRESS — measured: **57.2% → 83.32% statements** (+26.12% absolute)
+### Phase 6 (coverage push) — IN PROGRESS — measured: **57.2% → 84.34% statements** (+27.14% absolute)
 
 | Metric | Baseline | Mid-sprint | After Phase 6 (now) | Gain |
 |---|---|---|---|---|
-| Statements | 57.2% | 72.16% | **83.32%** | +26.12 |
-| Branches | 42.7% | 59.30% | **72.20%** | +29.50 |
-| Functions | 63.2% | 78.48% | **87.02%** | +23.82 |
-| Tests passing | ~870 | 1314+ | **1790+** | +920+ |
+| Statements | 57.2% | 72.16% | **84.34%** | +27.14 |
+| Branches | 42.7% | 59.30% | **73.99%** | +31.29 |
+| Functions | 63.2% | 78.48% | **88.32%** | +25.12 |
+| Tests passing | ~870 | 1314+ | **1820+** | +950+ |
+
+**Note**: latest measurement (84.34% / 73.99% / 88.32%) doesn't include the
+last 8 test files added (jobs-employer-actions, notifications-admin-extras,
+jobs-posting-frozen, email-service-mock-paths, jobs-put-update,
+quickusers-unsub-already, openai-service-retry, applications-custom-form,
+admin-embeddings-queue-workers, reports-extra-paths) — adds ~80 more tests.
+Estimated next measurement ~85% statements / ~75% branches.
 
 **Crossed the 80% statements + 70% branches milestones.** Remaining gap to 90% target is concentrated in:
 - src/config/redis.js (26.4%) & src/config/database.js (9.5%) — infrastructure, would need real Redis test instance + DB connection fault injection
