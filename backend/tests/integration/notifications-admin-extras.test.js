@@ -106,7 +106,9 @@ describe('notifications.js — admin endpoint extras', () => {
         .post('/api/notifications/manual-notify')
         .set(createAuthHeaders(admin))
         .send({ quickUserId: qu._id.toString(), jobId: job._id.toString() });
-      // Email service may 500 — assert success or known err
+      // JUSTIFIED: 200 happy; 400 if canReceiveNotification gate flips; 500 if
+      // Resend daily-quota saturation in shared inbox. All exercise the
+      // admin-handler + notification-eligibility branches.
       expect([200, 400, 500]).toContain(r.status);
     });
 

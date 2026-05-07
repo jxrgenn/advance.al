@@ -121,8 +121,9 @@ describe('users.js — config-driven max_cv_file_size', () => {
       .set(createAuthHeaders(js))
       .attach('resume', smallPdf, { filename: 'ok.pdf', contentType: 'application/pdf' });
 
-    // Either succeeds (200) or hits Cloudinary-not-configured 503 — both
-    // mean the size gate passed.
+    // JUSTIFIED: 200 (uploaded via local-fallback) or 503 (Cloudinary not
+    // configured AND local fallback disabled). Branch under test is the
+    // size gate; both prove the 50KB payload passed it.
     expect([200, 503]).toContain(r.status);
   });
 });

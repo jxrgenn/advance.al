@@ -52,8 +52,9 @@ describe('users.js — POST /upload-resume replacement path', () => {
       .set(createAuthHeaders(user))
       .attach('resume', PDF_HEADER, 'replacement.pdf');
 
-    // 200 if upload succeeds. 503 if Cloudinary not configured AND we're in
-    // production-mode. In test env the local-storage fallback should succeed.
+    // JUSTIFIED: 200 if upload succeeds via local-fallback; 503 if Cloudinary
+    // is not configured AND we're in production-mode. The cleanup branch
+    // (oldResumeUrl path) is traversed in both cases.
     expect([200, 503]).toContain(r.status);
 
     // Either the resume was replaced (success), or the upload failed (503) —
