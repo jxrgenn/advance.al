@@ -14,7 +14,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
-  testDir: './e2e/tests/overnight',
+  // Phase 28: include `e2e/security/` (real adversarial tests) alongside overnight.
+  // Both use the same real-backend infrastructure.
+  testDir: './e2e',
+  testMatch: ['tests/overnight/**/*.spec.ts', 'security/**/*.spec.ts'],
   fullyParallel: false,
   retries: 1,                   // overnight runs should self-heal flakes once
   workers: 1,
