@@ -10,16 +10,38 @@ import mongoose from 'mongoose';
 let mongoServer;
 
 /**
- * Connect to in-memory MongoDB for testing
+ * Connect to in-memory MongoDB for testing.
+ *
+ * Phase 28 fix (B-016): if a previous mongoServer is still alive (e.g.,
+ * a test file forgot afterAll(closeTestDB)), explicitly stop it first
+ * before creating a new one. Otherwise the previous server becomes
+ * orphaned in memory, and after enough test files we either OOM or get
+ * cross-suite Mongoose connection state leaks (B-017/B-018 symptoms).
  */
 export async function connectTestDB() {
   try {
-    // Close any existing connections
+    // Close any existing Mongoose connection
     if (mongoose.connection.readyState !== 0) {
-      await mongoose.disconnect();
+      try {
+        await mongoose.disconnect();
+      } catch (e) {
+        console.warn('Mongoose disconnect (pre-connect) warning:', e.message);
+      }
     }
 
-    // Create MongoDB Memory Server
+    // Stop any previous MongoMemoryServer instance before overwriting the ref.
+    // Without this, prior instances accumulate in memory and their state can
+    // leak across test files when run with --runInBand.
+    if (mongoServer) {
+      try {
+        await mongoServer.stop({ doCleanup: true, force: true });
+      } catch (e) {
+        console.warn('Previous mongoServer stop warning:', e.message);
+      }
+      mongoServer = null;
+    }
+
+    // Create new MongoDB Memory Server
     mongoServer = await MongoMemoryServer.create({
       binary: {
         version: '6.0.0',
@@ -28,11 +50,8 @@ export async function connectTestDB() {
 
     const uri = mongoServer.getUri();
 
-    // Connect to the in-memory database
-    await mongoose.connect(uri, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    // Connect to the in-memory database (deprecated options removed)
+    await mongoose.connect(uri);
 
     console.log('✅ Test database connected:', uri);
 
