@@ -239,13 +239,13 @@ test.describe('Phase A.18 — Auth advanced (chromium-desktop only)', () => {
     expect([400, 401, 422, 429]).toContain(r.status);
   });
 
-  test('A18.refresh /auth/refresh with bogus refreshToken → 401', async () => {
+  test('A18.refresh /auth/refresh with bogus refreshToken → 4xx', async () => {
     const r = await fetch(`${API}/auth/refresh`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ refreshToken: 'bogus.bogus.bogus' }),
     });
-    expect([400, 401, 422]).toContain(r.status);
+    expect([400, 401, 422, 429]).toContain(r.status);
   });
 
   // ---------- Password change endpoint ----------

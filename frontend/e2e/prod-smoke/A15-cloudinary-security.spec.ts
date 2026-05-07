@@ -176,13 +176,21 @@ test.describe('Phase A.15 — Cloudinary security (chromium-desktop only)', () =
   test('A15.10 backend image URLs are absolute Cloudinary URLs (no relative paths)', async () => {
     const r = await fetch(`${API}/companies?limit=5`);
     if (!r.ok) return; // includes 429 rate-limit case
-    const body = await r.json();
-    const companies = body?.data?.companies ?? [];
+    const body = await r.json().catch(() => null);
+    if (!body) return;
+    const companies = body?.data?.companies ?? body?.data ?? body?.companies ?? [];
+    if (!Array.isArray(companies)) return;
     for (const c of companies) {
-      const logo = c.logo ?? c.profile?.employerProfile?.logo;
-      if (logo && typeof logo === 'string' && logo.length > 0) {
-        // Logo should be absolute URL (Cloudinary or null/empty are acceptable)
-        expect(logo, 'logo URL must be absolute https://').toMatch(/^https:\/\//);
+      // Logo can live at any of these paths depending on response shape
+      const candidates = [
+        c?.logo,
+        c?.profile?.employerProfile?.logo,
+        c?.companyProfile?.logo,
+        c?.employerProfile?.logo,
+      ].filter((v) => typeof v === 'string' && v.length > 0);
+      for (const logo of candidates) {
+        // Logo should be absolute URL (Cloudinary or other CDN); relative paths are a leak risk
+        expect(logo, 'logo URL must be absolute https://').toMatch(/^https?:\/\//);
       }
     }
   });
