@@ -422,5 +422,136 @@ describe('Users API - Integration Tests', () => {
 
       expect(response.status).toBe(403);
     });
+
+    it('admin can reject a pending-verification employer', async () => {
+      const { user: admin } = await createAdmin();
+      const { user: emp } = await createUnverifiedEmployer();
+
+      const response = await request(app)
+        .patch(`/api/users/admin/verify-employer/${emp._id}`)
+        .set(createAuthHeaders(admin))
+        .send({ action: 'reject', reason: 'Test rejection' });
+
+      expect(response.status).toBe(200);
+      const dbEmp = await User.findById(emp._id);
+      expect(dbEmp.profile.employerProfile.verificationStatus).toBe('rejected');
+    });
+
+    it('admin verify with invalid action returns 400', async () => {
+      const { user: admin } = await createAdmin();
+      const { user: emp } = await createUnverifiedEmployer();
+
+      const response = await request(app)
+        .patch(`/api/users/admin/verify-employer/${emp._id}`)
+        .set(createAuthHeaders(admin))
+        .send({ action: 'invalid-action' });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('admin verify on non-existent employer returns 404', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .patch('/api/users/admin/verify-employer/507f1f77bcf86cd799439099')
+        .set(createAuthHeaders(admin))
+        .send({ action: 'approve' });
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('GET /api/users/admin/pending-employers', () => {
+    it('admin can list pending employers', async () => {
+      const { user: admin } = await createAdmin();
+      await createUnverifiedEmployer();
+      await createUnverifiedEmployer();
+
+      const response = await request(app)
+        .get('/api/users/admin/pending-employers')
+        .set(createAuthHeaders(admin));
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.data.employers)).toBe(true);
+      expect(response.body.data.employers.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('non-admin cannot list pending employers', async () => {
+      const { user: js } = await createJobseeker();
+      const response = await request(app)
+        .get('/api/users/admin/pending-employers')
+        .set(createAuthHeaders(js));
+      expect(response.status).toBe(403);
+    });
+  });
+
+  describe('POST /api/users/saved-jobs/check-bulk', () => {
+    it('returns saved-status for each requested job id', async () => {
+      const { user: js } = await createJobseeker();
+      const { user: emp } = await createVerifiedEmployer();
+      const job1 = await createJob(emp);
+      const job2 = await createJob(emp);
+
+      // Save job1
+      await request(app)
+        .post(`/api/users/saved-jobs/${job1._id}`)
+        .set(createAuthHeaders(js));
+
+      const response = await request(app)
+        .post('/api/users/saved-jobs/check-bulk')
+        .set(createAuthHeaders(js))
+        .send({ jobIds: [job1._id.toString(), job2._id.toString()] });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.savedMap[job1._id.toString()]).toBe(true);
+      expect(response.body.data.savedMap[job2._id.toString()]).toBe(false);
+    });
+
+    it('returns empty savedMap for non-array jobIds (defensive)', async () => {
+      const { user: js } = await createJobseeker();
+      const response = await request(app)
+        .post('/api/users/saved-jobs/check-bulk')
+        .set(createAuthHeaders(js))
+        .send({ jobIds: 'not-an-array' });
+      expect(response.status).toBe(200);
+      expect(response.body.data.savedMap).toEqual({});
+    });
+
+    it('caps the request to 50 jobIds (more are silently truncated)', async () => {
+      const { user: js } = await createJobseeker();
+      const ids = Array.from({ length: 60 }, () => '507f1f77bcf86cd799439011');
+      const response = await request(app)
+        .post('/api/users/saved-jobs/check-bulk')
+        .set(createAuthHeaders(js))
+        .send({ jobIds: ids });
+      expect(response.status).toBe(200);
+      // Returned map keyed by id; only one unique key (all same id), so len 1
+      expect(Object.keys(response.body.data.savedMap).length).toBe(1);
+    });
+  });
+
+  describe('GET /api/users/saved-jobs/check/:jobId', () => {
+    it('reports true for a saved job, false for unsaved', async () => {
+      const { user: js } = await createJobseeker();
+      const { user: emp } = await createVerifiedEmployer();
+      const saved = await createJob(emp);
+      const unsaved = await createJob(emp);
+
+      await request(app)
+        .post(`/api/users/saved-jobs/${saved._id}`)
+        .set(createAuthHeaders(js));
+
+      const r1 = await request(app)
+        .get(`/api/users/saved-jobs/check/${saved._id}`)
+        .set(createAuthHeaders(js));
+      expect(r1.status).toBe(200);
+      expect(r1.body.data.saved).toBe(true);
+
+      const r2 = await request(app)
+        .get(`/api/users/saved-jobs/check/${unsaved._id}`)
+        .set(createAuthHeaders(js));
+      expect(r2.status).toBe(200);
+      expect(r2.body.data.saved).toBe(false);
+    });
   });
 });
