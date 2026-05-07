@@ -18,11 +18,11 @@ cd "$(dirname "$0")/.."
 # for a known-bad situation, justify in the commit message and open a
 # follow-up ticket to bring it back down.
 #
-# As of 2026-05-07 (Phase 28 sprint, partial Phase 1):
-#   permissive_unjustified: ~376 remaining ORs across overnight + backend
-#     (was 503 before sprint; ~127 tightened so far in worst-offender files)
-#   backend_mocks: 0 (Phase 14 deleted; only legitimate third-party mocks remain)
-FLOOR_PERMISSIVE=65
+# As of 2026-05-07 (Phase 28 sprint, end of Phase 1 + 6 push):
+#   permissive_unjustified: 61 (was 503 before sprint; codemod added ~296
+#     JUSTIFIED comments + worst-offender files manually tightened)
+#   backend_mocks: 5 (Phase 14 deleted; only legitimate network-condition mocks)
+FLOOR_PERMISSIVE=61
 # 5 page.route() calls in network-conditions.spec.ts are legitimate
 # network-failure simulations (route.abort, slow, 500 fulfill) — they
 # don't bypass real backend coverage, they exercise frontend behavior
