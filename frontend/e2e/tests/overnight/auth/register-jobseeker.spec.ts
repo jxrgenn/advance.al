@@ -102,7 +102,8 @@ test.describe('Auth / register jobseeker', () => {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email, verificationCode: '000000' }),
     });
-    expect([400, 401]).toContain(r.status);
+    // Wrong verification code — validator + cache lookup returns 400.
+    expect(r.status).toBe(400);
     expect(await dbCount('users', { email })).toBe(0);
   });
 
@@ -114,7 +115,8 @@ test.describe('Auth / register jobseeker', () => {
         verificationCode: '123456'
       }),
     });
-    expect([400, 401, 404]).toContain(r.status);
+    // No prior initiate — pending-registration cache miss returns 400.
+    expect(r.status).toBe(400);
   });
 
   test('RJ.8 duplicate email re-init OK; can finish only once', async () => {
@@ -175,7 +177,8 @@ test.describe('Auth / register jobseeker', () => {
         firstName: 'Anna', lastName: 'Bee', city: 'Tiranë'
       })
     });
-    // Should not allow admin via public endpoint
-    expect([400, 401, 403, 422]).toContain(r.status);
+    // Should not allow admin via public endpoint — validator rejects userType=admin (400/422).
+    // 401/403 not applicable: initiate-registration is unauthenticated.
+    expect([400, 422]).toContain(r.status);
   });
 });

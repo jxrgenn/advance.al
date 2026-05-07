@@ -46,7 +46,8 @@ test.describe('Auth / token refresh', () => {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({}),
     });
-    expect([400, 401]).toContain(r.status);
+    // Empty refreshToken body — validator rejects with 400.
+    expect(r.status).toBe(400);
   });
 
   test('TR.4 logout removes refresh token from user.refreshTokens', async () => {
@@ -65,6 +66,7 @@ test.describe('Auth / token refresh', () => {
       method: 'POST', headers: authHeaders(lb.data.token),
       body: JSON.stringify({ refreshToken: refresh }),
     });
+    // JUSTIFIED: logout legitimately returns 200 or 204.
     expect([200, 204]).toContain(out.status);
 
     const after = await dbFindOne('users', { email: js.email });

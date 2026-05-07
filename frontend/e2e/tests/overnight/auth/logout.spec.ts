@@ -29,6 +29,7 @@ test.describe('Auth / logout', () => {
       method: 'POST', headers: authHeaders(lb.data.token),
       body: JSON.stringify({ refreshToken: refresh }),
     });
+    // JUSTIFIED: logout legitimately returns 200 (with body) or 204 (no content) per Express convention.
     expect([200, 204]).toContain(r.status);
 
     // Refresh token should now be unusable
@@ -102,6 +103,8 @@ test.describe('Auth / logout', () => {
       method: 'POST', headers: authHeaders(lb.data.token),
       body: JSON.stringify({ refreshToken: refresh }),
     });
+    // JUSTIFIED: idempotent logout — server may treat second logout as success (200/204) or
+    // reject token as already-removed (400). Both are acceptable security postures.
     expect([200, 204, 400]).toContain(r2.status);
   });
 });

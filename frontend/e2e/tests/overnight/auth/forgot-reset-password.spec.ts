@@ -43,6 +43,8 @@ test.describe('Auth / forgot + reset password', () => {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ token, password: 'NewStrongPass456!', confirmPassword: 'NewStrongPass456!' }),
     });
+    // JUSTIFIED: token capture is best-effort (parses backend stdout) — may be 200 (captured + valid),
+    // 400 (couldn't parse), or 404 (parsed wrong value).
     expect([200, 400, 404]).toContain(r.status);
 
     if (r.status === 200) {
@@ -63,7 +65,9 @@ test.describe('Auth / forgot + reset password', () => {
         confirmPassword: 'AnyStrongPass123!'
       }),
     });
-    expect([400, 401, 404]).toContain(r.status);
+    // JUSTIFIED: garbage reset token — server may reject as 400 (validator) or 404 (token-not-found lookup).
+    // 401 not applicable: reset-password endpoint isn't auth-gated.
+    expect([400, 404]).toContain(r.status);
   });
 
   test('FR.5 reset password mismatch → 400', async () => {
@@ -101,7 +105,8 @@ test.describe('Auth / forgot + reset password', () => {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ token, password: 'AnotherPass789!', confirmPassword: 'AnotherPass789!' }),
       });
-      expect([400, 404, 401], 'reused reset token must be rejected').toContain(r2.status);
+      // JUSTIFIED: reused token — 400 (validator), 404 (token already consumed/cleared from store).
+      expect([400, 404], 'reused reset token must be rejected').toContain(r2.status);
     }
   });
 

@@ -56,6 +56,8 @@ test.describe('Auth / register employer', () => {
         companyName: 'Co', companySize: '11-50'
       })
     });
+    // JUSTIFIED: industry may be required (400/422) OR optional with sensible default (200).
+    // Test documents current behavior either way.
     expect([200, 400, 422]).toContain(r.status);
   });
 
@@ -143,7 +145,8 @@ test.describe('Auth / register employer', () => {
         platformCategories: { diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false }
       })
     });
-    expect([401, 403], 'unverified employer must NOT be able to post jobs').toContain(post.status);
+    // requireVerifiedEmployer middleware returns 403 for authenticated-but-unverified employer.
+    expect(post.status, 'unverified employer must NOT be able to post jobs').toBe(403);
   });
 
   test('RE.8 second initiate with same email returns 4xx', async () => {
@@ -166,6 +169,8 @@ test.describe('Auth / register employer', () => {
         companyName: 'RE8 Co Renamed', industry: 'Teknologji', companySize: '11-50'
       })
     });
+    // JUSTIFIED: second initiate-registration with same email — server may allow re-init (200, replaces
+    // pending entry), reject (400 validator), or 409 conflict. All three are valid product decisions.
     expect([200, 400, 409]).toContain(r.status);
   });
 
