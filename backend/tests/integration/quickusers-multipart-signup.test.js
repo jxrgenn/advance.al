@@ -112,7 +112,7 @@ describe('quickusers.js — multipart signup path', () => {
       // Intentionally malformed JSON — try { JSON.parse() } catch leaves it as raw string
       .field('interests', '[not-valid-json');
 
-    // Validation should reject because interests isn't an array
-    expect([400, 422]).toContain(r.status);
+    // Validation should reject because interests isn't an array → 400
+    expect(r.status).toBe(400);
   });
 });

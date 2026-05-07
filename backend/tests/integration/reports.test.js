@@ -242,8 +242,7 @@ describe('Reports API - Integration Tests', () => {
         .post(`/api/reports/admin/${reportId}/action`)
         .set(createAuthHeaders(admin))
         .send({ action: 'no_action', reason: 'False alarm — closing without action.' });
-      // Action endpoint may return 200 or 201
-      expect([200, 201]).toContain(r.status);
+      expect(r.status).toBe(200);
     });
 
     it('non-admin cannot use POST /admin/:id/action (403)', async () => {

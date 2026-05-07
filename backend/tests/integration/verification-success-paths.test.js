@@ -52,7 +52,7 @@ describe('verification.js — success paths', () => {
     const reqRes = await request(app)
       .post('/api/verification/request')
       .send({ identifier: 'verify-success@example.com', method: 'email', userType: 'jobseeker' });
-    expect([200, 201]).toContain(reqRes.status);
+    expect(reqRes.status).toBe(200);
 
     const verifyRes = await request(app)
       .post('/api/verification/verify')
@@ -129,7 +129,8 @@ describe('verification.js — success paths', () => {
     const r = await request(app)
       .post('/api/verification/resend')
       .send({ identifier: 'resend@example.com', method: 'email' });
-    // Either 400 (rate-limited / no prior request found) or 200/201 (success)
-    expect([200, 201, 400]).toContain(r.status);
+    // /request was issued <1s ago → resend is in 60s cooldown → always 400.
+    expect(r.status).toBe(400);
+    expect(r.body.message).toMatch(/1 minutë|prisni/i);
   }, 30000);
 });
