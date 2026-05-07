@@ -53,7 +53,9 @@ describe('applications.js — POST /:id/message remaining type enum', () => {
       .post(`/api/applications/${application._id}/message`)
       .set(createAuthHeaders(emp))
       .send({ message: 'We would like to offer you the role at €1500/month', type: 'offer' });
-    expect([200, 201]).toContain(r.status);
+    expect(r.status).toBe(200);
+    const dbApp = await Application.findById(application._id);
+    expect(dbApp.messages[dbApp.messages.length - 1].type).toBe('offer');
   });
 
   it('type=rejection accepted (L653 enum)', async () => {
@@ -62,7 +64,9 @@ describe('applications.js — POST /:id/message remaining type enum', () => {
       .post(`/api/applications/${application._id}/message`)
       .set(createAuthHeaders(emp))
       .send({ message: 'Unfortunately we have decided to move forward with another candidate', type: 'rejection' });
-    expect([200, 201]).toContain(r.status);
+    expect(r.status).toBe(200);
+    const dbApp = await Application.findById(application._id);
+    expect(dbApp.messages[dbApp.messages.length - 1].type).toBe('rejection');
   });
 
   it('exactly-5000 char message accepted (boundary)', async () => {
@@ -93,7 +97,7 @@ describe('applications.js — POST /:id/message remaining type enum', () => {
       .post(`/api/applications/${application._id}/message`)
       .set(createAuthHeaders(js))
       .send({ message: '<script>alert(1)</script>plain content here', type: 'text' });
-    expect([200, 201]).toContain(r.status);
+    expect(r.status).toBe(200);
 
     const dbApp = await Application.findById(application._id);
     const lastMsg = dbApp.messages[dbApp.messages.length - 1];

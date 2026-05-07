@@ -53,7 +53,14 @@ describe('applications.js — POST /:id/message extras', () => {
       .post(`/api/applications/${app2._id}/message`)
       .set(createAuthHeaders(emp))
       .send({ message: 'When can you start?', type: 'text' });
-    expect([200, 201]).toContain(r.status);
+    expect(r.status).toBe(200);
+    expect(r.body.success).toBe(true);
+    const dbApp = await Application.findById(app2._id);
+    expect(dbApp.messages.length).toBeGreaterThanOrEqual(1);
+    const last = dbApp.messages[dbApp.messages.length - 1];
+    expect(last.from.toString()).toBe(emp._id.toString());
+    expect(last.message).toBe('When can you start?');
+    expect(last.type).toBe('text');
   });
 
   it('employer can send type=interview_invite (L650)', async () => {
@@ -62,7 +69,11 @@ describe('applications.js — POST /:id/message extras', () => {
       .post(`/api/applications/${app2._id}/message`)
       .set(createAuthHeaders(emp))
       .send({ message: 'Interview Friday at 10am', type: 'interview_invite' });
-    expect([200, 201]).toContain(r.status);
+    expect(r.status).toBe(200);
+    expect(r.body.success).toBe(true);
+    const dbApp = await Application.findById(app2._id);
+    const last = dbApp.messages[dbApp.messages.length - 1];
+    expect(last.type).toBe('interview_invite');
   });
 
   it('rejects empty message (L636-641)', async () => {
