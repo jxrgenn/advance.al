@@ -171,4 +171,59 @@ describe('Configuration API - Integration Tests', () => {
       expect([200, 201, 404]).toContain(response.status);
     });
   });
+
+  describe('GET /api/configuration/pricing', () => {
+    it('admin can fetch pricing settings', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .get('/api/configuration/pricing')
+        .set(createAuthHeaders(admin));
+      expect(response.status).toBe(200);
+    });
+
+    it('non-admin rejected (403)', async () => {
+      const { user: js } = await createJobseeker();
+      const response = await request(app)
+        .get('/api/configuration/pricing')
+        .set(createAuthHeaders(js));
+      expect(response.status).toBe(403);
+    });
+  });
+
+  describe('POST /api/configuration/:id/reset', () => {
+    it('reset on non-existent id returns 404', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .post('/api/configuration/507f1f77bcf86cd799439099/reset')
+        .set(createAuthHeaders(admin));
+      expect(response.status).toBe(404);
+    });
+
+    it('reset with malformed id returns 400', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .post('/api/configuration/not-an-objectid/reset')
+        .set(createAuthHeaders(admin));
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe('GET /api/configuration/audit/:id', () => {
+    it('audit on non-existent id returns 404 or empty', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .get('/api/configuration/audit/507f1f77bcf86cd799439099')
+        .set(createAuthHeaders(admin));
+      // 404 (not found) or 200 with empty array — both legitimate
+      expect([200, 404]).toContain(response.status);
+    });
+
+    it('audit with malformed id returns 400', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .get('/api/configuration/audit/not-an-objectid')
+        .set(createAuthHeaders(admin));
+      expect(response.status).toBe(400);
+    });
+  });
 });
