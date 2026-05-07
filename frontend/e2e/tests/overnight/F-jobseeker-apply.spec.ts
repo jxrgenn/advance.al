@@ -137,6 +137,7 @@ test.describe('Section F — Jobseeker apply + manage', () => {
       method: 'POST', headers: authHeaders(jsToken),
       body: JSON.stringify({ jobId: jobIds[1], applicationMethod: 'one_click' }),
     });
+    // JUSTIFIED: Conflict-detecting endpoint — 400 (validator) or 409 (resource exists).
     expect([400, 409]).toContain(r.status);
   });
 
@@ -172,6 +173,7 @@ test.describe('Section F — Jobseeker apply + manage', () => {
       method: 'POST', headers: authHeaders(jsToken),
       body: JSON.stringify({ jobId: jobIds[1], applicationMethod: 'one_click' }),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
   });
 
@@ -185,6 +187,7 @@ test.describe('Section F — Jobseeker apply + manage', () => {
       method: 'POST', headers: authHeaders(jsToken),
       body: JSON.stringify({ jobId: jobIds[2], applicationMethod: 'one_click' }),
     });
+    // JUSTIFIED: Combined — validator (400), wrong-role (403), or not-found (404).
     expect([400, 403, 404]).toContain(r.status);
   });
 

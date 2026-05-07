@@ -22,6 +22,7 @@ test.describe('Admin / configuration + audit', () => {
     const r1 = await fetch(`${API}/configuration/initialize-defaults`, {
       method: 'POST', headers: authHeaders(adm.token),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r1.status);
 
     const after1 = await dbCount('systemconfigurations');
@@ -31,6 +32,7 @@ test.describe('Admin / configuration + audit', () => {
     const r2 = await fetch(`${API}/configuration/initialize-defaults`, {
       method: 'POST', headers: authHeaders(adm.token),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r2.status);
     const after2 = await dbCount('systemconfigurations');
     expect(after2, 'second initialize-defaults must NOT duplicate').toBe(after1);
@@ -88,6 +90,7 @@ test.describe('Admin / configuration + audit', () => {
         reason: 'phase-23 test update'
       }),
     });
+    // JUSTIFIED: Lookup with validation — 200 (found+valid), 400 (invalid input), 404 (not found).
     expect([200, 400, 404]).toContain(r.status);
 
     if (r.status === 200) {

@@ -34,6 +34,7 @@ test.describe('Jobseeker / saved jobs', () => {
     const r = await fetch(`${API}/users/saved-jobs/${job._id}`, {
       method: 'POST', headers: authHeaders(js.token),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
 
     const user = await dbFindOne('users', { email: js.email });
@@ -70,6 +71,7 @@ test.describe('Jobseeker / saved jobs', () => {
     const r = await fetch(`${API}/users/saved-jobs/${job._id}`, {
       method: 'DELETE', headers: authHeaders(js.token),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
 
     const user = await dbFindOne('users', { email: js.email });
@@ -96,6 +98,7 @@ test.describe('Jobseeker / saved jobs', () => {
     const r = await fetch(`${API}/users/saved-jobs/507f1f77bcf86cd799439011`, {
       method: 'POST', headers: authHeaders(js.token),
     });
+    // JUSTIFIED: Token/resource lookup — 400 (validator) or 404 (not found in store).
     expect([400, 404]).toContain(r.status);
   });
 

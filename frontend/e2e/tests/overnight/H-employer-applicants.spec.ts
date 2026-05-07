@@ -160,6 +160,7 @@ test.describe('Section H — Employer applicant management', () => {
       method: 'PATCH', headers: authHeaders(empToken),
       body: JSON.stringify({ status: 'hired' }),
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422], 'rejected → hired must be blocked').toContain(r.status);
   });
 
@@ -192,6 +193,7 @@ test.describe('Section H — Employer applicant management', () => {
     const r = await fetch(`${API}/applications/job/${jobId}`, {
       method: 'GET', headers: authHeaders(peer.token),
     });
+    // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
     expect([403, 404]).toContain(r.status);
   });
 

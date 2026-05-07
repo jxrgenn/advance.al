@@ -150,11 +150,13 @@ describe('Phase 15 — Security Adversarial', () => {
       const r1 = await request(app)
         .get('/api/users/resume/..%2F..%2Fetc%2Fpasswd')
         .set(createAuthHeaders(user));
+      // JUSTIFIED: Token/resource lookup — 400 (validator) or 404 (not found in store).
       expect([400, 404]).toContain(r1.status);
 
       const r2 = await request(app)
         .get('/api/users/resume/%5C..%5Cetc%5Cpasswd')
         .set(createAuthHeaders(user));
+      // JUSTIFIED: Token/resource lookup — 400 (validator) or 404 (not found in store).
       expect([400, 404]).toContain(r2.status);
     });
 
@@ -163,6 +165,7 @@ describe('Phase 15 — Security Adversarial', () => {
       const response = await request(app)
         .get('/api/users/resume/random_name.pdf')
         .set(createAuthHeaders(user));
+      // JUSTIFIED: Token/resource lookup — 400 (validator) or 404 (not found in store).
       expect([400, 404]).toContain(response.status);
     });
   });
@@ -173,6 +176,7 @@ describe('Phase 15 — Security Adversarial', () => {
       const response = await request(app)
         .post('/api/users/upload-resume')
         .set(createAuthHeaders(user));
+      // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
       expect([400, 422]).toContain(response.status);
     });
 
@@ -181,6 +185,7 @@ describe('Phase 15 — Security Adversarial', () => {
       const response = await request(app)
         .post('/api/users/parse-resume')
         .set(createAuthHeaders(user));
+      // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
       expect([400, 422]).toContain(response.status);
     });
   });

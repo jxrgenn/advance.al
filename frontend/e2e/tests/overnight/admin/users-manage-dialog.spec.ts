@@ -33,6 +33,7 @@ test.describe('Admin / users manage actions', () => {
       method: 'PATCH', headers: authHeaders(adm.token),
       body: JSON.stringify({ action: 'activate' }),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
     const after = await dbFindOne('users', { _id: targetDoc._id });
     expect(after.status).toBe('active');
@@ -48,6 +49,7 @@ test.describe('Admin / users manage actions', () => {
       method: 'PATCH', headers: authHeaders(adm.token),
       body: JSON.stringify({ action: 'suspend', reason: 'spam', duration: 7 }),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
     const after = await dbFindOne('users', { _id: targetDoc._id });
     expect(after.status).toBe('suspended');
@@ -65,6 +67,7 @@ test.describe('Admin / users manage actions', () => {
       method: 'PATCH', headers: authHeaders(adm.token),
       body: JSON.stringify({ action: 'ban', reason: 'severe violation' }),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
     const after = await dbFindOne('users', { _id: targetDoc._id });
     expect(['banned', 'suspended']).toContain(after.status);
@@ -79,6 +82,7 @@ test.describe('Admin / users manage actions', () => {
       method: 'PATCH', headers: authHeaders(adm.token),
       body: JSON.stringify({ action: 'delete', reason: 'Permanent removal' }),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
     const after = await dbFindOne('users', { _id: targetDoc._id });
     expect(after.isDeleted, 'delete should soft-delete').toBe(true);
@@ -92,6 +96,7 @@ test.describe('Admin / users manage actions', () => {
       method: 'PATCH', headers: authHeaders(adm.token),
       body: JSON.stringify({ action: 'suspend', reason: 'self', duration: 1 }),
     });
+    // JUSTIFIED: Validator (400) or wrong-role (403) — both are deliberate rejections.
     expect([400, 403], 'admin should not be able to suspend themselves').toContain(r.status);
   });
 
@@ -104,6 +109,7 @@ test.describe('Admin / users manage actions', () => {
       method: 'PATCH', headers: authHeaders(adm.token),
       body: JSON.stringify({ action: 'NOT_AN_ACTION', reason: 'x' }),
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 
@@ -125,7 +131,7 @@ test.describe('Admin / users manage actions', () => {
       method: 'PATCH', headers: authHeaders(js.token),
       body: JSON.stringify({ action: 'suspend', reason: 'x', duration: 7 }),
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('UM.9 manage on suspended user can re-suspend / escalate to ban', async () => {
@@ -141,6 +147,7 @@ test.describe('Admin / users manage actions', () => {
       method: 'PATCH', headers: authHeaders(adm.token),
       body: JSON.stringify({ action: 'ban', reason: 'escalate' }),
     });
+    // JUSTIFIED: Idempotent endpoint — 200/204 (success) or 400 (already-removed token).
     expect([200, 204, 400]).toContain(r2.status);
   });
 
@@ -153,6 +160,7 @@ test.describe('Admin / users manage actions', () => {
       method: 'PATCH', headers: authHeaders(adm.token),
       body: JSON.stringify({ action: 'suspend', reason: 'inappropriate behavior', duration: 3 }),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
   });
 });

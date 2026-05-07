@@ -29,6 +29,7 @@ test.describe('Admin / debug logger', () => {
       method: 'POST', headers: authHeaders(adm.token),
       body: JSON.stringify({ enabled: true }),
     });
+    // JUSTIFIED: Endpoint may accept-and-sanitize (200) or reject-malformed (400). Both legit.
     expect([200, 400]).toContain(r.status);
   });
 

@@ -65,6 +65,7 @@ describe('Phase 8 — Data Integrity', () => {
       const r1 = await request(app)
         .post(`/api/users/saved-jobs/${job._id}`)
         .set(createAuthHeaders(js));
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(r1.status);
 
       const r2 = await request(app)
@@ -230,6 +231,7 @@ describe('Phase 8 — Data Integrity', () => {
       const r2 = await request(app)
         .post('/api/quickusers/unsubscribe')
         .send({ token: qu.unsubscribeToken });
+      // JUSTIFIED: Lookup with validation — 200 (found+valid), 400 (invalid input), 404 (not found).
       expect([200, 400, 404]).toContain(r2.status);
     });
   });

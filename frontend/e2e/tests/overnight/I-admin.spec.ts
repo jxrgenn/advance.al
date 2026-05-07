@@ -318,6 +318,7 @@ test.describe('Section I — Admin moderation', () => {
         deliveryChannels: { inApp: true, email: false },
       }),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
   });
 
@@ -334,6 +335,7 @@ test.describe('Section I — Admin moderation', () => {
         scheduledFor: future.toISOString(),
       }),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
   });
 
@@ -362,6 +364,7 @@ test.describe('Section I — Admin moderation', () => {
       method: 'POST', headers: authHeaders(adminToken),
       body: JSON.stringify({ enabled: true, reason: '[OVERNIGHT-I] Test toggle' }),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
     const audits = await dbFind('configurationaudits', {});
     expect(audits.length).toBeGreaterThanOrEqual(1);

@@ -228,6 +228,7 @@ describe('Auth API - Integration Tests', () => {
         .post('/api/auth/refresh')
         .send({ refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.bogus.signature' });
 
+      // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
       expect([400, 401]).toContain(response.status);
     });
   });
@@ -303,6 +304,7 @@ describe('Auth API - Integration Tests', () => {
 
       expect(known.status).toBe(unknown.status);
       // Both should return generic success message
+      // JUSTIFIED: HTTP convention — endpoint returns 200 (synchronous) or 202 (async accepted).
       expect([200, 202]).toContain(known.status);
     }, 30000);
   });

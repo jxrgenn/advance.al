@@ -39,12 +39,14 @@ test.describe('Admin / maintenance + emergency', () => {
       method: 'POST', headers: authHeaders(adm.token),
       body: JSON.stringify({ enabled: true, reason: 'Phase 23 test' }),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(onR.status);
 
     const offR = await fetch(`${API}/configuration/maintenance-mode`, {
       method: 'POST', headers: authHeaders(adm.token),
       body: JSON.stringify({ enabled: false }),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(offR.status);
   });
 

@@ -104,6 +104,7 @@ test.describe('Domain / verification', () => {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ token: 'invalid-token-string' }),
     });
+    // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
     expect([400, 401]).toContain(r.status);
   });
 
@@ -111,6 +112,7 @@ test.describe('Domain / verification', () => {
     const email = `verify-status-${Date.now()}@example.com`;
     const r = await fetch(`${API}/verification/status/${encodeURIComponent(email)}`);
     // Either 200 with status or 404 if not found — both valid
+    // JUSTIFIED: Lookup endpoint — returns 200 if resource exists, 404 if not. Both legit.
     expect([200, 404]).toContain(r.status);
     if (r.status === 200) {
       const body = await r.json();

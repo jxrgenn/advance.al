@@ -259,6 +259,7 @@ test.describe('Section UJ-JOBSEEKER — logged-in real-UI flows', () => {
       method: 'POST', headers: authHeaders(jsToken),
       body: JSON.stringify({ jobId: jobIds[2], applicationMethod: 'one_click' }),
     });
+    // JUSTIFIED: Combined — validator (400), wrong-role (403), or not-found (404).
     expect([400, 403, 404]).toContain(r.status);
   });
 

@@ -69,6 +69,7 @@ test.describe('Domain / quickusers', () => {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ ...validBody, email }),
     });
+    // JUSTIFIED: Conflict-detecting endpoint — 400 (validator) or 409 (resource exists).
     expect([400, 409]).toContain(r2.status);
     expect(await dbCount('quickusers', { email })).toBe(1);
   });
@@ -97,6 +98,7 @@ test.describe('Domain / quickusers', () => {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ token: 'definitely-not-real-token' }),
     });
+    // JUSTIFIED: Token/resource lookup — 400 (validator) or 404 (not found in store).
     expect([400, 404]).toContain(r.status);
   });
 
@@ -113,6 +115,7 @@ test.describe('Domain / quickusers', () => {
       body: JSON.stringify({ token: before.unsubscribeToken, jobId: '507f1f77bcf86cd799439011' }),
     });
     // Track-click endpoint may return 200 or 404 depending on jobId existence — both ok if it processed.
+    // JUSTIFIED: Lookup endpoint — returns 200 if resource exists, 404 if not. Both legit.
     expect([200, 404]).toContain(r.status);
   });
 
@@ -158,6 +161,7 @@ test.describe('Domain / quickusers', () => {
         preferences: { emailFrequency: 'daily', remoteWork: true }
       })
     });
+    // JUSTIFIED: Lookup with validation — 200 (found+valid), 400 (invalid input), 404 (not found).
     expect([200, 400, 404]).toContain(r.status);
     if (r.status === 200) {
       const after = await dbFindOne('quickusers', { email });
@@ -187,6 +191,7 @@ test.describe('Domain / quickusers', () => {
       method: 'POST', headers: authHeaders(adm.token),
       body: JSON.stringify({}),
     });
+    // JUSTIFIED: Endpoint may accept-and-sanitize (200) or reject-malformed (400). Both legit.
     expect([200, 400]).toContain(r.status);
   });
 });

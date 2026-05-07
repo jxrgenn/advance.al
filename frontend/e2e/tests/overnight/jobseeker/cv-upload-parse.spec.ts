@@ -33,6 +33,7 @@ test.describe('Jobseeker / CV upload + parse', () => {
     });
     // 503 is the documented response when Cloudinary creds are not configured
     // (test env uses placeholder values); real-prod flow returns 200.
+    // JUSTIFIED: File-upload — success/created/validator-reject/service-unavailable.
     expect([200, 201, 400, 503]).toContain(r.status());
   });
 
@@ -54,6 +55,7 @@ test.describe('Jobseeker / CV upload + parse', () => {
     });
     // 503 when OpenAI key/Cloudinary creds missing in test env, 400 if magic
     // bytes / minimum text fail, 200 in production-like setup.
+    // JUSTIFIED: File-upload — success/created/validator-reject/service-unavailable.
     expect([200, 201, 400, 503]).toContain(r.status());
   });
 
@@ -65,6 +67,7 @@ test.describe('Jobseeker / CV upload + parse', () => {
       headers: { Authorization: `Bearer ${js.token}` },
       multipart: { photo: { name: 'face.jpg', mimeType: 'image/jpeg', buffer: jpeg } }
     });
+    // JUSTIFIED: File-upload — success/created/validator-reject/service-unavailable.
     expect([200, 201, 400, 503]).toContain(r.status());
   });
 

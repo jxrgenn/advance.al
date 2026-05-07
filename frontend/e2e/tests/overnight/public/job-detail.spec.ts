@@ -72,6 +72,7 @@ test.describe('Public / job detail', () => {
     const job = await makeJob(emp.token);
     await dbUpdate('jobs', { _id: job._id }, { $set: { status: 'closed' } });
     const r = await fetch(`${API}/jobs/${job._id}`);
+    // JUSTIFIED: Lookup endpoint — returns 200 if resource exists, 404 if not. Both legit.
     expect([200, 404]).toContain(r.status);
   });
 
@@ -79,6 +80,7 @@ test.describe('Public / job detail', () => {
     const emp = await makeEmployer({ preApprove: true });
     const job = await makeJob(emp.token);
     const r = await fetch(`${API}/jobs/${job._id}/similar`);
+    // JUSTIFIED: Lookup endpoint — returns 200 if resource exists, 404 if not. Both legit.
     expect([200, 404]).toContain(r.status);
     if (r.status === 200) {
       const body = await r.json();

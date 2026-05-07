@@ -69,6 +69,7 @@ test.describe('Admin / embeddings management', () => {
     const r = await fetch(`${API}/admin/embeddings/recompute-all`, {
       method: 'POST', headers: authHeaders(adm.token),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (synchronous) or 202 (async accepted).
     expect([200, 202]).toContain(r.status);
     const queueAfter = await dbCount('jobqueues');
     expect(queueAfter, 'recompute-all should add tasks to JobQueue').toBeGreaterThanOrEqual(queueBefore);
@@ -96,6 +97,7 @@ test.describe('Admin / embeddings management', () => {
     const r = await fetch(`${API}/admin/embeddings/retry-failed`, {
       method: 'POST', headers: authHeaders(adm.token),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (synchronous) or 202 (async accepted).
     expect([200, 202]).toContain(r.status);
 
     const failedAfter = await dbCount('jobqueues', { status: 'failed' });
@@ -120,6 +122,7 @@ test.describe('Admin / embeddings management', () => {
     const r = await fetch(`${API}/admin/embeddings/clear-old-queue`, {
       method: 'POST', headers: authHeaders(adm.token),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (synchronous) or 202 (async accepted).
     expect([200, 202]).toContain(r.status);
   });
 });

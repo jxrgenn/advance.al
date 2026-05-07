@@ -83,6 +83,7 @@ test.describe('Phase 22.A — Auth EXHAUSTIVE', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: upper, verificationCode: code })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
     const users = await dbFind('users', { email: lower });
     expect(users.length).toBe(1);
@@ -263,6 +264,7 @@ test.describe('Phase 22.A — Auth EXHAUSTIVE', () => {
       headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ currentPassword: 'wrong', newPassword: 'NewStrong456!' })
     });
+    // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
     expect([400, 401]).toContain(r.status);
   });
 
@@ -323,6 +325,7 @@ test.describe('Phase 22.A — Auth EXHAUSTIVE', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ token: 'fake-token-does-not-exist', password: 'NewPass123!' })
     });
+    // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
     expect([400, 401]).toContain(r.status);
   });
 
@@ -359,6 +362,7 @@ test.describe('Phase 22.A — Auth EXHAUSTIVE', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ token: knownToken, password: 'PostReset789!' })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
 
     const login = await fetch(`${API}/auth/login`, {
@@ -395,6 +399,7 @@ test.describe('Phase 22.A — Auth EXHAUSTIVE', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ token: knownToken, password: 'ReusePass1!' })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r1.status);
 
     // Second use fails (token cleared)
@@ -403,6 +408,7 @@ test.describe('Phase 22.A — Auth EXHAUSTIVE', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ token: knownToken, password: 'ReusePass2!' })
     });
+    // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
     expect([400, 401]).toContain(r2.status);
   });
 
@@ -450,6 +456,7 @@ test.describe('Phase 22.A — Auth EXHAUSTIVE', () => {
       headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ code })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
 
     const after = (await dbFind('users', { email }))[0];

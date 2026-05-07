@@ -57,6 +57,7 @@ test.describe('Phase A.17 — Resend / email security (chromium-desktop only)', 
       }),
     });
     expectNot5xx(r.status, 'CRLF in forgot-password email');
+    // JUSTIFIED: Public endpoint — accept (200), reject (400/422), or rate-limit (429).
     expect([200, 400, 422, 429]).toContain(r.status);
   });
 

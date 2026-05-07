@@ -57,6 +57,7 @@ describe('Phase 9 — Jobs Deeper Coverage', () => {
         .set(createAuthHeaders(emp2))
         .send({ title: 'Hacked Title' });
 
+      // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
       expect([403, 404]).toContain(response.status);
       const dbJob = await Job.findById(job._id);
       expect(dbJob.title).not.toBe('Hacked Title');
@@ -129,6 +130,7 @@ describe('Phase 9 — Jobs Deeper Coverage', () => {
         .post(`/api/jobs/${job._id}/renew`)
         .set(createAuthHeaders(emp));
 
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(response.status);
       const dbJob = await Job.findById(job._id);
       expect(new Date(dbJob.expiresAt).getTime()).toBeGreaterThanOrEqual(new Date(oldExpiry).getTime());
@@ -154,6 +156,7 @@ describe('Phase 9 — Jobs Deeper Coverage', () => {
         .post(`/api/jobs/${job._id}/renew`)
         .set(createAuthHeaders(emp2));
 
+      // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
       expect([403, 404]).toContain(response.status);
     });
 

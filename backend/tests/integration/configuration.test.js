@@ -143,6 +143,7 @@ describe('Configuration API - Integration Tests', () => {
       const response = await request(app)
         .post('/api/configuration/initialize-defaults')
         .set(createAuthHeaders(admin));
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(response.status);
     });
   });
@@ -166,6 +167,7 @@ describe('Configuration API - Integration Tests', () => {
         .send({ enabled: true, reason: 'test' });
       // Endpoint may return 200/201/404 depending on whether maintenance config exists.
       // Accept 404 in case initialize-defaults wasn't called first (not a regression).
+      // JUSTIFIED: Endpoint may create (200/201) or fail-not-found on cascade (404).
       expect([200, 201, 404]).toContain(response.status);
     });
   });

@@ -36,6 +36,7 @@ test.describe('Admin / reports queue', () => {
         description: 'Spamming the platform with low-quality content'
       }),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
     const body = await r.json();
     expect(body.success).toBe(true);
@@ -86,6 +87,7 @@ test.describe('Admin / reports queue', () => {
         reportedUserId: targetDoc._id, category: 'spam_behavior', description: 'first'
       }),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r1.status);
 
     const r2 = await fetch(`${API}/reports`, {
@@ -181,6 +183,7 @@ test.describe('Admin / reports queue', () => {
       method: 'PUT', headers: authHeaders(adm.token),
       body: JSON.stringify({ status: 'under_review', adminNotes: 'investigating' }),
     });
+    // JUSTIFIED: Lookup with validation — 200 (found+valid), 400 (invalid input), 404 (not found).
     expect([200, 400, 404]).toContain(r.status);
     if (r.status === 200) {
       const after = await dbFindOne('reports', { _id: created._id });

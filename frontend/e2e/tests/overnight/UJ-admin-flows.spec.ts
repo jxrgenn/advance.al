@@ -177,6 +177,7 @@ test.describe('Section UJ-ADMIN — admin moderation real-UI flows', () => {
         deliveryChannels: { inApp: true, email: false },
       }),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
   });
 });

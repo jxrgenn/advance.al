@@ -166,6 +166,7 @@ test.describe('Phase A.2 — API contract conformance (chromium-desktop only via
     if (id) {
       const r = await fetch(`${API}/companies/${id}`);
       expectNot5xx(r.status, '/api/companies/:id');
+      // JUSTIFIED: Lookup endpoint — returns 200 if resource exists, 404 if not. Both legit.
       expect([200, 404]).toContain(r.status);
     }
   });
@@ -178,6 +179,7 @@ test.describe('Phase A.2 — API contract conformance (chromium-desktop only via
   test('A2.16 /api/configuration/public returns settings', async () => {
     const r = await fetch(`${API}/configuration/public`);
     expectNot5xx(r.status, '/api/configuration/public');
+    // JUSTIFIED: Lookup endpoint — returns 200 if resource exists, 404 if not. Both legit.
     expect([200, 404]).toContain(r.status);
     if (r.status === 200) {
       const body = await r.json();
@@ -208,6 +210,7 @@ test.describe('Phase A.2 — API contract conformance (chromium-desktop only via
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({}),
     });
+    // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
     expect([400, 401]).toContain(r.status);
     const body = await r.json();
     expect(body.success).toBe(false);

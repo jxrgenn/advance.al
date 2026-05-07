@@ -240,6 +240,7 @@ test.describe('Section G — Employer post-job', () => {
       method: 'PUT', headers: authHeaders(peer.token),
       body: JSON.stringify({ title: '[OVERNIGHT-G] PEER ATTEMPTED HIJACK' }),
     });
+    // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
     expect([403, 404]).toContain(r.status);
   });
 

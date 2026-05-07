@@ -79,6 +79,7 @@ test.describe('Admin / dashboard', () => {
 
     const adm = await makeAdmin();
     const r = await fetch(`${API}/admin/analytics`, { headers: authHeaders(adm.token) });
+    // JUSTIFIED: Lookup endpoint — returns 200 if resource exists, 404 if not. Both legit.
     expect([200, 404]).toContain(r.status);
   });
 
@@ -88,6 +89,7 @@ test.describe('Admin / dashboard', () => {
 
     const adm = await makeAdmin();
     const r = await fetch(`${API}/admin/system-health`, { headers: authHeaders(adm.token) });
+    // JUSTIFIED: Lookup endpoint — returns 200 if resource exists, 404 if not. Both legit.
     expect([200, 404]).toContain(r.status);
   });
 });

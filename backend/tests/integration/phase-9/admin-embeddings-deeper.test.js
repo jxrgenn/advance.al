@@ -35,6 +35,7 @@ describe('Phase 9 — Admin Embeddings Deeper Coverage', () => {
       const response = await request(app)
         .post('/api/admin/embeddings/recompute-all')
         .set(createAuthHeaders(admin));
+      // JUSTIFIED: HTTP convention — POST returns 200/201/202 depending on sync/async/created.
       expect([200, 201, 202]).toContain(response.status);
     });
 
@@ -83,6 +84,7 @@ describe('Phase 9 — Admin Embeddings Deeper Coverage', () => {
         .delete(`/api/admin/embeddings/queue-item/${queueItem._id}`)
         .set(createAuthHeaders(admin));
 
+      // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
       expect([200, 204]).toContain(response.status);
       const remaining = await JobQueue.findById(queueItem._id);
       expect(remaining).toBeNull();

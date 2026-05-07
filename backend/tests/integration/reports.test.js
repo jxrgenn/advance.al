@@ -52,6 +52,7 @@ describe('Reports API - Integration Tests', () => {
           description: 'Sending unsolicited messages'
         });
 
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(response.status);
       const dbReport = await Report.findOne({ reportedUser: reported._id });
       expect(dbReport).toBeTruthy();
@@ -103,6 +104,7 @@ describe('Reports API - Integration Tests', () => {
           category: 'spam_behavior',
           description: 'first'
         });
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(first.status);
 
       const second = await request(app)

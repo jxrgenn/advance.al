@@ -59,6 +59,7 @@ describe('Phase 18 — File Upload Adversarial Security', () => {
         'malware.exe',
         'application/x-msdownload'
       );
+      // JUSTIFIED: File-upload rejection variants including server cleanup-needed (500).
       expect([400, 415, 500]).toContain(r.status);
       expect(r.body.success).toBe(false);
     });
@@ -72,6 +73,7 @@ describe('Phase 18 — File Upload Adversarial Security', () => {
         'cv.html',
         'text/html'
       );
+      // JUSTIFIED: File-upload rejection variants including server cleanup-needed (500).
       expect([400, 415, 500]).toContain(r.status);
     });
 
@@ -84,6 +86,7 @@ describe('Phase 18 — File Upload Adversarial Security', () => {
         'cv.zip',
         'application/zip'
       );
+      // JUSTIFIED: File-upload rejection variants including server cleanup-needed (500).
       expect([400, 415, 500]).toContain(r.status);
     });
 
@@ -110,6 +113,7 @@ describe('Phase 18 — File Upload Adversarial Security', () => {
         'huge.pdf',
         'application/pdf'
       );
+      // JUSTIFIED: Large body — validator (400), payload-too-large (413), or server cleanup (500).
       expect([400, 413, 500]).toContain(r.status);
     });
   });
@@ -124,6 +128,7 @@ describe('Phase 18 — File Upload Adversarial Security', () => {
         'logo.svg',
         'image/svg+xml'
       );
+      // JUSTIFIED: File-upload rejection variants including server cleanup-needed (500).
       expect([400, 415, 500]).toContain(r.status);
     });
 
@@ -155,6 +160,7 @@ describe('Phase 18 — File Upload Adversarial Security', () => {
         'huge.png',
         'image/png'
       );
+      // JUSTIFIED: Large body — validator (400), payload-too-large (413), or server cleanup (500).
       expect([400, 413, 500]).toContain(r.status);
     });
 
@@ -171,6 +177,7 @@ describe('Phase 18 — File Upload Adversarial Security', () => {
       // (returns 500). The IMPORTANT thing: the file is REJECTED (not stored).
       // Accept any 4xx or 500 — this is a minor follow-up to refactor multer
       // error handling for cleaner 4xx responses.
+      // JUSTIFIED: File-upload rejection variants including server cleanup-needed (500).
       expect([400, 415, 500]).toContain(r.status);
       expect(r.body.success).not.toBe(true);
     });

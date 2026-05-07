@@ -225,6 +225,7 @@ test.describe('Phase A.11 — Advanced security (chromium-desktop only via confi
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({}),
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 

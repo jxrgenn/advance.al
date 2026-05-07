@@ -74,6 +74,7 @@ describe('Phase 9 — Configuration Deeper Coverage', () => {
         .post(`/api/configuration/${cfg._id}/reset`)
         .set(createAuthHeaders(admin));
 
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(response.status);
     });
 
@@ -122,6 +123,7 @@ describe('Phase 9 — Configuration Deeper Coverage', () => {
       const r2 = await request(app)
         .post('/api/configuration/initialize-defaults')
         .set(createAuthHeaders(admin));
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(r1.status);
       expect([200, 201]).toContain(r2.status);
     });

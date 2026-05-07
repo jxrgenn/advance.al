@@ -66,6 +66,7 @@ test.describe('Jobseeker / applications list', () => {
       body: JSON.stringify({ jobId: job._id, coverLetter: 'cover ' + 'x'.repeat(40), applicationMethod: 'one_click' })
     });
     const r = await fetch(`${API}/applications/applied-jobs`, { headers: authHeaders(js.token) });
+    // JUSTIFIED: Lookup endpoint — returns 200 if resource exists, 404 if not. Both legit.
     expect([200, 404]).toContain(r.status);
     if (r.status === 200) {
       const body = await r.json();

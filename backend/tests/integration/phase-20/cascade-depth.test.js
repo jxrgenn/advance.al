@@ -221,6 +221,7 @@ describe('Phase 20D — Cascade Depth Verification', () => {
         .set(createAuthHeaders(emp))
         .send({ message: 'Hello applicant', type: 'text' });
 
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(res.status);
 
       // 1. Message persisted on the Application

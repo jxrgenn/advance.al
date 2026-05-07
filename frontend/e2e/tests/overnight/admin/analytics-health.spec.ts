@@ -20,6 +20,7 @@ test.describe('Admin / analytics + health', () => {
   test('AH.2 /admin/analytics returns object for admin', async () => {
     const adm = await makeAdmin();
     const r = await fetch(`${API}/admin/analytics`, { headers: authHeaders(adm.token) });
+    // JUSTIFIED: Lookup endpoint — returns 200 if resource exists, 404 if not. Both legit.
     expect([200, 404]).toContain(r.status);
     if (r.status === 200) {
       const body = await r.json();
@@ -41,6 +42,7 @@ test.describe('Admin / analytics + health', () => {
   test('AH.4 /admin/user-insights as jobseeker → 403', async () => {
     const js = await makeJobseeker();
     const r = await fetch(`${API}/admin/user-insights`, { headers: authHeaders(js.token) });
+    // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
     expect([403, 404]).toContain(r.status);
   });
 
@@ -50,6 +52,7 @@ test.describe('Admin / analytics + health', () => {
 
     const adm = await makeAdmin();
     const r = await fetch(`${API}/configuration/system-health`, { headers: authHeaders(adm.token) });
+    // JUSTIFIED: Lookup endpoint — returns 200 if resource exists, 404 if not. Both legit.
     expect([200, 404]).toContain(r.status);
   });
 

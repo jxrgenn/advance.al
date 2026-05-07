@@ -224,6 +224,7 @@ test.describe('Phase A.4 — Adversarial probes (chromium-desktop only via confi
       headers: { 'content-type': 'application/json' },
       body: '',
     });
+    // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
     expect([400, 401]).toContain(r.status);
   });
 
@@ -233,6 +234,7 @@ test.describe('Phase A.4 — Adversarial probes (chromium-desktop only via confi
       headers: { 'content-type': 'application/json' },
       body: '{not-valid-json',
     });
+    // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
     expect([400, 401]).toContain(r.status);
   });
 });

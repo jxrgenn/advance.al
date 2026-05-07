@@ -75,6 +75,7 @@ describe('Phase 18 — Cascade + Business-Logic Edges', () => {
       const r = await request(app)
         .post(`/api/jobs/${job._id}/renew`)
         .set(createAuthHeaders(emp));
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(r.status);
 
       const dbJob = await Job.findById(job._id);
@@ -185,6 +186,7 @@ describe('Phase 18 — Cascade + Business-Logic Edges', () => {
         .post(`/api/applications/${application._id}/message`)
         .set(createAuthHeaders(emp))
         .send({ message: `t-${type}`, type });
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(r.status);
     });
 
@@ -194,6 +196,7 @@ describe('Phase 18 — Cascade + Business-Logic Edges', () => {
         .post(`/api/applications/${application._id}/message`)
         .set(createAuthHeaders(applicant))
         .send({ message: `t-${type}`, type });
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(r.status);
     });
   });

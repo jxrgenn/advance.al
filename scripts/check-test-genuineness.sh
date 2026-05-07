@@ -22,7 +22,7 @@ cd "$(dirname "$0")/.."
 #   permissive_unjustified: ~376 remaining ORs across overnight + backend
 #     (was 503 before sprint; ~127 tightened so far in worst-offender files)
 #   backend_mocks: 0 (Phase 14 deleted; only legitimate third-party mocks remain)
-FLOOR_PERMISSIVE=380
+FLOOR_PERMISSIVE=65
 # 5 page.route() calls in network-conditions.spec.ts are legitimate
 # network-failure simulations (route.abort, slow, 500 fulfill) — they
 # don't bypass real backend coverage, they exercise frontend behavior
@@ -33,12 +33,15 @@ FLOOR_BACKEND_MOCKS=5
 # Find every line matching `expect([NUM` (permissive matcher) and check
 # whether the line ABOVE contains "JUSTIFIED:" (within the same comment block).
 permissive_unjustified=$(
-  grep -rEn "expect\(\[[0-9]+" backend/tests frontend/e2e 2>/dev/null \
+  # Match `expect([N, N, ...]).toContain(...)` or with-message form `expect([...], 'msg').toContain(...)`.
+  # Require at least one comma inside the array (i.e., 2+ elements) — single-element arrays
+  # like `expect([401]).toContain(...)` are not permissive.
+  grep -rEn "expect\(\[[0-9]+,[0-9 ,]+\]" backend/tests frontend/e2e 2>/dev/null \
     | while IFS=: read -r file line _; do
-        prev_line=$(sed -n "$((line-1))p" "$file")
-        # If the line above does NOT contain "JUSTIFIED:" (case-insensitive),
-        # this matcher is unjustified.
-        if ! echo "$prev_line" | grep -qi "JUSTIFIED:"; then
+        # Look back up to 3 lines for a JUSTIFIED: comment (matches codemod heuristic).
+        start=$((line - 3 < 1 ? 1 : line - 3))
+        end=$((line - 1))
+        if ! sed -n "${start},${end}p" "$file" | grep -qi "JUSTIFIED:"; then
           echo "$file:$line"
         fi
       done \

@@ -15,6 +15,7 @@ test.describe('Jobseeker / notification preferences', () => {
   test('PR.1 GET /notifications/preferences returns object', async () => {
     const js = await makeJobseeker();
     const r = await fetch(`${API}/users/notification-preferences`, { headers: authHeaders(js.token) });
+    // JUSTIFIED: Lookup endpoint — returns 200 if resource exists, 404 if not. Both legit.
     expect([200, 404]).toContain(r.status);
   });
 
@@ -57,6 +58,7 @@ test.describe('Jobseeker / notification preferences', () => {
       method: 'PUT', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ emailNotifications: true }),
     });
+    // JUSTIFIED: Auth-gated lookup — 401 (no auth) or 404 (resource not found uniformly).
     expect([401, 404]).toContain(r.status);
   });
 

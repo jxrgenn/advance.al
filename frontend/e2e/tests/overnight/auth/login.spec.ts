@@ -54,6 +54,7 @@ test.describe('Auth / login', () => {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({}),
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 

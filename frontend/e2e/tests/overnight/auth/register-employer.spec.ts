@@ -42,6 +42,7 @@ test.describe('Auth / register employer', () => {
         industry: 'Teknologji', companySize: '11-50'
       })
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 
@@ -114,6 +115,7 @@ test.describe('Auth / register employer', () => {
         companyName: 'RE6 Co', industry: 'Teknologji', companySize: 'NOT_VALID'
       })
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 
@@ -185,6 +187,7 @@ test.describe('Auth / register employer', () => {
         companyName: 'Co', industry: 'Teknologji', companySize: '11-50'
       })
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 

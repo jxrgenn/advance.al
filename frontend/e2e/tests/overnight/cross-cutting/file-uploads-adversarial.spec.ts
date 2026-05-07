@@ -24,6 +24,7 @@ test.describe('Cross-cutting / file upload adversarial', () => {
       headers: { Authorization: `Bearer ${js.token}` },
       ...formData
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status());
   });
 
@@ -50,6 +51,7 @@ test.describe('Cross-cutting / file upload adversarial', () => {
     });
     // Magic-byte validator returns 400; if the file passes that and Cloudinary
     // is missing creds, the route returns 503. Either is "not accepted".
+    // JUSTIFIED: File-upload rejection — validator/MIME/schema/service-unavailable.
     expect([400, 415, 422, 503]).toContain(r.status());
   });
 
@@ -60,6 +62,7 @@ test.describe('Cross-cutting / file upload adversarial', () => {
       headers: { Authorization: `Bearer ${js.token}` },
       multipart: { resume: { name: 'note.pdf', mimeType: 'application/pdf', buffer: txt } }
     });
+    // JUSTIFIED: File-upload rejection — validator/MIME/schema.
     expect([400, 415, 422]).toContain(r.status());
   });
 
@@ -85,6 +88,7 @@ test.describe('Cross-cutting / file upload adversarial', () => {
       multipart: { resume: { name: '../../../etc/passwd.pdf', mimeType: 'application/pdf', buffer: buf } }
     });
     // Safe handling regardless of Cloudinary availability.
+    // JUSTIFIED: File-upload — success/created/validator-reject/service-unavailable.
     expect([200, 201, 400, 503]).toContain(r.status());
   });
 
@@ -116,6 +120,7 @@ test.describe('Cross-cutting / file upload adversarial', () => {
     // Cloudinary may be unconfigured in test env (returns 503), or backend
     // accepts the PDF and the test env returns 200/201. Either is fine; we
     // are checking the validator path, not the Cloudinary integration.
+    // JUSTIFIED: File-upload — success/created/validator-reject/service-unavailable.
     expect([200, 201, 400, 503]).toContain(r.status());
   });
 
@@ -126,6 +131,7 @@ test.describe('Cross-cutting / file upload adversarial', () => {
       headers: { Authorization: `Bearer ${js.token}` },
       multipart: { logo: { name: 'logo.jpg', mimeType: 'image/jpeg', buffer: buf } }
     });
+    // JUSTIFIED: Combined — validator (400), wrong-role (403), or not-found (404).
     expect([400, 403, 404]).toContain(r.status());
   });
 });

@@ -67,6 +67,7 @@ describe('Phase 9 — Business Control Deeper Coverage', () => {
         const response = await request(app)
           .post(`/api/business-control/pricing-rules/${rule._id}/toggle`)
           .set(createAuthHeaders(admin));
+        // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
         expect([200, 201]).toContain(response.status);
       }
     });

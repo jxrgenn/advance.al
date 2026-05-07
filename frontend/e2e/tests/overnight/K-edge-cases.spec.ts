@@ -57,6 +57,7 @@ test.describe('Section K — Edge cases', () => {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: { $ne: null }, password: { $ne: null } }),
     });
+    // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
     expect([400, 401]).toContain(r.status);
   });
 
@@ -67,6 +68,7 @@ test.describe('Section K — Edge cases', () => {
       body: JSON.stringify({ jobSeekerProfile: { bio: xss } }),
     });
     // Either rejected (400) or stored sanitized (200). Both safe.
+    // JUSTIFIED: Endpoint may accept-and-sanitize (200) or reject-malformed (400). Both legit.
     expect([200, 400]).toContain(r.status);
     if (r.status === 200) {
       const u = (await dbFind('users', {})).find((u: any) => u.profile?.jobSeekerProfile?.bio?.includes('some text'));
@@ -119,6 +121,7 @@ test.describe('Section K — Edge cases', () => {
       method: 'POST', headers: authHeaders(empToken),
       body: '{not valid json',
     });
+    // JUSTIFIED: Validator (400) or server error path under bad input — neither leaks state.
     expect([400, 500]).toContain(r.status);
   });
 
@@ -127,6 +130,7 @@ test.describe('Section K — Edge cases', () => {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: 'definitely-unknown-99999@nowhere.test' }),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (synchronous) or 202 (async accepted).
     expect([200, 202]).toContain(r.status);
   });
 

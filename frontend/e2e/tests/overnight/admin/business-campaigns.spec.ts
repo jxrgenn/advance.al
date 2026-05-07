@@ -47,6 +47,7 @@ test.describe('Admin / business campaigns', () => {
       method: 'POST', headers: authHeaders(adm.token),
       body: JSON.stringify(validCampaign()),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
     const body = await r.json();
     expect(body.success).toBe(true);
@@ -109,6 +110,7 @@ test.describe('Admin / business campaigns', () => {
       method: 'PUT', headers: authHeaders(adm.token),
       body: JSON.stringify({ name: 'Updated Name' }),
     });
+    // JUSTIFIED: Lookup with validation — 200 (found+valid), 400 (invalid input), 404 (not found).
     expect([200, 400, 404]).toContain(r.status);
     if (r.status === 200) {
       const after = await dbFindOne('businesscampaigns', { _id: created._id });
@@ -127,6 +129,7 @@ test.describe('Admin / business campaigns', () => {
     const r = await fetch(`${API}/business-control/campaigns/${created._id}/activate`, {
       method: 'POST', headers: authHeaders(adm.token),
     });
+    // JUSTIFIED: Lookup with validation — 200 (found+valid), 400 (invalid input), 404 (not found).
     expect([200, 400, 404]).toContain(r.status);
     if (r.status === 200) {
       const after = await dbFindOne('businesscampaigns', { _id: created._id });

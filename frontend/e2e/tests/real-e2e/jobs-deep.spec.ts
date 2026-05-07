@@ -69,6 +69,7 @@ test.describe('Phase 22.B — Jobs EXHAUSTIVE', () => {
       title: 'B4 Job',
       salary: { min: 5000, max: 1000, currency: 'EUR', period: 'monthly' }
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(status);
   });
 
@@ -111,6 +112,7 @@ test.describe('Phase 22.B — Jobs EXHAUSTIVE', () => {
         headers: authHeaders(token),
         body: JSON.stringify({ location: { city: 'Durrës' } })
       });
+      // JUSTIFIED: Conditional create — 200/201 (created) or 404 (referenced resource missing).
       expect([200, 201, 404]).toContain(r2.status);
     }
   });
@@ -125,6 +127,7 @@ test.describe('Phase 22.B — Jobs EXHAUSTIVE', () => {
       headers: authHeaders(token),
       body: JSON.stringify({ status: 'closed' })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
 
     const job = (await dbFind('jobs', {}))[0];
@@ -155,6 +158,7 @@ test.describe('Phase 22.B — Jobs EXHAUSTIVE', () => {
     const r = await fetch(`${API}/jobs/${post.data.job._id}`, {
       method: 'DELETE', headers: authHeaders(empB)
     });
+    // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
     expect([403, 404]).toContain(r.status);
   });
 
@@ -306,6 +310,7 @@ test.describe('Phase 22.B — Jobs EXHAUSTIVE', () => {
     });
 
     const r = await fetch(`${API}/jobs/${jobId}/renew`, { method: 'POST', headers: authHeaders(token) });
+    // JUSTIFIED: Conditional create — 200/201 (created) or 404 (referenced resource missing).
     expect([200, 201, 404]).toContain(r.status);
     if ([200, 201].includes(r.status)) {
       const j = (await dbFind('jobs', {}))[0];

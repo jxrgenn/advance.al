@@ -35,6 +35,7 @@ test.describe('Employer / post-job wizard', () => {
         platformCategories: { diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false }
       })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
     const body = await r.json();
     expect(body.success).toBe(true);
@@ -56,6 +57,7 @@ test.describe('Employer / post-job wizard', () => {
         platformCategories: { diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false }
       })
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 
@@ -71,6 +73,7 @@ test.describe('Employer / post-job wizard', () => {
         platformCategories: { diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false }
       })
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 
@@ -86,6 +89,7 @@ test.describe('Employer / post-job wizard', () => {
         platformCategories: { diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false }
       })
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 
@@ -101,6 +105,7 @@ test.describe('Employer / post-job wizard', () => {
         platformCategories: { diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false }
       })
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 
@@ -116,6 +121,7 @@ test.describe('Employer / post-job wizard', () => {
         platformCategories: { diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false }
       })
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 
@@ -160,7 +166,7 @@ test.describe('Employer / post-job wizard', () => {
         platformCategories: { diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false }
       })
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('PJ.10 post adds embedding task to JobQueue', async () => {
@@ -176,6 +182,7 @@ test.describe('Employer / post-job wizard', () => {
         platformCategories: { diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false }
       })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
     // setImmediate fanout — poll for the queue task to land.
     let after = before;
@@ -200,6 +207,7 @@ test.describe('Employer / post-job wizard', () => {
         platformCategories: { diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false }
       })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
     const tiraneAfter = await dbFindOne('locations', { city: 'Tiranë' });
     expect(tiraneAfter.jobCount, 'jobCount should increment').toBeGreaterThan(tiraneBefore.jobCount || 0);
@@ -219,6 +227,7 @@ test.describe('Employer / post-job wizard', () => {
         }
       })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
     const job = (await r.json()).data.job;
     expect(job.platformCategories?.diaspora).toBe(true);

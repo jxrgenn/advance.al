@@ -106,6 +106,7 @@ test.describe('Section UJ-DEEP — additional multi-step real-UI flows', () => {
       headers: authHeaders(jsToken),
     });
     // Some endpoints return 200 with JSON, some redirect to a download
+    // JUSTIFIED: POST may return 200/201 (created) or 302 (redirect to created resource).
     expect([200, 201, 302]).toContain(r.status);
     if (r.status === 200) {
       const b = await r.json().catch(() => null);
@@ -227,6 +228,7 @@ test.describe('Section UJ-DEEP — additional multi-step real-UI flows', () => {
       method: 'POST', headers: authHeaders(emp.token),
       body: JSON.stringify({ jobId, applicationMethod: 'one_click' }),
     });
+    // JUSTIFIED: Validator (400) or wrong-role (403) — both are deliberate rejections.
     expect([400, 403]).toContain(r.status);
   });
 
@@ -409,6 +411,7 @@ test.describe('Section UJ-DEEP — additional multi-step real-UI flows', () => {
         scheduledFor: future,
       }),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
   });
 
@@ -421,6 +424,7 @@ test.describe('Section UJ-DEEP — additional multi-step real-UI flows', () => {
       method: 'POST', headers: authHeaders(adm.token),
       body: JSON.stringify({ enabled: true, reason: '[OVERNIGHT-DEEP-Z24] toggle' }),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
     const audits = await dbFind('configurationaudits', {});
     expect(audits.length, 'audit row should exist').toBeGreaterThan(0);

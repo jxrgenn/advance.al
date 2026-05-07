@@ -39,6 +39,7 @@ test.describe('Auth / register jobseeker', () => {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: `rj2-${Date.now()}@example.com` }),
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 
@@ -50,6 +51,7 @@ test.describe('Auth / register jobseeker', () => {
         userType: 'jobseeker', firstName: 'Anna', lastName: 'Bee', city: 'Tiranë'
       })
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 
@@ -62,6 +64,7 @@ test.describe('Auth / register jobseeker', () => {
         userType: 'jobseeker', firstName: 'Anna', lastName: 'Bee', city: 'Tiranë'
       })
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 
@@ -143,6 +146,7 @@ test.describe('Auth / register jobseeker', () => {
         userType: 'jobseeker', firstName: 'Anna', lastName: 'Bee', city: 'Tiranë'
       })
     });
+    // JUSTIFIED: Conflict-detecting endpoint — 400 (validator) or 409 (resource exists).
     expect([400, 409]).toContain(r2.status);
   });
 
@@ -179,6 +183,7 @@ test.describe('Auth / register jobseeker', () => {
     });
     // Should not allow admin via public endpoint — validator rejects userType=admin (400/422).
     // 401/403 not applicable: initiate-registration is unauthenticated.
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 });

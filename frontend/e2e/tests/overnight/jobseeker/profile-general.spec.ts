@@ -29,6 +29,7 @@ test.describe('Jobseeker / profile general', () => {
       method: 'PUT', headers: authHeaders(js.token),
       body: JSON.stringify({ firstName: 'Updated', lastName: 'NameLong' }),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
 
     const after = await dbFindOne('users', { email: js.email });
@@ -62,6 +63,7 @@ test.describe('Jobseeker / profile general', () => {
         jobSeekerProfile: { skills: ['JavaScript', 'TypeScript', 'Node.js'] }
       }),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
     const after = await dbFindOne('users', { email: js.email });
     const skills = after.profile?.jobSeekerProfile?.skills || [];
@@ -86,6 +88,7 @@ test.describe('Jobseeker / profile general', () => {
         }
       }),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
 
     const after = await dbFindOne('users', { email: js.email });

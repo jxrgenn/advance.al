@@ -57,6 +57,7 @@ test.describe('Admin / users list + filter', () => {
     const jsDoc = await dbFindOne('users', { email: js.email });
 
     const r = await fetch(`${API}/admin/users/${jsDoc._id}`, { headers: authHeaders(adm.token) });
+    // JUSTIFIED: Lookup endpoint — returns 200 if resource exists, 404 if not. Both legit.
     expect([200, 404]).toContain(r.status);
     if (r.status === 200) {
       const body = await r.json();

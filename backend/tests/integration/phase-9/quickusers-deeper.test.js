@@ -46,6 +46,7 @@ describe('Phase 9 — QuickUsers Deeper Coverage', () => {
       const response = await request(app)
         .post('/api/quickusers/track-click')
         .send({});
+      // JUSTIFIED: Token/resource lookup — 400 (validator) or 404 (not found in store).
       expect([400, 404]).toContain(response.status);
     });
   });

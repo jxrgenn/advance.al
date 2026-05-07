@@ -28,9 +28,11 @@ describe('Phase 9 — Verification Deeper', () => {
   describe('POST /api/verification/validate-token (public)', () => {
     it('rejects malformed/missing token → 400/401', async () => {
       const r1 = await request(app).post('/api/verification/validate-token').send({});
+      // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
       expect([400, 401]).toContain(r1.status);
 
       const r2 = await request(app).post('/api/verification/validate-token').send({ token: 'short' });
+      // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
       expect([400, 401]).toContain(r2.status);
     });
   });

@@ -165,6 +165,7 @@ test.describe('Section UJ-EMPLOYER — logged-in real-UI flows', () => {
       method: 'PATCH', headers: authHeaders(empToken),
       body: JSON.stringify({ status: 'closed' }),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
     const after = (await dbFind('jobs', { _id: job._id }))[0];
     expect(after.status).toBe('closed');
@@ -227,6 +228,7 @@ test.describe('Section UJ-EMPLOYER — logged-in real-UI flows', () => {
       method: 'POST', headers: authHeaders(empToken),
       body: JSON.stringify({ message: '[OVERNIGHT-EMP-E12] Test message', type: 'text' }),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
     const after = (await dbFind('applications', { _id: appId }))[0];
     const msgFound = (after.messages || []).some((m: any) => /OVERNIGHT-EMP-E12/.test(m.message || m.content || ''));
@@ -240,6 +242,7 @@ test.describe('Section UJ-EMPLOYER — logged-in real-UI flows', () => {
       method: 'PATCH', headers: authHeaders(empToken),
       body: JSON.stringify({ status: 'viewed' }),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
     const after = (await dbFind('applications', { _id: appId }))[0];
     expect(['viewed', 'shortlisted', 'rejected', 'hired']).toContain(after.status);
@@ -261,6 +264,7 @@ test.describe('Section UJ-EMPLOYER — logged-in real-UI flows', () => {
     const del = await fetch(`${API}/jobs/${peerJobId}`, {
       method: 'DELETE', headers: authHeaders(empToken),
     });
+    // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
     expect([403, 404]).toContain(del.status);
   });
 

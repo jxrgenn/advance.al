@@ -296,6 +296,7 @@ test.describe('Phase A.12 — Source-code & secret exposure (chromium-desktop on
         // SPA fallback to HTML is fine
         expect(ct, `if 200, must be HTML SPA fallback`).toMatch(/text\/html/i);
       } else {
+        // JUSTIFIED: Combined — validator (400), wrong-role (403), or not-found (404).
         expect([400, 403, 404]).toContain(r.status);
       }
     });

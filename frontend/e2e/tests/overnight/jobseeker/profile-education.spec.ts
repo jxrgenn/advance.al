@@ -26,6 +26,7 @@ test.describe('Jobseeker / profile education', () => {
       method: 'POST', headers: authHeaders(js.token),
       body: JSON.stringify(validEdu),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
     const user = await dbFindOne('users', { email: js.email });
     const edu = user.profile?.jobSeekerProfile?.education || [];
@@ -38,6 +39,7 @@ test.describe('Jobseeker / profile education', () => {
       method: 'POST', headers: authHeaders(js.token),
       body: JSON.stringify({ institution: 'X' }),
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 
@@ -67,6 +69,7 @@ test.describe('Jobseeker / profile education', () => {
       method: 'PUT', headers: authHeaders(js.token),
       body: JSON.stringify({ ...validEdu, degree: 'Master' }),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
     const after = await dbFindOne('users', { email: js.email });
     const updated = after.profile?.jobSeekerProfile?.education?.find((e: any) => e._id?.toString() === eduId.toString());
@@ -86,6 +89,7 @@ test.describe('Jobseeker / profile education', () => {
     const r = await fetch(`${API}/users/education/${eduId}`, {
       method: 'DELETE', headers: authHeaders(js.token),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
     const after = (await dbFindOne('users', { email: js.email })).profile?.jobSeekerProfile?.education?.length || 0;
     expect(after).toBeLessThan(before);

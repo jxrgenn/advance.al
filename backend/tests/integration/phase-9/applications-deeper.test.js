@@ -64,6 +64,7 @@ describe('Phase 9 — Applications Deeper Coverage', () => {
         .get(`/api/applications/job/${job._id}`)
         .set(createAuthHeaders(empB));
 
+      // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
       expect([403, 404]).toContain(response.status);
     });
 
@@ -178,6 +179,7 @@ describe('Phase 9 — Applications Deeper Coverage', () => {
         .set(createAuthHeaders(emp))
         .send({ message: 'Welcome to interview', type: 'interview_invite' });
 
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(response.status);
 
       const dbApp = await Application.findById(application._id);
@@ -199,6 +201,7 @@ describe('Phase 9 — Applications Deeper Coverage', () => {
         .set(createAuthHeaders(outsider))
         .send({ message: 'spy', messageType: 'text' });
 
+      // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
       expect([403, 404]).toContain(response.status);
     });
 
@@ -231,6 +234,7 @@ describe('Phase 9 — Applications Deeper Coverage', () => {
           .post(`/api/applications/${application._id}/message`)
           .set(createAuthHeaders(emp))
           .send({ message: `msg ${messageType}`, type: messageType });
+        // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
         expect([200, 201]).toContain(response.status);
       }
 

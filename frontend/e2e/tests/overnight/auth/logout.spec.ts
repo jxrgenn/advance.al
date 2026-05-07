@@ -97,6 +97,7 @@ test.describe('Auth / logout', () => {
       method: 'POST', headers: authHeaders(lb.data.token),
       body: JSON.stringify({ refreshToken: refresh }),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r1.status);
 
     const r2 = await fetch(`${API}/auth/logout`, {

@@ -83,6 +83,7 @@ describe('Companies API - Integration Tests', () => {
 
     it('rejects malformed id', async () => {
       const response = await request(app).get('/api/companies/not-an-id');
+      // JUSTIFIED: Token/resource lookup — 400 (validator) or 404 (not found in store).
       expect([400, 404]).toContain(response.status);
     });
   });

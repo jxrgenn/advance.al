@@ -44,6 +44,7 @@ test.describe('Admin / pricing rules', () => {
       method: 'POST', headers: authHeaders(adm.token),
       body: JSON.stringify(validRule()),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
     const body = await r.json();
     expect(body.success).toBe(true);
@@ -93,6 +94,7 @@ test.describe('Admin / pricing rules', () => {
     const r = await fetch(`${API}/business-control/pricing-rules/${created._id}/toggle`, {
       method: 'POST', headers: authHeaders(adm.token),
     });
+    // JUSTIFIED: Lookup with validation — 200 (found+valid), 400 (invalid input), 404 (not found).
     expect([200, 400, 404]).toContain(r.status);
     if (r.status === 200) {
       const after = await dbFindOne('pricingrules', { _id: created._id });

@@ -40,6 +40,7 @@ test.describe('Employer / applicant messages', () => {
       method: 'POST', headers: authHeaders(emp.token),
       body: JSON.stringify({ message: 'Hello, interested in interview?', messageType: 'text' })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
 
     const after = await dbFindOne('applications', { _id: app._id });
@@ -56,6 +57,7 @@ test.describe('Employer / applicant messages', () => {
         messageType: 'interview_invite'
       })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
   });
 
@@ -68,6 +70,7 @@ test.describe('Employer / applicant messages', () => {
         messageType: 'offer'
       })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
   });
 
@@ -80,6 +83,7 @@ test.describe('Employer / applicant messages', () => {
         messageType: 'rejection'
       })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
   });
 
@@ -93,6 +97,7 @@ test.describe('Employer / applicant messages', () => {
       method: 'POST', headers: authHeaders(js.token),
       body: JSON.stringify({ message: 'Yes, available', messageType: 'text' })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
 
     const after = await dbFindOne('applications', { _id: app._id });
@@ -106,6 +111,7 @@ test.describe('Employer / applicant messages', () => {
       method: 'POST', headers: authHeaders(otherEmp.token),
       body: JSON.stringify({ message: 'I should not see this', messageType: 'text' })
     });
+    // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
     expect([403, 404]).toContain(r.status);
   });
 
@@ -124,6 +130,7 @@ test.describe('Employer / applicant messages', () => {
       method: 'POST', headers: authHeaders(emp.token),
       body: JSON.stringify({ message: 'x'.repeat(5001), messageType: 'text' })
     });
+    // JUSTIFIED: Express body-parser rejects with 413 (size limit) or 400 (parse failure).
     expect([400, 413]).toContain(r.status);
   });
 });

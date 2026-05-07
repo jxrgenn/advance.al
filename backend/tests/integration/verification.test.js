@@ -107,6 +107,7 @@ describe('Verification API - Integration Tests', () => {
         .post('/api/verification/validate-token')
         .send({ token: 'bogus-token' });
 
+      // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
       expect([400, 401]).toContain(response.status);
     });
   });

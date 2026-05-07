@@ -70,6 +70,7 @@ describe('Bulk Notifications API - Integration Tests', () => {
           deliveryChannels: { inApp: true, email: false }
         });
 
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(response.status);
 
       const dbBulk = await BulkNotification.findOne({ title: 'Test Announcement' });
@@ -105,6 +106,7 @@ describe('Bulk Notifications API - Integration Tests', () => {
           deliveryChannels: { inApp: true, email: false }
         });
 
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(response.status);
 
       const dbBulk = await BulkNotification.findOne({ title: 'Audience Test' });
@@ -155,6 +157,7 @@ describe('Bulk Notifications API - Integration Tests', () => {
         .delete(`/api/bulk-notifications/${bulk._id}`)
         .set(createAuthHeaders(admin));
 
+      // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
       expect([200, 204]).toContain(response.status);
     });
   });

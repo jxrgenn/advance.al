@@ -82,6 +82,7 @@ test.describe('Jobseeker / notifications dropdown', () => {
     const r = await fetch(`${API}/notifications/${target._id}/read`, {
       method: 'PATCH', headers: authHeaders(js.token),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
 
     const after = await dbFindOne('notifications', { _id: target._id });
@@ -98,6 +99,7 @@ test.describe('Jobseeker / notifications dropdown', () => {
     const r = await fetch(`${API}/notifications/mark-all-read`, {
       method: 'PATCH', headers: authHeaders(js.token),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
 
     const unreadCount = await dbCount('notifications', { userId: jsDoc._id, read: { $ne: true } });
@@ -115,6 +117,7 @@ test.describe('Jobseeker / notifications dropdown', () => {
     const r = await fetch(`${API}/notifications/${target._id}`, {
       method: 'DELETE', headers: authHeaders(js.token),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
     expect(await dbCount('notifications', { _id: target._id })).toBe(0);
   });
@@ -131,6 +134,7 @@ test.describe('Jobseeker / notifications dropdown', () => {
     const r = await fetch(`${API}/notifications/${target._id}`, {
       method: 'DELETE', headers: authHeaders(js2.token),
     });
+    // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
     expect([403, 404]).toContain(r.status);
     expect(await dbCount('notifications', { _id: target._id })).toBe(1);
   });

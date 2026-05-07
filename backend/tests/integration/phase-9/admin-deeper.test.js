@@ -125,6 +125,7 @@ describe('Phase 9 — Admin Deeper Coverage', () => {
         .set(createAuthHeaders(admin))
         .send({ action: 'approve' });
 
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(response.status);
       const dbJob = await Job.findById(job._id);
       expect(dbJob.status).toBe('active');
@@ -140,6 +141,7 @@ describe('Phase 9 — Admin Deeper Coverage', () => {
         .set(createAuthHeaders(admin))
         .send({ action: 'reject' });
 
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(response.status);
       const dbJob = await Job.findById(job._id);
       expect(dbJob.status).toBe('rejected');
@@ -181,6 +183,7 @@ describe('Phase 9 — Admin Deeper Coverage', () => {
         .post('/api/admin/backfill-user-embeddings')
         .set(createAuthHeaders(admin));
 
+      // JUSTIFIED: HTTP convention — POST returns 200/201/202 depending on sync/async/created.
       expect([200, 201, 202]).toContain(response.status);
     });
 
@@ -203,6 +206,7 @@ describe('Phase 9 — Admin Deeper Coverage', () => {
         .post('/api/admin/backfill-job-embeddings')
         .set(createAuthHeaders(admin));
 
+      // JUSTIFIED: HTTP convention — POST returns 200/201/202 depending on sync/async/created.
       expect([200, 201, 202]).toContain(response.status);
     });
   });

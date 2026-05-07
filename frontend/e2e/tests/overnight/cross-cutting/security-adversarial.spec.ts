@@ -54,6 +54,7 @@ test.describe('Cross-cutting / security adversarial', () => {
       body: JSON.stringify({ email: { $gt: '' }, password: { $gt: '' } })
     });
     expect(r.status).toBeLessThan(500);
+    // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
     expect([400, 401]).toContain(r.status);
   });
 

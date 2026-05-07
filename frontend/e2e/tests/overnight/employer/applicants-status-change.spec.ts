@@ -42,6 +42,7 @@ test.describe('Employer / applicants status change', () => {
       method: 'PATCH', headers: authHeaders(emp.token),
       body: JSON.stringify({ status: 'viewed' })
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
 
     const after = await dbFindOne('applications', { _id: app._id });
@@ -59,6 +60,7 @@ test.describe('Employer / applicants status change', () => {
       method: 'PATCH', headers: authHeaders(emp.token),
       body: JSON.stringify({ status: 'shortlisted' })
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
     const after = await dbFindOne('applications', { _id: app._id });
     expect(after.status).toBe('shortlisted');
@@ -70,6 +72,7 @@ test.describe('Employer / applicants status change', () => {
       method: 'PATCH', headers: authHeaders(emp.token),
       body: JSON.stringify({ status: 'rejected', notes: 'Not a good fit' })
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
     const after = await dbFindOne('applications', { _id: app._id });
     expect(after.status).toBe('rejected');
@@ -82,12 +85,14 @@ test.describe('Employer / applicants status change', () => {
       method: 'PATCH', headers: authHeaders(emp.token),
       body: JSON.stringify({ status: 'shortlisted' })
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r1.status);
 
     const r2 = await fetch(`${API}/applications/${app._id}/status`, {
       method: 'PATCH', headers: authHeaders(emp.token),
       body: JSON.stringify({ status: 'hired' })
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r2.status);
     const after = await dbFindOne('applications', { _id: app._id });
     expect(after.status).toBe('hired');
@@ -109,6 +114,7 @@ test.describe('Employer / applicants status change', () => {
       method: 'PATCH', headers: authHeaders(otherEmp.token),
       body: JSON.stringify({ status: 'viewed' })
     });
+    // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
     expect([403, 404]).toContain(r.status);
   });
 
@@ -118,7 +124,7 @@ test.describe('Employer / applicants status change', () => {
       method: 'PATCH', headers: authHeaders(js.token),
       body: JSON.stringify({ status: 'shortlisted' })
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('AS.8 idempotent: re-setting same status does not duplicate notifications', async () => {

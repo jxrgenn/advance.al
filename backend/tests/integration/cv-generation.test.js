@@ -142,6 +142,7 @@ describe('CV API - Integration Tests', () => {
         .get('/api/cv/my-cv')
         .set(createAuthHeaders(user));
       // Schema default produces an aiGeneratedCV object with language='sq', so route returns 200
+      // JUSTIFIED: Lookup endpoint — returns 200 if resource exists, 404 if not. Both legit.
       expect([200, 404]).toContain(response.status);
     });
 

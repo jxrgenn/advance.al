@@ -177,6 +177,7 @@ test.describe('Phase 21C — Real Jobseeker apply flow', () => {
       headers: { 'content-type': 'application/json', Authorization: `Bearer ${jsToken}` },
       body: JSON.stringify({ jobId, applicationMethod: 'one_click' })
     });
+    // JUSTIFIED: Conflict-detecting endpoint — 400 (validator) or 409 (resource exists).
     expect([400, 409]).toContain(r2.status);
 
     // applicationCount stays 1
@@ -294,6 +295,7 @@ test.describe('Phase 21C — Real employer post-job + applicants flow', () => {
       headers: { 'content-type': 'application/json', Authorization: `Bearer ${empToken}` },
       body: JSON.stringify({ message: 'Hello, applicant!', type: 'text' })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(msgRes.status);
 
     // Verify message persisted on Application
@@ -339,6 +341,7 @@ test.describe('Phase 21C — Real employer post-job + applicants flow', () => {
       headers: { 'content-type': 'application/json', Authorization: `Bearer ${empToken}` },
       body: JSON.stringify({ status: 'shortlisted' })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(sRes.status);
 
     const after = (await dbFind('applications', {}))[0];

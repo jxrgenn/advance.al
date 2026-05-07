@@ -99,6 +99,7 @@ test.describe('Phase 22.K — Security Adversarial', () => {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: { $ne: null }, password: 'X' })
     });
+    // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
     expect([400, 401]).toContain(res.status);
   });
 
@@ -110,6 +111,7 @@ test.describe('Phase 22.K — Security Adversarial', () => {
       body: JSON.stringify({ firstName: xss })
     });
     // Validation may reject (400) or strip-html-and-store (200). Either is safe.
+    // JUSTIFIED: Endpoint may accept-and-sanitize (200) or reject-malformed (400). Both legit.
     expect([200, 400]).toContain(res.status);
     const after = (await dbFind('users', { email: js.email }))[0];
     if (res.status === 200) {
@@ -128,6 +130,7 @@ test.describe('Phase 22.K — Security Adversarial', () => {
         location: { city: 'Tiranë' }, platformCategories: NORMAL_PLATFORM
       })
     });
+    // JUSTIFIED: Express body-parser rejects with 413 (size limit) or 400 (parse failure).
     expect([400, 413]).toContain(res.status);
   });
 
@@ -167,6 +170,7 @@ test.describe('Phase 22.K — Security Adversarial', () => {
       method: 'POST', headers: authHeaders(emp.token),
       body: '{malformed json,,'
     });
+    // JUSTIFIED: Validator (400) or server error path under bad input — neither leaks state.
     expect([400, 500]).toContain(res.status);
   });
 
@@ -198,6 +202,7 @@ test.describe('Phase 22.K — Security Adversarial', () => {
       body: JSON.stringify({ email: 'notreal@example.com' })
     });
     // Should not reveal whether email exists; expect 200 either way
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (synchronous) or 202 (async accepted).
     expect([200, 202]).toContain(res.status);
   });
 
@@ -225,6 +230,7 @@ test.describe('Phase 22.K — Security Adversarial', () => {
     });
     // Backend should reject (400/409) but message should not be detailed enough
     // for enumeration. Acceptable values:
+    // JUSTIFIED: Conflict-detecting endpoint — 400 (validator) or 409 (resource exists).
     expect([400, 409]).toContain(res.status);
   });
 

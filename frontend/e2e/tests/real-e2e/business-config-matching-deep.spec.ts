@@ -116,6 +116,7 @@ test.describe('Phase 22.H — Business / Configuration / Matching', () => {
     const res = await fetch(`${API}/business-control/campaigns/${id}/activate`, {
       method: 'POST', headers: authHeaders(adm.token)
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(res.status);
   });
 
@@ -215,6 +216,7 @@ test.describe('Phase 22.H — Business / Configuration / Matching', () => {
       method: 'POST', headers: authHeaders(adm.token),
       body: JSON.stringify({ enabled: true, reason: 'Testing maintenance toggle' })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(res.status);
     const audits = await dbFind('configurationaudits', {});
     expect(audits.length).toBeGreaterThanOrEqual(1);

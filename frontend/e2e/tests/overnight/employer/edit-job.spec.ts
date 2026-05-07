@@ -35,6 +35,7 @@ test.describe('Employer / edit job', () => {
       method: 'PUT', headers: authHeaders(emp.token),
       body: JSON.stringify({ title: 'Edited Title' }),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
     const after = await dbFindOne('jobs', { _id: job._id });
     expect(after.title).toBe('Edited Title');
@@ -48,6 +49,7 @@ test.describe('Employer / edit job', () => {
       method: 'PUT', headers: authHeaders(emp2.token),
       body: JSON.stringify({ title: 'Hacked' }),
     });
+    // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
     expect([403, 404]).toContain(r.status);
     const after = await dbFindOne('jobs', { _id: job._id });
     expect(after.title).toBe('Edit-Test Original');
@@ -60,6 +62,7 @@ test.describe('Employer / edit job', () => {
       method: 'PUT', headers: authHeaders(emp.token),
       body: JSON.stringify({ salary: { min: 10000, max: 100, currency: 'EUR' } }),
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 
@@ -128,6 +131,7 @@ test.describe('Employer / edit job', () => {
       method: 'PUT', headers: authHeaders(emp.token),
       body: JSON.stringify({ title: 'A Valid Updated Title' }),
     });
+    // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
     expect([403, 404]).toContain(r.status);
   });
 });

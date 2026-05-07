@@ -195,6 +195,7 @@ test.describe('Phase 22.F — Reports + Escalation EXHAUSTIVE', () => {
         reason: 'First-time spam offense'
       })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(res.status);
     const actions = await dbFind('report_actions', {});
     // Action recorded for the warning (in addition to report_created)

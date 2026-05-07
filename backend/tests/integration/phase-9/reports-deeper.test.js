@@ -63,6 +63,7 @@ describe('Phase 9 — Reports Deeper Coverage', () => {
         .set(createAuthHeaders(admin))
         .send({ priority: 'high', adminNotes: 'looking into this' });
 
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(response.status);
 
       const dbReport = await Report.findById(report._id);

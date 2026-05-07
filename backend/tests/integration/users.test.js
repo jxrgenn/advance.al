@@ -156,6 +156,7 @@ describe('Users API - Integration Tests', () => {
         const dbUser = await User.findById(user._id);
         expect(dbUser.isDeleted).toBe(true);
       } else {
+        // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
         expect([400, 401]).toContain(response.status);
       }
     });
@@ -184,6 +185,7 @@ describe('Users API - Integration Tests', () => {
           position: 'Engineer', company: 'Old Co', startDate: '2020-01-01', endDate: '2022-12-31',
           description: 'Worked stuff'
         });
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(add.status);
 
       const dbU1 = await User.findById(u1._id);
@@ -239,6 +241,7 @@ describe('Users API - Integration Tests', () => {
           degree: 'BSc', fieldOfStudy: 'CS', institution: 'University of Tirana',
           startDate: '2017-09-01', endDate: '2021-06-30'
         });
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(response.status);
     });
   });
@@ -252,6 +255,7 @@ describe('Users API - Integration Tests', () => {
       const save = await request(app)
         .post(`/api/users/saved-jobs/${job._id}`)
         .set(createAuthHeaders(js));
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(save.status);
 
       const list = await request(app)
@@ -362,6 +366,7 @@ describe('Users API - Integration Tests', () => {
       const response = await request(app)
         .get('/api/users/resume/..%2F..%2Fetc%2Fpasswd')
         .set(createAuthHeaders(user));
+      // JUSTIFIED: Token/resource lookup — 400 (validator) or 404 (not found in store).
       expect([400, 404]).toContain(response.status);
     });
   });

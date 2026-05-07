@@ -27,6 +27,7 @@ test.describe('Domain / companies', () => {
     const user = (await dbFind('users', { email: emp.email }))[0];
     const r = await fetch(`${API}/companies/${user._id}`);
     // Either 200 (returns company) or 404 (route only finds verified+with-jobs); both acceptable.
+    // JUSTIFIED: Lookup endpoint — returns 200 if resource exists, 404 if not. Both legit.
     expect([200, 404]).toContain(r.status);
     if (r.status === 200) {
       const body = await r.json();
@@ -60,6 +61,7 @@ test.describe('Domain / companies', () => {
     });
 
     const r = await fetch(`${API}/companies/${user._id}/jobs`);
+    // JUSTIFIED: Lookup endpoint — returns 200 if resource exists, 404 if not. Both legit.
     expect([200, 404]).toContain(r.status);
     if (r.status === 200) {
       const body = await r.json();

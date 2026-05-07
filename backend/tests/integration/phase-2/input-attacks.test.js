@@ -44,6 +44,7 @@ describe('Phase 2 — Input Attacks', () => {
         .post('/api/auth/login')
         .send({ email: { $gt: '' }, password: 'whatever' });
       // express-validator's .isEmail() rejects non-strings — should be 400 not 200
+      // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
       expect([400, 401]).toContain(response.status);
       expect(response.body.success).toBe(false);
     });
@@ -53,6 +54,7 @@ describe('Phase 2 — Input Attacks', () => {
       const response = await request(app)
         .post('/api/auth/login')
         .send({ email: 'victim2@example.com', password: { $ne: null } });
+      // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
       expect([400, 401]).toContain(response.status);
     });
 
@@ -182,6 +184,7 @@ describe('Phase 2 — Input Attacks', () => {
       const response = await request(app)
         .post('/api/auth/login')
         .send({ email: 'someone@example.com', password: 12345 });
+      // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
       expect([400, 401]).toContain(response.status);
     });
 

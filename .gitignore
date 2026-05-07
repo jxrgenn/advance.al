@@ -69,3 +69,7 @@ backend/backend/
 # These can contain session notes, internal infrastructure references,
 # and project history that should never end up in a public repo.
 .claude/
+
+# Generated coverage reports (Phase 28)
+backend/coverage/
+coverage/

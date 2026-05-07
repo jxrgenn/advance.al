@@ -65,6 +65,7 @@ describe('Phase 2 — Tenant Isolation Matrix', () => {
         .put(`/api/jobs/${job._id}`)
         .set(createAuthHeaders(otherEmp))
         .send({ title: 'Hacked Title' });
+      // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
       expect([403, 404]).toContain(isoB.status);
 
       const isoC = await request(app)
@@ -82,6 +83,7 @@ describe('Phase 2 — Tenant Isolation Matrix', () => {
       const isoB = await request(app)
         .delete(`/api/jobs/${job._id}`)
         .set(createAuthHeaders(otherEmp));
+      // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
       expect([403, 404]).toContain(isoB.status);
 
       const isoA = await request(app)
@@ -99,6 +101,7 @@ describe('Phase 2 — Tenant Isolation Matrix', () => {
         .patch(`/api/jobs/${job._id}/status`)
         .set(createAuthHeaders(otherEmp))
         .send({ status: 'paused' });
+      // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
       expect([403, 404]).toContain(isoB.status);
 
       const isoA = await request(app)
@@ -132,6 +135,7 @@ describe('Phase 2 — Tenant Isolation Matrix', () => {
       const stranger = await request(app)
         .get(`/api/applications/${app1._id}`)
         .set(createAuthHeaders(outsider));
+      // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
       expect([403, 404]).toContain(stranger.status);
     });
 
@@ -149,6 +153,7 @@ describe('Phase 2 — Tenant Isolation Matrix', () => {
         .patch(`/api/applications/${app1._id}/status`)
         .set(createAuthHeaders(empB))
         .send({ status: 'viewed' });
+      // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
       expect([403, 404]).toContain(isoB.status);
 
       // ISO-C: jobseeker (applicant themself) — rejected by requireEmployer middleware
@@ -171,6 +176,7 @@ describe('Phase 2 — Tenant Isolation Matrix', () => {
       const isoB = await request(app)
         .delete(`/api/applications/${app1._id}`)
         .set(createAuthHeaders(outsider));
+      // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
       expect([403, 404]).toContain(isoB.status);
 
       const isoA = await request(app)

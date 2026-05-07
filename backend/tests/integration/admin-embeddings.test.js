@@ -96,6 +96,7 @@ describe('Admin Embeddings API - Integration Tests', () => {
         .post(`/api/admin/embeddings/queue-job/${job._id}`)
         .set(createAuthHeaders(admin));
 
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(response.status);
     });
   });

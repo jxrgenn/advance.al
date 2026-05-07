@@ -189,6 +189,7 @@ describe('Phase 19.A.3 — Feature Edge Cases', () => {
         .set(createAuthHeaders(emp))
         .send({ status: 'viewed' });
       // Either success (idempotent) or 400 (already-viewed)
+      // JUSTIFIED: Endpoint may accept-and-sanitize (200) or reject-malformed (400). Both legit.
       expect([200, 400]).toContain(r2.status);
     });
 

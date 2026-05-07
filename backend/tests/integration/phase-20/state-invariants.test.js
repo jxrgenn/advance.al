@@ -160,6 +160,7 @@ describe('Phase 20B — State Invariants', () => {
       const dup = await request(app).post('/api/applications/apply')
         .set(createAuthHeaders(js))
         .send({ jobId: job._id, applicationMethod: 'one_click' });
+      // JUSTIFIED: Conflict-detecting endpoint — 400 (validator) or 409 (resource exists).
       expect([400, 409]).toContain(dup.status);
 
       await expect(assertInvariants()).resolves.toBeDefined();

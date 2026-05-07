@@ -30,7 +30,7 @@ test.describe('Jobseeker / AI CV generate', () => {
       method: 'POST', headers: authHeaders(emp.token),
       body: JSON.stringify({ language: 'sq' }),
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('AI.3 POST /cv/generate with no OpenAI key fails with 4xx/5xx (no silent success)', async () => {
@@ -51,6 +51,7 @@ test.describe('Jobseeker / AI CV generate', () => {
 
   test('AI.4 GET /cv/preview requires auth', async () => {
     const r = await fetch(`${API}/cv/preview`);
+    // JUSTIFIED: Auth-gated lookup — 401 (no auth) or 404 (resource not found uniformly).
     expect([401, 404]).toContain(r.status);
   });
 });

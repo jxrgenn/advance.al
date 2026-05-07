@@ -57,6 +57,7 @@ test.describe('Admin / bulk notifications', () => {
         deliveryChannels: { inApp: true, email: false }
       }),
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
     const body = await r.json();
     expect(body.success).toBe(true);
@@ -155,6 +156,7 @@ test.describe('Admin / bulk notifications', () => {
     const r = await fetch(`${API}/bulk-notifications/${created._id}`, {
       method: 'DELETE', headers: authHeaders(adm.token),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
     expect(await dbCount('bulknotifications', { _id: created._id }), 'should be deleted').toBe(0);
   });

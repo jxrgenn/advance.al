@@ -46,6 +46,7 @@ test.describe('Phase 21B — Real registration flow (live backend)', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email, verificationCode: code })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(verifyRes.status);
     const body = await verifyRes.json();
     expect(body.success).toBe(true);
@@ -148,6 +149,7 @@ test.describe('Phase 21B — Real login flow', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email, verificationCode: code })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(reg.status);
 
     // Now login

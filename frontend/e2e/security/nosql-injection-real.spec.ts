@@ -60,6 +60,7 @@ test.describe('Phase 4 / NoSQL injection — real attempts', () => {
     // What MUST NOT happen: 5xx (revealing operator passed through to query),
     // OR 200 + email sent to whoever the $ne matches.
     expect(r.status, 'must not 5xx on operator injection').toBeLessThan(500);
+    // JUSTIFIED: Public endpoint — accept (200), reject (400/422), or rate-limit (429).
     expect([200, 400, 422, 429]).toContain(r.status);
   });
 
@@ -91,6 +92,7 @@ test.describe('Phase 4 / NoSQL injection — real attempts', () => {
       })
     });
     expect(r.status, 'object-as-email must be rejected').not.toBe(200);
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 

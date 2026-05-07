@@ -87,6 +87,7 @@ test.describe('Security / XSS + NoSQL injection', () => {
         city: 'Tiranë'
       })
     });
+    // JUSTIFIED: Endpoint may accept-and-sanitize (200) or reject-malformed (400). Both legit.
     expect([200, 400]).toContain(r.status);
   });
 
@@ -112,6 +113,7 @@ test.describe('Security / XSS + NoSQL injection', () => {
     });
     const r = await fetch(`${API}/jobs?city[$ne]=`);
     // Either 200 (treated as string filter) or 400 (rejected) — both safe
+    // JUSTIFIED: Endpoint may accept-and-sanitize (200) or reject-malformed (400). Both legit.
     expect([200, 400]).toContain(r.status);
   });
 
@@ -178,6 +180,7 @@ test.describe('Security / XSS + NoSQL injection', () => {
   test('SX.11 Path traversal in fileId param rejected', async () => {
     const js = await makeJobseeker();
     const r = await fetch(`${API}/users/files/..%2F..%2Fetc%2Fpasswd`, { headers: authHeaders(js.token) });
+    // JUSTIFIED: Token/resource lookup — 400 (validator) or 404 (not found in store).
     expect([400, 404]).toContain(r.status);
   });
 

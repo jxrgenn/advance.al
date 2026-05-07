@@ -23,6 +23,7 @@ test.describe('Jobseeker / account-delete (GDPR cascade)', () => {
       method: 'DELETE', headers: authHeaders(js.token),
       body: JSON.stringify({ password: 'StrongPass123!' }),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
 
     const after = await dbFindOne('users', { email: js.email });

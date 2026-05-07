@@ -65,6 +65,7 @@ test.describe('Phase 22.C — Applications EXHAUSTIVE', () => {
     const { jobId, seekers } = await setup();
     await apply(seekers[0].token, jobId);
     const r2 = await apply(seekers[0].token, jobId);
+    // JUSTIFIED: Conflict-detecting endpoint — 400 (validator) or 409 (resource exists).
     expect([400, 409]).toContain(r2.status);
     const job = (await dbFind('jobs', {}))[0];
     expect(job.applicationCount).toBe(1);
@@ -77,6 +78,7 @@ test.describe('Phase 22.C — Applications EXHAUSTIVE', () => {
       body: JSON.stringify({ status: 'closed' })
     });
     const r = await apply(seekers[0].token, jobId);
+    // JUSTIFIED: Combined — validator (400), wrong-role (403), or not-found (404).
     expect([400, 403, 404]).toContain(r.status);
   });
 
@@ -109,6 +111,7 @@ test.describe('Phase 22.C — Applications EXHAUSTIVE', () => {
         method: 'PATCH', headers: authHeaders(empT),
         body: JSON.stringify({ status: s })
       });
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(r.status);
       const after = (await dbFind('applications', {}))[0];
       expect(after.status).toBe(s);
@@ -129,6 +132,7 @@ test.describe('Phase 22.C — Applications EXHAUSTIVE', () => {
       method: 'PATCH', headers: authHeaders(empT),
       body: JSON.stringify({ status: 'hired' })
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 
@@ -161,6 +165,7 @@ test.describe('Phase 22.C — Applications EXHAUSTIVE', () => {
         method: 'POST', headers: authHeaders(empT),
         body: JSON.stringify({ message: `Hello ${type}`, type })
       });
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(r.status);
     }
 
@@ -206,6 +211,7 @@ test.describe('Phase 22.C — Applications EXHAUSTIVE', () => {
       method: 'POST', headers: authHeaders(empB),
       body: JSON.stringify({ message: 'sneak', type: 'text' })
     });
+    // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
     expect([403, 404]).toContain(r.status);
   });
 
@@ -252,6 +258,7 @@ test.describe('Phase 22.C — Applications EXHAUSTIVE', () => {
     await apply(seekers[0].token, jobId);
 
     const r = await fetch(`${API}/applications/job/${jobId}`, { headers: authHeaders(empT) });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
     const body = await r.json();
     const apps = body.data?.applications || body.data || [];
@@ -260,6 +267,7 @@ test.describe('Phase 22.C — Applications EXHAUSTIVE', () => {
     // Peer employer
     const { token: empB } = await makeEmployer();
     const rB = await fetch(`${API}/applications/job/${jobId}`, { headers: authHeaders(empB) });
+    // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
     expect([403, 404]).toContain(rB.status);
   });
 
@@ -268,6 +276,7 @@ test.describe('Phase 22.C — Applications EXHAUSTIVE', () => {
     for (const s of seekers) await apply(s.token, jobId);
 
     const r = await fetch(`${API}/applications/employer/all?limit=200`, { headers: authHeaders(empT) });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(r.status);
     const body = await r.json();
     const apps = body.data?.applications || body.data || [];

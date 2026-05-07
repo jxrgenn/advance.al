@@ -78,6 +78,7 @@ test.describe('Public / cookie consent (GDPR)', () => {
       method: 'POST', headers: authHeaders(js.token),
       body: JSON.stringify({ accepted: true, categories: ['necessary', 'analytics'] }),
     });
+    // JUSTIFIED: Endpoint may create (200/201) or fail-not-found on cascade (404).
     expect([200, 201, 404]).toContain(r.status);
     if ([200, 201].includes(r.status)) {
       const user = await dbFindOne('users', { email: js.email });

@@ -34,6 +34,7 @@ test.describe('Employer / job lifecycle', () => {
       method: 'PATCH', headers: authHeaders(emp.token),
       body: JSON.stringify({ status: 'closed' }),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
     const after = await dbFindOne('jobs', { _id: job._id });
     expect(after.status).toBe('closed');
@@ -61,6 +62,7 @@ test.describe('Employer / job lifecycle', () => {
     const r = await fetch(`${API}/jobs/${job._id}/renew`, {
       method: 'POST', headers: authHeaders(emp.token),
     });
+    // JUSTIFIED: Endpoint may create (200/201) or fail-not-found on cascade (404).
     expect([200, 201, 404]).toContain(r.status);
     if ([200, 201].includes(r.status)) {
       const after = await dbFindOne('jobs', { _id: job._id });
@@ -82,6 +84,7 @@ test.describe('Employer / job lifecycle', () => {
     const r = await fetch(`${API}/jobs/${job._id}`, {
       method: 'DELETE', headers: authHeaders(emp.token),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
     expect([200, 204]).toContain(r.status);
     const after = await dbFindOne('jobs', { _id: job._id });
     expect(after.isDeleted, 'job should be soft-deleted').toBe(true);
@@ -95,6 +98,7 @@ test.describe('Employer / job lifecycle', () => {
     const r = await fetch(`${API}/jobs/${job._id}`, {
       method: 'DELETE', headers: authHeaders(emp2.token),
     });
+    // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
     expect([403, 404]).toContain(r.status);
     const after = await dbFindOne('jobs', { _id: job._id });
     expect(after.isDeleted).not.toBe(true);
@@ -107,6 +111,7 @@ test.describe('Employer / job lifecycle', () => {
       method: 'PATCH', headers: authHeaders(emp.token),
       body: JSON.stringify({ status: 'NOT_A_STATUS' }),
     });
+    // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422]).toContain(r.status);
   });
 

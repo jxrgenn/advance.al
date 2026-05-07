@@ -48,6 +48,7 @@ test.describe('Phase 4 / IDOR — real two-user adversarial', () => {
     // or 404 (route doesn't exist — uniform with non-existent ids).
     // What MUST NOT happen: 200 with B's PII.
     expect(r.status, 'must NOT return 200 with B PII').not.toBe(200);
+    // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
     expect([403, 404]).toContain(r.status);
     // JUSTIFIED: route may legitimately not exist (404 — same response as
     // for a fake id, no enumeration oracle) OR exist with proper authz (403).
@@ -94,6 +95,7 @@ test.describe('Phase 4 / IDOR — real two-user adversarial', () => {
     });
     // Route handler must check ownership and return 403 — NEVER 200.
     expect(r.status, 'A must NOT modify B job').not.toBe(200);
+    // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
     expect([403, 404]).toContain(r.status);
     // JUSTIFIED: uniform 403 vs 404 are both acceptable security postures.
 
@@ -128,6 +130,7 @@ test.describe('Phase 4 / IDOR — real two-user adversarial', () => {
     });
     expect(r.status, 'A must NOT delete B job').not.toBe(200);
     expect(r.status, 'A must NOT delete B job').not.toBe(204);
+    // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
     expect([403, 404]).toContain(r.status);
     // JUSTIFIED: uniform 403/404 are both acceptable.
 

@@ -44,6 +44,7 @@ test.describe('Domain / matching', () => {
     const r = await fetch(`${API}/matching/jobs/507f1f77bcf86cd799439011/candidates`, {
       headers: authHeaders(emp.token)
     });
+    // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
     expect([403, 404]).toContain(r.status);
   });
 
@@ -55,6 +56,7 @@ test.describe('Domain / matching', () => {
     const r = await fetch(`${API}/matching/jobs/${job._id}/candidates`, {
       headers: authHeaders(emp.token)
     });
+    // JUSTIFIED: Paid feature — 200 (entitled), 402 (payment required), 403 (forbidden tier).
     expect([200, 402, 403]).toContain(r.status);
     if (r.status === 200) {
       const body = await r.json();
@@ -80,6 +82,7 @@ test.describe('Domain / matching', () => {
     const r = await fetch(`${API}/matching/jobs/${job._id}/purchase`, {
       method: 'POST', headers: authHeaders(emp.token),
     });
+    // JUSTIFIED: Paid feature — 402 (payment required) or 503 (service unavailable / not configured).
     expect([402, 503]).toContain(r.status);
     expect(await dbCount('candidatematches', { jobId: job._id })).toBe(0);
   });

@@ -192,6 +192,7 @@ test.describe('Section D — Auth flows', () => {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ token: 'fake-invalid-token-xyz', password: 'AttemptPass123!' }),
     });
+    // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
     expect([400, 401], 'invalid reset token must be rejected').toContain(r.status);
 
     // Visit the UI page too — it should at least render without crashing
@@ -284,6 +285,7 @@ test.describe('Section D — Auth flows', () => {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: 'this-email-definitely-does-not-exist-9999@nowhere.test' }),
     });
+    // JUSTIFIED: HTTP convention — endpoint returns 200 (synchronous) or 202 (async accepted).
     expect([200, 202]).toContain(r.status);
     const b = await r.json();
     expect(b.success).toBe(true);
@@ -299,6 +301,7 @@ test.describe('Section D — Auth flows', () => {
         firstName: 'Dup', lastName: 'Licate', city: 'Tiranë',
       }),
     });
+    // JUSTIFIED: Conflict-detecting endpoint — 400 (validator) or 409 (resource exists).
     expect([400, 409]).toContain(r.status);
   });
 

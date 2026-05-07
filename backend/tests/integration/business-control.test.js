@@ -119,6 +119,7 @@ describe('Business Control API - Integration Tests', () => {
         .post(`/api/business-control/whitelist/${emp._id}`)
         .set(createAuthHeaders(admin))
         .send({ reason: 'Test' });
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
       expect([200, 201]).toContain(grant.status);
 
       let dbEmp = await User.findById(emp._id);

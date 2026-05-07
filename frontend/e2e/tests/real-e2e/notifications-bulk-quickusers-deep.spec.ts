@@ -165,6 +165,7 @@ test.describe('Phase 22.G — Notifications + Bulk + Verification + QuickUsers',
         deliveryChannels: { inApp: true, email: false }
       })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(res.status);
     const bulks = await dbFind('bulknotifications', {});
     expect(bulks.length).toBe(1);
@@ -191,6 +192,7 @@ test.describe('Phase 22.G — Notifications + Bulk + Verification + QuickUsers',
         scheduledFor: future.toISOString()
       })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(res.status);
     const bulks = await dbFind('bulknotifications', {});
     expect(bulks.length).toBe(1);
@@ -351,6 +353,7 @@ test.describe('Phase 22.G — Notifications + Bulk + Verification + QuickUsers',
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ token: qu.unsubscribeToken })
     });
+    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
     expect([200, 201]).toContain(res.status);
     const after = (await dbFind('quickusers', {}))[0];
     expect(after.emailClickCount).toBeGreaterThanOrEqual(1);

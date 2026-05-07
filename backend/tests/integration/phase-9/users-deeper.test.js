@@ -87,6 +87,7 @@ describe('Phase 9 — Users Deeper Coverage', () => {
       const response = await request(app)
         .post('/api/users/upload-logo')
         .set(createAuthHeaders(user));
+      // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
       expect([400, 422]).toContain(response.status);
     });
 
@@ -105,6 +106,7 @@ describe('Phase 9 — Users Deeper Coverage', () => {
       const response = await request(app)
         .post('/api/users/upload-profile-photo')
         .set(createAuthHeaders(user));
+      // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
       expect([400, 422]).toContain(response.status);
     });
 
@@ -288,6 +290,7 @@ describe('Phase 9 — Users Deeper Coverage', () => {
         .delete('/api/users/resume')
         .set(createAuthHeaders(user));
 
+      // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
       expect([200, 204]).toContain(response.status);
       const dbUser = await User.findById(user._id);
       expect(dbUser.profile.jobSeekerProfile.resume).toBeFalsy();
