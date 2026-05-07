@@ -70,14 +70,14 @@ Manually tightened ~146 ORs in worst-offender files (8 prod-smoke files, 5 overn
 
 Endpoint inventory + ~50-80 new boundary tests. Significant scope, deferred to follow-up sprint.
 
-### Phase 6 (coverage push) — IN PROGRESS — measured: **57.2% → 72.16% statements** (+14.96% absolute)
+### Phase 6 (coverage push) — IN PROGRESS — measured: **57.2% → 75.25% statements** (+18.05% absolute)
 
-| Metric | Baseline | After Phase 6 | Gain |
-|---|---|---|---|
-| Statements | 57.2% | **72.16%** | +14.96 |
-| Branches | 42.7% | **59.30%** | +16.60 |
-| Functions | 63.2% | **78.48%** | +15.28 |
-| Tests passing | ~870 | **1314+** | +444+ |
+| Metric | Baseline | Mid-sprint | After Phase 6 (now) | Gain |
+|---|---|---|---|---|
+| Statements | 57.2% | 72.16% | **75.25%** | +18.05 |
+| Branches | 42.7% | 59.30% | **64.41%** | +21.71 |
+| Functions | 63.2% | 78.48% | **80.38%** | +17.18 |
+| Tests passing | ~870 | 1314+ | **1477** | +607 |
 
 Per-file delta:
 
@@ -135,8 +135,9 @@ Per-file delta:
 - Phase 1 unjustified ORs reduced: **503 → 61** (88% reduction via codemod + manual)
 - Test-genuineness gate floor locked at: 61 permissive ORs, 5 backend mocks
 - Files deleted: 9 (Phase 14 mocked theater)
-- **Backend coverage: 57.2% → 72.16% statements (+14.96%), 42.7% → 59.30% branches (+16.60%), 63.2% → 78.48% functions (+15.28%)**
-- Total tests passing: **1314+**
+- **Backend coverage: 57.2% → 75.25% statements (+18.05%), 42.7% → 64.41% branches (+21.71%), 63.2% → 80.38% functions (+17.18%)**
+- Total tests passing: **1477**
+- Phase 28 final tail batch (post-OpenAI-stub): notify-matching-users (14), job-embedding-similarities (8), auth-success-paths (14), cv-parsing-pure (23), notifications-success-paths (5), notification-model (23) = +87 more tests targeting the next-largest coverage gaps
 - Services subdirectory coverage: ~74% statements (was 57.67%)
 
 ---
