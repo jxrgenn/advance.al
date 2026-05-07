@@ -1105,7 +1105,6 @@ router.post('/upload-profile-photo', authenticate, requireJobSeeker, imageUpload
           success: false,
           message: 'Shërbimi i ngarkimit të skedarëve nuk është i disponueshëm momentalisht. Provoni përsëri më vonë.'
         });
-        photoUrl = `/uploads/images/${fallbackName}`;
       }
     } else if (!isProduction && req.file.filename) {
       photoUrl = `/uploads/images/${req.file.filename}`;
