@@ -207,4 +207,92 @@ describe('Admin API - Integration Tests', () => {
       expect(response.status).toBe(200);
     });
   });
+
+  describe('GET /api/admin/user-insights', () => {
+    it('admin can fetch user insights', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .get('/api/admin/user-insights')
+        .set(createAuthHeaders(admin));
+      expect(response.status).toBe(200);
+    });
+  });
+
+  describe('PATCH /api/admin/jobs/:id/approve', () => {
+    it('admin approves a pending job', async () => {
+      const { user: admin } = await createAdmin();
+      const { user: emp } = await createVerifiedEmployer();
+      const job = await createJob(emp);
+      // Factory creates active jobs; promote to pending so approve makes sense
+      job.status = 'pending_approval';
+      await job.save();
+
+      const response = await request(app)
+        .patch(`/api/admin/jobs/${job._id}/approve`)
+        .set(createAuthHeaders(admin))
+        .send({ action: 'approve' });
+      expect(response.status).toBe(200);
+    });
+
+    it('returns 404 for non-existent job id', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .patch('/api/admin/jobs/507f1f77bcf86cd799439099/approve')
+        .set(createAuthHeaders(admin))
+        .send({ action: 'approve' });
+      expect(response.status).toBe(404);
+    });
+
+    it('rejects invalid action enum (400)', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .patch('/api/admin/jobs/507f1f77bcf86cd799439099/approve')
+        .set(createAuthHeaders(admin))
+        .send({ action: 'invalid' });
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe('PATCH /api/admin/jobs/:jobId/manage', () => {
+    it('admin can update a job (e.g. delete action)', async () => {
+      const { user: admin } = await createAdmin();
+      const { user: emp } = await createVerifiedEmployer();
+      const job = await createJob(emp);
+
+      const response = await request(app)
+        .patch(`/api/admin/jobs/${job._id}/manage`)
+        .set(createAuthHeaders(admin))
+        .send({ action: 'delete', reason: 'Test cleanup' });
+      expect(response.status).toBe(200);
+    });
+
+    it('returns 404 for non-existent job', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .patch('/api/admin/jobs/507f1f77bcf86cd799439099/manage')
+        .set(createAuthHeaders(admin))
+        .send({ action: 'pause' });
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('POST /api/admin/backfill-*-embeddings', () => {
+    it('admin can trigger user embedding backfill', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .post('/api/admin/backfill-user-embeddings')
+        .set(createAuthHeaders(admin))
+        .send({ dryRun: true });
+      expect(response.status).toBe(200);
+    });
+
+    it('admin can trigger job embedding backfill', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .post('/api/admin/backfill-job-embeddings')
+        .set(createAuthHeaders(admin))
+        .send({ dryRun: true });
+      expect(response.status).toBe(200);
+    });
+  });
 });
