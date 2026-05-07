@@ -31,14 +31,14 @@ test.describe('Phase A.14 — File upload deep (chromium-desktop only)', () => {
   for (const ep of UPLOAD_ENDPOINTS) {
     test(`A14.auth ${ep} POST without auth → 401`, async () => {
       const r = await fetch(`${API}${ep}`, { method: 'POST' });
-      expect([401, 403]).toContain(r.status);
+      expect(r.status).toBe(401);
     });
 
     test(`A14.auth ${ep} POST with multipart but no auth → 401 (multer must NOT parse first)`, async () => {
       const fd = new FormData();
       fd.append('file', new Blob(['fake-pdf-bytes'], { type: 'application/pdf' }), 'test.pdf');
       const r = await fetch(`${API}${ep}`, { method: 'POST', body: fd });
-      expect([401, 403]).toContain(r.status);
+      expect(r.status).toBe(401);
     });
 
     test(`A14.auth ${ep} POST with synthetic JWT → 401 (wrong secret)`, async () => {
@@ -50,7 +50,7 @@ test.describe('Phase A.14 — File upload deep (chromium-desktop only)', () => {
         headers: { 'Authorization': `Bearer ${tok}` },
         body: fd,
       });
-      expect([401, 403]).toContain(r.status);
+      expect(r.status).toBe(401);
     });
 
     test(`A14.auth ${ep} POST with alg:none JWT → 401`, async () => {
@@ -62,7 +62,7 @@ test.describe('Phase A.14 — File upload deep (chromium-desktop only)', () => {
         headers: { 'Authorization': `Bearer ${tok}` },
         body: fd,
       });
-      expect([401, 403]).toContain(r.status);
+      expect(r.status).toBe(401);
     });
   }
 
@@ -77,7 +77,7 @@ test.describe('Phase A.14 — File upload deep (chromium-desktop only)', () => {
       headers: { 'Authorization': `Bearer ${tok}` },
       body: fd,
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A14.role jobseeker-token → upload-logo (employer-only) → 401/403', async () => {
@@ -89,7 +89,7 @@ test.describe('Phase A.14 — File upload deep (chromium-desktop only)', () => {
       headers: { 'Authorization': `Bearer ${tok}` },
       body: fd,
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   // ---------- Auth bypass via filename tricks ----------
@@ -98,14 +98,14 @@ test.describe('Phase A.14 — File upload deep (chromium-desktop only)', () => {
     const fd = new FormData();
     fd.append('file', new Blob(['x'], { type: 'application/pdf' }), '../../etc/passwd');
     const r = await fetch(`${API}/users/upload-resume`, { method: 'POST', body: fd });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A14.bypass.2 POST upload-resume with NULL byte in filename — auth gate first', async () => {
     const fd = new FormData();
     fd.append('file', new Blob(['x'], { type: 'application/pdf' }), 'safe.pdf\x00.exe');
     const r = await fetch(`${API}/users/upload-resume`, { method: 'POST', body: fd });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   // ---------- HTTP method on upload endpoints ----------
@@ -113,7 +113,9 @@ test.describe('Phase A.14 — File upload deep (chromium-desktop only)', () => {
   for (const method of ['GET', 'PUT', 'DELETE', 'PATCH']) {
     test(`A14.method ${method} on /users/upload-resume → 401/404/405`, async () => {
       const r = await fetch(`${API}/users/upload-resume`, { method });
-      expect([401, 403, 404, 405]).toContain(r.status);
+      // JUSTIFIED: route is POST-only — Express returns 404 (no method handler), 405 (router-attached
+      // method-not-allowed), or 401 (if auth runs path-level before method check).
+      expect([401, 404, 405]).toContain(r.status);
     });
   }
 
@@ -128,6 +130,7 @@ test.describe('Phase A.14 — File upload deep (chromium-desktop only)', () => {
         'Access-Control-Request-Headers': 'authorization, content-type',
       },
     });
+    // JUSTIFIED: CORS preflight legitimately returns 204 (no content) or 200 depending on framework.
     expect([200, 204]).toContain(r.status);
     const ao = r.headers.get('access-control-allow-origin') || '';
     expect(ao, 'must allow advance.al only').toMatch(/advance\.al|^\*$/);
@@ -156,8 +159,9 @@ test.describe('Phase A.14 — File upload deep (chromium-desktop only)', () => {
       method: 'POST',
       body: fd,
     });
-    // Acceptable: 401 (auth first), 413 (body too large), 408 (timeout)
-    expect([401, 403, 408, 413, 415]).toContain(r.status);
+    // JUSTIFIED: 401 (auth fires first, body never read), 413 (body-parser size limit), 408 (request
+    // timeout on slow upload), 415 (multer rejects unsupported media type before size check).
+    expect([401, 408, 413, 415]).toContain(r.status);
   });
 
   // ---------- Content-Type spoofing ----------
@@ -166,13 +170,13 @@ test.describe('Phase A.14 — File upload deep (chromium-desktop only)', () => {
     const fd = new FormData();
     fd.append('file', new Blob(['<html>'], { type: 'text/html' }), 'malicious.html');
     const r = await fetch(`${API}/users/upload-resume`, { method: 'POST', body: fd });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A14.ct upload-logo with application/x-msdos-program — auth still required', async () => {
     const fd = new FormData();
     fd.append('file', new Blob(['MZ\x90\x00'], { type: 'application/x-msdownload' }), 'logo.exe');
     const r = await fetch(`${API}/users/upload-logo`, { method: 'POST', body: fd });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 });
