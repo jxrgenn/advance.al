@@ -435,7 +435,10 @@ router.get('/employer/all', authenticate, requireEmployer, async (req, res) => {
     const sortOptions = { [safeSortBy3]: sortOrder === 'desc' ? -1 : 1 };
 
     // Run count + find in parallel
-    const countQuery = { employerId: req.user._id, withdrawn: false, ...(status && { status }), ...(jobId && { jobId }) };
+    // B-025 fix: only spread jobId into countQuery after validity check (else
+    // an invalid ObjectId reaches Application.countDocuments → CastError → 500).
+    const validJobId = jobId && mongoose.isValidObjectId(jobId) ? jobId : null;
+    const countQuery = { employerId: req.user._id, withdrawn: false, ...(status && { status }), ...(validJobId && { jobId: validJobId }) };
     const [totalApplications, paginatedApplications] = await Promise.all([
       Application.countDocuments(countQuery),
       Application.getEmployerApplications(req.user._id, filters)
