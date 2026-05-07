@@ -291,6 +291,13 @@ router.post('/templates/:id/create', validateObjectId('id'), authenticate, requi
 
   } catch (error) {
     logger.error('Error creating from template:', error.message);
+    // Distinguish "template not found" (client-side 404) from genuine 500s
+    if (error.message === 'Template not found') {
+      return res.status(404).json({
+        success: false,
+        message: 'Template-i nuk u gjet'
+      });
+    }
     res.status(500).json({
       success: false,
       message: 'Gabim në krijimin e njoftimit nga template',

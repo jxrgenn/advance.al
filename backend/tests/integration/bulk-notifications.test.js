@@ -160,5 +160,63 @@ describe('Bulk Notifications API - Integration Tests', () => {
       // JUSTIFIED: HTTP convention — endpoint returns 200 (with body) or 204 (no content).
       expect([200, 204]).toContain(response.status);
     });
+
+    it('returns 404 for non-existent bulk notification id', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .delete('/api/bulk-notifications/507f1f77bcf86cd799439099')
+        .set(createAuthHeaders(admin));
+      expect(response.status).toBe(404);
+    });
+
+    it('rejects malformed id (400)', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .delete('/api/bulk-notifications/not-an-objectid')
+        .set(createAuthHeaders(admin));
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe('GET /api/bulk-notifications/:id', () => {
+    it('admin can fetch a single bulk notification', async () => {
+      const { user: admin } = await createAdmin();
+      const bulk = await BulkNotification.create({
+        title: 'F', message: 'f', type: 'announcement', targetAudience: 'all',
+        deliveryChannels: { inApp: true }, createdBy: admin._id, status: 'draft'
+      });
+
+      const response = await request(app)
+        .get(`/api/bulk-notifications/${bulk._id}`)
+        .set(createAuthHeaders(admin));
+      expect(response.status).toBe(200);
+    });
+
+    it('returns 404 for non-existent id', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .get('/api/bulk-notifications/507f1f77bcf86cd799439099')
+        .set(createAuthHeaders(admin));
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('POST /api/bulk-notifications/templates/:id/create', () => {
+    it('returns 404 for non-existent template id', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .post('/api/bulk-notifications/templates/507f1f77bcf86cd799439099/create')
+        .set(createAuthHeaders(admin));
+      expect(response.status).toBe(404);
+      expect(response.body.message).toMatch(/template/i);
+    });
+
+    it('rejects malformed id (400)', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .post('/api/bulk-notifications/templates/not-an-objectid/create')
+        .set(createAuthHeaders(admin));
+      expect(response.status).toBe(400);
+    });
   });
 });
