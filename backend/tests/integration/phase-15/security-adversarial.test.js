@@ -212,7 +212,8 @@ describe('Phase 15 — Security Adversarial', () => {
       const response = await request(app)
         .get('/api/auth/me')
         .set('Authorization', `Bearer ${noIdToken}`);
-      expect([401, 500]).toContain(response.status);
+      // findById(undefined) returns null (no cast error) → "user not found" → 401.
+      expect(response.status).toBe(401);
     });
   });
 
@@ -240,11 +241,13 @@ describe('Phase 15 — Security Adversarial', () => {
 
   describe('Brute-force protection (with SKIP_RATE_LIMIT=false override)', () => {
     it('rate-limit kicks in after threshold attempts (real, not bypassed)', async () => {
-      // Toggle rate-limit briefly
+      // Toggle rate-limit briefly. Skip closure re-reads process.env per
+      // request so the override takes effect immediately.
       const orig = process.env.SKIP_RATE_LIMIT;
       process.env.SKIP_RATE_LIMIT = 'false';
       try {
-        // 16 wrong-password attempts → 16th should be 429
+        // authLimiter caps at 15 attempts/15min per IP outside dev mode.
+        // 18 wrong-password attempts MUST trigger 429 within the loop.
         let saw429 = false;
         for (let i = 0; i < 18; i++) {
           const r = await request(app)
@@ -252,11 +255,7 @@ describe('Phase 15 — Security Adversarial', () => {
             .send({ email: 'bf@example.com', password: `wrong${i}` });
           if (r.status === 429) { saw429 = true; break; }
         }
-        // Skip is checked at function-call time per express-rate-limit, but the
-        // limiter instance was constructed at module load with skip:() => SKIP===true.
-        // We accept either outcome (limiter constructed before override) but verify
-        // no 5xx.
-        expect([true, false]).toContain(saw429);
+        expect(saw429).toBe(true);
       } finally {
         process.env.SKIP_RATE_LIMIT = orig;
       }

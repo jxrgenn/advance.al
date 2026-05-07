@@ -290,14 +290,13 @@ describe('Phase 20D — Cascade Depth Verification', () => {
         password: 'StrongPassword123!',
         firstName: 'Cascade',
         lastName: 'Test',
-        userType: 'jobseeker'
+        userType: 'jobseeker',
+        city: 'Tiranë',
       });
 
-      // Acceptable: 200 (pending sent), 400 if some validation tweak,
-      // 429 if rate-limited. We only assert no User created until verify.
       const afterCount = await User.countDocuments({ email: 'cascade-register@example.com' });
       expect(afterCount).toBe(0);
-      expect([200, 400, 429]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
   });
 });
