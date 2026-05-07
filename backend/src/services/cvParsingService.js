@@ -388,4 +388,16 @@ export async function parseUserProfileCV(fileBuffer) {
   return { success: true, data };
 }
 
+// Exported for testing — pure functions with no I/O
+export const _internal = {
+  extractTextFromCV,
+  extractTextFromPDF,
+  extractTextFromDOCX,
+  calculateExperienceFromHistory,
+  sanitizeParsedProfile,
+  EXPERIENCE_ENUMS,
+  PROFICIENCY_ENUMS,
+  DATE_REGEX,
+};
+
 export default { parseQuickUserCV, parseUserProfileCV };
