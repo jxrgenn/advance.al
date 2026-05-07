@@ -1,6 +1,6 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { Application, Job, User, Notification } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer } from '../middleware/auth.js';
 import resendEmailService from '../lib/resendEmailService.js';
@@ -18,7 +18,7 @@ const applyLimiter = rateLimit({
   max: 15,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?.id || req.ip,
+  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req),
   skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
   message: {
     success: false,
@@ -32,7 +32,7 @@ const messageLimiter = rateLimit({
   max: 60, // 1 message/min average
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?.id || req.ip,
+  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req),
   skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
   message: {
     success: false,

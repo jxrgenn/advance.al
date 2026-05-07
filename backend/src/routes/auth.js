@@ -2,7 +2,7 @@ import express from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { body, validationResult } from 'express-validator';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { User, QuickUser } from '../models/index.js';
 import { generateToken, generateRefreshToken, verifyToken, authenticate } from '../middleware/auth.js';
 import { stripHtml } from '../utils/sanitize.js';
@@ -166,7 +166,7 @@ const initiateRegistrationByEmailLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => {
     const email = (req.body?.email || '').toString().trim().toLowerCase();
-    return email ? `email:${email}` : `ip:${req.ip}`;
+    return email ? `email:${email}` : `ip:${ipKeyGenerator(req)}`;
   },
   skip: () =>
     process.env.NODE_ENV !== 'production' &&
@@ -188,7 +188,7 @@ const loginByEmailLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => {
     const email = (req.body?.email || '').toString().trim().toLowerCase();
-    return email ? `login-email:${email}` : `login-ip:${req.ip}`;
+    return email ? `login-email:${email}` : `login-ip:${ipKeyGenerator(req)}`;
   },
   skip: () =>
     process.env.NODE_ENV !== 'production' &&
@@ -209,7 +209,7 @@ const forgotPasswordByEmailLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => {
     const email = (req.body?.email || '').toString().trim().toLowerCase();
-    return email ? `forgot-email:${email}` : `forgot-ip:${req.ip}`;
+    return email ? `forgot-email:${email}` : `forgot-ip:${ipKeyGenerator(req)}`;
   },
   skip: () =>
     process.env.NODE_ENV !== 'production' &&

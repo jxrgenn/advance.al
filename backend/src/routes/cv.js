@@ -1,5 +1,5 @@
 import express from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import mammoth from 'mammoth';
 import { authenticate, requireJobSeeker } from '../middleware/auth.js';
 import { validateObjectId, stripHtml } from '../utils/sanitize.js';
@@ -20,7 +20,7 @@ const cvGenerateLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?.id || req.ip,
+  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req),
   skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
   message: {
     success: false,

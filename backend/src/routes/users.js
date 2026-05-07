@@ -12,7 +12,7 @@ import resendEmailService from '../lib/resendEmailService.js';
 import { uploadToCloudinary, deleteFromCloudinary } from '../config/cloudinary.js';
 import logger from '../config/logger.js';
 import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { parseUserProfileCV } from '../services/cvParsingService.js';
 
 const router = express.Router();
@@ -788,14 +788,15 @@ router.delete('/resume', authenticate, requireJobSeeker, async (req, res) => {
 const parseResumeLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: process.env.NODE_ENV === 'development' ? 100 : 5,
-  // Use user ID as key (auth middleware runs before this, so req.user is available)
-  // Fallback handled inside the route — this limiter applies after authenticate middleware
-  keyGenerator: (req) => req.user?._id?.toString() || 'anonymous',
+  // Use user ID as key (auth middleware runs before this, so req.user is available).
+  // Fallback to per-IP via ipKeyGenerator (proper IPv6 handling) instead of a
+  // shared 'anonymous' bucket — that bucket would let one attacker DoS all
+  // anonymous traffic through this endpoint.
+  keyGenerator: (req) => req.user?._id?.toString() || ipKeyGenerator(req),
   message: {
     success: false,
     message: 'Keni arritur limitin e analizimit të CV. Provoni përsëri pas 1 ore.'
-  },
-  validate: false // Disable validation warnings for custom keyGenerator
+  }
 });
 
 // @route   POST /api/users/parse-resume
