@@ -125,6 +125,7 @@ Per-file delta:
 | **B-021** Real bug: `extractRoleType` misclassified "React Native" titles as Frontend (the bare `react` keyword in Frontend check fired before the Mobile check) | `backend/src/services/jobEmbeddingService.js` | Reordered: Mobile + Full Stack checks now run BEFORE Frontend/Backend so multi-word framework names match correctly. **Production impact: React Native job postings were grouped with frontend candidates in similarity computations**, lowering match quality. Discovered while writing extractRoleType unit tests. |
 | **B-022** Real bug: `bulk-notifications/templates/:id/create` returned 500 instead of 404 when template missing | `backend/src/routes/bulk-notifications.js` | Distinguish 'Template not found' error from genuine 500s. Discovered while adding admin-endpoint coverage tests. |
 | **B-023** Dead unreachable code in `users.js` upload-profile-photo (line after a return statement, references undefined variable) | `backend/src/routes/users.js` | Removed dead line. Would have thrown ReferenceError if reached. Discovered during route audit for coverage gaps. |
+| **B-024** Real bug: `ReportAction` post-save hook is dead code — gates body on `doc.isNew \|\| doc.wasNew`, but mongoose flips `isNew→false` BEFORE post('save'), and `wasNew` was never set anywhere | `backend/src/models/ReportAction.js` | Bridge `isNew` across save() by stashing `this.wasNew = this.isNew` in pre('save'). **Production impact: notifications for moderation actions never fired, and `report_resolved` actions never marked the parent Report as resolved (status stayed pending forever).** Discovered while writing ReportAction integration tests. |
 
 ### Sprint metrics (final)
 
@@ -137,7 +138,7 @@ Per-file delta:
 - Files deleted: 9 (Phase 14 mocked theater)
 - **Backend coverage: 57.2% → 75.82% statements (+18.62%), 42.7% → 65.30% branches (+22.60%), 63.2% → 80.50% functions (+17.30%)**
 - Total tests passing: **1525+**
-- Phase 28 final tail batches (post-OpenAI-stub): notify-matching-users (14), job-embedding-similarities (8), auth-success-paths (14), cv-parsing-pure (23), notifications-success-paths (5), notification-model (23), users-work-edu-routes (12), users-gdpr-routes (5), users-resume-serve (9), report-action-statics (10), business-campaign-statics (14), system-health-statics (16) = **+153 more tests** targeting the next-largest coverage gaps. **B-024 surfaced**: ReportAction post-save hook is dead code (gates on doc.isNew||doc.wasNew, both always false at post-save) — notifications + auto-resolve never fire.
+- Phase 28 final tail batches (post-OpenAI-stub): notify-matching-users (14), job-embedding-similarities (8), auth-success-paths (14), cv-parsing-pure (23), notifications-success-paths (5), notification-model (23), users-work-edu-routes (12), users-gdpr-routes (5), users-resume-serve (9), report-action-statics (10), business-campaign-statics (14), system-health-statics (16) = **+153 more tests** targeting the next-largest coverage gaps. **B-024 surfaced AND fixed**: ReportAction post-save hook was dead code (gates on doc.isNew||doc.wasNew, both always false at post-save) — notifications + auto-resolve never fired. Now the hook actually runs.
 - Services subdirectory coverage: ~74% statements (was 57.67%)
 
 ---
