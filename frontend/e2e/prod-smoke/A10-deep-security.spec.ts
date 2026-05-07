@@ -69,7 +69,7 @@ test.describe('Phase A.10 — Deep security probes (chromium-desktop only via co
         headers: ep.body ? { 'content-type': 'application/json' } : {},
         body: ep.body ? JSON.stringify(ep.body) : undefined,
       });
-      expect([401, 403]).toContain(r.status);
+      expect(r.status).toBe(401);
     });
 
     test(`A10.A.${ep.path} ${ep.method} — alg:none → 401/403`, async () => {
@@ -78,7 +78,7 @@ test.describe('Phase A.10 — Deep security probes (chromium-desktop only via co
         method: ep.method,
         headers: { 'Authorization': `Bearer ${fake}` },
       });
-      expect([401, 403]).toContain(r.status);
+      expect(r.status).toBe(401);
     });
 
     test(`A10.A.${ep.path} ${ep.method} — wrong-secret JWT → 401/403`, async () => {
@@ -87,7 +87,7 @@ test.describe('Phase A.10 — Deep security probes (chromium-desktop only via co
         method: ep.method,
         headers: { 'Authorization': `Bearer ${fake}` },
       });
-      expect([401, 403]).toContain(r.status);
+      expect(r.status).toBe(401);
     });
 
     test(`A10.A.${ep.path} ${ep.method} — expired JWT → 401`, async () => {
@@ -95,7 +95,7 @@ test.describe('Phase A.10 — Deep security probes (chromium-desktop only via co
         method: ep.method,
         headers: { 'Authorization': `Bearer ${EXPIRED_JWT}` },
       });
-      expect([401, 403]).toContain(r.status);
+      expect(r.status).toBe(401);
     });
   }
 
@@ -149,12 +149,12 @@ test.describe('Phase A.10 — Deep security probes (chromium-desktop only via co
     const fakeId = '507f1f77bcf86cd799439099';
     const r = await fetch(`${API}/users/${fakeId}`);
     // No auth → must be 401/403/404 — NEVER 200 with another user's data
-    expect([401, 403, 404]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A10.C.2 GET /admin/users/:id without token → 401/403', async () => {
     const r = await fetch(`${API}/admin/users/507f1f77bcf86cd799439099`);
-    expect([401, 403, 404]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   // ---------- 10.D — Path traversal ----------
@@ -204,7 +204,7 @@ test.describe('Phase A.10 — Deep security probes (chromium-desktop only via co
         expect(body, `${dotfile}: must NOT contain raw secrets`).not.toMatch(/MONGODB_URI|JWT_SECRET|RESEND_API_KEY|OPENAI_API_KEY/i);
         expect(body, `${dotfile}: must NOT be raw JSON config`).not.toMatch(/^\s*\{/);
       } else {
-        expect([401, 403, 404]).toContain(r.status);
+        expect(r.status).toBe(401);
       }
     });
   }
@@ -231,6 +231,7 @@ test.describe('Phase A.10 — Deep security probes (chromium-desktop only via co
       expect(body, 'must NOT contain source map markers').not.toMatch(/"version":\s*3.*"sources":/);
       expect(body, 'must NOT contain webpack/vite source markers').not.toMatch(/"sourcesContent":/);
     } else {
+      // JUSTIFIED: resource genuinely may not exist (404) or may be forbidden by host config (403).
       expect([403, 404]).toContain(r.status);
     }
   });
@@ -342,7 +343,7 @@ test.describe('Phase A.10 — Deep security probes (chromium-desktop only via co
     if (status >= 300 && status < 400) {
       expect(redirect, 'http must redirect to https').toMatch(/^https:\/\//i);
     } else {
-      // Vercel may auto-308 invisibly via TLS — at minimum, no plain HTTP serve
+      // JUSTIFIED: Vercel may auto-308 invisibly via TLS — accept any redirect family or a 200 (TLS-terminated).
       expect([301, 302, 307, 308, 200]).toContain(status);
     }
   });
@@ -433,6 +434,8 @@ test.describe('Phase A.10 — Deep security probes (chromium-desktop only via co
     // Must validate/strip — either 400 (bad email) or 200 (silently accepted but
     // with sanitized email). Never 5xx, never sends to attacker.
     expectNot5xx(r.status, 'CRLF in email');
+    // JUSTIFIED: CRLF email may be silently sanitized + accepted (200), rejected by validator (400/422),
+    // or rate-limited from a prior test (429). What matters is no 5xx and no actual mail to attacker.
     expect([200, 400, 422, 429]).toContain(r.status);
   });
 
@@ -460,6 +463,7 @@ test.describe('Phase A.10 — Deep security probes (chromium-desktop only via co
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: 'a@b.c', password: big }),
     });
+    // JUSTIFIED: Express body-parser rejects with 413 (size limit) or 400 (parse failure).
     expect([400, 413]).toContain(r.status);
   });
 
@@ -467,12 +471,12 @@ test.describe('Phase A.10 — Deep security probes (chromium-desktop only via co
 
   test('A10.Q.1 ?access_token=... rejected (no URL-bearer auth)', async () => {
     const r = await fetch(`${API}/auth/me?access_token=fake`);
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A10.Q.2 ?token=... rejected', async () => {
     const r = await fetch(`${API}/auth/me?token=fake`);
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   // ---------- 10.R — Server banner / info disclosure ----------
@@ -553,6 +557,7 @@ test.describe('Phase A.10 — Deep security probes (chromium-desktop only via co
       const body = await r.text();
       expect(body, 'no directory listing').not.toMatch(/index of|<a href=/i);
     } else {
+      // JUSTIFIED: resource genuinely may not exist (404) or may be forbidden by host config (403).
       expect([403, 404]).toContain(r.status);
     }
   });
@@ -561,16 +566,19 @@ test.describe('Phase A.10 — Deep security probes (chromium-desktop only via co
 
   test('A10.U.1 GET /auth/login → 404/405 (no method override leak)', async () => {
     const r = await fetch(`${API}/auth/login`);
+    // JUSTIFIED: Express returns 404 for unhandled method on path; some routers return 405.
     expect([404, 405]).toContain(r.status);
   });
 
   test('A10.U.2 GET /auth/forgot-password → 404/405', async () => {
     const r = await fetch(`${API}/auth/forgot-password`);
+    // JUSTIFIED: Express returns 404 for unhandled method on path; some routers return 405.
     expect([404, 405]).toContain(r.status);
   });
 
   test('A10.U.3 GET /auth/reset-password → 404/405', async () => {
     const r = await fetch(`${API}/auth/reset-password`);
+    // JUSTIFIED: Express returns 404 for unhandled method on path; some routers return 405.
     expect([404, 405]).toContain(r.status);
   });
 
@@ -580,7 +588,7 @@ test.describe('Phase A.10 — Deep security probes (chromium-desktop only via co
     const r = await fetch(`${API}/auth/me`, {
       headers: { 'Authorization': '  Bearer   abc.def.ghi  ' },
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A10.V.2 lowercase "bearer" prefix accepted or rejected (no 5xx)', async () => {
@@ -596,7 +604,9 @@ test.describe('Phase A.10 — Deep security probes (chromium-desktop only via co
       { encoding: 'utf8' }
     ).trim();
     const status = parseInt(code, 10);
-    expect([400, 401, 403]).toContain(status);
+    // JUSTIFIED: curl/OS may reject the malformed Authorization header before reaching the server (400),
+    // or auth middleware rejects the bad signature (401). 403 not expected here.
+    expect([400, 401]).toContain(status);
   });
 
   // ---------- 10.W — ObjectId validation on dynamic params ----------
@@ -604,6 +614,7 @@ test.describe('Phase A.10 — Deep security probes (chromium-desktop only via co
   test('A10.W.1 /jobs/<not-an-objectid> → 400 or 404', async () => {
     const r = await fetch(`${API}/jobs/this-is-not-a-mongo-id`);
     expectNot5xx(r.status, 'invalid ObjectId');
+    // JUSTIFIED: Express may 400 (validator), 404 (no route match for non-ObjectId param), or 422 (semantic).
     expect([400, 404, 422]).toContain(r.status);
   });
 
