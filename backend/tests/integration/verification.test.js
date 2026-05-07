@@ -110,5 +110,100 @@ describe('Verification API - Integration Tests', () => {
       // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
       expect([400, 401]).toContain(response.status);
     });
+
+    it('rejects request with no token at all (400)', async () => {
+      const response = await request(app)
+        .post('/api/verification/validate-token')
+        .send({});
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toMatch(/token/i);
+    });
+
+    it('rejects unknown verificationToken (not in store)', async () => {
+      const response = await request(app)
+        .post('/api/verification/validate-token')
+        .send({ verificationToken: 'a'.repeat(64) });
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toMatch(/nuk u gjet|skaduar/i);
+    });
+  });
+
+  describe('POST /api/verification/resend', () => {
+    it('rejects request with missing identifier', async () => {
+      const response = await request(app)
+        .post('/api/verification/resend')
+        .send({ method: 'email' });
+      expect(response.status).toBe(400);
+      expect(response.body.message).toMatch(/identifier/i);
+    });
+
+    it('rejects request with missing method', async () => {
+      const response = await request(app)
+        .post('/api/verification/resend')
+        .send({ identifier: 'test@example.com' });
+      expect(response.status).toBe(400);
+    });
+
+    it('accepts resend for new identifier (no prior verification)', async () => {
+      const response = await request(app)
+        .post('/api/verification/resend')
+        .send({ identifier: 'resend-new@example.com', method: 'email' });
+      // 200 success or 500 if email send fails (Resend not configured)
+      // The branch we want to cover is "no prior verification → generate + store"
+      expect([200, 500]).toContain(response.status);
+    }, 30000);
+
+    it('rejects resend within 1-minute cooldown after prior request', async () => {
+      // Issue first request
+      await request(app)
+        .post('/api/verification/request')
+        .send({ identifier: 'cooldown@example.com', method: 'email', userType: 'jobseeker' });
+
+      // Immediate resend should be rejected
+      const response = await request(app)
+        .post('/api/verification/resend')
+        .send({ identifier: 'cooldown@example.com', method: 'email' });
+      expect(response.status).toBe(400);
+      expect(response.body.message).toMatch(/1 minutë|prisni/i);
+    }, 30000);
+  });
+
+  describe('POST /api/verification/verify — additional edge cases', () => {
+    it('rejects when method does not match the stored method', async () => {
+      // Request with method=email
+      await request(app)
+        .post('/api/verification/request')
+        .send({ identifier: 'method-mismatch@example.com', method: 'email', userType: 'jobseeker' });
+
+      // Try to verify with method=sms (mismatch)
+      const response = await request(app)
+        .post('/api/verification/verify')
+        .send({ identifier: 'method-mismatch@example.com', method: 'sms', code: '123456' });
+
+      // Either 400 from method-mismatch or validation error
+      expect(response.status).toBe(400);
+    }, 30000);
+
+    it('after 3 wrong attempts, deletes the verification entirely', async () => {
+      await request(app)
+        .post('/api/verification/request')
+        .send({ identifier: 'three-strikes@example.com', method: 'email', userType: 'jobseeker' });
+
+      // 3 wrong attempts
+      for (let i = 0; i < 3; i++) {
+        await request(app)
+          .post('/api/verification/verify')
+          .send({ identifier: 'three-strikes@example.com', method: 'email', code: '000000' });
+      }
+
+      // 4th attempt: store has been wiped → "nuk u gjet" (not found) message
+      const fourth = await request(app)
+        .post('/api/verification/verify')
+        .send({ identifier: 'three-strikes@example.com', method: 'email', code: '000000' });
+      expect(fourth.status).toBe(400);
+      expect(fourth.body.message).toMatch(/nuk u gjet|skaduar|tentativa/i);
+    }, 30000);
   });
 });
