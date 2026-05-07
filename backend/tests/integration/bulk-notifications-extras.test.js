@@ -161,7 +161,7 @@ describe('bulk-notifications.js — extra branches', () => {
       const r = await request(app)
         .post(`/api/bulk-notifications/templates/${tpl._id}/create`)
         .set(createAuthHeaders(admin));
-      expect([200, 201]).toContain(r.status);
+      expect(r.status).toBe(201);
       expect(r.body.data?.bulkNotification?.title).toBe('TPL');
     });
   });

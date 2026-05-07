@@ -162,7 +162,7 @@ describe('business-control.js — PUT routes', () => {
         .post('/api/business-control/platform/emergency')
         .set(createAuthHeaders(admin))
         .send({ action: 'freeze_posting', reason: 'test freeze' });
-      expect([200, 201]).toContain(r.status);
+      expect(r.status).toBe(200);
 
       const setting = await SystemConfiguration.findOne({ key: 'job_posting_frozen' });
       expect(setting.value).toBe(true);
@@ -180,7 +180,7 @@ describe('business-control.js — PUT routes', () => {
         .post('/api/business-control/platform/emergency')
         .set(createAuthHeaders(admin))
         .send({ action: 'unfreeze_posting', reason: 'release' });
-      expect([200, 201]).toContain(r.status);
+      expect(r.status).toBe(200);
 
       const setting = await SystemConfiguration.findOne({ key: 'job_posting_frozen' });
       expect(setting.value).toBe(false);
@@ -194,7 +194,7 @@ describe('business-control.js — PUT routes', () => {
         .post('/api/business-control/platform/emergency')
         .set(createAuthHeaders(admin))
         .send({ action: 'pause_all_campaigns', reason: 'maintenance' });
-      expect([200, 201]).toContain(r.status);
+      expect(r.status).toBe(200);
 
       const allActive = await BusinessCampaign.countDocuments({ isActive: true });
       expect(allActive).toBe(0);
@@ -208,7 +208,7 @@ describe('business-control.js — PUT routes', () => {
         .post('/api/business-control/platform/emergency')
         .set(createAuthHeaders(admin))
         .send({ action: 'reset_pricing', reason: 'reset' });
-      expect([200, 201]).toContain(r.status);
+      expect(r.status).toBe(200);
 
       const activeRules = await PricingRule.countDocuments({ isActive: true });
       expect(activeRules).toBe(0);
@@ -225,7 +225,7 @@ describe('business-control.js — PUT routes', () => {
         .post('/api/business-control/platform/emergency')
         .set(createAuthHeaders(admin))
         .send({ action: 'reactivate_campaigns', reason: 'resume' });
-      expect([200, 201]).toContain(r.status);
+      expect(r.status).toBe(200);
 
       const refreshed = await BusinessCampaign.findById(c._id);
       expect(refreshed.isActive).toBe(true);
@@ -240,7 +240,7 @@ describe('business-control.js — PUT routes', () => {
         .post('/api/business-control/platform/emergency')
         .set(createAuthHeaders(admin))
         .send({ action: 'pause_platform', reason: 'all stop' });
-      expect([200, 201]).toContain(r.status);
+      expect(r.status).toBe(200);
 
       const setting = await SystemConfiguration.findOne({ key: 'job_posting_frozen' });
       expect(setting.value).toBe(true);

@@ -82,7 +82,7 @@ describe('jobs.js — checkPostingFrozen middleware', () => {
       .post('/api/jobs')
       .set(createAuthHeaders(emp))
       .send(VALID_JOB);
-    expect([201, 200]).toContain(r.status);
+    expect(r.status).toBe(201);
   });
 
   it('allows POST / when job_posting_frozen setting does not exist (default behavior)', async () => {
@@ -93,6 +93,6 @@ describe('jobs.js — checkPostingFrozen middleware', () => {
       .post('/api/jobs')
       .set(createAuthHeaders(emp))
       .send(VALID_JOB);
-    expect([201, 200]).toContain(r.status);
+    expect(r.status).toBe(201);
   });
 });
