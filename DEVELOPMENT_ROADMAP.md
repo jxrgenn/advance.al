@@ -70,15 +70,15 @@ Manually tightened ~146 ORs in worst-offender files (8 prod-smoke files, 5 overn
 
 Endpoint inventory + ~50-80 new boundary tests. Significant scope, deferred to follow-up sprint.
 
-### Phase 6 (coverage push) — IN PROGRESS — measured: **57.2% → 67.09% statements** (+9.89% absolute)
+### Phase 6 (coverage push) — IN PROGRESS — measured: **57.2% → 69.55% statements** (+12.35% absolute)
 
 | Metric | Baseline | After Phase 6 | Gain |
 |---|---|---|---|
-| Statements | 57.2% | **67.09%** | +9.89 |
-| Branches | 42.7% | **56.91%** | +14.21 |
-| Functions | 63.2% | **75.47%** | +12.27 |
-| Lines | — | 67.96% | — |
-| Tests passing | ~870 | **1197** | +327 |
+| Statements | 57.2% | **69.55%** | +12.35 |
+| Branches | 42.7% | **59.66%** | +16.96 |
+| Functions | 63.2% | **77.60%** | +14.40 |
+| Lines | — | 70.50% | — |
+| Tests passing | ~870 | **1285** | +415 |
 
 Per-file delta:
 
