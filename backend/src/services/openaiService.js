@@ -3,9 +3,11 @@ import { zodResponseFormat } from 'openai/helpers/zod';
 import { cvSchema } from '../schemas/cvSchema.js';
 import logger from '../config/logger.js';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+let _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let _clientOverride = null;
+function openaiClient() { return _clientOverride || _openai; }
+/** Test-only hook to inject a stub client. Pass null to reset. */
+export function _setOpenAIClient(client) { _clientOverride = client; }
 
 /**
  * Extract CV data from natural language text using OpenAI GPT-4o with world-class prompt engineering
@@ -34,7 +36,7 @@ export async function extractCVDataFromText(naturalLanguageText, targetLanguage 
       ? '- Generate ALL professional descriptions in Albanian\n- Use Albanian terminology: "Përgjegjësi", "Arritje", "Aftësi", "Përvojë profesionale"\n- Dates: "Janar", "Shkurt", "Mars", etc. for months\n- Set language field to "sq"'
       : '- Generate ALL professional descriptions in English\n- Use English terminology: "Responsibilities", "Achievements", "Skills", "Professional Experience"\n- Dates: "January", "February", "March", etc. for months\n- Set language field to "en"';
 
-    const completion = await withRetry(() => openai.chat.completions.create({
+    const completion = await withRetry(() => openaiClient().chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       messages: [
         {
