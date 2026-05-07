@@ -1,0 +1,86 @@
+name: OpenAI snapshot refresh (Phase 28 — manual trigger)
+
+# Refreshes the cached OpenAI responses in
+# backend/tests/fixtures/openai-snapshots/. Run this manually when:
+#   - You add a new openai-real test
+#   - You change a prompt or model in the codebase
+#   - The cached snapshots have drifted from current OpenAI behavior
+#
+# Cost: ~$0.05-0.20 per run (uses gpt-4o-mini + text-embedding-3-small
+# with tiny fixed inputs). Stays well under the $2/month budget if run
+# <10 times per month.
+#
+# This is workflow_dispatch ONLY because:
+#   1. It costs real money
+#   2. It needs the real OPENAI_API_KEY which must NEVER appear in a
+#      pull_request-triggered workflow (collaborator could exfiltrate)
+#   3. Snapshot drift is intentional — we want explicit refresh, not auto
+
+on:
+  workflow_dispatch:
+    inputs:
+      open_pr:
+        description: 'Open a PR with the snapshot diffs (true) or just commit to a branch (false)'
+        required: false
+        default: 'true'
+
+jobs:
+  refresh:
+    name: Capture real OpenAI responses to fixtures
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Capture snapshots (UPDATE_OPENAI_SNAPSHOTS=true)
+        env:
+          NODE_ENV: test
+          UPDATE_OPENAI_SNAPSHOTS: 'true'
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          JWT_SECRET: ci-jwt-secret-32-characters-minimum-1234567890
+          JWT_REFRESH_SECRET: ci-jwt-refresh-32-characters-minimum-12345
+        run: |
+          cd backend
+          NODE_ENV=test node --experimental-vm-modules ../node_modules/jest/bin/jest.js \
+            --runInBand --testPathPattern='openai-real/'
+
+      - name: Check for snapshot diffs
+        id: diff
+        run: |
+          git add backend/tests/fixtures/openai-snapshots/
+          if git diff --cached --quiet; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No snapshot changes — current snapshots match real OpenAI responses."
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            git diff --cached --stat
+          fi
+
+      - name: Open PR with refreshed snapshots
+        if: steps.diff.outputs.changed == 'true' && github.event.inputs.open_pr == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="snapshot-refresh-$(date -u +%Y%m%d-%H%M%S)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git commit -m "chore: refresh OpenAI snapshots ($(date -u +%Y-%m-%d))"
+          git push -u origin "$BRANCH"
+          gh pr create \
+            --title "chore: refresh OpenAI snapshots" \
+            --body "Automated snapshot refresh from openai-snapshot-refresh workflow. Review the diff to ensure changes are due to legitimate prompt/model updates, not unintended drift." \
+            --base main \
+            --head "$BRANCH"
