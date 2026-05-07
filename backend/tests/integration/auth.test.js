@@ -223,13 +223,12 @@ describe('Auth API - Integration Tests', () => {
       expect(response.body.data.refreshToken).toBeDefined();
     });
 
-    it('rejects invalid refresh token', async () => {
+    it('rejects invalid refresh token with 401', async () => {
       const response = await request(app)
         .post('/api/auth/refresh')
         .send({ refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.bogus.signature' });
-
-      // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
-      expect([400, 401]).toContain(response.status);
+      // Route catches verifyToken throw → 401 (never 400 — body is parsed fine).
+      expect(response.status).toBe(401);
     });
   });
 
@@ -303,9 +302,8 @@ describe('Auth API - Integration Tests', () => {
         .send({ email: 'unknown@example.com' });
 
       expect(known.status).toBe(unknown.status);
-      // Both should return generic success message
-      // JUSTIFIED: HTTP convention — endpoint returns 200 (synchronous) or 202 (async accepted).
-      expect([200, 202]).toContain(known.status);
+      // Route always returns res.json() = 200 (anti-enumeration; email send is async).
+      expect(known.status).toBe(200);
     }, 30000);
   });
 
@@ -353,15 +351,15 @@ describe('Auth API - Integration Tests', () => {
   // POST /api/auth/verify-email
   // ────────────────────────────────────────────────────
   describe('POST /api/auth/verify-email', () => {
-    it('rejects with bad code', async () => {
+    it('rejects with bad code (400 — no active code on freshly-created user)', async () => {
       const { user } = await createJobseeker({ email: 'verify@example.com', emailVerified: false });
 
       const response = await request(app)
         .post('/api/auth/verify-email')
         .set(createAuthHeaders(user))
         .send({ code: '000000' });
-
-      expect([400, 410]).toContain(response.status);
+      // Route returns 400 in every bad-code branch; 410 is not used.
+      expect(response.status).toBe(400);
     });
   });
 });
