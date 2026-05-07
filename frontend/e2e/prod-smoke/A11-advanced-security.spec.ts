@@ -79,31 +79,31 @@ test.describe('Phase A.11 — Advanced security (chromium-desktop only via confi
     const fakePub = '-----BEGIN PUBLIC KEY-----\nFAKEKEY\n-----END PUBLIC KEY-----';
     const tok = jwtAlgConfusion({ id: '507f1f77bcf86cd799439011', userType: 'admin' }, fakePub);
     const r = await fetch(`${API}/admin/dashboard`, { headers: { 'Authorization': `Bearer ${tok}` } });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A11.A.2 kid header with path traversal → 401', async () => {
     const tok = jwtKidInjection({ id: '507f1f77bcf86cd799439011', userType: 'admin' }, '../../../etc/passwd');
     const r = await fetch(`${API}/admin/dashboard`, { headers: { 'Authorization': `Bearer ${tok}` } });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A11.A.3 kid header SQL injection → 401', async () => {
     const tok = jwtKidInjection({ id: '507f1f77bcf86cd799439011', userType: 'admin' }, "' OR 1=1--");
     const r = await fetch(`${API}/admin/dashboard`, { headers: { 'Authorization': `Bearer ${tok}` } });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A11.A.4 jku header with attacker URL → 401 (server must not fetch external keys)', async () => {
     const tok = jwtJkuInjection({ id: '507f1f77bcf86cd799439011', userType: 'admin' }, 'https://evil.com/jwks.json');
     const r = await fetch(`${API}/admin/dashboard`, { headers: { 'Authorization': `Bearer ${tok}` } });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A11.A.5 empty signature → 401', async () => {
     const tok = jwtEmptySig({ id: '507f1f77bcf86cd799439011', userType: 'admin' });
     const r = await fetch(`${API}/admin/dashboard`, { headers: { 'Authorization': `Bearer ${tok}` } });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A11.A.6 crit header with unknown extension → 401', async () => {
@@ -112,19 +112,19 @@ test.describe('Phase A.11 — Advanced security (chromium-desktop only via confi
     const sig = crypto.createHmac('sha256', 'whatever').update(`${h}.${p}`).digest();
     const tok = `${h}.${p}.${enc(sig)}`;
     const r = await fetch(`${API}/admin/dashboard`, { headers: { 'Authorization': `Bearer ${tok}` } });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A11.A.7 JWT with two signatures (multi-sig confusion) → 401', async () => {
     const tok = jwtAlgNone({ id: '507f1f77bcf86cd799439011', userType: 'admin' }) + 'extra.sig.parts';
     const r = await fetch(`${API}/admin/dashboard`, { headers: { 'Authorization': `Bearer ${tok}` } });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A11.A.8 JWT with overlong base64 padding → 401', async () => {
     const overpadded = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9========.eyJpZCI6IjEifQ.AAAA';
     const r = await fetch(`${API}/auth/me`, { headers: { 'Authorization': `Bearer ${overpadded}` } });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   // ============================================================
@@ -166,7 +166,9 @@ test.describe('Phase A.11 — Advanced security (chromium-desktop only via confi
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: ['admin@advance.al'], password: 'x' }),
     });
-    expect([400, 401, 422]).toContain(r.status);
+    // JUSTIFIED: express-validator must reject malformed type at body validation (400).
+    // 401 would mean validator was bypassed and bcrypt.compare ran on a non-string — real bug.
+    expect(r.status).toBe(400);
     if (r.ok) {
       const body = await r.json();
       expect(body?.success, 'must NOT auth via array-typed email').not.toBe(true);
@@ -179,7 +181,9 @@ test.describe('Phase A.11 — Advanced security (chromium-desktop only via confi
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: 12345, password: 'x' }),
     });
-    expect([400, 401, 422]).toContain(r.status);
+    // JUSTIFIED: express-validator must reject malformed type at body validation (400).
+    // 401 would mean validator was bypassed and bcrypt.compare ran on a non-string — real bug.
+    expect(r.status).toBe(400);
   });
 
   test('A11.C.3 login: email as null → 400', async () => {
@@ -188,7 +192,9 @@ test.describe('Phase A.11 — Advanced security (chromium-desktop only via confi
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: null, password: 'x' }),
     });
-    expect([400, 401, 422]).toContain(r.status);
+    // JUSTIFIED: express-validator must reject malformed type at body validation (400).
+    // 401 would mean validator was bypassed and bcrypt.compare ran on a non-string — real bug.
+    expect(r.status).toBe(400);
   });
 
   test('A11.C.4 login: password as boolean → 400/401', async () => {
@@ -197,7 +203,9 @@ test.describe('Phase A.11 — Advanced security (chromium-desktop only via confi
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: 'a@b.c', password: true }),
     });
-    expect([400, 401, 422]).toContain(r.status);
+    // JUSTIFIED: express-validator must reject malformed type at body validation (400).
+    // 401 would mean validator was bypassed and bcrypt.compare ran on a non-string — real bug.
+    expect(r.status).toBe(400);
   });
 
   test('A11.C.5 login: deeply nested object as password', async () => {
@@ -206,7 +214,9 @@ test.describe('Phase A.11 — Advanced security (chromium-desktop only via confi
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: 'a@b.c', password: { $regex: '.*' } }),
     });
-    expect([400, 401, 422]).toContain(r.status);
+    // JUSTIFIED: express-validator must reject malformed type at body validation (400).
+    // 401 would mean validator was bypassed and bcrypt.compare ran on a non-string — real bug.
+    expect(r.status).toBe(400);
   });
 
   test('A11.C.6 login: missing both fields → 400', async () => {
@@ -283,6 +293,9 @@ test.describe('Phase A.11 — Advanced security (chromium-desktop only via confi
       ).trim();
       const status = parseInt(code, 10);
       expectNot5xx(status, `${method} method`);
+      // JUSTIFIED: different HTTP methods legitimately produce different rejection codes —
+      // 405 (method not allowed) for known methods, 501 (not implemented) for exotic, 404 if
+      // the server treats the path as not found for unsupported methods, 400 for malformed.
       expect([400, 404, 405, 501], `${method} should be rejected`).toContain(status);
     });
   }
@@ -526,6 +539,7 @@ test.describe('Phase A.11 — Advanced security (chromium-desktop only via confi
       // If served, must be JavaScript content-type
       expect(ct, 'sw.js must be served as JS').toMatch(/javascript|text\/html/i);
     } else {
+      // JUSTIFIED: app may not have a service worker (404) or may explicitly forbid it (403).
       expect([404, 403]).toContain(r.status);
     }
   });
@@ -591,12 +605,12 @@ test.describe('Phase A.11 — Advanced security (chromium-desktop only via confi
 
   test('A11.R.1 GET /api/quickusers/:id without admin token → 401', async () => {
     const r = await fetch(`${API}/quickusers/507f1f77bcf86cd799439011`);
-    expect([401, 403, 404]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A11.R.2 GET /api/quickusers/analytics/overview without admin token → 401', async () => {
     const r = await fetch(`${API}/quickusers/analytics/overview`);
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A11.R.3 POST /api/quickusers/find-matches without admin → 401', async () => {
@@ -605,7 +619,7 @@ test.describe('Phase A.11 — Advanced security (chromium-desktop only via confi
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({}),
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   // ============================================================
@@ -685,6 +699,7 @@ test.describe('Phase A.11 — Advanced security (chromium-desktop only via confi
 
   test('A11.T.6 Forced 404 on auth endpoint reveals nothing', async () => {
     const r = await fetch(`${API}/auth/totally-bogus-endpoint`);
+    // JUSTIFIED: Express returns 404 for unknown routes; some routers attach 405 method-not-allowed handlers.
     expect([404, 405]).toContain(r.status);
     const body = await r.text();
     expect(body, 'no internal route hint').not.toMatch(/registered|matched|router|handler/i);
