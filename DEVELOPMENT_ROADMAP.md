@@ -70,14 +70,14 @@ Manually tightened ~146 ORs in worst-offender files (8 prod-smoke files, 5 overn
 
 Endpoint inventory + ~50-80 new boundary tests. Significant scope, deferred to follow-up sprint.
 
-### Phase 6 (coverage push) — IN PROGRESS — measured: **57.2% → 75.25% statements** (+18.05% absolute)
+### Phase 6 (coverage push) — IN PROGRESS — measured: **57.2% → 75.82% statements** (+18.62% absolute)
 
 | Metric | Baseline | Mid-sprint | After Phase 6 (now) | Gain |
 |---|---|---|---|---|
-| Statements | 57.2% | 72.16% | **75.25%** | +18.05 |
-| Branches | 42.7% | 59.30% | **64.41%** | +21.71 |
-| Functions | 63.2% | 78.48% | **80.38%** | +17.18 |
-| Tests passing | ~870 | 1314+ | **1477** | +607 |
+| Statements | 57.2% | 72.16% | **75.82%** | +18.62 |
+| Branches | 42.7% | 59.30% | **65.30%** | +22.60 |
+| Functions | 63.2% | 78.48% | **80.50%** | +17.30 |
+| Tests passing | ~870 | 1314+ | **1525+** | +655+ |
 
 Per-file delta:
 
@@ -135,9 +135,9 @@ Per-file delta:
 - Phase 1 unjustified ORs reduced: **503 → 61** (88% reduction via codemod + manual)
 - Test-genuineness gate floor locked at: 61 permissive ORs, 5 backend mocks
 - Files deleted: 9 (Phase 14 mocked theater)
-- **Backend coverage: 57.2% → 75.25% statements (+18.05%), 42.7% → 64.41% branches (+21.71%), 63.2% → 80.38% functions (+17.18%)**
-- Total tests passing: **1477**
-- Phase 28 final tail batch (post-OpenAI-stub): notify-matching-users (14), job-embedding-similarities (8), auth-success-paths (14), cv-parsing-pure (23), notifications-success-paths (5), notification-model (23) = +87 more tests targeting the next-largest coverage gaps
+- **Backend coverage: 57.2% → 75.82% statements (+18.62%), 42.7% → 65.30% branches (+22.60%), 63.2% → 80.50% functions (+17.30%)**
+- Total tests passing: **1525+**
+- Phase 28 final tail batches (post-OpenAI-stub): notify-matching-users (14), job-embedding-similarities (8), auth-success-paths (14), cv-parsing-pure (23), notifications-success-paths (5), notification-model (23), users-work-edu-routes (12), users-gdpr-routes (5), users-resume-serve (9), report-action-statics (10), business-campaign-statics (14), system-health-statics (16) = **+153 more tests** targeting the next-largest coverage gaps. **B-024 surfaced**: ReportAction post-save hook is dead code (gates on doc.isNew||doc.wasNew, both always false at post-save) — notifications + auto-resolve never fire.
 - Services subdirectory coverage: ~74% statements (was 57.67%)
 
 ---
