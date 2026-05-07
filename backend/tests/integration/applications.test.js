@@ -297,4 +297,69 @@ describe('Applications API - Integration Tests', () => {
       expect(response.status).toBe(400);
     });
   });
+
+  describe('GET /api/applications/applied-jobs', () => {
+    it('returns the IDs of jobs the jobseeker has applied to', async () => {
+      const { user: applicant } = await createJobseeker({ emailVerified: true });
+      const { user: emp } = await createVerifiedEmployer();
+      const job1 = await createJob(emp);
+      const job2 = await createJob(emp);
+      // Applied to job1, not job2
+      await Application.create({
+        jobId: job1._id, jobSeekerId: applicant._id, employerId: emp._id,
+        applicationMethod: 'one_click', status: 'pending',
+      });
+
+      const response = await request(app)
+        .get('/api/applications/applied-jobs')
+        .set(createAuthHeaders(applicant));
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      const ids = (response.body.data?.appliedJobIds || response.body.data?.jobIds || []).map(String);
+      expect(ids).toContain(String(job1._id));
+      expect(ids).not.toContain(String(job2._id));
+    });
+
+    it('rejects employer (403)', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const response = await request(app)
+        .get('/api/applications/applied-jobs')
+        .set(createAuthHeaders(emp));
+      expect(response.status).toBe(403);
+    });
+  });
+
+  describe('GET /api/applications/employer/all', () => {
+    it('returns all applications across an employer\'s jobs', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const { user: applicantA } = await createJobseeker({ emailVerified: true });
+      const { user: applicantB } = await createJobseeker({ emailVerified: true });
+      const job1 = await createJob(emp);
+      const job2 = await createJob(emp);
+
+      await Application.create({
+        jobId: job1._id, jobSeekerId: applicantA._id, employerId: emp._id,
+        applicationMethod: 'one_click', status: 'pending',
+      });
+      await Application.create({
+        jobId: job2._id, jobSeekerId: applicantB._id, employerId: emp._id,
+        applicationMethod: 'one_click', status: 'pending',
+      });
+
+      const response = await request(app)
+        .get('/api/applications/employer/all')
+        .set(createAuthHeaders(emp));
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data?.applications?.length || 0).toBeGreaterThanOrEqual(2);
+    });
+
+    it('rejects jobseeker (403)', async () => {
+      const { user: js } = await createJobseeker();
+      const response = await request(app)
+        .get('/api/applications/employer/all')
+        .set(createAuthHeaders(js));
+      expect(response.status).toBe(403);
+    });
+  });
 });
