@@ -120,7 +120,11 @@ function deleteLocalFile(filePath) {
 
   try {
     const uploadsDir = path.resolve(process.cwd(), 'uploads');
-    const absolutePath = path.resolve(process.cwd(), filePath);
+    // filePath is a URL-style path (e.g. /uploads/resumes/foo.pdf). path.resolve
+    // would treat the leading slash as filesystem-absolute and ignore cwd, so
+    // strip the /uploads/ prefix and resolve under uploadsDir explicitly.
+    const relativePath = filePath.replace(/^\/uploads\//, '');
+    const absolutePath = path.resolve(uploadsDir, relativePath);
     // Prevent path traversal — resolved path must be under uploads/
     if (!absolutePath.startsWith(uploadsDir + path.sep)) {
       logger.warn('Account cleanup: path traversal attempt blocked', { path: filePath });
