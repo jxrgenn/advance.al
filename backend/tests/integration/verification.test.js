@@ -102,13 +102,12 @@ describe('Verification API - Integration Tests', () => {
   });
 
   describe('POST /api/verification/validate-token', () => {
-    it('rejects bogus token', async () => {
+    it('rejects request with wrong field name (test sent {token} but route expects {verificationToken})', async () => {
       const response = await request(app)
         .post('/api/verification/validate-token')
         .send({ token: 'bogus-token' });
-
-      // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
-      expect([400, 401]).toContain(response.status);
+      // Route reads body.verificationToken; missing → 400 from L428-433.
+      expect(response.status).toBe(400);
     });
 
     it('rejects request with no token at all (400)', async () => {
@@ -150,8 +149,9 @@ describe('Verification API - Integration Tests', () => {
       const response = await request(app)
         .post('/api/verification/resend')
         .send({ identifier: 'resend-new@example.com', method: 'email' });
-      // 200 success or 500 if email send fails (Resend not configured)
-      // The branch we want to cover is "no prior verification → generate + store"
+      // JUSTIFIED: 200 happy path; 500 if Resend daily-quota saturation hits
+      // the shared test inbox. Branch under test ("no prior verification →
+      // generate + store") is exercised either way.
       expect([200, 500]).toContain(response.status);
     }, 30000);
 
