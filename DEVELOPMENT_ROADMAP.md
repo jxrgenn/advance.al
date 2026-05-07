@@ -70,14 +70,14 @@ Manually tightened ~146 ORs in worst-offender files (8 prod-smoke files, 5 overn
 
 Endpoint inventory + ~50-80 new boundary tests. Significant scope, deferred to follow-up sprint.
 
-### Phase 6 (coverage push) — IN PROGRESS — measured: **57.2% → 81.97% statements** (+24.77% absolute)
+### Phase 6 (coverage push) — IN PROGRESS — measured: **57.2% → 82.51% statements** (+25.31% absolute)
 
 | Metric | Baseline | Mid-sprint | After Phase 6 (now) | Gain |
 |---|---|---|---|---|
-| Statements | 57.2% | 72.16% | **81.97%** | +24.77 |
-| Branches | 42.7% | 59.30% | **70.89%** | +28.19 |
-| Functions | 63.2% | 78.48% | **85.38%** | +22.18 |
-| Tests passing | ~870 | 1314+ | **1685+** | +815+ |
+| Statements | 57.2% | 72.16% | **82.51%** | +25.31 |
+| Branches | 42.7% | 59.30% | **71.24%** | +28.54 |
+| Functions | 63.2% | 78.48% | **86.08%** | +22.88 |
+| Tests passing | ~870 | 1314+ | **1716+** | +846+ |
 
 **Crossed the 80% statements + 70% branches milestones.** Remaining gap to 90% target is concentrated in:
 - src/config/redis.js (26.4%) & src/config/database.js (9.5%) — infrastructure, would need real Redis test instance + DB connection fault injection
@@ -144,8 +144,8 @@ Per-file delta:
 - Phase 1 unjustified ORs reduced: **503 → 61** (88% reduction via codemod + manual)
 - Test-genuineness gate floor locked at: 61 permissive ORs, 5 backend mocks
 - Files deleted: 9 (Phase 14 mocked theater)
-- **Backend coverage: 57.2% → 81.97% statements (+24.77%), 42.7% → 70.89% branches (+28.19%), 63.2% → 85.38% functions (+22.18%)**
-- Total tests passing: **1685+**
+- **Backend coverage: 57.2% → 82.51% statements (+25.31%), 42.7% → 71.24% branches (+28.54%), 63.2% → 86.08% functions (+22.88%)**
+- Total tests passing: **1716+**
 - Phase 28 final tail batches (post-OpenAI-stub): notify-matching-users (14), job-embedding-similarities (8), auth-success-paths (14), cv-parsing-pure (23), notifications-success-paths (5), notification-model (23), users-work-edu-routes (12), users-gdpr-routes (5), users-resume-serve (9), report-action-statics (10), business-campaign-statics (14), system-health-statics (16), users-upload-routes (8, real Cloudinary), quickusers-multipart-signup (4, real Cloudinary), configuration-pricing-put (4), business-control-update-routes (12), cv-generate-success (4, OpenAI stub), verification-success-paths (4), users-parse-resume (5, real Cloudinary + OpenAI stub), jobs-filter-branches (10), admin-manage-actions (13), reports-admin-filters (8), pricing-rule-statics (11), jobs-pricing-campaign (10), revenue-analytics-statics (15) = **+261 more tests** targeting the next-largest coverage gaps. **B-024 surfaced AND fixed**: ReportAction post-save hook was dead code (gates on doc.isNew||doc.wasNew, both always false at post-save) — notifications + auto-resolve never fired. Now the hook actually runs.
 - Services subdirectory coverage: ~74% statements (was 57.67%)
 
