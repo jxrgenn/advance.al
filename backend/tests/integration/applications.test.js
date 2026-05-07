@@ -173,8 +173,10 @@ describe('Applications API - Integration Tests', () => {
       expect(own.status).toBe(200);
 
       const cross = await request(app).get(`/api/applications/${application._id}`).set(createAuthHeaders(outsider));
-      // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
-      expect([403, 404]).toContain(cross.status);
+      // Route returns 403 when user is not a participant (jobseekerId nor employerId).
+      // (Security note: this leaks existence vs. uniform 404 — a separate IDOR
+      // hardening item, not a test correctness issue.)
+      expect(cross.status).toBe(403);
     });
   });
 
@@ -251,15 +253,14 @@ describe('Applications API - Integration Tests', () => {
         .post(`/api/applications/${application._id}/message`)
         .set(createAuthHeaders(applicant))
         .send({ message: 'A question about the role', messageType: 'text' });
-      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-      expect([200, 201]).toContain(ok.status);
+      expect(ok.status).toBe(200);
 
       const blocked = await request(app)
         .post(`/api/applications/${application._id}/message`)
         .set(createAuthHeaders(outsider))
         .send({ message: 'Trying to spy', messageType: 'text' });
-      // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
-      expect([403, 404]).toContain(blocked.status);
+      // Route returns 403 for non-participant (canMessage=false).
+      expect(blocked.status).toBe(403);
     });
   });
 

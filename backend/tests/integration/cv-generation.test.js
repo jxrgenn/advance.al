@@ -141,9 +141,9 @@ describe('CV API - Integration Tests', () => {
       const response = await request(app)
         .get('/api/cv/my-cv')
         .set(createAuthHeaders(user));
-      // Schema default produces an aiGeneratedCV object with language='sq', so route returns 200
-      // JUSTIFIED: Lookup endpoint — returns 200 if resource exists, 404 if not. Both legit.
-      expect([200, 404]).toContain(response.status);
+      // Schema default populates aiGeneratedCV.language='sq', so existence check passes.
+      expect(response.status).toBe(200);
+      expect(response.body.data.cvData.language).toBe('sq');
     });
 
     it('rejects employer (jobseeker-only)', async () => {
