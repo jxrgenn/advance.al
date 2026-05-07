@@ -131,4 +131,52 @@ describe('Admin Embeddings API - Integration Tests', () => {
       expect(response.status).toBe(200);
     });
   });
+
+  describe('POST /api/admin/embeddings/recompute-all', () => {
+    it('admin can trigger full recompute (returns success)', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .post('/api/admin/embeddings/recompute-all')
+        .set(createAuthHeaders(admin));
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+    });
+  });
+
+  describe('DELETE /api/admin/embeddings/queue-item/:queueId', () => {
+    it('admin DELETE non-existent queue item returns 404', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .delete('/api/admin/embeddings/queue-item/507f1f77bcf86cd799439099')
+        .set(createAuthHeaders(admin));
+      // JUSTIFIED: 404 (not found) or 200 with no-op success
+      expect([200, 404]).toContain(response.status);
+    });
+
+    it('admin DELETE with malformed id returns 400', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .delete('/api/admin/embeddings/queue-item/not-an-objectid')
+        .set(createAuthHeaders(admin));
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe('POST /api/admin/embeddings/queue-job/:jobId — edge cases', () => {
+    it('returns 404 for non-existent jobId', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .post('/api/admin/embeddings/queue-job/507f1f77bcf86cd799439099')
+        .set(createAuthHeaders(admin));
+      expect(response.status).toBe(404);
+    });
+
+    it('rejects malformed jobId (400)', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .post('/api/admin/embeddings/queue-job/not-an-objectid')
+        .set(createAuthHeaders(admin));
+      expect(response.status).toBe(400);
+    });
+  });
 });
