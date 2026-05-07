@@ -119,8 +119,7 @@ describe('Business Control API - Integration Tests', () => {
         .post(`/api/business-control/whitelist/${emp._id}`)
         .set(createAuthHeaders(admin))
         .send({ reason: 'Test' });
-      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-      expect([200, 201]).toContain(grant.status);
+      expect(grant.status).toBe(200);
 
       let dbEmp = await User.findById(emp._id);
       expect(dbEmp.freePostingEnabled).toBe(true);
@@ -185,8 +184,7 @@ describe('Business Control API - Integration Tests', () => {
           isActive: true,
           priority: 50,
         });
-      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-      expect([200, 201]).toContain(create.status);
+      expect(create.status).toBe(201);
 
       const list = await request(app)
         .get('/api/business-control/pricing-rules')

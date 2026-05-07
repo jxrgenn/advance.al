@@ -143,8 +143,9 @@ describe('Configuration API - Integration Tests', () => {
       const response = await request(app)
         .post('/api/configuration/initialize-defaults')
         .set(createAuthHeaders(admin));
-      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-      expect([200, 201]).toContain(response.status);
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.data?.createdSettings)).toBe(true);
     });
   });
 
@@ -159,16 +160,28 @@ describe('Configuration API - Integration Tests', () => {
   });
 
   describe('POST /api/configuration/maintenance-mode', () => {
-    it('admin can toggle maintenance mode', async () => {
+    it('admin can toggle maintenance mode after defaults initialized', async () => {
+      const { user: admin } = await createAdmin();
+      // Maintenance-mode setting only exists after initialize-defaults has run.
+      await request(app)
+        .post('/api/configuration/initialize-defaults')
+        .set(createAuthHeaders(admin));
+
+      const response = await request(app)
+        .post('/api/configuration/maintenance-mode')
+        .set(createAuthHeaders(admin))
+        .send({ enabled: true, reason: 'test' });
+      expect(response.status).toBe(200);
+      expect(response.body.data.maintenanceMode).toBe(true);
+    });
+
+    it('returns 404 when maintenance setting does not exist (defaults not initialized)', async () => {
       const { user: admin } = await createAdmin();
       const response = await request(app)
         .post('/api/configuration/maintenance-mode')
         .set(createAuthHeaders(admin))
         .send({ enabled: true, reason: 'test' });
-      // Endpoint may return 200/201/404 depending on whether maintenance config exists.
-      // Accept 404 in case initialize-defaults wasn't called first (not a regression).
-      // JUSTIFIED: Endpoint may create (200/201) or fail-not-found on cascade (404).
-      expect([200, 201, 404]).toContain(response.status);
+      expect(response.status).toBe(404);
     });
   });
 
@@ -209,13 +222,14 @@ describe('Configuration API - Integration Tests', () => {
   });
 
   describe('GET /api/configuration/audit/:id', () => {
-    it('audit on non-existent id returns 404 or empty', async () => {
+    it('audit on non-existent id returns 200 with empty history (no 404 — endpoint is lookup-only)', async () => {
       const { user: admin } = await createAdmin();
       const response = await request(app)
         .get('/api/configuration/audit/507f1f77bcf86cd799439099')
         .set(createAuthHeaders(admin));
-      // 404 (not found) or 200 with empty array — both legitimate
-      expect([200, 404]).toContain(response.status);
+      expect(response.status).toBe(200);
+      expect(response.body.data.auditHistory).toEqual([]);
+      expect(response.body.data.pagination.totalItems).toBe(0);
     });
 
     it('audit with malformed id returns 400', async () => {
