@@ -185,8 +185,8 @@ describe('QuickUsers API - Integration Tests', () => {
       const response = await request(app)
         .post('/api/quickusers/track-click')
         .send({ token: qu.unsubscribeToken });
-      // Endpoint returns 200 (recorded) or 400 (validation)
-      expect([200, 400]).toContain(response.status);
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
     });
 
     it('rejects request with no token', async () => {
@@ -196,12 +196,11 @@ describe('QuickUsers API - Integration Tests', () => {
       expect(response.status).toBe(400);
     });
 
-    it('handles unknown token gracefully (no enumeration)', async () => {
+    it('returns 404 for unknown token (no information leak — token shape ok but not in DB)', async () => {
       const response = await request(app)
         .post('/api/quickusers/track-click')
         .send({ token: 'a'.repeat(64) });
-      // Should return 200 (no enumeration) or 404 — both don't reveal enumeration
-      expect([200, 404]).toContain(response.status);
+      expect(response.status).toBe(404);
     });
   });
 
@@ -215,14 +214,14 @@ describe('QuickUsers API - Integration Tests', () => {
       expect(response.status).toBe(403);
     });
 
-    it('admin with non-existent jobId returns 400 or 404', async () => {
+    it('admin sending wrong shape (jobId not job) returns 400', async () => {
       const { user: admin } = await createAdmin();
+      // Route expects body.job (full job object), not body.jobId; missing job → 400
       const response = await request(app)
         .post('/api/quickusers/find-matches')
         .set(createAuthHeaders(admin))
         .send({ jobId: '507f1f77bcf86cd799439099' });
-      // JUSTIFIED: route may validate (400) or fetch-and-fail (404); both legit.
-      expect([400, 404]).toContain(response.status);
+      expect(response.status).toBe(400);
     });
 
     it('admin with missing jobId returns 400', async () => {
