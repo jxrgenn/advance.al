@@ -515,4 +515,110 @@ describe('Jobs API - Integration Tests', () => {
       expect(response.body.data.job.status).toBe('active');
     });
   });
+
+  // ========================================
+  // GET /api/jobs - Additional filter coverage
+  // ========================================
+  describe('GET /api/jobs - additional filters', () => {
+    it('handles HTTP Parameter Pollution: city as repeated query (?city=A&city=B)', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      await createJob(emp, { title: 'Tirana Job', city: 'Tiranë' });
+      await createJob(emp, { title: 'Vlorë Job', city: 'Vlorë' });
+      await createJob(emp, { title: 'Korçë Job', city: 'Korçë' });
+
+      const response = await request(app)
+        .get('/api/jobs?city=Tiranë&city=Vlorë');
+      expect(response.status).toBe(200);
+      const titles = response.body.data.jobs.map(j => j.title);
+      expect(titles).toEqual(expect.arrayContaining(['Tirana Job', 'Vlorë Job']));
+      expect(titles).not.toContain('Korçë Job');
+    });
+
+    it('returns empty result for invalid company ObjectId (no 500)', async () => {
+      const response = await request(app).get('/api/jobs?company=not-an-objectid');
+      expect(response.status).toBe(200);
+      expect(response.body.data.jobs).toEqual([]);
+      expect(response.body.data.pagination.totalJobs).toBe(0);
+    });
+
+    it('filters by minSalary', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      await createJob(emp, { title: 'Low', salary: { min: 500, max: 800 } });
+      await createJob(emp, { title: 'High', salary: { min: 2000, max: 3000 } });
+
+      const response = await request(app).get('/api/jobs?minSalary=1500');
+      expect(response.status).toBe(200);
+      const titles = response.body.data.jobs.map(j => j.title);
+      expect(titles).toContain('High');
+      expect(titles).not.toContain('Low');
+    });
+
+    it('filters by experience (entry → junior)', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      await createJob(emp, { title: 'Junior Role', seniority: 'junior' });
+      await createJob(emp, { title: 'Senior Role', seniority: 'senior' });
+
+      const response = await request(app).get('/api/jobs?experience=entry');
+      expect(response.status).toBe(200);
+      const titles = response.body.data.jobs.map(j => j.title);
+      expect(titles).toContain('Junior Role');
+      expect(titles).not.toContain('Senior Role');
+    });
+  });
+
+  // ========================================
+  // GET /api/jobs/employer/my-jobs
+  // ========================================
+  describe('GET /api/jobs/employer/my-jobs', () => {
+    it('returns the calling employer\'s jobs only (not other employers\')', async () => {
+      const { user: empA } = await createVerifiedEmployer();
+      const { user: empB } = await createVerifiedEmployer();
+      await createJob(empA, { title: 'A1' });
+      await createJob(empA, { title: 'A2' });
+      await createJob(empB, { title: 'B1' });
+
+      const response = await request(app)
+        .get('/api/jobs/employer/my-jobs')
+        .set(createAuthHeaders(empA));
+      expect(response.status).toBe(200);
+      const titles = response.body.data.jobs.map(j => j.title);
+      expect(titles).toEqual(expect.arrayContaining(['A1', 'A2']));
+      expect(titles).not.toContain('B1');
+    });
+
+    it('rejects without auth (401)', async () => {
+      const response = await request(app).get('/api/jobs/employer/my-jobs');
+      expect(response.status).toBe(401);
+    });
+
+    it('rejects jobseeker (403)', async () => {
+      const { user: js } = await createJobseeker();
+      const response = await request(app)
+        .get('/api/jobs/employer/my-jobs')
+        .set(createAuthHeaders(js));
+      expect(response.status).toBe(403);
+    });
+  });
+
+  // ========================================
+  // GET /api/jobs/:id/similar
+  // ========================================
+  describe('GET /api/jobs/:id/similar', () => {
+    it('returns similar jobs for an existing job (no auth required)', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const job = await createJob(emp);
+      await createJob(emp);
+      await createJob(emp);
+
+      const response = await request(app).get(`/api/jobs/${job._id}/similar`);
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.data.jobs ?? response.body.data.similarJobs ?? [])).toBe(true);
+    });
+
+    it('returns 404 for non-existent job id', async () => {
+      const response = await request(app).get('/api/jobs/507f1f77bcf86cd799439099/similar');
+      expect(response.status).toBe(404);
+    });
+  });
 });
