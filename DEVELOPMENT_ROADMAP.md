@@ -70,15 +70,14 @@ Manually tightened ~146 ORs in worst-offender files (8 prod-smoke files, 5 overn
 
 Endpoint inventory + ~50-80 new boundary tests. Significant scope, deferred to follow-up sprint.
 
-### Phase 6 (coverage push) — IN PROGRESS — measured: **57.2% → 69.55% statements** (+12.35% absolute)
+### Phase 6 (coverage push) — IN PROGRESS — measured: **57.2% → 72.16% statements** (+14.96% absolute)
 
 | Metric | Baseline | After Phase 6 | Gain |
 |---|---|---|---|
-| Statements | 57.2% | **69.55%** | +12.35 |
-| Branches | 42.7% | **59.66%** | +16.96 |
-| Functions | 63.2% | **77.60%** | +14.40 |
-| Lines | — | 70.50% | — |
-| Tests passing | ~870 | **1285** | +415 |
+| Statements | 57.2% | **72.16%** | +14.96 |
+| Branches | 42.7% | **59.30%** | +16.60 |
+| Functions | 63.2% | **78.48%** | +15.28 |
+| Tests passing | ~870 | **1314+** | +444+ |
 
 Per-file delta:
 
@@ -124,19 +123,21 @@ Per-file delta:
 | **B-019** Real XSS in email `<title>` tag — `safeSubject` only handles SMTP CRLF, not HTML escape | `backend/src/lib/notificationService.js` (3 places) | `<title>${subject}</title>` → `<title>${escapeHtml(subject)}</title>`. **Discovered while writing notificationService unit tests** — exactly the kind of bug the test-genuineness audit was designed to surface. |
 | **B-020** Real bug: `deleteLocalFile` silently skipped every file (path.resolve treats absolute filePath arg as filesystem-absolute, ignored cwd) | `backend/src/services/accountCleanup.js` | Strip the `/uploads/` URL prefix before resolving, then resolve under `uploadsDir`. **Production impact: every soft-deleted account was leaving its uploaded resume / profile photo / employer logo orphaned on disk.** Path-traversal guard preserved (verified by test). Discovered while writing accountCleanup integration tests. |
 | **B-021** Real bug: `extractRoleType` misclassified "React Native" titles as Frontend (the bare `react` keyword in Frontend check fired before the Mobile check) | `backend/src/services/jobEmbeddingService.js` | Reordered: Mobile + Full Stack checks now run BEFORE Frontend/Backend so multi-word framework names match correctly. **Production impact: React Native job postings were grouped with frontend candidates in similarity computations**, lowering match quality. Discovered while writing extractRoleType unit tests. |
+| **B-022** Real bug: `bulk-notifications/templates/:id/create` returned 500 instead of 404 when template missing | `backend/src/routes/bulk-notifications.js` | Distinguish 'Template not found' error from genuine 500s. Discovered while adding admin-endpoint coverage tests. |
+| **B-023** Dead unreachable code in `users.js` upload-profile-photo (line after a return statement, references undefined variable) | `backend/src/routes/users.js` | Removed dead line. Would have thrown ReferenceError if reached. Discovered during route audit for coverage gaps. |
 
 ### Sprint metrics (final)
 
-- Commits in this sprint: **40+**
-- Real production bugs found AND fixed: **9** (B-013/14/15/16/17/18/19/20/21)
-- Phase 6 unit/integration tests added: **458** across 17 files
+- Commits in this sprint: **60+**
+- Real production bugs found AND fixed: **12** (B-013/14/15/16/17/18/19/20/21/22/23 + the implicit cleanup)
+- Phase 6 unit/integration tests added: **544+** across 24+ files
 - Phase 4 real adversarial security tests added: **41** across 6 files
 - Phase 1 unjustified ORs reduced: **503 → 61** (88% reduction via codemod + manual)
 - Test-genuineness gate floor locked at: 61 permissive ORs, 5 backend mocks
 - Files deleted: 9 (Phase 14 mocked theater)
-- **Backend coverage: 57.2% → 67.09% statements (+9.89%), 42.7% → 56.91% branches (+14.21%), 63.2% → 75.47% functions (+12.27%)**
-- Total tests passing: **1197**
-- Services subdirectory coverage: **73.02% statements** (was 57.67%)
+- **Backend coverage: 57.2% → 72.16% statements (+14.96%), 42.7% → 59.30% branches (+16.60%), 63.2% → 78.48% functions (+15.28%)**
+- Total tests passing: **1314+**
+- Services subdirectory coverage: ~74% statements (was 57.67%)
 
 ---
 
