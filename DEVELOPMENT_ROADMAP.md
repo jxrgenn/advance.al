@@ -70,14 +70,14 @@ Manually tightened ~146 ORs in worst-offender files (8 prod-smoke files, 5 overn
 
 Endpoint inventory + ~50-80 new boundary tests. Significant scope, deferred to follow-up sprint.
 
-### Phase 6 (coverage push) — IN PROGRESS — measured: **57.2% → 82.51% statements** (+25.31% absolute)
+### Phase 6 (coverage push) — IN PROGRESS — measured: **57.2% → 83.32% statements** (+26.12% absolute)
 
 | Metric | Baseline | Mid-sprint | After Phase 6 (now) | Gain |
 |---|---|---|---|---|
-| Statements | 57.2% | 72.16% | **82.51%** | +25.31 |
-| Branches | 42.7% | 59.30% | **71.24%** | +28.54 |
-| Functions | 63.2% | 78.48% | **86.08%** | +22.88 |
-| Tests passing | ~870 | 1314+ | **1716+** | +846+ |
+| Statements | 57.2% | 72.16% | **83.32%** | +26.12 |
+| Branches | 42.7% | 59.30% | **72.20%** | +29.50 |
+| Functions | 63.2% | 78.48% | **87.02%** | +23.82 |
+| Tests passing | ~870 | 1314+ | **1790+** | +920+ |
 
 **Crossed the 80% statements + 70% branches milestones.** Remaining gap to 90% target is concentrated in:
 - src/config/redis.js (26.4%) & src/config/database.js (9.5%) — infrastructure, would need real Redis test instance + DB connection fault injection
