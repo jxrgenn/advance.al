@@ -1,4 +1,4 @@
-name: QA Tests (Phase 1-17)
+name: QA Tests (Phase 1-28)
 
 on:
   push:
@@ -44,10 +44,16 @@ jobs:
           cd backend
           NODE_ENV=test node --experimental-vm-modules ../node_modules/jest/bin/jest.js --runInBand --testPathPattern='integration/|unit/'
 
-  frontend-e2e:
-    name: Frontend Phase 14 E2E (mocked APIs)
+  frontend-e2e-overnight:
+    name: Frontend E2E (overnight suite, real backend)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Phase 28: replaced the Phase 14 mocked-API job with the real-backend
+    # overnight suite. Phase 14 specs were pure theater (e.g., login.spec.ts
+    # only checked "page renders SOMETHING"); overnight covers the same
+    # flows with real Express + mongodb-memory-server + real Chromium and
+    # asserts substantive properties (no info-leak on unknown email,
+    # token verification on happy path, suspended/banned semantics, etc.).
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -64,17 +70,29 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Run Phase 14 E2E
+      - name: Run overnight suite (chromium-desktop only)
+        # Same security note as backend job: no real OPENAI/RESEND keys here
+        # because PR triggers can be modified by collaborators.
+        env:
+          NODE_ENV: test
+          EMAIL_TEST_MODE: 'true'
+          SKIP_RATE_LIMIT: 'true'
+          JWT_SECRET: ci-jwt-secret-32-characters-minimum-1234567890
+          JWT_REFRESH_SECRET: ci-jwt-refresh-32-characters-minimum-12345
+          OPENAI_API_KEY: sk-ci-placeholder-not-real
+          RESEND_API_KEY: re_ci_placeholder_not_real
         run: |
           cd frontend
-          npx playwright test -c playwright.phase-14.config.ts --reporter=list
+          npx playwright test -c playwright.overnight.config.ts --reporter=list
 
-      - name: Upload Playwright trace on failure
+      - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-trace
-          path: frontend/test-results-phase-14/
+          name: overnight-playwright-report
+          path: |
+            frontend/playwright-overnight-report/
+            frontend/test-results/overnight/
           retention-days: 7
 
   ai-embeddings:

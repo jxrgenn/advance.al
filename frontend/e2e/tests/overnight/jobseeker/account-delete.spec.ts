@@ -41,7 +41,7 @@ test.describe('Jobseeker / account-delete (GDPR cascade)', () => {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: js.email, password: 'StrongPass123!' }),
     });
-    expect([401, 403, 404]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('AD.3 data-export endpoint returns user JSON before deletion', async () => {
