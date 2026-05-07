@@ -17,7 +17,7 @@ test.describe('Phase A.4 — Adversarial probes (chromium-desktop only via confi
     const r = await fetch(`${API}/admin/dashboard`, {
       headers: { 'Authorization': `Bearer ${fake}` },
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A4.2 wrong-secret JWT → 401', async () => {
@@ -25,7 +25,7 @@ test.describe('Phase A.4 — Adversarial probes (chromium-desktop only via confi
     const r = await fetch(`${API}/admin/dashboard`, {
       headers: { 'Authorization': `Bearer ${fake}` },
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A4.3 garbage Bearer string → 401', async () => {
@@ -85,6 +85,7 @@ test.describe('Phase A.4 — Adversarial probes (chromium-desktop only via confi
     const r = await fetch(`${API}/jobs?sortBy=constructor`);
     expect(r.status, 'must not 5xx').toBeLessThan(500);
     // Either 200 (current behavior — constructor passes through), or 4xx (after future hardening)
+    // JUSTIFIED: documented defense-in-depth gap — see comment above. Hardening will tighten this.
     expect([200, 400, 403, 422]).toContain(r.status);
   });
 
@@ -99,6 +100,8 @@ test.describe('Phase A.4 — Adversarial probes (chromium-desktop only via confi
       { encoding: 'utf8' }
     ).trim();
     const status = parseInt(code, 10);
+    // JUSTIFIED: TRACE handling varies wildly across Express/proxy stacks (Render, Cloudflare).
+    // 405/501 = method rejected; 400/404 = path mismatch; 200 = TRACE accepted (must not echo body).
     expect([405, 501, 400, 404, 200]).toContain(status);
     // The critical defense: if 200, response body MUST NOT echo back our headers
     // (TRACE traditionally echoes the request, enabling XST attacks).
@@ -110,8 +113,9 @@ test.describe('Phase A.4 — Adversarial probes (chromium-desktop only via confi
   test('A4.12 PUT/DELETE on collection-level /api/jobs → 404', async () => {
     const put = await fetch(`${API}/jobs`, { method: 'PUT' });
     const del = await fetch(`${API}/jobs`, { method: 'DELETE' });
+    // JUSTIFIED: PUT/DELETE on collection-level — Express 404 (no method handler) or 405.
     expect([404, 405]).toContain(put.status);
-    expect([404, 405]).toContain(del.status);
+    expect([404, 405]).toContain(del.status);  // see PUT comment above
   });
 
   // --- Open redirect / reflected XSS ---
@@ -152,7 +156,9 @@ test.describe('Phase A.4 — Adversarial probes (chromium-desktop only via confi
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: `nonexistent-${Date.now()}@advance-test.invalid` }),
     });
-    expect([200, 429]).toContain(r.status); // 429 if a previous test hit the limit
+    // JUSTIFIED: forgot-password legitimately returns 200 (no info leak) for unknown emails;
+    // 429 if a previous test in the run hit the per-email or per-IP limit.
+    expect([200, 429]).toContain(r.status);
     if (r.status === 200) {
       const body = await r.json();
       expect(body.success).toBe(true);

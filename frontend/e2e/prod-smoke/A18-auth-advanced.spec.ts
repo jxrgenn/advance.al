@@ -201,6 +201,7 @@ test.describe('Phase A.18 — Auth advanced (chromium-desktop only)', () => {
         userType: 'jobseeker',
       }),
     });
+    // JUSTIFIED: weak-password rejection — express-validator 400, semantic 422, or rate-limit 429.
     expect([400, 422, 429]).toContain(r.status);
   });
 
@@ -215,6 +216,7 @@ test.describe('Phase A.18 — Auth advanced (chromium-desktop only)', () => {
         userType: 'jobseeker',
       }),
     });
+    // JUSTIFIED: weak-password rejection — express-validator 400, semantic 422, or rate-limit 429.
     expect([400, 422, 429]).toContain(r.status);
   });
 
@@ -229,6 +231,7 @@ test.describe('Phase A.18 — Auth advanced (chromium-desktop only)', () => {
         userType: 'jobseeker',
       }),
     });
+    // JUSTIFIED: weak-password rejection — express-validator 400, semantic 422, or rate-limit 429.
     expect([400, 422, 429]).toContain(r.status);
   });
 
@@ -236,6 +239,7 @@ test.describe('Phase A.18 — Auth advanced (chromium-desktop only)', () => {
 
   test('A18.refresh /auth/refresh without token → 4xx', async () => {
     const r = await fetch(`${API}/auth/refresh`, { method: 'POST' });
+    // JUSTIFIED: refresh-token endpoint — 400 (no body), 401 (bogus token), 422 (validator), 429 (limiter).
     expect([400, 401, 422, 429]).toContain(r.status);
   });
 
@@ -245,6 +249,7 @@ test.describe('Phase A.18 — Auth advanced (chromium-desktop only)', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ refreshToken: 'bogus.bogus.bogus' }),
     });
+    // JUSTIFIED: refresh-token endpoint — 400 (no body), 401 (bogus token), 422 (validator), 429 (limiter).
     expect([400, 401, 422, 429]).toContain(r.status);
   });
 
@@ -256,7 +261,7 @@ test.describe('Phase A.18 — Auth advanced (chromium-desktop only)', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ currentPassword: 'a', newPassword: 'b' }),
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   // ---------- Rate-limit headers visible on auth endpoints ----------
@@ -289,6 +294,8 @@ test.describe('Phase A.18 — Auth advanced (chromium-desktop only)', () => {
     });
     // Public request endpoint (some flows) — must rate-limit
     expectNot5xx(r.status, 'verification request');
+    // JUSTIFIED: public verification request — 200 (accepted, will email), 400/422 (validator),
+    // 401 (auth-gated variant), 429 (per-email or per-IP limit).
     expect([200, 400, 401, 422, 429]).toContain(r.status);
   });
 });

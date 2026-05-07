@@ -46,7 +46,7 @@ test.describe('Phase A.16 — OpenAI security (chromium-desktop only)', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ naturalLanguageInput: 'test' }),
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A16.3 /cv/generate with synthetic JWT → 401 (no quota burn)', async () => {
@@ -56,27 +56,28 @@ test.describe('Phase A.16 — OpenAI security (chromium-desktop only)', () => {
       headers: { 'Authorization': `Bearer ${tok}`, 'content-type': 'application/json' },
       body: JSON.stringify({ naturalLanguageInput: 'test' }),
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A16.4 /cv/generate refuses GET (POST-only)', async () => {
     const r = await fetch(`${API}/cv/generate`);
+    // JUSTIFIED: route is POST-only — Express 404 (no GET handler) or 405 (router-attached).
     expect([404, 405]).toContain(r.status);
   });
 
   test('A16.5 /cv/download/:fileId without auth → 401', async () => {
     const r = await fetch(`${API}/cv/download/507f1f77bcf86cd799439011`);
-    expect([401, 403, 404]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A16.6 /cv/preview/:fileId without auth → 401', async () => {
     const r = await fetch(`${API}/cv/preview/507f1f77bcf86cd799439011`);
-    expect([401, 403, 404]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A16.7 /cv/my-cv without auth → 401', async () => {
     const r = await fetch(`${API}/cv/my-cv`);
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A16.8 admin embedding endpoints without admin → 401', async () => {
@@ -86,7 +87,7 @@ test.describe('Phase A.16 — OpenAI security (chromium-desktop only)', () => {
     ];
     for (const ep of endpoints) {
       const r = await fetch(`${API}${ep}`, { method: 'POST' });
-      expect([401, 403]).toContain(r.status);
+      expect(r.status).toBe(401);
     }
   });
 
@@ -111,7 +112,9 @@ test.describe('Phase A.16 — OpenAI security (chromium-desktop only)', () => {
     // anyone with auth burn the org's quota)
     for (const path of ['/api/openai', '/api/proxy/openai', '/api/ai/chat', '/api/llm']) {
       const r = await fetch(`${API.replace('/api', '')}${path}`);
-      expect([401, 403, 404, 405]).toContain(r.status);
+      // JUSTIFIED: probing for accidentally-exposed proxy paths — 404 (no such route) is the
+      // expected case; 405 if path exists but method differs; 401 if auth-gated path exists.
+      expect([401, 404, 405]).toContain(r.status);
     }
   });
 
@@ -122,8 +125,8 @@ test.describe('Phase A.16 — OpenAI security (chromium-desktop only)', () => {
       headers: { 'Authorization': `Bearer ${tok}`, 'content-type': 'application/json' },
       body: JSON.stringify({}),
     });
-    // 401 (auth checks first) or 400 (auth then validation)
-    expect([400, 401, 403, 422]).toContain(r.status);
+    // JUSTIFIED: auth fires first → 401 (synthetic JWT). If auth somehow passed, body validation → 400/422.
+    expect([400, 401, 422]).toContain(r.status);
   });
 
   test('A16.12 /cv/generate with 50KB input — no 5xx, must rate-cap', async () => {
@@ -134,6 +137,7 @@ test.describe('Phase A.16 — OpenAI security (chromium-desktop only)', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ naturalLanguageInput: huge }),
     });
-    expect([400, 401, 403, 413]).toContain(r.status);
+    // JUSTIFIED: 50KB body — 401 (auth fails first, body never read), 413 (size limit), 400 (parse fail).
+    expect([400, 401, 413]).toContain(r.status);
   });
 });
