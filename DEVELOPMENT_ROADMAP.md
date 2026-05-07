@@ -70,25 +70,39 @@ Manually tightened ~146 ORs in worst-offender files (8 prod-smoke files, 5 overn
 
 Endpoint inventory + ~50-80 new boundary tests. Significant scope, deferred to follow-up sprint.
 
-### Phase 6 (coverage push 57% → 90%) — IN PROGRESS (243 new unit/integration tests added)
+### Phase 6 (coverage push) — IN PROGRESS — measured: **57.2% → 67.09% statements** (+9.89% absolute)
+
+| Metric | Baseline | After Phase 6 | Gain |
+|---|---|---|---|
+| Statements | 57.2% | **67.09%** | +9.89 |
+| Branches | 42.7% | **56.91%** | +14.21 |
+| Functions | 63.2% | **75.47%** | +12.27 |
+| Lines | — | 67.96% | — |
+| Tests passing | ~870 | **1197** | +327 |
+
+Per-file delta:
 
 | File | Baseline → After | Tests added | Notes |
 |---|---|---|---|
-| `notificationService.js` | 3.9% → much higher | 18 unit | Surfaced + fixed B-019 (real XSS in `<title>` tag) |
-| `sanitize.js` | (helpers) | 45 unit | escapeHtml, stripHtml, escapeRegex, safeSubject (SMTP CRLF), normalizeOneLine, sanitizeLimit/Skip, validateObjectId middleware |
-| `errorSanitizer.js` | 56.3% → much higher | 44 unit | sanitize, sanitizeForUser, getErrorType, isRetryable, createErrorResponse, logError |
-| `accountCleanup.js` | 11.3% → ~95% | 13 integration (replSet) | Surfaced + fixed B-020 (real bug: deleteLocalFile silently skipped all files due to path.resolve absolute-arg behavior — production accounts left orphaned files) |
-| `candidateMatching.js` | 13% → ~95% | 65 (44 unit + 21 integration) | All 7 score functions exact-boundary-tested; access controls (hasAccessToJob, grantAccessToJob, trackContact); orchestration (findTopCandidates cache hit/miss/expired, deleted/inactive exclusion) |
-| `cvParsingService.js` | 2.7% → much higher | 39 unit | Internal helpers exposed via `_internal` export hook: DATE_REGEX, calculateExperienceFromHistory (every bucket boundary), sanitizeParsedProfile (clamping, validation, drop-incomplete-entries) |
-| `emailService.js` | 25.9% → higher | 8 unit | Mock paths (sendSMS Twilio-not-configured, sendEmail SMTP-not-configured, verifyConnection, sendTestEmail) — note most of file is dead code (production uses Resend) |
-| `alertService.js` | 26.5% → ~95% | 25 unit | Constructor defaults, sendAlert disabled-path + cooldown, 3 wrapper methods, checkQueueHealth threshold logic, formatHtmlEmail, testEmail |
-| `PricingRule.js` | 28.1% → ~95% | 35 unit | All 10 condition operators, evaluateConditions, calculatePrice (multiplier+adjustment, clamp negative, round 2dp), virtuals (effectiveness, revenuePerDay) |
-| `ReportAction.js` | 42% → much higher | 20 unit | summary virtual (every actionType), severity virtual (1-5 mapping), reverse() preconditions (already-reversed, non-reversible types), schema defaults |
-| `debugLogger.js` | 33.3% → ~95% | 26 unit | generateDebugId uniqueness, isEnabled per category, toggle/getStatus, log/scope/measure with console.log spy, colorize ANSI vs plain, getLevelEmoji |
+| `errorSanitizer.js` | 56.3% → **100%** | 44 unit | sanitize, sanitizeForUser, getErrorType, isRetryable, createErrorResponse, logError |
+| `sanitize.js` | (helpers) → **100%** | 45 unit | escapeHtml, stripHtml, escapeRegex, safeSubject (SMTP CRLF), normalizeOneLine, sanitizeLimit/Skip, validateObjectId middleware |
+| `alertService.js` | 26.5% → **97.05%** | 25 unit | Constructor defaults, sendAlert disabled-path + cooldown, 3 wrapper methods, checkQueueHealth threshold logic, formatHtmlEmail, testEmail |
+| `accountCleanup.js` | 11.3% → **96.29%** | 13 integration (replSet) | Surfaced + fixed B-020 (real bug: deleteLocalFile silently skipped all files due to path.resolve absolute-arg behavior — production accounts left orphaned files) |
+| `candidateMatching.js` | 13% → **94.59%** | 65 (44 unit + 21 integration) | All 7 score functions exact-boundary-tested; access controls; orchestration (findTopCandidates cache hit/miss/expired, deleted/inactive exclusion) |
+| `debugLogger.js` | 33.3% → **92.98%** | 26 unit | generateDebugId uniqueness, isEnabled per category, toggle/getStatus, log/scope/measure with console.log spy, colorize ANSI vs plain |
+| `openaiService.js` | 63.6% → **81.81%** | (incidental from CV tests) | extractCVDataFromText now better covered by cv-parsing tests |
+| `userEmbeddingService.js` | 42.4% → **64.39%** | 19 unit | prepareQuickUserText / prepareJobSeekerText pure transformations |
+| `cvDocumentService.js` | 63.6% → **63.63%** | 11 unit | generateCVDocument with full + partial CV data variants |
+| `cvParsingService.js` | 2.7% → **57.14%** | 39 unit | Internal helpers exposed via `_internal` export: DATE_REGEX, calculateExperienceFromHistory (every bucket boundary), sanitizeParsedProfile (clamping, validation, drop-incomplete-entries), magic-byte sniffing |
+| `jobEmbeddingService.js` | 16.7% → **51.58%** | 37 unit | Surfaced + fixed B-021 (React Native misclassified as Frontend); cosineSimilarity, vectorMagnitude, prepareTextForEmbedding |
+| `notificationService.js` | 3.9% → **20.22%** | 18 unit + 8 integration | Surfaced + fixed B-019 (real XSS in `<title>` tag); send orchestration (sendWelcomeEmail, sendJobNotificationToUser/FullUser with side-effect verification, notifyAdmins) |
+| `emailService.js` | 25.9% → **50%** | 8 unit | Mock paths (sendSMS, sendEmail, verifyConnection) — most of file is dead code (production uses Resend) |
+| `PricingRule.js` | 28.1% → **~95%** | 35 unit | All 10 condition operators, evaluateConditions, calculatePrice |
+| `ReportAction.js` | 42% → **~70%** | 20 unit | summary + severity virtuals (every actionType), reverse() preconditions, schema defaults |
+| `QuickUser.js` | 46.7% → **~75%** | 36 unit | virtuals, canReceiveNotification (all 3 freq tiers), matchesJob (12 cases), schema defaults, email validation |
+| `redis.js` | 18.9% → **higher** | 8 unit | No-Redis-configured path: cacheGet/Set/Delete/DeletePattern/GetOrSet all degrade to no-op |
 
-**Total Phase 6 tests added: 338** (across 11 files).
-
-Remaining low-coverage files: `jobEmbeddingService.js` (16.7% — needs OpenAI snapshot), `userEmbeddingService.js` (42.4% — same), `QuickUser.js` model (46.7%), `quickusers.js` route (52%), `reports.js` route (55.6%).
+**Total Phase 6 tests added: 458 across 17 files.**
 
 ### Phase 7 (CI hardening + docs) — COMPLETE
 
@@ -109,17 +123,20 @@ Remaining low-coverage files: `jobEmbeddingService.js` (16.7% — needs OpenAI s
 | **B-018** `reports.test.js` admin-list-reports returns 401 instead of 200 | **FIXED** by B-016 (same) |
 | **B-019** Real XSS in email `<title>` tag — `safeSubject` only handles SMTP CRLF, not HTML escape | `backend/src/lib/notificationService.js` (3 places) | `<title>${subject}</title>` → `<title>${escapeHtml(subject)}</title>`. **Discovered while writing notificationService unit tests** — exactly the kind of bug the test-genuineness audit was designed to surface. |
 | **B-020** Real bug: `deleteLocalFile` silently skipped every file (path.resolve treats absolute filePath arg as filesystem-absolute, ignored cwd) | `backend/src/services/accountCleanup.js` | Strip the `/uploads/` URL prefix before resolving, then resolve under `uploadsDir`. **Production impact: every soft-deleted account was leaving its uploaded resume / profile photo / employer logo orphaned on disk.** Path-traversal guard preserved (verified by test). Discovered while writing accountCleanup integration tests. |
+| **B-021** Real bug: `extractRoleType` misclassified "React Native" titles as Frontend (the bare `react` keyword in Frontend check fired before the Mobile check) | `backend/src/services/jobEmbeddingService.js` | Reordered: Mobile + Full Stack checks now run BEFORE Frontend/Backend so multi-word framework names match correctly. **Production impact: React Native job postings were grouped with frontend candidates in similarity computations**, lowering match quality. Discovered while writing extractRoleType unit tests. |
 
-### Sprint metrics (current)
+### Sprint metrics (final)
 
-- Commits in this sprint: 30+
-- Real production bugs found AND fixed: **8** (B-013/14/15/16/17/18/19/20)
-- Phase 6 unit/integration tests added: **338** across 11 files
+- Commits in this sprint: **40+**
+- Real production bugs found AND fixed: **9** (B-013/14/15/16/17/18/19/20/21)
+- Phase 6 unit/integration tests added: **458** across 17 files
 - Phase 4 real adversarial security tests added: **41** across 6 files
 - Phase 1 unjustified ORs reduced: **503 → 61** (88% reduction via codemod + manual)
 - Test-genuineness gate floor locked at: 61 permissive ORs, 5 backend mocks
 - Files deleted: 9 (Phase 14 mocked theater)
-- Real backend coverage baseline: **57.2% statements, 42.7% branches, 63.2% functions** — re-measurement after Phase 6 in progress
+- **Backend coverage: 57.2% → 67.09% statements (+9.89%), 42.7% → 56.91% branches (+14.21%), 63.2% → 75.47% functions (+12.27%)**
+- Total tests passing: **1197**
+- Services subdirectory coverage: **73.02% statements** (was 57.67%)
 
 ---
 
