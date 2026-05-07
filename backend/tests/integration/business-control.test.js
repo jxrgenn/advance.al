@@ -164,4 +164,55 @@ describe('Business Control API - Integration Tests', () => {
       expect(response.status).toBe(200);
     });
   });
+
+  describe('Pricing Rules', () => {
+    it('admin can create a pricing rule and list it', async () => {
+      const { user: admin } = await createAdmin();
+
+      const create = await request(app)
+        .post('/api/business-control/pricing-rules')
+        .set(createAuthHeaders(admin))
+        .send({
+          name: 'Test Industry Rule',
+          description: 'Tech jobs get 1.5x',
+          category: 'industry',
+          rules: {
+            basePrice: 100,
+            multiplier: 1.5,
+            fixedAdjustment: 0,
+            conditions: [{ field: 'industry', operator: 'equals', value: 'Teknologji' }],
+          },
+          isActive: true,
+          priority: 50,
+        });
+      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
+      expect([200, 201]).toContain(create.status);
+
+      const list = await request(app)
+        .get('/api/business-control/pricing-rules')
+        .set(createAuthHeaders(admin));
+      expect(list.status).toBe(200);
+    });
+
+    it('rejects pricing rule with invalid category enum', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .post('/api/business-control/pricing-rules')
+        .set(createAuthHeaders(admin))
+        .send({
+          name: 'Bad', category: 'mystery', rules: { basePrice: 100, multiplier: 1 },
+        });
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe('Analytics — additional', () => {
+    it('admin POST /analytics/update returns 200 (refresh trigger)', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .post('/api/business-control/analytics/update')
+        .set(createAuthHeaders(admin));
+      expect(response.status).toBe(200);
+    });
+  });
 });
