@@ -72,10 +72,12 @@ test.describe('Auth / login', () => {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: '  ' + js.email + '  ', password: 'StrongPass123!' }),
     });
+    // JUSTIFIED: server may trim whitespace and accept (200) or treat as invalid email format (401).
+    // Either is acceptable; the security property is that the loose form must NOT bypass the password check.
     expect([200, 401]).toContain(r.status);
   });
 
-  test('LG.7 suspended user → 403', async () => {
+  test('LG.7 suspended user → 401', async () => {
     const js = await makeJobseeker();
     const future = new Date(Date.now() + 24 * 3600 * 1000);
     await dbUpdate('users', { email: js.email }, {
@@ -86,27 +88,30 @@ test.describe('Auth / login', () => {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: js.email, password: 'StrongPass123!' }),
     });
-    expect([401, 403]).toContain(r.status);
+    // auth.js returns 401 for suspended/banned/deleted (treats them as failed authentication).
+    // 403 would be conceptually nicer ("authenticated but forbidden") but current implementation is 401.
+    expect(r.status).toBe(401);
   });
 
-  test('LG.8 banned user → 403', async () => {
+  test('LG.8 banned user → 401', async () => {
     const js = await makeJobseeker();
     await dbUpdate('users', { email: js.email }, { $set: { status: 'banned' } });
     const r = await fetch(`${API}/auth/login`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: js.email, password: 'StrongPass123!' }),
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
-  test('LG.9 soft-deleted user → 401/403/404', async () => {
+  test('LG.9 soft-deleted user → 401', async () => {
     const js = await makeJobseeker();
     await dbUpdate('users', { email: js.email }, { $set: { isDeleted: true, deletedAt: new Date() } });
     const r = await fetch(`${API}/auth/login`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: js.email, password: 'StrongPass123!' }),
     });
-    expect([401, 403, 404]).toContain(r.status);
+    // Login lookup returns null for isDeleted user → auth.js returns 401 (uniform with unknown email).
+    expect(r.status).toBe(401);
   });
 
   test('LG.10 successful login adds refreshToken to user.refreshTokens', async () => {
