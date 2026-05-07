@@ -329,6 +329,21 @@ class JobEmbeddingService {
 
     const titleLower = title.toLowerCase();
 
+    // Mobile roles — checked FIRST so "React Native" doesn't get misclassified
+    // as Frontend by the bare "react" keyword in the Frontend check below.
+    if (titleLower.includes('mobile') || titleLower.includes('ios') ||
+        titleLower.includes('android') || titleLower.includes('react native') ||
+        titleLower.includes('flutter')) {
+      return 'Mobile Developer';
+    }
+
+    // Full Stack roles — checked before Frontend/Backend so "Full Stack React"
+    // doesn't get classified as Frontend.
+    if (titleLower.includes('full stack') || titleLower.includes('fullstack') ||
+        titleLower.includes('full-stack')) {
+      return 'Full Stack Developer';
+    }
+
     // Frontend roles
     if (titleLower.includes('frontend') || titleLower.includes('front-end') ||
         titleLower.includes('front end') || titleLower.includes('ui developer') ||
@@ -342,19 +357,6 @@ class JobEmbeddingService {
         titleLower.includes('back end') || titleLower.includes('api developer') ||
         titleLower.includes('server') && !titleLower.includes('full')) {
       return 'Backend Developer';
-    }
-
-    // Full Stack roles
-    if (titleLower.includes('full stack') || titleLower.includes('fullstack') ||
-        titleLower.includes('full-stack')) {
-      return 'Full Stack Developer';
-    }
-
-    // Mobile roles
-    if (titleLower.includes('mobile') || titleLower.includes('ios') ||
-        titleLower.includes('android') || titleLower.includes('react native') ||
-        titleLower.includes('flutter')) {
-      return 'Mobile Developer';
     }
 
     // DevOps roles
