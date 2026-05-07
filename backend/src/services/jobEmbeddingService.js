@@ -35,6 +35,14 @@ class JobEmbeddingService {
   }
 
   /**
+   * Test-only hook to swap the OpenAI client for a stub/snapshot replay.
+   * Production code must NEVER call this.
+   */
+  _setClientForTesting(client) {
+    this.openai = client;
+  }
+
+  /**
    * ========================================
    * QUEUEING OPERATIONS
    * ========================================

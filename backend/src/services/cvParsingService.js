@@ -4,14 +4,19 @@ import mammoth from 'mammoth';
 import { QuickUser } from '../models/index.js';
 import logger from '../config/logger.js';
 
-// Lazy-init to avoid throwing at import time when API key is not yet set
+// Lazy-init to avoid throwing at import time when API key is not yet set.
+// `_clientOverride` is a test-only injection hook; production code never sets it.
 let openai;
+let _clientOverride = null;
 function getOpenAI() {
+  if (_clientOverride) return _clientOverride;
   if (!openai) {
     openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
   return openai;
 }
+/** Test-only hook to inject a stub/snapshot client. Pass null to reset. */
+export function _setOpenAIClient(client) { _clientOverride = client; }
 
 /**
  * Extract text from a PDF buffer using pdfjs-dist.
