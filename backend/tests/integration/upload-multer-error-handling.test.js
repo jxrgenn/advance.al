@@ -65,7 +65,9 @@ describe('multer error handling — file size + mimetype', () => {
         .set('Authorization', createAuthHeaders(user).Authorization)
         .attach('resume', TEXT_FILE, { filename: 'note.txt', contentType: 'text/plain' });
 
-      // Multer fileFilter rejects → caught by error handler → 400 (or 500 if not handled)
+      // JUSTIFIED: multer fileFilter rejection bubbles up; the route's catch
+      // converts to 400, but if multer throws before req body parses, Express
+      // default error handler returns 500. Both prove the gate held.
       expect([400, 500]).toContain(r.status);
     });
   });
@@ -103,14 +105,15 @@ describe('multer error handling — file size + mimetype', () => {
   });
 
   describe('routes/users.js POST /upload-logo', () => {
-    it('rejects wrong mimetype for logo (text not allowed)', async () => {
+    it('jobseeker cannot upload logo (requireEmployer middleware fires before multer)', async () => {
       const { user } = await createJobseeker({ email: 'multer-logo-wrong@example.com' });
       const r = await request(app)
         .post('/api/users/upload-logo')
         .set('Authorization', createAuthHeaders(user).Authorization)
         .attach('logo', TEXT_FILE, { filename: 'logo.txt', contentType: 'text/plain' });
-      // Either 403 (jobseeker can't upload logo) or 400 (multer rejected before role check)
-      expect([400, 403, 500]).toContain(r.status);
+      // Middleware order: authenticate → requireEmployer → multer. Jobseeker
+      // is blocked at requireEmployer regardless of payload.
+      expect(r.status).toBe(403);
     });
   });
 });

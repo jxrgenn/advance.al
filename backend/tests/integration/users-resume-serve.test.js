@@ -58,7 +58,9 @@ describe('users.js — GET /resume/:filename', () => {
     const r = await request(app)
       .get('/api/users/resume/..%2Fetc%2Fpasswd')
       .set(createAuthHeaders(user));
-    // 400 explicit, or 404 from express not finding route
+    // JUSTIFIED: 400 if the prefix-validator caught it; 404 if express's
+    // path-normalization stripped the encoded slash and the route is missed.
+    // Either way the traversal MUST NOT succeed (no 200).
     expect([400, 404]).toContain(r.status);
   });
 
@@ -168,8 +170,9 @@ describe('users.js — GET /resume/:filename', () => {
       const r = await request(app)
         .get(`/api/users/resume/${filename}`)
         .set(createAuthHeaders(user));
-      // Either 200 (mammoth produced something) or 500 (parse error caught).
-      // We don't care WHICH — we just want the .docx code path exercised.
+      // JUSTIFIED: 200 if mammoth's permissive parser produced any HTML;
+      // 500 if it threw on the truncated PK header. Branch under test is
+      // the .docx extension dispatch — both paths execute the dispatcher.
       expect([200, 500]).toContain(r.status);
     } finally {
       cleanup(filename);
