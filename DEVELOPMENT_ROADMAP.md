@@ -80,10 +80,22 @@ Endpoint inventory + ~50-80 new boundary tests. Significant scope, deferred to f
 | Lines | — | — | — | **85.61%** | — |
 | Tests passing | ~870 | 1314+ | 1820+ | **1871** | +1000+ |
 
-**Note**: cov5 measurement (85.21% / 75.19% / 88.79%) doesn't include the
-last 4 test files added (applications-message-extras, cv-extra-branches,
-applications-status-transitions, business-control-whitelist-edges) — adds
-~25 more tests. Estimated next measurement ~85.5% statements / ~76% branches.
+**Note**: cov5 measurement (85.21% / 75.19% / 88.79%) doesn't include 14
+additional test files added in the latest batch — adds ~71 more tests:
+applications-message-extras (7), cv-extra-branches (4),
+applications-status-transitions (8), admin-system-health-email-branches (3),
+resend-email-disabled-paths (12), applications-get-by-id-extras (5),
+jobs-jobtype-filter (6), users-upload-config-size (3),
+business-control-campaign-autoactivate (3), jobs-status-extras (5),
+applications-job-jobid-filters (6), jobs-single-category-filter (2),
+admin-self-action-protection (3), companies-companysize-filter (4).
+Estimated next measurement ~86% statements / ~77% branches. Branches
+threshold (80%) still gated on Cloudinary error-paths and multer dead-code.
+
+**Cov6 measurement note**: cov6 ran all 132 test files but jest hung in
+teardown finalization (mongodb-memory-server cleanup deadlock) and was
+killed before writing coverage-summary.json. cov5 numbers remain
+authoritative until next clean run.
 
 **Crossed the 80% statements + 70% branches milestones.** Remaining gap to 90% target is concentrated in:
 - src/config/redis.js (26.4%) & src/config/database.js (9.5%) — infrastructure, would need real Redis test instance + DB connection fault injection
