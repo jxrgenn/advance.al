@@ -70,21 +70,20 @@ Manually tightened ~146 ORs in worst-offender files (8 prod-smoke files, 5 overn
 
 Endpoint inventory + ~50-80 new boundary tests. Significant scope, deferred to follow-up sprint.
 
-### Phase 6 (coverage push) — IN PROGRESS — measured: **57.2% → 84.34% statements** (+27.14% absolute)
+### Phase 6 (coverage push) — IN PROGRESS — measured: **57.2% → 85.21% statements** (+28.01% absolute)
 
-| Metric | Baseline | Mid-sprint | After Phase 6 (now) | Gain |
-|---|---|---|---|---|
-| Statements | 57.2% | 72.16% | **84.34%** | +27.14 |
-| Branches | 42.7% | 59.30% | **73.99%** | +31.29 |
-| Functions | 63.2% | 78.48% | **88.32%** | +25.12 |
-| Tests passing | ~870 | 1314+ | **1820+** | +950+ |
+| Metric | Baseline | Mid-sprint | cov4 | After Phase 6 (cov5) | Gain |
+|---|---|---|---|---|---|
+| Statements | 57.2% | 72.16% | 84.34% | **85.21%** | +28.01 |
+| Branches | 42.7% | 59.30% | 73.99% | **75.19%** | +32.49 |
+| Functions | 63.2% | 78.48% | 88.32% | **88.79%** | +25.59 |
+| Lines | — | — | — | **85.61%** | — |
+| Tests passing | ~870 | 1314+ | 1820+ | **1871** | +1000+ |
 
-**Note**: latest measurement (84.34% / 73.99% / 88.32%) doesn't include the
-last 8 test files added (jobs-employer-actions, notifications-admin-extras,
-jobs-posting-frozen, email-service-mock-paths, jobs-put-update,
-quickusers-unsub-already, openai-service-retry, applications-custom-form,
-admin-embeddings-queue-workers, reports-extra-paths) — adds ~80 more tests.
-Estimated next measurement ~85% statements / ~75% branches.
+**Note**: cov5 measurement (85.21% / 75.19% / 88.79%) doesn't include the
+last 4 test files added (applications-message-extras, cv-extra-branches,
+applications-status-transitions, business-control-whitelist-edges) — adds
+~25 more tests. Estimated next measurement ~85.5% statements / ~76% branches.
 
 **Crossed the 80% statements + 70% branches milestones.** Remaining gap to 90% target is concentrated in:
 - src/config/redis.js (26.4%) & src/config/database.js (9.5%) — infrastructure, would need real Redis test instance + DB connection fault injection
