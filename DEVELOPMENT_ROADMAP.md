@@ -6,6 +6,50 @@
 **CURRENT STATUS:** 🟢 **DEPLOY-READY. Phase 23 overnight suite now 799/799 GREEN (chromium-desktop). 4 additional production bugs found and fixed during full-coverage Tier 3: (1) verification code in-memory fallback never hit when Redis disabled — codes silently dropped; (2) employer registration `companyName`/`industry`/`description` not sanitized — stored XSS; (3) `User.addRefreshToken` had no FIFO cap, concurrent logins exceeded 5-token limit; (4) `/stats/public` 5-min in-memory cache served stale data with no test-mode bypass. All four shipped clean. 8 prior bugs from Phase 24 still in. Frontend + backend builds clean.**
 **Phase:** Phases 0-25 complete. Phase 25 (Tier 3) brought Phase 23 overnight to 799/799. Remaining out-of-scope items require external infrastructure or manual judgment (see `MANUAL_QA_CHECKLIST.md`).
 
+## 🚧 **PHASE 28 — TEST SUITE GENUINENESS & COVERAGE OVERHAUL — STARTED MAY 7, 2026**
+
+User mandate: skeptical audit of test suite revealed ChatGPT's "100% coverage" claim was misleading. Sprint to make every assertion genuinely fail when behavior is wrong, run real E2E + real OpenAI/Cloudinary, hit 90%+ measured coverage. **7–8 week sprint.** $2/month external service budget. Plan: `~/.claude/plans/hazy-stargazing-frost.md`. Baseline: `TESTING_BASELINE.md`. Bugs surfaced: `tests/results/PHASE-1-BUGS-DISCOVERED.md`.
+
+### Phase 0 (baseline & infra) — COMPLETE 2026-05-07
+
+Baseline numbers established for the first time:
+
+| Metric | Actual | Threshold |
+|---|---|---|
+| Statements coverage | **57.2%** | 80% (failing — never enforced in CI) |
+| Branches coverage | **42.7%** | 80% |
+| Functions coverage | **63.2%** | 80% |
+| Permissive `expect([...]).toContain(...)` ORs | **503** | 0 (audit estimate was 96 — undercounted 5×) |
+| Existence-only `toBeTruthy()` checks | 62 | 0 |
+| `page.route()` backend mocks | 34 | 0 (Phase 14 mocked suite) |
+| Playwright configs | 8 | 3 |
+| Test files | 64 backend + 139 frontend | — |
+
+**Real bugs surfaced during Phase 0** (logged in `tests/results/PHASE-1-BUGS-DISCOVERED.md`):
+
+| Bug | File | Severity | Discovery |
+|---|---|---|---|
+| **B-013** IPv6 rate-limit bypass on apply/message/CV-gen limiters | `backend/src/routes/applications.js:21,35`, `cv.js:23` | high (cv.js critical: bypassable OpenAI cost protection) | `ERR_ERL_KEY_GEN_IPV6` warning during test setup |
+| **B-014** IPv6 rate-limit bypass on auth limiters (rare path) | `backend/src/routes/auth.js:167,189,210` | medium | same warning |
+| **B-015** `users.js:793` rate limiter groups all anonymous users into one shared bucket; `validate: false` silenced the warning instead of fixing | `backend/src/routes/users.js:793-798` | medium | `validate: false` audit |
+| **B-016** Backend coverage run OOMs default 4GB heap | `backend/tests/setup/testDb.js` (module-level `mongoServer` overwritten without stopping previous instance) | medium (test infra) | OOM crash after 6 min |
+| **B-017** `phase-15/security-adversarial.test.js` JWT-non-existent-user test times out at 30s | `backend/tests/integration/phase-15/security-adversarial.test.js:189` | medium | timeout in coverage run |
+| **B-018** `reports.test.js` admin-list-reports returns 401 instead of 200 | `backend/tests/integration/reports.test.js:134` | high (real test failure on previously-green test, suggests recent regression) | failure in coverage run |
+
+**Key architectural finding**: the **overnight suite** at `frontend/e2e/tests/overnight/` (87 specs) is real-backend, comprehensive, and **NOT in CI**. The Phase 14 mocked suite (`frontend/e2e/tests/phase-14/`, 7 specs) IS in CI but is pure theater (e.g., `login.spec.ts` only checks "page renders something"; overnight equivalent has 10 substantive tests including no-info-leak verification). Phase 2 = delete Phase 14, wire overnight into CI.
+
+### Phases 1–7 (pending)
+
+1. Tighten 503 permissive ORs + 62 existence checks + 12 tautologies (~2 weeks; will surface more bugs — fix in-place)
+2. Delete Phase 14 mocks, wire overnight into CI, consolidate playwright configs 8→3
+3. Real OpenAI snapshot-replay tests + real Cloudinary tests (under $2/mo; user must provision accounts)
+4. Real adversarial security tests (replace prod-smoke "security" theater with auth bypass, IDOR, XSS, NoSQLi, mass assignment, CSRF, rate-limit bypass, file-upload, path-traversal, SSRF, timing oracle)
+5. Negative-path parity (every endpoint: happy + auth + validation + boundary)
+6. Push coverage 57% → 90% with documented `istanbul ignore` exclusions
+7. CI hardening: coverage regression gate, drop redundant `qa-tests.yml`, `TESTING_PHILOSOPHY.md`, fix coverage exit-code propagation
+
+---
+
 ## 🟢 **PHASE 25 — TIER 3 FULL OVERNIGHT GREEN — MAY 4, 2026**
 
 User mandate: every Phase 23 overnight test must pass — bugs in product OR in test all get fixed. Started at ~101 failures, ended at 0.
