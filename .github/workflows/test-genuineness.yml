@@ -1,0 +1,29 @@
+name: Test genuineness gate (Phase 28)
+
+# Runs on every PR + push to main. Fails the check if anyone introduces:
+#   - new permissive `expect([200, 401, 403, 404])` matchers without
+#     a `// JUSTIFIED:` comment immediately above
+#   - new `page.route('/api/...')` mocks of own backend (use real
+#     backend via overnight suite instead)
+#
+# The script (scripts/check-test-genuineness.sh) maintains FLOOR counts
+# that only ratchet DOWN. Lowering them is welcome; raising them needs
+# explicit justification in the commit message.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  gate:
+    name: Test genuineness gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run gate
+        run: ./scripts/check-test-genuineness.sh
