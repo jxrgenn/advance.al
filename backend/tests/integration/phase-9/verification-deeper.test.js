@@ -61,10 +61,9 @@ describe('Phase 9 — Verification Deeper', () => {
         .post('/api/verification/resend')
         .send({ identifier: 'resend-test@example.com', method: 'email' });
 
-      // Resend within 60s of the original request is rate-limited to prevent
-      // SMS/email spam (route returns 400 with cooldown message). Outside the
-      // window it returns 200/202. Both are correct behavior.
-      expect([200, 202, 400]).toContain(response.status);
+      // /request was called sub-second ago; the 60s cooldown always fires → 400.
+      expect(response.status).toBe(400);
+      expect(response.body.message).toMatch(/1 minutë|prisni/i);
     }, 30000);
   });
 });

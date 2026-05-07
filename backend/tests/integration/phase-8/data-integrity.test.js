@@ -65,13 +65,13 @@ describe('Phase 8 — Data Integrity', () => {
       const r1 = await request(app)
         .post(`/api/users/saved-jobs/${job._id}`)
         .set(createAuthHeaders(js));
-      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-      expect([200, 201]).toContain(r1.status);
+      expect(r1.status).toBe(200);
 
+      // user.saveJob is idempotent — duplicate save returns 200 (no 400).
       const r2 = await request(app)
         .post(`/api/users/saved-jobs/${job._id}`)
         .set(createAuthHeaders(js));
-      expect([200, 201, 400]).toContain(r2.status);
+      expect(r2.status).toBe(200);
 
       const list = await request(app)
         .get('/api/users/saved-jobs')

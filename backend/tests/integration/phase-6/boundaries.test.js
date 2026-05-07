@@ -171,12 +171,14 @@ describe('Phase 6 — Boundaries', () => {
         .send({ refreshToken });
       expect(logout.status).toBe(200);
 
-      // Refresh with the now-revoked token
+      // Refresh with the now-revoked token: verifyToken still parses (JWT
+      // is valid), then the hashedToken lookup misses (was removed by logout)
+      // → route returns 401 specifically.
       const refresh = await request(app)
         .post('/api/auth/refresh')
         .send({ refreshToken });
 
-      expect([400, 401, 403]).toContain(refresh.status);
+      expect(refresh.status).toBe(401);
     });
 
     it('double-logout is idempotent (no crash on second call)', async () => {

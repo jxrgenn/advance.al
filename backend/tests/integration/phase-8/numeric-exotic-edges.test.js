@@ -203,8 +203,8 @@ describe('Phase 8 — Numeric / Type / Exotic Edges', () => {
         .set(createAuthHeaders(js))
         .send({ jobId: job._id, applicationMethod: 'custom_form', customAnswers });
 
-      // Validator accepts arbitrary-length array
-      expect([201, 400]).toContain(response.status);
+      // Validator accepts arbitrary-length array → route returns 201 Created.
+      expect(response.status).toBe(201);
     });
   });
 

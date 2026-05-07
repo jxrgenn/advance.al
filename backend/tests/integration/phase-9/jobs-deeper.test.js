@@ -216,7 +216,7 @@ describe('Phase 9 — Jobs Deeper Coverage', () => {
 
     it('non-existent jobId → 404', async () => {
       const response = await request(app).get('/api/jobs/507f1f77bcf86cd799439099/similar');
-      expect([404, 200]).toContain(response.status);
+      expect(response.status).toBe(404);
     });
   });
 
