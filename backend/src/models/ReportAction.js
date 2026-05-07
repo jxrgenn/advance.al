@@ -391,6 +391,10 @@ reportActionSchema.methods.reverse = async function(reversedBy, reason) {
 
 // Pre-save middleware for validation and auto-population
 reportActionSchema.pre('save', async function(next) {
+  // Bridge isNew across save() so post-save hook can detect creates.
+  // Mongoose flips isNew to false BEFORE post('save') runs.
+  this.wasNew = this.isNew;
+
   if (this.isNew) {
     // Auto-populate target user from report if not provided
     if (!this.targetUser && this.report) {

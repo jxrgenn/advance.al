@@ -214,8 +214,20 @@ describe('ReportAction model — statics + methods', () => {
     });
   });
 
-  // NOTE: There IS a post-save hook intended to update Report status when
-  // actionType=report_resolved, but it gates on `doc.isNew || doc.wasNew` —
-  // both of which are false in mongoose post-save context. The hook body
-  // is effectively dead code. Test omitted; documented as B-024 (separate fix).
+  describe('post-save Report status update (B-024 fix)', () => {
+    it('marks Report as resolved when actionType=report_resolved', async () => {
+      const { user: admin } = await createAdmin();
+      const { user: target } = await createJobseeker();
+      const report = await seedReport(target._id);
+
+      await ReportAction.create({
+        report: report._id, actionType: 'report_resolved',
+        performedBy: admin._id, targetUser: target._id,
+      });
+
+      const refreshed = await Report.findById(report._id);
+      expect(refreshed.status).toBe('resolved');
+      expect(refreshed.resolution?.resolvedBy?.toString()).toBe(admin._id.toString());
+    });
+  });
 });
