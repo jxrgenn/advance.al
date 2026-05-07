@@ -25,7 +25,7 @@ test.describe('Phase A.19 — Business logic (chromium-desktop only)', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ jobId: BAD_ID, coverLetter: 'pwn' }),
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A19.apply.2 POST /applications/apply with synthetic JWT, bogus jobId → 401/404', async () => {
@@ -35,7 +35,7 @@ test.describe('Phase A.19 — Business logic (chromium-desktop only)', () => {
       headers: { 'Authorization': `Bearer ${tok}`, 'content-type': 'application/json' },
       body: JSON.stringify({ jobId: BAD_ID, coverLetter: 'test' }),
     });
-    expect([401, 403, 404]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A19.apply.3 POST /applications/apply with hijacked userId in body — must use req.user only', async () => {
@@ -50,7 +50,7 @@ test.describe('Phase A.19 — Business logic (chromium-desktop only)', () => {
         jobSeekerId: '507f1f77bcf86cd799439002',
       }),
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A19.apply.4 POST /applications/apply with non-string jobId → 400/401', async () => {
@@ -60,7 +60,9 @@ test.describe('Phase A.19 — Business logic (chromium-desktop only)', () => {
       headers: { 'Authorization': `Bearer ${tok}`, 'content-type': 'application/json' },
       body: JSON.stringify({ jobId: { $ne: null }, coverLetter: 'x' }),
     });
-    expect([400, 401, 403, 422]).toContain(r.status);
+    // JUSTIFIED: synthetic JWT may fail at auth (401) before validator runs, OR
+    // validator may run first and reject the malformed payload (400/422).
+    expect([400, 401, 422]).toContain(r.status);
   });
 
   // ---------- Pricing / tier manipulation ----------
@@ -77,7 +79,7 @@ test.describe('Phase A.19 — Business logic (chromium-desktop only)', () => {
         paymentStatus: 'completed',
       }),
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A19.tier.2 POST /jobs with negative price/salary — rejected', async () => {
@@ -91,26 +93,28 @@ test.describe('Phase A.19 — Business logic (chromium-desktop only)', () => {
         salary: { min: -1000, max: -500, currency: 'EUR' },
       }),
     });
-    expect([400, 401, 403, 422]).toContain(r.status);
+    // JUSTIFIED: synthetic JWT may fail at auth (401) before validator runs, OR
+    // validator may run first and reject the malformed payload (400/422).
+    expect([400, 401, 422]).toContain(r.status);
   });
 
   // ---------- Saved jobs idempotency ----------
 
   test('A19.save.1 POST /users/saved-jobs/:id without auth → 401', async () => {
     const r = await fetch(`${API}/users/saved-jobs/${BAD_ID}`, { method: 'POST' });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A19.save.2 GET /users/saved-jobs without auth → 401', async () => {
     const r = await fetch(`${API}/users/saved-jobs`);
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   // ---------- Withdraw application ----------
 
   test('A19.withdraw.1 DELETE /applications/:id without auth → 401', async () => {
     const r = await fetch(`${API}/applications/${BAD_ID}`, { method: 'DELETE' });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   // ---------- Modify another employer's job ----------
@@ -122,7 +126,7 @@ test.describe('Phase A.19 — Business logic (chromium-desktop only)', () => {
       headers: { 'Authorization': `Bearer ${tok}`, 'content-type': 'application/json' },
       body: JSON.stringify({ title: 'pwned' }),
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   // ---------- Notification spam via /apply ----------
@@ -157,7 +161,7 @@ test.describe('Phase A.19 — Business logic (chromium-desktop only)', () => {
       headers: { 'Authorization': `Bearer ${tok}`, 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'ban' }),
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A19.admin.2 POST /business-control/campaigns with jobseeker JWT → 401', async () => {
@@ -167,7 +171,7 @@ test.describe('Phase A.19 — Business logic (chromium-desktop only)', () => {
       headers: { 'Authorization': `Bearer ${tok}`, 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'spam' }),
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A19.admin.3 POST /business-control/platform/emergency without admin → 401', async () => {
@@ -176,7 +180,7 @@ test.describe('Phase A.19 — Business logic (chromium-desktop only)', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ enabled: true }),
     });
-    expect([401, 403, 404]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   test('A19.admin.4 POST /configuration/maintenance-mode without admin → 401', async () => {
@@ -185,7 +189,7 @@ test.describe('Phase A.19 — Business logic (chromium-desktop only)', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ enabled: true }),
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   // ---------- Bulk notification ----------
@@ -196,13 +200,13 @@ test.describe('Phase A.19 — Business logic (chromium-desktop only)', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ recipientEmails: ['victim@advance.al'], subject: 'spam' }),
     });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 
   // ---------- Verify employer ----------
 
   test('A19.verify.1 PATCH /users/admin/verify-employer/:id without admin → 401', async () => {
     const r = await fetch(`${API}/users/admin/verify-employer/${BAD_ID}`, { method: 'PATCH' });
-    expect([401, 403]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 });
