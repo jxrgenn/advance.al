@@ -44,8 +44,8 @@ test.describe('Cross-cutting / security adversarial', () => {
   test('SA.2 NoSQL: ?email[$ne]=null on /admin/users (auth required) cannot leak users', async () => {
     const emp = await makeEmployer({ preApprove: true });
     const r = await fetch(`${API}/admin/users?email[$ne]=null`, { headers: authHeaders(emp.token) });
-    // Employer is wrong-role for /admin → 403 expected, not 200 with all users.
-    expect([401, 403]).toContain(r.status);
+    // Employer is wrong-role for /admin — authorize() middleware returns 403.
+    expect(r.status).toBe(403);
   });
 
   test('SA.3 NoSQL: object-as-email in login body → 400, never 5xx', async () => {
@@ -69,7 +69,8 @@ test.describe('Cross-cutting / security adversarial', () => {
     const r = await fetch(`${API}/admin/dashboard-stats`, {
       headers: { 'Authorization': `Bearer ${fakeToken}` }
     });
-    expect([401, 403]).toContain(r.status);
+    // verifyToken pinned to HS256 — alg:none rejected at signature verification → 401.
+    expect(r.status).toBe(401);
   });
 
   test('SA.6 JWT signed with wrong secret → 401', async () => {
@@ -77,7 +78,8 @@ test.describe('Cross-cutting / security adversarial', () => {
     const r = await fetch(`${API}/admin/dashboard-stats`, {
       headers: { 'Authorization': `Bearer ${fakeToken}` }
     });
-    expect([401, 403]).toContain(r.status);
+    // Wrong-secret signature fails verifyToken → 401.
+    expect(r.status).toBe(401);
   });
 
   test('SA.7 JWT with userType=admin payload tampered → still rejected (signature check)', async () => {
@@ -91,7 +93,8 @@ test.describe('Cross-cutting / security adversarial', () => {
     const r = await fetch(`${API}/admin/dashboard-stats`, {
       headers: { 'Authorization': `Bearer ${tamperedToken}` }
     });
-    expect([401, 403], 'tampered userType must NOT grant admin').toContain(r.status);
+    // Tampered payload changes the signed bytes — signature verification fails → 401.
+    expect(r.status, 'tampered userType must NOT grant admin').toBe(401);
   });
 
   test('SA.8 JWT with malformed bearer ("Bearer xxx") → 401', async () => {

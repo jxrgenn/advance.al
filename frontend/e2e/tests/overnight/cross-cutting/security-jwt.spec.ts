@@ -60,7 +60,8 @@ test.describe('Security / JWT', () => {
     const r = await fetch(`${API}/users/profile`, {
       headers: { Authorization: js.token },
     });
-    expect([401, 403]).toContain(r.status);
+    // No "Bearer " prefix — auth.js rejects at header parsing → 401.
+    expect(r.status).toBe(401);
   });
 
   test('SJ.5 malformed token (single segment) → 401', async () => {
@@ -88,6 +89,6 @@ test.describe('Security / JWT', () => {
     // Soft-delete the user
     await dbUpdate('users', { email: js.email }, { $set: { isDeleted: true, deletedAt: new Date() } });
     const r = await fetch(`${API}/users/profile`, { headers: authHeaders(js.token) });
-    expect([401, 403, 404]).toContain(r.status);
+    expect(r.status).toBe(401);
   });
 });

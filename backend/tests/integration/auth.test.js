@@ -184,7 +184,8 @@ describe('Auth API - Integration Tests', () => {
         .post('/api/auth/login')
         .send({ email: 'susp@example.com', password: plainPassword });
 
-      expect([401, 403]).toContain(response.status);
+      // auth.js returns 401 for suspended/banned (treats them as failed authentication).
+      expect(response.status).toBe(401);
     });
 
     it('blocks banned users at login', async () => {
@@ -194,7 +195,8 @@ describe('Auth API - Integration Tests', () => {
         .post('/api/auth/login')
         .send({ email: 'banned@example.com', password: plainPassword });
 
-      expect([401, 403]).toContain(response.status);
+      // auth.js returns 401 for suspended/banned (treats them as failed authentication).
+      expect(response.status).toBe(401);
     });
   });
 
