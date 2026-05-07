@@ -1,5 +1,16 @@
 !!!!ALWAYS CHECK AND UPDATE DEVELOPMENT_ROADMAP.MD BEFORE AND AFTER ANY CHANGE!!!!!!!
 
+## Testing Philosophy — MANDATORY (read before adding tests)
+**Before adding or modifying ANY test, read `TESTING_PHILOSOPHY.md`.**
+
+Hard rules from Phase 28 sprint:
+- No permissive `expect([200, 401, 403, 404]).toContain(...)` matchers without `// JUSTIFIED:` comment
+- No `expect(x).toBeTruthy()` for fields under test — assert specific values
+- No tautological assertions
+- No `page.route('/api/...')` mocks of own backend (use real backend via overnight suite)
+- Real services > mocks at system boundary (Cloudinary real, OpenAI snapshot-replay, see EXTERNAL_SERVICE_GAPS.md for what's NOT covered)
+- Test names must match what the code actually does
+
 ## Testing Workflow — MANDATORY (SUPER THOROUGH)
 EVERY change MUST be comprehensively tested before committing. No exceptions.
 
