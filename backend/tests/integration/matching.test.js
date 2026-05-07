@@ -151,5 +151,111 @@ describe('Matching API - Integration Tests', () => {
 
       expect(response.status).toBe(403);
     });
+
+    it('rejects malformed jobId (400)', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const { user: cand } = await createJobseeker();
+      const response = await request(app)
+        .post('/api/matching/track-contact')
+        .set(createAuthHeaders(emp))
+        .send({ jobId: 'not-an-objectid', candidateId: cand._id.toString(), contactMethod: 'email' });
+      expect(response.status).toBe(400);
+      expect(response.body.message).toMatch(/invalid/i);
+    });
+
+    it('rejects unrecognized contactMethod (400)', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const { user: cand } = await createJobseeker();
+      const job = await createJob(emp);
+      const response = await request(app)
+        .post('/api/matching/track-contact')
+        .set(createAuthHeaders(emp))
+        .send({ jobId: job._id.toString(), candidateId: cand._id.toString(), contactMethod: 'carrier-pigeon' });
+      expect(response.status).toBe(400);
+      expect(response.body.message).toMatch(/contactMethod/i);
+    });
+
+    it('successfully tracks contact when employer owns the job', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const { user: cand } = await createJobseeker();
+      const job = await createJob(emp);
+      const response = await request(app)
+        .post('/api/matching/track-contact')
+        .set(createAuthHeaders(emp))
+        .send({ jobId: job._id.toString(), candidateId: cand._id.toString(), contactMethod: 'phone' });
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+    });
+  });
+
+  describe('Additional edge cases', () => {
+    it('GET /candidates with non-existent jobId returns 404', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const fakeId = '507f1f77bcf86cd799439099';
+      const response = await request(app)
+        .get(`/api/matching/jobs/${fakeId}/candidates`)
+        .set(createAuthHeaders(emp));
+      expect(response.status).toBe(404);
+    });
+
+    it('POST /purchase with non-existent jobId returns 404', async () => {
+      process.env.ENABLE_MOCK_PAYMENTS = 'true';
+      const { user: emp } = await createVerifiedEmployer();
+      const fakeId = '507f1f77bcf86cd799439099';
+      const response = await request(app)
+        .post(`/api/matching/jobs/${fakeId}/purchase`)
+        .set(createAuthHeaders(emp));
+      expect(response.status).toBe(404);
+    });
+
+    it('POST /purchase reports already-purchased on second call', async () => {
+      process.env.ENABLE_MOCK_PAYMENTS = 'true';
+      const { user: emp } = await createVerifiedEmployer();
+      const job = await createJob(emp);
+
+      // First purchase
+      await request(app)
+        .post(`/api/matching/jobs/${job._id}/purchase`)
+        .set(createAuthHeaders(emp));
+
+      // Second purchase attempt
+      const response = await request(app)
+        .post(`/api/matching/jobs/${job._id}/purchase`)
+        .set(createAuthHeaders(emp));
+      expect(response.status).toBe(200);
+      expect(response.body.alreadyPurchased).toBe(true);
+    });
+
+    it('POST /purchase by wrong employer returns 403', async () => {
+      process.env.ENABLE_MOCK_PAYMENTS = 'true';
+      const { user: empA } = await createVerifiedEmployer();
+      const { user: empB } = await createVerifiedEmployer();
+      const job = await createJob(empA);
+      const response = await request(app)
+        .post(`/api/matching/jobs/${job._id}/purchase`)
+        .set(createAuthHeaders(empB));
+      expect(response.status).toBe(403);
+    });
+
+    it('GET /candidates returns matches when access has been granted', async () => {
+      process.env.ENABLE_MOCK_PAYMENTS = 'true';
+      const { user: emp } = await createVerifiedEmployer();
+      await createJobseeker();
+      await createJobseeker();
+      const job = await createJob(emp);
+
+      // Purchase access
+      await request(app)
+        .post(`/api/matching/jobs/${job._id}/purchase`)
+        .set(createAuthHeaders(emp));
+
+      // Now /candidates should return 200 with matches
+      const response = await request(app)
+        .get(`/api/matching/jobs/${job._id}/candidates`)
+        .set(createAuthHeaders(emp));
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.data.matches)).toBe(true);
+    });
   });
 });
