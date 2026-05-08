@@ -11,7 +11,7 @@ import userEmbeddingService from '../services/userEmbeddingService.js';
 import resendEmailService from '../lib/resendEmailService.js';
 import { uploadToCloudinary, deleteFromCloudinary } from '../config/cloudinary.js';
 import logger from '../config/logger.js';
-import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
+import { sanitizeLimit, validateObjectId, stripHtml, normalizeOneLine } from '../utils/sanitize.js';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { parseUserProfileCV } from '../services/cvParsingService.js';
 
@@ -189,13 +189,13 @@ const jobSeekerProfileValidation = [
   body('firstName')
     .optional()
     .trim()
-    .customSanitizer(v => stripHtml(v))
+    .customSanitizer(v => normalizeOneLine(stripHtml(v)))
     .isLength({ min: 2, max: 50 })
     .withMessage('Emri duhet të ketë midis 2-50 karaktere'),
   body('lastName')
     .optional()
     .trim()
-    .customSanitizer(v => stripHtml(v))
+    .customSanitizer(v => normalizeOneLine(stripHtml(v)))
     .isLength({ min: 2, max: 50 })
     .withMessage('Mbiemri duhet të ketë midis 2-50 karaktere'),
   body('phone')
@@ -233,13 +233,13 @@ const employerProfileValidation = [
   body('firstName')
     .optional()
     .trim()
-    .customSanitizer(v => stripHtml(v))
+    .customSanitizer(v => normalizeOneLine(stripHtml(v)))
     .isLength({ min: 2, max: 50 })
     .withMessage('Emri duhet të ketë midis 2-50 karaktere'),
   body('lastName')
     .optional()
     .trim()
-    .customSanitizer(v => stripHtml(v))
+    .customSanitizer(v => normalizeOneLine(stripHtml(v)))
     .isLength({ min: 2, max: 50 })
     .withMessage('Mbiemri duhet të ketë midis 2-50 karaktere'),
   body('phone')
