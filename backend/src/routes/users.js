@@ -688,6 +688,7 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
           message: 'Shërbimi i ngarkimit të skedarëve nuk është i disponueshëm momentalisht. Provoni përsëri më vonë.'
         });
       }
+    /* istanbul ignore next — dev-only local fallback; tests have Cloudinary configured at boot, so multer always uses memoryStorage and this else-if never fires */
     } else if (!isProduction && req.file.filename) {
       // Local storage only in development (multer already saved the file to disk)
       resumeUrl = `/uploads/resumes/${req.file.filename}`;
@@ -878,6 +879,7 @@ router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter,
           message: 'Shërbimi i ngarkimit të skedarëve nuk është i disponueshëm momentalisht. Provoni përsëri më vonë.'
         });
       }
+    /* istanbul ignore next — dev-only local fallback; tests have Cloudinary configured at boot */
     } else if (!isProduction && req.file.filename) {
       resumeUrl = `/uploads/resumes/${req.file.filename}`;
     } else {
