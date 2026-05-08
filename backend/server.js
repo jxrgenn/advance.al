@@ -85,18 +85,19 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 const app = express();
-// Trust ALL proxy hops. Render routes requests through multiple internal
-// proxies (edge LB → app proxy → app), so `trust proxy: 1` made `req.ip`
-// resolve to a varying internal proxy IP — every request looked like a
-// different "client" and the in-memory rate limiter never crossed any
-// per-IP threshold. With `true`, Express uses the leftmost (real-client)
-// X-Forwarded-For entry, which is what we want for rate-limiting.
+// Trust X-Forwarded-For only when the immediate upstream is a private/loopback
+// IP (i.e. Render's internal proxy chain). External clients cannot spoof
+// req.ip because their immediate connection is from a public IP, so Express
+// will ignore any XFF header they send.
 //
-// Spoofing risk: a malicious client can send `X-Forwarded-For: <random>`
-// to evade per-IP limits. Render's edge OVERWRITES X-Forwarded-For so the
-// leftmost is always the true client IP — safe behind Render. Per-email
-// limiters below provide a second layer of defense regardless of IP source.
-app.set('trust proxy', true);
+// Earlier we used `trust proxy: true` which trusts the LEFTMOST XFF entry
+// regardless of immediate upstream — that lets any client write any IP they
+// want into req.ip and bypass per-IP rate limits (cvGenerateLimiter,
+// authLimiter, the global /api/ limiter). The `loopback, linklocal,
+// uniquelocal` allowlist hits the same Render-internal use case (which lives
+// on RFC1918 IPs) without the spoofing surface. Verified with ultrareview
+// bug_005.
+app.set('trust proxy', 'loopback, linklocal, uniquelocal');
 const PORT = process.env.PORT || 3001;
 
 // Connect to Database — must complete before accepting requests

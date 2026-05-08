@@ -3,6 +3,20 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { body, validationResult } from 'express-validator';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import validator from 'validator';
+
+// Canonical email key for per-email rate limiters. Uses validator.normalizeEmail
+// (the same call the validators below use) so that v.ictim+abc@gmail.com,
+// vict.im@gmail.com, victim@googlemail.com etc. all share ONE rate-limit
+// bucket — without this, an attacker iterates through ~64 dot permutations
+// per Gmail address to multiply the per-email cap by 64×.  See ultrareview
+// bug_004.
+function emailRateLimitKey(req, prefix, fallbackPrefix) {
+  const raw = (req.body?.email || '').toString().trim();
+  if (!raw) return `${fallbackPrefix}:${ipKeyGenerator(req)}`;
+  const canonical = validator.normalizeEmail(raw) || raw.toLowerCase();
+  return `${prefix}:${canonical}`;
+}
 import { User, QuickUser } from '../models/index.js';
 import { generateToken, generateRefreshToken, verifyToken, authenticate } from '../middleware/auth.js';
 import { stripHtml } from '../utils/sanitize.js';
@@ -170,10 +184,7 @@ const initiateRegistrationByEmailLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    const email = (req.body?.email || '').toString().trim().toLowerCase();
-    return email ? `email:${email}` : `ip:${ipKeyGenerator(req)}`;
-  },
+  keyGenerator: (req) => emailRateLimitKey(req, 'email', 'ip'),
   skip: () =>
     process.env.NODE_ENV !== 'production' &&
     process.env.SKIP_RATE_LIMIT === 'true',
@@ -192,10 +203,7 @@ const loginByEmailLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    const email = (req.body?.email || '').toString().trim().toLowerCase();
-    return email ? `login-email:${email}` : `login-ip:${ipKeyGenerator(req)}`;
-  },
+  keyGenerator: (req) => emailRateLimitKey(req, 'login-email', 'login-ip'),
   skip: () =>
     process.env.NODE_ENV !== 'production' &&
     process.env.SKIP_RATE_LIMIT === 'true',
@@ -213,10 +221,7 @@ const forgotPasswordByEmailLimiter = rateLimit({
   max: 3,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    const email = (req.body?.email || '').toString().trim().toLowerCase();
-    return email ? `forgot-email:${email}` : `forgot-ip:${ipKeyGenerator(req)}`;
-  },
+  keyGenerator: (req) => emailRateLimitKey(req, 'forgot-email', 'forgot-ip'),
   skip: () =>
     process.env.NODE_ENV !== 'production' &&
     process.env.SKIP_RATE_LIMIT === 'true',

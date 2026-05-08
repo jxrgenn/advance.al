@@ -620,10 +620,40 @@ jobSchema.post('save', async function() {
     await cacheDelete('locations:all').catch(() => {});
     await cacheDelete('locations:popular:5').catch(() => {});
     await cacheDelete('locations:popular:10').catch(() => {});
+
+    // Refresh _priorState so any subsequent .save() on the same in-memory doc
+    // computes its delta from current state, not the original load (ultrareview
+    // bug_001 latent leg).
+    this._priorState = { isActive: isActiveNow, city: newCity };
   } catch (err) {
     logger.error('Error in Job post-save Location hook:', err.message);
   }
 });
+
+// Cascade-recount helper: when N jobs were bulk-flipped via Job.updateMany
+// (which bypasses mongoose middleware and the post-save $inc hook), call this
+// to decrement Location.jobCount by the per-city tally of jobs that just
+// transitioned from active → inactive. Without this, every cascade-close
+// (suspend/ban/delete employer) leaves jobCount permanently inflated; new
+// jobs $inc on top of the stale counter and the homepage city counters drift
+// upward forever (ultrareview bug_001 active leg).
+//
+// Call PATTERN: snapshot the affected jobs' cities BEFORE the updateMany,
+// then call this AFTER the updateMany succeeds.
+jobSchema.statics.decrementLocationCountsForCities = async function(cities) {
+  if (!Array.isArray(cities) || cities.length === 0) return;
+  const Location = mongoose.model('Location');
+  const tally = {};
+  for (const c of cities) {
+    if (c) tally[c] = (tally[c] || 0) + 1;
+  }
+  await Promise.all(Object.entries(tally).map(([city, n]) =>
+    Location.updateOne({ city }, { $inc: { jobCount: -n } })
+  ));
+  await cacheDelete('locations:all').catch(() => {});
+  await cacheDelete('locations:popular:5').catch(() => {});
+  await cacheDelete('locations:popular:10').catch(() => {});
+};
 
 // Static method to recount jobCount for all locations
 jobSchema.statics.recountLocationJobs = async function() {

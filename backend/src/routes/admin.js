@@ -604,12 +604,19 @@ router.patch('/users/:userId/manage', async (req, res) => {
     switch (action) {
       case 'suspend':
         await user.suspend(reason || 'Pezulluar nga administratori', req.user._id, duration || null);
-        // Close suspended employer's jobs
+        // Close suspended employer's jobs (cascade decrements Location.jobCount —
+        // updateMany bypasses mongoose middleware, so do it explicitly per
+        // ultrareview bug_001).
         if (user.userType === 'employer') {
+          const affected = await Job.find(
+            { employerId: user._id, isDeleted: false, status: 'active' },
+            { 'location.city': 1 }
+          ).lean();
           await Job.updateMany(
             { employerId: user._id, isDeleted: false, status: 'active' },
             { $set: { status: 'closed' } }
           );
+          await Job.decrementLocationCountsForCities(affected.map(j => j.location?.city));
         }
         cacheDelete('admin:dashboard').catch(() => {});
         return res.json({ success: true, data: { user }, message: 'Përdoruesi u pezullua me sukses' });
@@ -617,10 +624,15 @@ router.patch('/users/:userId/manage', async (req, res) => {
         await user.ban(reason || 'Ndaluar nga administratori', req.user._id);
         // Close banned employer's jobs
         if (user.userType === 'employer') {
+          const affected = await Job.find(
+            { employerId: user._id, isDeleted: false, status: 'active' },
+            { 'location.city': 1 }
+          ).lean();
           await Job.updateMany(
             { employerId: user._id, isDeleted: false },
             { $set: { isDeleted: true, status: 'closed' } }
           );
+          await Job.decrementLocationCountsForCities(affected.map(j => j.location?.city));
         }
         cacheDelete('admin:dashboard').catch(() => {});
         return res.json({ success: true, data: { user }, message: 'Përdoruesi u ndalua me sukses' });
@@ -664,10 +676,15 @@ router.patch('/users/:userId/manage', async (req, res) => {
         await user.save();
         // Cascade: close employer's jobs so they don't appear in search
         if (user.userType === 'employer') {
+          const affected = await Job.find(
+            { employerId: user._id, isDeleted: false, status: 'active' },
+            { 'location.city': 1 }
+          ).lean();
           await Job.updateMany(
             { employerId: user._id, isDeleted: false },
             { $set: { isDeleted: true, status: 'closed' } }
           );
+          await Job.decrementLocationCountsForCities(affected.map(j => j.location?.city));
         }
         cacheDelete('admin:dashboard').catch(() => {});
         return res.json({

@@ -533,10 +533,15 @@ router.delete('/account', authenticate, async (req, res) => {
     // Cascade: close/hide employer's jobs so they don't appear in search
     if (user.userType === 'employer') {
       const { Job } = await import('../models/index.js');
+      const affected = await Job.find(
+        { employerId: user._id, isDeleted: false, status: 'active' },
+        { 'location.city': 1 }
+      ).lean();
       await Job.updateMany(
         { employerId: user._id, isDeleted: false },
         { $set: { isDeleted: true, status: 'closed' } }
       );
+      await Job.decrementLocationCountsForCities(affected.map(j => j.location?.city));
     }
 
     res.json({

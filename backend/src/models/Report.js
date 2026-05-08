@@ -384,8 +384,14 @@ reportSchema.methods.addAdminNote = async function(adminId, note) {
 };
 
 // Pre-save no-op for backwards compatibility (escalation moved to post-save for race-safety per F-8 fix).
+// Bridges isNew across save() because mongoose flips it BEFORE post('save') runs.
+// Both the F-8 escalation hook AND the admin-notification hook below depend on
+// this. Without `wasNew`, the notification hook's `if (doc.isNew || doc.wasNew)`
+// is permanently false → admins never get new-report emails (ultrareview bug_003,
+// same shape as B-024 already fixed in ReportAction).
 reportSchema.pre('save', function(next) {
   this._isNewForEscalation = this.isNew;
+  this.wasNew = this.isNew;
   next();
 });
 
