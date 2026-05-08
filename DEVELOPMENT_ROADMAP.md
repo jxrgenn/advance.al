@@ -129,9 +129,33 @@ OOM root cause: full `npx jest --coverage` of 265 test files with
 `maxWorkers:1` exhausts the default 4GB heap mid-run (binary mongo memory
 servers + supertest agents accumulate); 12GB heap got further but still
 crashed. `--workerIdleMemoryLimit=2GB` recycles the worker between files
-and lets the run finish. Coverage measurement (`cov7`) is still pending a
-clean run with the same flag — try `npx jest --coverage --workerIdleMemoryLimit=2GB`
-next.
+and lets the run finish.
+
+### cov7 — completed 2026-05-08 (with `--workerIdleMemoryLimit=2GB`)
+
+| Metric | Baseline | After Phase 6 (cov5) | cov7 | Gain (vs baseline) |
+|---|---|---|---|---|
+| Statements | 57.20% | 85.21% | **94.38%** | +37.18 |
+| Branches   | 42.70% | 75.19% | **84.29%** | +41.59 |
+| Functions  | 63.20% | 88.79% | **93.42%** | +30.22 |
+| Lines      | —      | 85.61% | **94.71%** | n/a   |
+
+**Lines / statements / functions all crossed the 90% target.** Branches at
+84.29% — past the 80% threshold but not yet at 90%. Remaining branch gaps
+concentrated in: `bulk-notifications.js` (61% — many unhappy-path templates),
+`auth.js` (75% — 5-attempt lockout edge states), `users.js` (75% — upload
+error catches around uploadToCloudinary mock-needed paths), `reports.js`
+(78% — admin-action transitions).
+
+Lowest-coverage files (statements):
+- src/config/cloudinary.js — 78.57%
+- src/routes/users.js — 84.62% (down to 75% on branches)
+- src/services/cvParsingService.js — 85.34%
+- src/routes/verification.js — 85.79%
+- src/routes/quickusers.js — 86.85%
+- src/routes/auth.js — 87.22%
+- src/routes/reports.js — 87.77%
+- src/routes/bulk-notifications.js — 89.52%
 
 **Crossed the 80% statements + 70% branches milestones.** Remaining gap to 90% target is concentrated in:
 - src/config/redis.js (26.4%) & src/config/database.js (9.5%) — infrastructure, would need real Redis test instance + DB connection fault injection
