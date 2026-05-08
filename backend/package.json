@@ -13,7 +13,9 @@
     "test": "NODE_ENV=test node --experimental-vm-modules ../node_modules/jest/bin/jest.js --runInBand",
     "test:watch": "NODE_ENV=test node --experimental-vm-modules ../node_modules/jest/bin/jest.js --watch",
     "test:coverage": "NODE_ENV=test node --experimental-vm-modules ../node_modules/jest/bin/jest.js --coverage --runInBand",
-    "test:ci": "NODE_ENV=test node --experimental-vm-modules ../node_modules/jest/bin/jest.js --ci --coverage --maxWorkers=2"
+    "test:ci": "NODE_ENV=test node --experimental-vm-modules ../node_modules/jest/bin/jest.js --ci --coverage --maxWorkers=2",
+    "loadtest": "NODE_ENV=test node tests/load/load.mjs",
+    "soak": "NODE_ENV=test node tests/load/soak.mjs"
   },
   "optionalDependencies": {
     "twilio": "^5.7.1"
