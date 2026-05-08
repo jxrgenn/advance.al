@@ -107,9 +107,31 @@ Also added `/* istanbul ignore */` with WHY comments to genuinely-unreachable
 production-only or config-gated code in: database.js, redis.js,
 resendEmailService.js (process.exit), emailService.js (Twilio + SMTP-configured),
 cloudinary.js (else-branch), users.js (multer disk fallbacks + fs stream
-error handler), stats.js/locations.js/verification.js (Redis cache-hit
-branches), auth.js/verification.js (5-min setIntervals), companies.js
-(production-only filter). All ignores justified per project policy.
+error handler + dev-only local-fallback else-if), stats.js/locations.js/verification.js
+(Redis cache-hit branches), auth.js/verification.js (5-min setIntervals),
+companies.js (production-only filter). All ignores justified per project policy.
+
+**Test verification 2026-05-08 (final)**: ran the full test suite split
+into chunks to avoid OOM (`--workerIdleMemoryLimit=2GB` recycles the
+single worker before heap fills).
+
+- **Unit tests: 49/50 suites pass, 810/811 tests** — 1 transient
+  `MongooseError: insertOne buffering timed out` flake in
+  `report-model-resolve-and-escalation`; passes 10/10 in isolation.
+- **Integration tests: 211/214 suites pass, 1924/1927 tests** — 3 transient
+  failures (`auth-register-lockout` 30s timeout, `users-parse-resume` 30s
+  timeout, `notification-model` createdAt-tie ordering); all 30/30 pass
+  when run in isolation.
+- **Combined: 260/264 suites pass, 2734/2738 tests pass, 4 known-flaky
+  transients, ZERO regressions from today's work.**
+
+OOM root cause: full `npx jest --coverage` of 265 test files with
+`maxWorkers:1` exhausts the default 4GB heap mid-run (binary mongo memory
+servers + supertest agents accumulate); 12GB heap got further but still
+crashed. `--workerIdleMemoryLimit=2GB` recycles the worker between files
+and lets the run finish. Coverage measurement (`cov7`) is still pending a
+clean run with the same flag — try `npx jest --coverage --workerIdleMemoryLimit=2GB`
+next.
 
 **Crossed the 80% statements + 70% branches milestones.** Remaining gap to 90% target is concentrated in:
 - src/config/redis.js (26.4%) & src/config/database.js (9.5%) — infrastructure, would need real Redis test instance + DB connection fault injection
