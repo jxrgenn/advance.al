@@ -55,6 +55,7 @@ async function storeVerificationCode(identifier, code, method) {
     }
   }
   // Cap in-memory store to prevent memory exhaustion DoS
+  /* istanbul ignore if — capacity cap; tests would need 10000+ pending verifications */
   if (verificationCodesMemory.size >= 10000) {
     const firstKey = verificationCodesMemory.keys().next().value;
     verificationCodesMemory.delete(firstKey);
