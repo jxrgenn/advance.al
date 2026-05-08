@@ -102,8 +102,7 @@ describe('Matching API - Integration Tests', () => {
         .post(`/api/matching/jobs/${job._id}/purchase`)
         .set(createAuthHeaders(emp));
 
-      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-      expect([200, 201]).toContain(response.status);
+      expect(response.status).toBe(200);
 
       // After purchase, /access should report true
       const accessRes = await request(app)
