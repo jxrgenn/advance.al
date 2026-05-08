@@ -131,6 +131,52 @@ servers + supertest agents accumulate); 12GB heap got further but still
 crashed. `--workerIdleMemoryLimit=2GB` recycles the worker between files
 and lets the run finish.
 
+### 2026-05-08 evening — automated-testing-only batch (handoff prep)
+
+User pushed back on coverage % being inflated by ignores and asked for
+real test value, not metric-chasing. Pivoted to load + concurrency +
+chaos + deep-security work that only automated CI can do, and wrote
+the manual QA handoff doc.
+
+**8 new test files, 33 new tests, all pass together (no pollution):**
+
+| File | Purpose | Real bug? |
+|---|---|---|
+| `concurrency-race-conditions.test.js` (5 tests) | apply()-twice, parallel status transitions, mark-read race, profile race, apply+close-job race | none — locks hold |
+| `rate-limit-attacker-patterns.test.js` (4 tests) | per-email login limiter with rotated `X-Forwarded-For`, forgot-pw flood block, JSON 429 shape | none — defense holds |
+| `security-deep-fuzz.test.js` (12 tests) | NoSQLi operators, prototype pollution, HTTP param pollution, CRLF in fields, ReDoS smoke (100KB email), cookie attribute audit, mass assignment | **B-026 SURFACED** |
+| `bulk-notifications-process-email.test.js` (2 tests) | email-enabled bulk path + error catch (poll till 'sent') | none |
+| `users-upload-cloudinary-error.test.js` (3 tests) | stub `cloudinary.uploader.upload_stream` to throw → 503 | none |
+| `notification-service-batch-delay.test.js` (1 test) | setTimeout batch-delay branches with 5+ users | none |
+| `resend-email-misc-coverage.test.js` (2 tests) | unknown-action throw + named export wrapper | none |
+| `users-upload-no-storage-paths.test.js` (4 tests) | env-var deletion → 503 on all 4 upload routes | none |
+
+**B-026 (real bug, found+fixed in the same loop)**: PUT /api/users/profile
+accepted firstName/lastName containing CRLF (`\r\n`). `stripHtml()`
+removes HTML tags but does NOT strip control chars. Today firstName
+flows into email BODIES (not headers) so unexploitable, but a future
+"from name" header use would become SMTP header injection. Fix:
+compose `normalizeOneLine(stripHtml(v))` on both jobseeker + employer
+profile validators. The `normalizeOneLine` helper already existed for
+exactly this purpose per its docstring.
+
+**New automated-test infrastructure (separate from jest):**
+- `npm run loadtest` — `tests/load/load.mjs` boots real express + real
+  HTTP client, 30s burst @ 50 clients by default. **Verified locally:
+  195 RPS, 0 errors, p95=362ms, exit-fail on >1% errors or p95>1500ms.**
+- `npm run soak` — `tests/load/soak.mjs` 30 min @ 10 clients, samples
+  heap every 30s, fails if heap grows >50% post-warmup. **Verified
+  3-min smoke: 0.9% growth → no leak.**
+
+**OOM workaround documented**: `--workerIdleMemoryLimit=2GB` lets the
+full coverage run finish without crashing.
+
+**Manual QA handoff**: `MANUAL_QA_CHECKLIST.md` at repo root covers
+everything the automated suite cannot judge — real device matrix,
+email rendering in real Gmail/Outlook, Albanian content review,
+Cloudinary console verification, payment flow, visual/UX inspection,
+production deploy dry-run. Twilio gap re-documented.
+
 ### cov7 — completed 2026-05-08 (with `--workerIdleMemoryLimit=2GB`)
 
 | Metric | Baseline | After Phase 6 (cov5) | cov7 | Gain (vs baseline) |
