@@ -177,6 +177,25 @@ email rendering in real Gmail/Outlook, Albanian content review,
 Cloudinary console verification, payment flow, visual/UX inspection,
 production deploy dry-run. Twilio gap re-documented.
 
+### Ultrareview triage 2026-05-08 evening (4 bugs surfaced + fixed)
+
+User ran `/ultrareview` against the branch; remote audit returned 4
+real findings, all fixed in the same loop with regression tests:
+
+| Bug | File | Severity | Status |
+|---|---|---|---|
+| **B-027** trust proxy `true` lets clients spoof req.ip via XFF → defeats cvGenerateLimiter (OpenAI cost), authLimiter, global /api/ limiter | `backend/server.js:99` | normal (production regression) | FIXED — `'loopback, linklocal, uniquelocal'` allowlist; remaining caveat (private-IP upstream) documented in MANUAL_QA_CHECKLIST.md §8a |
+| **B-028** Per-email rate limiters keyed on raw email; validator runs `.normalizeEmail()` after → Gmail variants (`v.ictim+abc@gmail.com`) each get a fresh bucket, multiplying the documented 10-attempt cap by ~64+ | `backend/src/routes/auth.js:172,194,216` | normal | FIXED — shared `emailRateLimitKey()` helper that calls `validator.normalizeEmail()` before keying. Applied to all 3 limiters (login, forgot-password, initiate-registration) |
+| **B-029** Cascade `Job.updateMany()` in 4 admin/employer-delete sites bypasses the new `$inc` post-save hook → `Location.jobCount` never decrements; new jobs stack on the inflated counter; homepage city counters drift permanently upward | `backend/src/routes/admin.js:609,620,667` + `backend/src/routes/users.js:536` | normal | FIXED — snapshot affected cities BEFORE updateMany, then call new `Job.decrementLocationCountsForCities()` helper. Plus latent: post-save now refreshes `_priorState` |
+| **B-030** Report admin-notification post-save hook gates on `if (doc.isNew \|\| doc.wasNew)` but mongoose flips `isNew→false` BEFORE post-save runs and `wasNew` was never set → admins never received "new report" emails (pre-existing, same shape as B-024 already fixed for ReportAction) | `backend/src/models/Report.js:387-389` | pre-existing | FIXED — one-line bridge `this.wasNew = this.isNew` in pre-save |
+
+Regression net: `backend/tests/integration/ultrareview-fixes.test.js`
+(5 tests). Reverting any fix breaks its corresponding test. All 11 of
+today's new test files run together: **60/60 pass**. Smoke-test of
+likely-impacted suites (auth, admin, applications, jobs, notifications,
+users, reports, bulk-notifications, report-model, report-action,
+admin-delete-employer-cascade): **206/206 pass — zero regressions**.
+
 ### cov7 — completed 2026-05-08 (with `--workerIdleMemoryLimit=2GB`)
 
 | Metric | Baseline | After Phase 6 (cov5) | cov7 | Gain (vs baseline) |
