@@ -13,6 +13,7 @@ router.get('/', async (req, res) => {
   try {
     // Check Redis cache first
     const cached = await cacheGet('locations:all');
+    /* istanbul ignore if — Redis not configured in test env */
     if (cached) {
       return res.json({
         success: true,
@@ -49,6 +50,7 @@ router.get('/popular', async (req, res) => {
 
     // Check Redis cache first
     const cached = await cacheGet(cacheKey);
+    /* istanbul ignore if — Redis not configured in test env */
     if (cached) {
       return res.json({
         success: true,

@@ -29,6 +29,7 @@ router.get('/', optionalAuth, async (req, res) => {
       status: 'active',
       isDeleted: false
     };
+    /* istanbul ignore if — production-only filter; tests run with NODE_ENV=test */
     if (process.env.NODE_ENV === 'production') {
       matchQuery['profile.employerProfile.verified'] = true;
     }

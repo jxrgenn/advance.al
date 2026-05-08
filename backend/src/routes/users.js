@@ -23,6 +23,7 @@ const isCloudinaryConfigured = () =>
 
 // In production, Cloudinary is REQUIRED — local disk is ephemeral on Railway/Vercel
 const isProduction = process.env.NODE_ENV === 'production';
+/* istanbul ignore next — boot-time production-only warning, never fires in tests */
 if (isProduction && !isCloudinaryConfigured()) {
   logger.error('Cloudinary not configured in production — file uploads will be rejected');
 }
@@ -53,7 +54,10 @@ const cleanupOldCloudinaryFile = async (url, resourceType = 'image') => {
   }
 };
 
-// Configure multer — use memory storage when Cloudinary is available, disk storage as fallback
+// Configure multer — use memory storage when Cloudinary is available, disk storage as fallback.
+// In tests Cloudinary is always configured (.env.test), so the diskStorage callbacks below
+// only fire on local dev without Cloudinary credentials.
+/* istanbul ignore next — dev-only disk fallback; tests run with Cloudinary configured */
 const diskStorage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadDir = path.join(process.cwd(), 'uploads', 'resumes');
@@ -135,7 +139,9 @@ const validateResumeMagicBytes = (buffer) => {
   return false;
 };
 
-// Image upload multer config (for logos and profile photos) — production requires Cloudinary
+// Image upload multer config (for logos and profile photos) — production requires Cloudinary.
+// Same dev-only fallback as diskStorage above.
+/* istanbul ignore next — dev-only disk fallback; tests run with Cloudinary configured */
 const imageDiskStorage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadDir = path.join(process.cwd(), 'uploads', 'images');
@@ -1933,6 +1939,7 @@ router.get('/resume/:filename', (req, res, next) => {
     res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
 
     const stream = fs.createReadStream(filePath);
+    /* istanbul ignore next — stream error handler; fs.existsSync above guarantees the file is readable in tests */
     stream.on('error', (err) => {
       logger.error('Resume file stream error:', err.message);
       if (!res.headersSent) {

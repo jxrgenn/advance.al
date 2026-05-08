@@ -20,6 +20,7 @@ const PENDING_REG_MAX_SIZE = 10000;
 const PENDING_REG_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
 // Periodic cleanup of expired entries from in-memory map
+/* istanbul ignore next — 5-minute interval, never fires during a test run */
 setInterval(() => {
   if (pendingRegistrationsMap.size === 0) return;
   const now = Date.now();

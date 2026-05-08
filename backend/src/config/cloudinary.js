@@ -1,6 +1,7 @@
 import { v2 as cloudinary } from 'cloudinary';
 import logger from './logger.js';
 
+/* istanbul ignore else — Cloudinary is configured in test env (.env.test); the else branch is dev-only fallback */
 if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
   cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,

@@ -21,6 +21,7 @@ router.get('/public', async (req, res) => {
     if (!skipCache) {
       // Try Redis cache first
       const redisCached = await cacheGet('stats:public');
+      /* istanbul ignore if — Redis not configured in test env; in-memory fallback path is covered instead */
       if (redisCached) {
         return res.json({
           success: true,

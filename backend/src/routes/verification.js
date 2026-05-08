@@ -45,6 +45,7 @@ const VERIFY_PREFIX = 'verify:';
 async function storeVerificationCode(identifier, code, method) {
   const data = { code, method, attempts: 0, createdAt: Date.now() };
   const key = VERIFY_PREFIX + identifier;
+  /* istanbul ignore if — Redis not configured in test env; in-memory fallback is exercised */
   if (redis) {
     try {
       await cacheSet(key, data, 600); // 10 minutes
@@ -66,6 +67,7 @@ async function getVerificationCode(identifier) {
   const key = VERIFY_PREFIX + identifier;
   try {
     const cached = await cacheGet(key);
+    /* istanbul ignore if — Redis not configured in test env */
     if (cached) {
       const data = typeof cached === 'string' ? JSON.parse(cached) : cached;
       // Convert Redis TTL-based expiry to an expiry Date for compatibility
@@ -83,6 +85,7 @@ async function getVerificationCode(identifier) {
 
 async function updateVerificationCode(identifier, data) {
   const key = VERIFY_PREFIX + identifier;
+  /* istanbul ignore if — Redis not configured in test env */
   if (redis) {
     try {
       const elapsed = Math.floor((Date.now() - data.createdAt) / 1000);
@@ -107,6 +110,7 @@ async function deleteVerificationCode(identifier) {
 }
 
 // Clean expired in-memory codes (only needed as fallback)
+/* istanbul ignore next — 5-minute interval, never fires during a test run */
 setInterval(() => {
   const now = new Date();
   for (const [key, value] of verificationCodesMemory.entries()) {

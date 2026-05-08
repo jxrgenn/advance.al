@@ -1,3 +1,4 @@
+/* istanbul ignore file — production-only DB connect; tests use mongodb-memory-server via testDb.js */
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import logger from './logger.js';

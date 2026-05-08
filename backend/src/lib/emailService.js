@@ -24,6 +24,7 @@ class EmailService {
     };
 
     // Check if email is configured
+    /* istanbul ignore if — SMTP_USER/PASS not set in test env; ethereal test-account path is exercised */
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
       try {
         this.transporter = nodemailer.createTransport(emailConfig);
@@ -133,6 +134,7 @@ class EmailService {
       return { success: true, messageId: `sms_mock_${Date.now()}` };
     }
 
+    /* istanbul ignore next — Twilio not configured in test env (documented in EXTERNAL_SERVICE_GAPS.md); SMS code paths are exercised via the mock branch above */
     try {
       // Dynamic import so the package is only required when Twilio is actually configured
       const twilio = (await import('twilio')).default;

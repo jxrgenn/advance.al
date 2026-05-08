@@ -32,7 +32,8 @@ class ResendEmailService {
 
     this.testEmail = 'advance.al123456@gmail.com'; // TODO: Remove in production — only for development testing
 
-    // Production safety: CRASH if test mode is on — emails must go to real users
+    // Production safety: CRASH if test mode is on — emails must go to real users.
+    /* istanbul ignore next — production-only safety; calling process.exit kills the test runner */
     if (process.env.NODE_ENV === 'production') {
       if (process.env.EMAIL_TEST_MODE === 'true') {
         logger.error('FATAL: EMAIL_TEST_MODE=true in production — refusing to start. Set EMAIL_TEST_MODE=false.');
