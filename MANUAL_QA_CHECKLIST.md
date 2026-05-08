@@ -161,6 +161,30 @@ Run these manually with browser DevTools network throttling:
 - [ ] Verify CORS allows production frontend domain (and ONLY that)
 - [ ] Verify CSP report-uri receives reports if set up
 
+### 8a. Trust-proxy / req.ip verification (ultrareview bug_005 follow-up)
+
+The `trust proxy` setting in `server.js` is currently
+`'loopback, linklocal, uniquelocal'` — Express's allowlist for
+private/loopback IPs. This closes the easy spoofing path BUT does NOT
+fully protect if Render's edge IP is itself in the private allowlist
+(then a spoofed leftmost XFF entry is still surfaced as `req.ip`).
+
+To finish closing this on production, add a temporary debug endpoint
+to staging:
+```js
+app.get('/__debug/xff', (req, res) => res.json({
+  xff: req.headers['x-forwarded-for'],
+  ips: req.ips,
+  ip: req.ip,
+}));
+```
+
+- [ ] Hit `/__debug/xff` from a real browser → record `req.ip` and `req.ips`
+- [ ] Hit it again with `curl -H "X-Forwarded-For: 1.2.3.4" ...` from outside Render
+  - If `req.ip === "1.2.3.4"` → **Render appends, spoofing IS possible.** Fix: replace the allowlist with a Render-edge CIDR list, or pin `trust proxy` to the integer hop-count Render adds (likely 1 or 2; verify via `req.ips.length`)
+  - If `req.ip === your real client IP` → Render strips client XFF, current setting is safe
+- [ ] Either way: remove `/__debug/xff` after this verification
+
 ## 9. Payment flow (Paysera, when wired)
 
 - [ ] Create real test transaction with Paysera test credentials
