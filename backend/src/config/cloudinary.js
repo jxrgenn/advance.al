@@ -38,6 +38,7 @@ export async function uploadToCloudinary(fileBuffer, options = {}) {
 export async function deleteFromCloudinary(publicId) {
   try {
     return await cloudinary.uploader.destroy(publicId);
+  /* istanbul ignore next — defensive catch on a live Cloudinary network call; the SDK returns {result:'not found'} for missing IDs rather than throwing, so this branch only fires on transport failure */
   } catch (error) {
     logger.error('Cloudinary delete error', { publicId, error: error.message });
     throw error;
