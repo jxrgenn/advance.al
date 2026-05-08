@@ -96,8 +96,8 @@ describe('Admin Embeddings API - Integration Tests', () => {
         .post(`/api/admin/embeddings/queue-job/${job._id}`)
         .set(createAuthHeaders(admin));
 
-      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-      expect([200, 201]).toContain(response.status);
+      // queueEmbeddingGeneration is non-blocking; route returns res.json() = 200.
+      expect(response.status).toBe(200);
     });
   });
 
@@ -149,8 +149,8 @@ describe('Admin Embeddings API - Integration Tests', () => {
       const response = await request(app)
         .delete('/api/admin/embeddings/queue-item/507f1f77bcf86cd799439099')
         .set(createAuthHeaders(admin));
-      // JUSTIFIED: 404 (not found) or 200 with no-op success
-      expect([200, 404]).toContain(response.status);
+      // findByIdAndDelete returns null → route returns 404 specifically.
+      expect(response.status).toBe(404);
     });
 
     it('admin DELETE with malformed id returns 400', async () => {
