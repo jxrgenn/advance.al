@@ -34,22 +34,26 @@ describe('jobs.js — GET /:id/similar cached branch (L736-778)', () => {
     await closeTestDB();
   });
 
-  it('returns cached similarJobs with boostScore() applied (L736-778)', async () => {
+  it('returns cached similarJobs with hybrid boost + tier label (PR-D)', async () => {
     const { user: emp } = await createVerifiedEmployer();
-    const target = await createJob(emp);
-    const sim1 = await createJob(emp, { title: 'Sim 1' });
-    const sim2 = await createJob(emp, { title: 'Sim 2' });
-    const sim3 = await createJob(emp, { title: 'Sim 3' });
+    // Source job: Financë / Tiranë / mid / full-time so we control the boost
+    // surface (category +0.05, city +0.04, seniority +0.03, jobType +0.02).
+    const target = await createJob(emp, { category: 'Financë', city: 'Tiranë', seniority: 'mid', jobType: 'full-time' });
+    // Sim 1: full attribute match → +0.14 boost. Cosine 0.65 → final 0.79 → 'strong'
+    const sim1 = await createJob(emp, { title: 'Full Match', category: 'Financë', city: 'Tiranë', seniority: 'mid', jobType: 'full-time' });
+    // Sim 2: zero attribute match. Cosine 0.85 → final 0.85 → 'strong' (raw signal alone)
+    const sim2 = await createJob(emp, { title: 'No Boost', category: 'Marketing', city: 'Vlorë', seniority: 'lead', jobType: 'part-time' });
+    // Sim 3: zero attribute match, low cosine. Cosine 0.55 → final 0.55 → 'decent'
+    const sim3 = await createJob(emp, { title: 'Decent Match', category: 'Marketing', city: 'Vlorë', seniority: 'lead', jobType: 'part-time' });
 
-    // Seed similarJobs with three different score ranges to exercise boostScore
     await Job.updateOne(
       { _id: target._id },
       {
         $set: {
           similarJobs: [
-            { jobId: sim1._id, score: 0.95, computedAt: new Date() }, // >=0.9 keeps original
-            { jobId: sim2._id, score: 0.8, computedAt: new Date() },  // 0.7-0.9 boosted
-            { jobId: sim3._id, score: 0.5, computedAt: new Date() },  // <0.7 stays same
+            { jobId: sim1._id, score: 0.65, computedAt: new Date() },
+            { jobId: sim2._id, score: 0.85, computedAt: new Date() },
+            { jobId: sim3._id, score: 0.55, computedAt: new Date() },
           ],
           'similarityMetadata.lastComputed': new Date(),
         },
@@ -61,14 +65,23 @@ describe('jobs.js — GET /:id/similar cached branch (L736-778)', () => {
     expect(r.body.data.cached).toBe(true);
     expect(r.body.data.similarJobs.length).toBe(3);
 
-    // Verify boostScore: 0.95 stays, 0.8 is boosted to 0.85+(0.8-0.7)*0.6=0.91, 0.5 stays
     const byTitle = Object.fromEntries(r.body.data.similarJobs.map(s => [s.job.title, s]));
-    expect(byTitle['Sim 1'].score).toBe(0.95);
-    expect(byTitle['Sim 2'].score).toBeCloseTo(0.91, 5);
-    expect(byTitle['Sim 3'].score).toBe(0.5);
 
-    // computedAt should be present on each entry
-    expect(byTitle['Sim 1'].computedAt).toBeDefined();
+    // Sim 1: cosine 0.65 + 0.14 = 0.79 → 'strong'
+    expect(byTitle['Full Match'].score).toBeCloseTo(0.79, 5);
+    expect(byTitle['Full Match'].cosineScore).toBe(0.65);
+    expect(byTitle['Full Match'].tier).toBe('strong');
+
+    // Sim 2: cosine 0.85 + 0 = 0.85 → 'strong'
+    expect(byTitle['No Boost'].score).toBeCloseTo(0.85, 5);
+    expect(byTitle['No Boost'].tier).toBe('strong');
+
+    // Sim 3: cosine 0.55 + 0 = 0.55 → 'decent'
+    expect(byTitle['Decent Match'].score).toBeCloseTo(0.55, 5);
+    expect(byTitle['Decent Match'].tier).toBe('decent');
+
+    // Sorted desc by final score: No Boost (0.85), Full Match (0.79), Decent (0.55)
+    expect(r.body.data.similarJobs.map(s => s.job.title)).toEqual(['No Boost', 'Full Match', 'Decent Match']);
   });
 
   it('filters out deleted similar jobs from cached list', async () => {

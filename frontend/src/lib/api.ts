@@ -537,7 +537,14 @@ export const jobsApi = {
 
   // Get embedding-based similar jobs for a given job
   getSimilarJobs: async (jobId: string, limit: number = 4): Promise<ApiResponse<{
-    similarJobs: Array<{ job: Job; score: number | null; originalScore?: number; computedAt?: string; cached?: boolean }>;
+    similarJobs: Array<{
+      job: Job;
+      score: number | null;
+      cosineScore?: number;
+      tier?: 'strong' | 'good' | 'decent';
+      computedAt?: string;
+      cached?: boolean;
+    }>;
     count: number;
     cached: boolean;
     computedAt?: string;

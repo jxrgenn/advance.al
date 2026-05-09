@@ -646,6 +646,61 @@ class JobEmbeddingService {
   }
 
   /**
+   * Hybrid boost on top of raw cosine for job-to-job similarity. Mirrors the
+   * user-job hybrid scoring from userEmbeddingService.computeHybridBoost: gives
+   * structured-attribute matches a small lift so same-domain peers (Financë ↔
+   * Financë) outrank incidental cross-domain noise (Biomedical Engineer ↔ Risk
+   * Specialist) at similar raw cosine.
+   *
+   * Max possible boost: 0.14
+   *   same category   +0.05
+   *   same city       +0.04
+   *   same seniority  +0.03
+   *   same jobType    +0.02
+   *
+   * Final score is clamped to [0, 1] by the caller.
+   *
+   * @param {Object} source - the job whose similars we want
+   * @param {Object} candidate - a candidate similar job
+   * @returns {{boost: number, breakdown: Object}}
+   */
+  computeJobToJobBoost(source, candidate) {
+    const breakdown = { category: 0, city: 0, seniority: 0, jobType: 0 };
+    if (source.category && candidate.category && source.category === candidate.category) {
+      breakdown.category = 0.05;
+    }
+    const sCity = source.location?.city?.trim().toLowerCase();
+    const cCity = candidate.location?.city?.trim().toLowerCase();
+    if (sCity && cCity && sCity === cCity) {
+      breakdown.city = 0.04;
+    }
+    if (source.seniority && candidate.seniority && source.seniority === candidate.seniority) {
+      breakdown.seniority = 0.03;
+    }
+    if (source.jobType && candidate.jobType && source.jobType === candidate.jobType) {
+      breakdown.jobType = 0.02;
+    }
+    return {
+      boost: breakdown.category + breakdown.city + breakdown.seniority + breakdown.jobType,
+      breakdown,
+    };
+  }
+
+  /**
+   * Map a final job-to-job similarity score to a UI tier label. Calibrated
+   * for cosine + computeJobToJobBoost (max +0.14) on Albanian/English mixed
+   * professional text where raw cosine clusters in the 0.4–0.85 range.
+   *
+   * @param {number} finalScore - raw cosine + hybrid boost, clamped to [0,1]
+   * @returns {'strong'|'good'|'decent'}
+   */
+  scoreToTier(finalScore) {
+    if (finalScore >= 0.78) return 'strong';
+    if (finalScore >= 0.66) return 'good';
+    return 'decent';
+  }
+
+  /**
    * Compute cosine similarity between two vectors
    * @param {Array<number>} vecA
    * @param {Array<number>} vecB

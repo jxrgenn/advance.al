@@ -11,8 +11,10 @@ interface SimilarJobsProps {
   limit?: number;
 }
 
+type Tier = 'strong' | 'good' | 'decent';
+
 interface ScoredJob extends Job {
-  similarityScore: number | null; // null when cache empty and we fell back to category/city
+  similarityTier: Tier | null; // null when fallback path fired (no embedding cache)
 }
 
 const SimilarJobs = ({ currentJob, limit = 4 }: SimilarJobsProps) => {
@@ -30,13 +32,14 @@ const SimilarJobs = ({ currentJob, limit = 4 }: SimilarJobsProps) => {
     try {
       setLoading(true);
 
-      // Embedding-based similarity from the backend cache (PR-C). Falls back
-      // to category/city on the server side when the cache is empty.
+      // Embedding-based similarity (PR-C/PR-D). Backend applies hybrid boosts
+      // and returns a categorical `tier` field; we display that instead of a
+      // raw % so users don't fixate on cosine numbers.
       const response = await jobsApi.getSimilarJobs(currentJob._id, limit);
 
       if (response.success && response.data?.similarJobs) {
         const mapped: ScoredJob[] = response.data.similarJobs
-          .map(s => ({ ...s.job, similarityScore: s.score }))
+          .map(s => ({ ...s.job, similarityTier: (s.tier as Tier) ?? null }))
           .filter(j => j._id !== currentJob._id)
           .filter(j => !/^test/i.test(j.title));
         setSimilarJobs(mapped);
@@ -49,6 +52,18 @@ const SimilarJobs = ({ currentJob, limit = 4 }: SimilarJobsProps) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const tierLabel = (tier: Tier): string => {
+    if (tier === 'strong') return 'Përputhje e fortë';
+    if (tier === 'good') return 'Përputhje e mirë';
+    return 'I ngjashëm';
+  };
+
+  const tierClasses = (tier: Tier): string => {
+    if (tier === 'strong') return 'bg-green-100 text-green-700';
+    if (tier === 'good') return 'bg-yellow-100 text-yellow-700';
+    return 'bg-gray-100 text-gray-600';
   };
 
   const formatPostedDate = (dateString: string) => {
@@ -152,19 +167,12 @@ const SimilarJobs = ({ currentJob, limit = 4 }: SimilarJobsProps) => {
                   {job.jobType}
                 </Badge>
                 <div className="flex items-center gap-2">
-                  {/* Similarity indicator — only shown when we have a real score
-                      from the embedding cache; suppressed for the fallback path
-                      where the backend returns score: null. */}
-                  {job.similarityScore != null && (
-                    <Badge
-                      variant="secondary"
-                      className={`text-xs ${
-                        job.similarityScore > 0.75 ? 'bg-green-100 text-green-700' :
-                        job.similarityScore > 0.65 ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}
-                    >
-                      {Math.round(job.similarityScore * 100)}% ngjashmëri
+                  {/* Similarity tier — categorical label from the embedding
+                      cache + hybrid boost (PR-D). Suppressed when we fell back
+                      to the category/city path (no tier returned). */}
+                  {job.similarityTier && (
+                    <Badge variant="secondary" className={`text-xs ${tierClasses(job.similarityTier)}`}>
+                      {tierLabel(job.similarityTier)}
                     </Badge>
                   )}
                   <ArrowRight className="h-3 w-3 text-muted-foreground group-hover:text-primary transition-colors" />

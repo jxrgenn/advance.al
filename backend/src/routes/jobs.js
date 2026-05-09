@@ -797,23 +797,25 @@ router.get('/:id/similar', validateObjectId('id'), async (req, res) => {
       // Create a map for quick lookup
       const jobsMap = new Map(similarJobs.map(j => [j._id.toString(), j]));
 
-      // Helper function to boost similarity scores for better UI display
-      const boostScore = (score) => {
-        // Custom boost strategy: makes 70-89% range more impressive while keeping 90%+ authentic
-        if (score >= 0.9) return score; // Keep very high scores authentic
-        if (score >= 0.7) return 0.85 + (score - 0.7) * 0.6; // Boost mid-range nicely
-        return score; // Below threshold stays same
-      };
-
-      // Sort by original similarity score
+      // Apply hybrid boost on top of cached cosine, sort by final score, slice.
+      // The cache stores pure cosine; structured-attribute boosts are applied at
+      // read time so we can tune them without recomputing the cache.
       const sortedSimilar = job.similarJobs
-        .map(s => ({
-          job: jobsMap.get(s.jobId.toString()),
-          score: boostScore(s.score), // Boosted for display
-          originalScore: s.score, // Keep original for debugging (hidden from user)
-          computedAt: s.computedAt
-        }))
-        .filter(s => s.job) // Remove jobs that were deleted
+        .map(s => {
+          const candidate = jobsMap.get(s.jobId.toString());
+          if (!candidate) return null;
+          const { boost } = jobEmbeddingService.computeJobToJobBoost(job, candidate);
+          const finalScore = Math.min(1, s.score + boost);
+          return {
+            job: candidate,
+            score: finalScore,
+            cosineScore: s.score,
+            tier: jobEmbeddingService.scoreToTier(finalScore),
+            computedAt: s.computedAt,
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.score - a.score)
         .slice(0, limit);
 
       return res.json({
