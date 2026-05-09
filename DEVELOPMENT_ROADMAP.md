@@ -22,9 +22,9 @@ User-driven diagnostic to characterize the user-job embedding pipeline before re
 - **B-032**: `userEmbeddingService.prepareJobSeekerText` deduplicated skills via JS `Set` (case-sensitive), so `["React","react","REACT"]` became 3 distinct skills in the embedding input. Same in `prepareQuickUserText`. Fixed in PR-0 (case-insensitive Map-based dedup, also trims whitespace, skips non-strings).
 
 ### Roadmap (in flight)
-- **PR-0** (this commit): bug fixes B-031 + B-032; unit + integration tests added.
-- **PR-A** (next): bump title weight 2x→4x, cap work-history per-entry text, add explicit seniority-preference line, background regen of all jobseeker embeddings, re-run diagnostic to measure.
-- **PR-B** (after A): replace heuristic in `/api/jobs/recommendations` with hybrid scoring (cosine + title/skills overlap + seniority + location + salary + recency), embedding-only fallback, heuristic fallback for users without embedding, integration tests, browser verification.
+- **PR-0** (shipped): bug fixes B-031 + B-032; unit + integration tests added.
+- **PR-A** (this commit): title weight 2x→4x, work-history per-entry caps tightened (400→250 desc, 200→100 achievements), explicit seniority-preference line keyed off `experience` enum (e.g. `5-10 vjet → "Searching for senior level position"`) so cosine matches the job's `<seniority> level position` phrase. Backfill script `regenerate-jobseeker-embeddings.js` ran across all 24 active jobseekers in the DB. Verified: seniority signal now elevates senior jobs (Menaxher Projektesh #7→#4 when user has 5-10 vjet), Marketing combo test promotes 3 marketing jobs into top-10 (was 2), Backend combo test promotes Mobile + Web Developer into top-5. Banking-ops at #2 persists — that requires hybrid scoring (PR-B).
+- **PR-B** (next): replace heuristic in `/api/jobs/recommendations` with hybrid scoring (cosine + title/skills overlap + seniority + location + salary + recency), embedding-only fallback, heuristic fallback for users without embedding, integration tests, browser verification.
 
 ## 🚧 **PHASE 28 — TEST SUITE GENUINENESS & COVERAGE OVERHAUL — STARTED MAY 7, 2026**
 

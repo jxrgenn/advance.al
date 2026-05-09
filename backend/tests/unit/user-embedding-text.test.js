@@ -124,14 +124,6 @@ describe('userEmbeddingService.prepareJobSeekerText', () => {
     })).toBe('');
   });
 
-  it('double-weights title', () => {
-    const text = userEmbeddingService.prepareJobSeekerText({
-      profile: { jobSeekerProfile: { title: 'Senior Engineer' } },
-    });
-    const occurrences = text.match(/Senior Engineer/g) || [];
-    expect(occurrences.length).toBe(2);
-  });
-
   it('merges manual + AI CV technical + tools skills (deduplicated, double-weighted)', () => {
     const text = userEmbeddingService.prepareJobSeekerText({
       profile: {
@@ -181,6 +173,53 @@ describe('userEmbeddingService.prepareJobSeekerText', () => {
     expect(text).toContain('Vue');
     // Only React and Vue should be in the skills section
     expect(text).toContain('Aftësitë: React, Vue');
+  });
+
+  it('weights title 4x (PR-A)', () => {
+    const text = userEmbeddingService.prepareJobSeekerText({
+      profile: { jobSeekerProfile: { title: 'Senior Engineer' } },
+    });
+    // Should appear 4 times total: 1 labeled + 3 raw repetitions
+    expect((text.match(/Senior Engineer/g) || []).length).toBe(4);
+  });
+
+  it('caps work-history per-entry text (250+100, PR-A)', () => {
+    const longDesc = 'd'.repeat(800);
+    const longAch = 'a'.repeat(500);
+    const text = userEmbeddingService.prepareJobSeekerText({
+      profile: { jobSeekerProfile: { workHistory: [{
+        position: 'Eng', company: 'Co', startDate: new Date(),
+        description: longDesc, achievements: longAch,
+      }] } },
+    });
+    const dRun = (text.match(/d+/g) || []).find(s => s.length > 50);
+    const aRun = (text.match(/a+/g) || []).find(s => s.length > 50);
+    expect(dRun.length).toBeLessThanOrEqual(250);
+    expect(aRun.length).toBeLessThanOrEqual(100);
+  });
+
+  it('adds derived seniority-preference line for each experience bucket (PR-A)', () => {
+    const cases = [
+      { exp: '0-1 vjet', expected: 'junior' },
+      { exp: '1-2 vjet', expected: 'junior' },
+      { exp: '2-5 vjet', expected: 'mid' },
+      { exp: '5-10 vjet', expected: 'senior' },
+      { exp: '10+ vjet', expected: 'lead' },
+    ];
+    for (const { exp, expected } of cases) {
+      const text = userEmbeddingService.prepareJobSeekerText({
+        profile: { jobSeekerProfile: { experience: exp } },
+      });
+      expect(text).toContain('Searching for ' + expected + ' level position');
+      expect(text).toContain(expected + ' level position');
+    }
+  });
+
+  it('omits seniority-preference line when experience is missing/unknown (PR-A)', () => {
+    const text = userEmbeddingService.prepareJobSeekerText({
+      profile: { jobSeekerProfile: { title: 'X' } },
+    });
+    expect(text).not.toContain('level position');
   });
 
   it('truncates AI CV summary to 500 chars', () => {

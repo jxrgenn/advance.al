@@ -17,6 +17,26 @@ import { escapeRegex } from '../utils/sanitize.js';
  * Model: text-embedding-3-small (1536 dims) — same as jobs, enabling cross-comparison.
  */
 
+// Map the user's `experience` enum to the same seniority bucket the Job model
+// uses (junior|mid|senior|lead). Drives the explicit seniority-preference line
+// in prepareJobSeekerText so cosine can match against the job's
+// "<seniority> level position" phrase.
+function experienceToSeniority(experience) {
+  switch (experience) {
+    case '0-1 vjet':
+    case '1-2 vjet':
+      return 'junior';
+    case '2-5 vjet':
+      return 'mid';
+    case '5-10 vjet':
+      return 'senior';
+    case '10+ vjet':
+      return 'lead';
+    default:
+      return null;
+  }
+}
+
 class UserEmbeddingService {
   constructor() {
     // Lower threshold for user-job matching: user text is shorter/less rich than job text
@@ -107,9 +127,12 @@ class UserEmbeddingService {
     const MAX_TEXT = 7500;
     const parts = [];
 
-    // 1. Title (2x weight)
+    // 1. Title (4x weight) — strongest user-intent signal; phase-A bumped from 2x
+    // to outweigh long work-history blocks that previously dominated cosine.
     if (profile.title) {
       parts.push('Titulli profesional: ' + profile.title);
+      parts.push(profile.title);
+      parts.push(profile.title);
       parts.push(profile.title);
     }
 
@@ -151,8 +174,11 @@ class UserEmbeddingService {
         let entry = '';
         if (w.position) entry += w.position;
         if (w.company) entry += ' në ' + w.company;
-        if (w.description) entry += '. ' + w.description.substring(0, 400);
-        if (w.achievements) entry += '. Arritje: ' + w.achievements.substring(0, 200);
+        // Phase-A: tightened per-entry caps (was 400/200) so 5 entries don't
+        // crowd out title + skills in cosine. Total work-history budget now
+        // ~2250 chars instead of ~3000.
+        if (w.description) entry += '. ' + w.description.substring(0, 250);
+        if (w.achievements) entry += '. Arritje: ' + w.achievements.substring(0, 100);
         return entry.trim();
       }).filter(Boolean);
       if (workParts.length) {
@@ -205,9 +231,16 @@ class UserEmbeddingService {
       parts.push(profile.bio);
     }
 
-    // 10. Experience level
+    // 10. Experience level + derived seniority preference (phase-A).
+    // The job side embeds "<seniority> level position" (jobEmbeddingService.js),
+    // so we mirror that exact phrase to give cosine an explicit seniority signal.
     if (profile.experience) {
       parts.push('Eksperiencë: ' + profile.experience);
+      const sen = experienceToSeniority(profile.experience);
+      if (sen) {
+        parts.push('Searching for ' + sen + ' level position');
+        parts.push(sen + ' level position');
+      }
     }
 
     // 11. Location
