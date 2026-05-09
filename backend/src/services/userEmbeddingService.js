@@ -47,9 +47,18 @@ class UserEmbeddingService {
         parts.push(quickUser.parsedCV.title);
       }
       if (quickUser.parsedCV.skills && quickUser.parsedCV.skills.length > 0) {
-        // Double-weight skills
-        parts.push('Aftësitë: ' + quickUser.parsedCV.skills.join(', '));
-        parts.push(quickUser.parsedCV.skills.join(' '));
+        // Double-weight skills, case-insensitive dedup
+        const seen = new Map();
+        for (const s of quickUser.parsedCV.skills) {
+          if (typeof s !== 'string') continue;
+          const t = s.trim();
+          if (!t) continue;
+          const k = t.toLowerCase();
+          if (!seen.has(k)) seen.set(k, t);
+        }
+        const dedupSkills = [...seen.values()];
+        parts.push('Aftësitë: ' + dedupSkills.join(', '));
+        parts.push(dedupSkills.join(' '));
       }
       if (quickUser.parsedCV.summary) {
         parts.push('Përmbledhje: ' + quickUser.parsedCV.summary);
@@ -105,13 +114,21 @@ class UserEmbeddingService {
     }
 
     // 2. Skills — merge manual + aiGeneratedCV technical + tools (2x weight)
-    const allSkills = new Set();
-    if (profile.skills?.length) profile.skills.forEach(s => allSkills.add(s));
+    // Case-insensitive dedup: keep first-seen casing, drop later case-variants.
+    const allSkills = new Map();
+    const addSkill = (s) => {
+      if (!s || typeof s !== 'string') return;
+      const trimmed = s.trim();
+      if (!trimmed) return;
+      const key = trimmed.toLowerCase();
+      if (!allSkills.has(key)) allSkills.set(key, trimmed);
+    };
+    profile.skills?.forEach(addSkill);
     const aiCV = profile.aiGeneratedCV;
-    if (aiCV?.skills?.technical?.length) aiCV.skills.technical.forEach(s => allSkills.add(s));
-    if (aiCV?.skills?.tools?.length) aiCV.skills.tools.forEach(s => allSkills.add(s));
+    aiCV?.skills?.technical?.forEach(addSkill);
+    aiCV?.skills?.tools?.forEach(addSkill);
     if (allSkills.size > 0) {
-      const skillsStr = [...allSkills].join(', ');
+      const skillsStr = [...allSkills.values()].join(', ');
       parts.push('Aftësitë: ' + skillsStr);
       parts.push(skillsStr);
     }

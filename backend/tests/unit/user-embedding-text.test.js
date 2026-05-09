@@ -95,6 +95,21 @@ describe('userEmbeddingService.prepareQuickUserText', () => {
     });
     expect(text).toBe('');
   });
+
+  it('dedups parsedCV.skills case-insensitively', () => {
+    const text = userEmbeddingService.prepareQuickUserText({
+      parsedCV: {
+        status: 'completed',
+        skills: ['React', 'react', 'REACT', 'Node', 'NODE'],
+        industries: [],
+        languages: [],
+      },
+    });
+    // After dedup: React, Node — each should appear in labeled + raw join (so 2x each)
+    expect(text).toContain('Aftësitë: React, Node');
+    expect((text.match(/React/g) || []).length).toBe(2);
+    expect((text.match(/Node/g) || []).length).toBe(2);
+  });
 });
 
 describe('userEmbeddingService.prepareJobSeekerText', () => {
@@ -132,8 +147,40 @@ describe('userEmbeddingService.prepareJobSeekerText', () => {
     expect(text).toContain('Node');
     expect(text).toContain('TypeScript');
     expect(text).toContain('Docker');
-    // React in both manual + AI; should NOT appear 4 times in skills (dedup)
-    // It should appear 2x (the labeled + raw skill list)
+    // React in both manual + AI; appears 2x total (labeled list + raw list), not 4x
+    const reactCount = (text.match(/React/g) || []).length;
+    expect(reactCount).toBe(2);
+  });
+
+  it('dedups skills case-insensitively across manual + AI CV', () => {
+    const text = userEmbeddingService.prepareJobSeekerText({
+      profile: {
+        jobSeekerProfile: {
+          skills: ['React', 'react', 'REACT'],
+          aiGeneratedCV: {
+            skills: { technical: ['javascript', 'JavaScript'], tools: ['DOCKER'] },
+          },
+        },
+      },
+    });
+    // Each skill should appear exactly twice (labeled + raw), not once per case-variant
+    expect((text.match(/React/g) || []).length + (text.match(/react/g) || []).length + (text.match(/REACT/g) || []).length).toBe(2);
+    expect((text.match(/javascript/gi) || []).length).toBe(2);
+    expect((text.match(/DOCKER/gi) || []).length).toBe(2);
+  });
+
+  it('skips empty/whitespace skills and non-strings', () => {
+    const text = userEmbeddingService.prepareJobSeekerText({
+      profile: {
+        jobSeekerProfile: {
+          skills: ['React', '', '   ', null, undefined, 42, 'Vue'],
+        },
+      },
+    });
+    expect(text).toContain('React');
+    expect(text).toContain('Vue');
+    // Only React and Vue should be in the skills section
+    expect(text).toContain('Aftësitë: React, Vue');
   });
 
   it('truncates AI CV summary to 500 chars', () => {

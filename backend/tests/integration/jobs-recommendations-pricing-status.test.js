@@ -104,6 +104,36 @@ describe('jobs.js — recommendations + POST / status branches', () => {
         .set(createAuthHeaders(js));
       expect(r.status).toBe(200);
     });
+
+    // Regression for the jobSeekerProfile-vs-jobseekerProfile typo (was reading the
+    // wrong path so preferredCategories was always empty and the +3 bonus never fired).
+    it('reads jobSeekerProfile.skills (capital S) for the category bonus', async () => {
+      const { user: js } = await createJobseeker({
+        email: 'rec-cat@example.com',
+        skills: ['Teknologji'], // skill equals a job category enum
+        city: 'Tiranë',
+      });
+      const { user: emp } = await createVerifiedEmployer();
+
+      // One Teknologji job + one Marketing job, both Tiranë, both posted at the
+      // same time. With the typo: tied score=1+2=3, sort by postedAt desc.
+      // Without the typo: Teknologji gets +3 bonus (=6), beats Marketing (=3).
+      const techJob = await createJob(emp, { title: 'Tech Job', category: 'Teknologji', city: 'Tiranë' });
+      const marketingJob = await createJob(emp, { title: 'Marketing Job', category: 'Marketing', city: 'Tiranë' });
+
+      const r = await request(app)
+        .get('/api/jobs/recommendations?limit=10')
+        .set(createAuthHeaders(js));
+
+      expect(r.status).toBe(200);
+      const recs = r.body.data?.recommendations || [];
+      expect(recs.length).toBeGreaterThanOrEqual(2);
+      const techIdx = recs.findIndex(j => String(j._id) === String(techJob._id));
+      const marketingIdx = recs.findIndex(j => String(j._id) === String(marketingJob._id));
+      expect(techIdx).toBeGreaterThanOrEqual(0);
+      expect(marketingIdx).toBeGreaterThanOrEqual(0);
+      expect(techIdx).toBeLessThan(marketingIdx);
+    });
   });
 
   describe('POST / pending_payment / pending_approval status branches', () => {

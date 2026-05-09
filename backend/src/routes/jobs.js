@@ -413,7 +413,7 @@ router.get('/recommendations', authenticate, async (req, res) => {
     const savedJobs = userWithSavedJobs?.savedJobs || [];
 
     // Get user's profile preferences
-    const userProfile = req.user.profile?.jobseekerProfile || {};
+    const userProfile = req.user.profile?.jobSeekerProfile || {};
     const preferredCategories = userProfile.skills || [];
     const preferredLocation = userProfile.location || req.user.profile?.location;
 

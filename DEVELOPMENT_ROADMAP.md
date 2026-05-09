@@ -6,6 +6,26 @@
 **CURRENT STATUS:** 🟢 **DEPLOY-READY. Phase 23 overnight suite now 799/799 GREEN (chromium-desktop). 4 additional production bugs found and fixed during full-coverage Tier 3: (1) verification code in-memory fallback never hit when Redis disabled — codes silently dropped; (2) employer registration `companyName`/`industry`/`description` not sanitized — stored XSS; (3) `User.addRefreshToken` had no FIFO cap, concurrent logins exceeded 5-token limit; (4) `/stats/public` 5-min in-memory cache served stale data with no test-mode bypass. All four shipped clean. 8 prior bugs from Phase 24 still in. Frontend + backend builds clean.**
 **Phase:** Phases 0-25 complete. Phase 25 (Tier 3) brought Phase 23 overnight to 799/799. Remaining out-of-scope items require external infrastructure or manual judgment (see `MANUAL_QA_CHECKLIST.md`).
 
+## 🧪 **EMBEDDING SYSTEM AUDIT — MAY 9, 2026**
+
+User-driven diagnostic to characterize the user-job embedding pipeline before rewiring `/api/jobs/recommendations` to use embeddings (the endpoint currently runs a heuristic and ignores embeddings entirely). 38-mutation diagnostic against `jurgenhalili1142@gmail.com` over 70 active jobs (text-embedding-3-small, 1536d). Diagnostic harness at `backend/scripts/embeddings-{diagnostic,runner,inspect-job}.js`. Snapshots at `backend/scripts/.embedding-snapshots/` (gitignored).
+
+### Findings (top-level)
+- Score range across all 70 jobs is narrow (0.42–0.64, mean 0.51); model has weak discrimination on short Albanian/English mixed professional texts.
+- User's work-history text (~60% of embedded input) dominates over title/skills (each only 2x weight). Banking history pulls "Specialist Operacionesh Bankare" to #2 even when title is changed to "Frontend Developer".
+- `experience` enum changes (0-1 vjet → 10+ vjet) produce ZERO change in top-10. Single phrase drowned out.
+- `desiredSalary`, `openToRemote`, `availability` confirmed NOT in embedding text (controls).
+- Strong-signal mutations work: marketing title+skills bumps SEO Specialist to #1; Designer title+Figma bumps Grafik Dizajner into top-5.
+
+### Bugs surfaced
+- **B-031**: `backend/src/routes/jobs.js:416` read `req.user.profile?.jobseekerProfile` (lowercase 's') vs model's `jobSeekerProfile`. The `+3` category-match bonus in `/api/jobs/recommendations` was silently dead code. Fixed in PR-0.
+- **B-032**: `userEmbeddingService.prepareJobSeekerText` deduplicated skills via JS `Set` (case-sensitive), so `["React","react","REACT"]` became 3 distinct skills in the embedding input. Same in `prepareQuickUserText`. Fixed in PR-0 (case-insensitive Map-based dedup, also trims whitespace, skips non-strings).
+
+### Roadmap (in flight)
+- **PR-0** (this commit): bug fixes B-031 + B-032; unit + integration tests added.
+- **PR-A** (next): bump title weight 2x→4x, cap work-history per-entry text, add explicit seniority-preference line, background regen of all jobseeker embeddings, re-run diagnostic to measure.
+- **PR-B** (after A): replace heuristic in `/api/jobs/recommendations` with hybrid scoring (cosine + title/skills overlap + seniority + location + salary + recency), embedding-only fallback, heuristic fallback for users without embedding, integration tests, browser verification.
+
 ## 🚧 **PHASE 28 — TEST SUITE GENUINENESS & COVERAGE OVERHAUL — STARTED MAY 7, 2026**
 
 User mandate: skeptical audit of test suite revealed ChatGPT's "100% coverage" claim was misleading. Sprint to make every assertion genuinely fail when behavior is wrong, run real E2E + real OpenAI/Cloudinary, hit 90%+ measured coverage. **7–8 week sprint.** $2/month external service budget. Plan: `~/.claude/plans/hazy-stargazing-frost.md`. Baseline: `TESTING_BASELINE.md`. Bugs surfaced: `tests/results/PHASE-1-BUGS-DISCOVERED.md`.
