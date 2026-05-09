@@ -447,6 +447,10 @@ class UserEmbeddingService {
    * @param {Object} [options]
    * @param {number} [options.limit=10] - Max jobs to return
    * @param {string} [options.city] - Optional city filter
+   * @param {number} [options.minScore] - Optional minimum cosine score; defaults
+   *   to this.threshold (USER_JOB_SIMILARITY_THRESHOLD env, default 0.55).
+   *   Pass 0 to return top-N regardless of similarity (used by user-facing
+   *   recommendations endpoint where we always want a non-empty list).
    * @returns {Promise<Array<{job: Object, score: number}>>} Sorted desc by score
    */
   async findMatchingJobsForUser(userVector, options = {}) {
@@ -455,7 +459,7 @@ class UserEmbeddingService {
     }
 
     const { limit = 10, city } = options;
-    const threshold = this.threshold;
+    const minScore = options.minScore !== undefined ? options.minScore : this.threshold;
     const BATCH_SIZE = 500;
 
     const query = {
@@ -480,7 +484,7 @@ class UserEmbeddingService {
       if (!vec || vec.length !== 1536) continue;
       try {
         const score = jobEmbeddingService.cosineSimilarity(userVector, vec);
-        if (score >= threshold) {
+        if (score >= minScore) {
           matchedJobs.push({ job, score });
         }
       } catch (_) { /* skip malformed vectors */ }
@@ -488,6 +492,78 @@ class UserEmbeddingService {
 
     matchedJobs.sort((a, b) => b.score - a.score);
     return matchedJobs.slice(0, limit);
+  }
+
+  /**
+   * Map a User's `experience` enum (e.g. "5-10 vjet") to the Job model's
+   * `seniority` enum bucket (junior|mid|senior|lead) so callers outside
+   * prepareJobSeekerText can use the same mapping.
+   * @param {string} experience
+   * @returns {string|null}
+   */
+  experienceToSeniority(experience) {
+    return experienceToSeniority(experience);
+  }
+
+  /**
+   * Hybrid recommendation boost — added on top of cosine similarity for the
+   * user-facing `/api/jobs/recommendations` endpoint. Captures hard product
+   * constraints that pure semantic similarity misses (skills overlap, exact
+   * seniority match, location, salary fit, recency, tier).
+   *
+   * Max possible boost: 0.31 (skills 0.10 + seniority 0.05 + location 0.07 +
+   * salary 0.05 + recency 0.02 + tier 0.02). Final score clamped to [0, 1]
+   * by the caller.
+   *
+   * @param {Object} user - jobseeker User doc (must include profile.jobSeekerProfile + profile.location)
+   * @param {Object} job - Job doc (tags, seniority, location, salary, postedAt, tier)
+   * @returns {{boost: number, breakdown: Object}} additive boost + breakdown for observability
+   */
+  computeHybridBoost(user, job) {
+    const profile = user.profile?.jobSeekerProfile || {};
+    const userCity = user.profile?.location?.city;
+    const breakdown = { skills: 0, seniority: 0, location: 0, salary: 0, recency: 0, tier: 0 };
+
+    // 1. Skills overlap (capped at +0.10 when 3+ tags match)
+    const userSkills = new Set();
+    const addLower = (s) => { if (typeof s === 'string' && s.trim()) userSkills.add(s.trim().toLowerCase()); };
+    profile.skills?.forEach(addLower);
+    profile.aiGeneratedCV?.skills?.technical?.forEach(addLower);
+    profile.aiGeneratedCV?.skills?.tools?.forEach(addLower);
+    if (userSkills.size > 0 && Array.isArray(job.tags) && job.tags.length > 0) {
+      const overlap = job.tags.filter(t => typeof t === 'string' && userSkills.has(t.trim().toLowerCase())).length;
+      breakdown.skills = Math.min(overlap / 3, 1) * 0.10;
+    }
+
+    // 2. Seniority match
+    const wantSen = this.experienceToSeniority(profile.experience);
+    if (wantSen && job.seniority === wantSen) breakdown.seniority = 0.05;
+
+    // 3. Location match — same city, or remote-open user + remote-eligible job
+    if (userCity && job.location?.city && userCity.trim().toLowerCase() === job.location.city.trim().toLowerCase()) {
+      breakdown.location = 0.07;
+    } else if (profile.openToRemote && job.location?.remote) {
+      breakdown.location = 0.07;
+    }
+
+    // 4. Salary fit — both ranges set, same currency, ranges overlap
+    const us = profile.desiredSalary;
+    const js = job.salary;
+    if (us && js && us.min != null && us.max != null && js.min != null && js.max != null && us.currency === js.currency) {
+      if (js.max >= us.min && js.min <= us.max) breakdown.salary = 0.05;
+    }
+
+    // 5. Recency — posted in last 7 days
+    if (job.postedAt) {
+      const ageMs = Date.now() - new Date(job.postedAt).getTime();
+      if (ageMs >= 0 && ageMs < 7 * 24 * 60 * 60 * 1000) breakdown.recency = 0.02;
+    }
+
+    // 6. Premium tier
+    if (job.tier === 'premium') breakdown.tier = 0.02;
+
+    const boost = breakdown.skills + breakdown.seniority + breakdown.location + breakdown.salary + breakdown.recency + breakdown.tier;
+    return { boost, breakdown };
   }
 }
 

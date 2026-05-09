@@ -23,8 +23,15 @@ User-driven diagnostic to characterize the user-job embedding pipeline before re
 
 ### Roadmap (in flight)
 - **PR-0** (shipped): bug fixes B-031 + B-032; unit + integration tests added.
-- **PR-A** (this commit): title weight 2x→4x, work-history per-entry caps tightened (400→250 desc, 200→100 achievements), explicit seniority-preference line keyed off `experience` enum (e.g. `5-10 vjet → "Searching for senior level position"`) so cosine matches the job's `<seniority> level position` phrase. Backfill script `regenerate-jobseeker-embeddings.js` ran across all 24 active jobseekers in the DB. Verified: seniority signal now elevates senior jobs (Menaxher Projektesh #7→#4 when user has 5-10 vjet), Marketing combo test promotes 3 marketing jobs into top-10 (was 2), Backend combo test promotes Mobile + Web Developer into top-5. Banking-ops at #2 persists — that requires hybrid scoring (PR-B).
-- **PR-B** (next): replace heuristic in `/api/jobs/recommendations` with hybrid scoring (cosine + title/skills overlap + seniority + location + salary + recency), embedding-only fallback, heuristic fallback for users without embedding, integration tests, browser verification.
+- **PR-A** (shipped): title weight 2x→4x, work-history per-entry caps tightened (400→250 desc, 200→100 achievements), explicit seniority-preference line keyed off `experience` enum (e.g. `5-10 vjet → "Searching for senior level position"`) so cosine matches the job's `<seniority> level position` phrase. Backfill script `regenerate-jobseeker-embeddings.js` ran across all 24 active jobseekers in the DB. Verified: seniority signal now elevates senior jobs (Menaxher Projektesh #7→#4 when user has 5-10 vjet), Marketing combo test promotes 3 marketing jobs into top-10 (was 2), Backend combo test promotes Mobile + Web Developer into top-5. Banking-ops at #2 persists — that requires hybrid scoring (PR-B).
+- **PR-B** (this commit): `/api/jobs/recommendations` now embedding-first with hybrid boost. Primary path: cosine via `findMatchingJobsForUser({minScore:0})` + `computeHybridBoost(user, job)` (skills overlap up to +0.10, seniority +0.05, location +0.07, salary fit +0.05, recency +0.02, premium tier +0.02; max +0.31). Fallback: existing heuristic for users without a usable embedding (cold start, regen pending, or corrupted vector). Response gains `data.scoringMode: 'embedding'|'heuristic'` for observability. Saved jobs excluded in both paths. 24 unit tests + 10 new integration tests + 7 existing recommendations tests all pass; 173 across 12 suites green. Browser verification pending user.
+
+### Browser test script (PR-B)
+- Log in as `jurgenhalili1142@gmail.com`.
+- GET `/api/jobs/recommendations` (or whatever frontend route consumes it). Confirm response includes `data.scoringMode === 'embedding'` and a non-empty `recommendations` array sorted by `score` desc.
+- Edit profile: change `title` from "AI Automation Engineer" to "Frontend Developer", save. Wait ~2s for embedding regen. Reload recommendations. Confirm Web Developer / Mobile Developer (React Native) rise toward top-5 (they should — PR-A diagnostic showed both move into top-5 under FE-aligned profiles).
+- Cold-start check: register a brand-new jobseeker, do NOT upload CV. Hit recommendations. Confirm `scoringMode === 'heuristic'` and a non-empty `recommendations` array.
+- Cross-check no regressions: jobs search page, saved-jobs page, applications page.
 
 ## 🚧 **PHASE 28 — TEST SUITE GENUINENESS & COVERAGE OVERHAUL — STARTED MAY 7, 2026**
 

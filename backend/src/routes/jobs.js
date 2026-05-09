@@ -5,6 +5,7 @@ import { Job, User, Location, PricingRule, BusinessCampaign, RevenueAnalytics, S
 import { authenticate, requireEmployer, requireVerifiedEmployer, optionalAuth } from '../middleware/auth.js';
 import notificationService from '../lib/notificationService.js';
 import jobEmbeddingService from '../services/jobEmbeddingService.js';
+import userEmbeddingService from '../services/userEmbeddingService.js';
 import { sanitizeLimit, validateObjectId, stripHtml, normalizeOneLine } from '../utils/sanitize.js';
 import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
 import crypto from 'crypto';
@@ -408,11 +409,58 @@ router.get('/recommendations', authenticate, async (req, res) => {
     const limit = sanitizeLimit(rawLimit, 50, 10);
     const userId = req.user._id;
 
-    // Get user's saved jobs to analyze preferences
-    const userWithSavedJobs = await User.findById(userId).populate('savedJobs');
-    const savedJobs = userWithSavedJobs?.savedJobs || [];
+    // Re-fetch the user with the normally-`select:false` embedding vector
+    // so we can run the embedding-first recommendation path. Also pulls
+    // savedJobs for both the embedding-path exclusion and the heuristic
+    // fallback path's saved-jobs analysis.
+    const userWithEmb = await User.findById(userId)
+      .select('+profile.jobSeekerProfile.embedding.vector')
+      .populate('savedJobs');
+    const savedJobs = userWithEmb?.savedJobs || [];
+    const savedJobIdSet = new Set(savedJobs.map(j => String(j._id)));
 
-    // Get user's profile preferences
+    // === EMBEDDING PATH (primary) ===
+    const emb = userWithEmb?.profile?.jobSeekerProfile?.embedding;
+    const hasEmbedding = emb?.status === 'completed' && Array.isArray(emb.vector) && emb.vector.length === 1536;
+    if (hasEmbedding) {
+      // Pull more candidates than `limit` so the hybrid re-rank has room.
+      const candidates = await userEmbeddingService.findMatchingJobsForUser(emb.vector, {
+        limit: Math.max(limit * 4, 40),
+        minScore: 0,
+      });
+
+      const reranked = candidates
+        .filter(({ job }) => !savedJobIdSet.has(String(job._id)))
+        .map(({ job, score: cosineScore }) => {
+          const { boost } = userEmbeddingService.computeHybridBoost(userWithEmb, job);
+          const finalScore = Math.min(1, cosineScore + boost);
+          return { job, finalScore };
+        });
+
+      reranked.sort((a, b) => b.finalScore - a.finalScore);
+
+      const recommendations = reranked.slice(0, limit).map(({ job, finalScore }) => {
+        const obj = job.toObject ? job.toObject() : { ...job };
+        delete obj.embedding;
+        obj.score = Number(finalScore.toFixed(4));
+        return obj;
+      });
+
+      return res.json({
+        success: true,
+        data: {
+          recommendations,
+          total: recommendations.length,
+          personalized: true,
+          scoringMode: 'embedding',
+        },
+      });
+    }
+
+    // === HEURISTIC FALLBACK ===
+    // Reached when the user has no embedding (fresh signup, regen pending, or
+    // generation failed). Same heuristic as before; preserved so cold-start
+    // users still see results.
     const userProfile = req.user.profile?.jobSeekerProfile || {};
     const preferredCategories = userProfile.skills || [];
     const preferredLocation = userProfile.location || req.user.profile?.location;
@@ -584,7 +632,8 @@ router.get('/recommendations', authenticate, async (req, res) => {
       data: {
         recommendations,
         total: recommendations.length,
-        personalized: savedJobs.length > 0 || preferredCategories.length > 0
+        personalized: savedJobs.length > 0 || preferredCategories.length > 0,
+        scoringMode: 'heuristic'
       }
     });
 
