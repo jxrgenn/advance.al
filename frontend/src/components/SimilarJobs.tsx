@@ -12,7 +12,7 @@ interface SimilarJobsProps {
 }
 
 interface ScoredJob extends Job {
-  similarityScore: number;
+  similarityScore: number | null; // null when cache empty and we fell back to category/city
 }
 
 const SimilarJobs = ({ currentJob, limit = 4 }: SimilarJobsProps) => {
@@ -26,81 +26,20 @@ const SimilarJobs = ({ currentJob, limit = 4 }: SimilarJobsProps) => {
     }
   }, [currentJob._id]);
 
-  const calculateSimilarityScore = (job: Job): number => {
-    let score = 0;
-    const weights = {
-      location: 0.3,    // 30% weight for location match
-      title: 0.4,       // 40% weight for job title similarity
-      category: 0.2,    // 20% weight for category match
-      experience: 0.1   // 10% weight for experience level
-    };
-
-    // Location scoring (city match)
-    if (job.location?.city === currentJob.location?.city) {
-      score += weights.location;
-    } else if (job.location?.region === currentJob.location?.region) {
-      score += weights.location * 0.5; // Half points for same region
-    }
-
-    // Title similarity (keyword matching)
-    const currentTitleWords = currentJob.title.toLowerCase().split(' ');
-    const jobTitleWords = job.title.toLowerCase().split(' ');
-    const titleMatches = currentTitleWords.filter(word =>
-      jobTitleWords.some(jobWord => jobWord.includes(word) || word.includes(jobWord))
-    ).length;
-    const titleSimilarity = titleMatches / Math.max(currentTitleWords.length, jobTitleWords.length);
-    score += weights.title * titleSimilarity;
-
-    // Category match
-    if (job.category === currentJob.category) {
-      score += weights.category;
-    }
-
-    // Experience level match (if available in tags or seniority)
-    const currentExperience = currentJob.seniority || 'mid';
-    const jobExperience = job.seniority || 'mid';
-    if (currentExperience === jobExperience) {
-      score += weights.experience;
-    }
-
-    return Math.round(score * 100) / 100; // Round to 2 decimal places
-  };
-
-  // Boost raw scores for more appealing display percentages
-  const boostScore = (score: number): number => {
-    if (score >= 0.8) return 0.90 + (score - 0.8) * 0.5;   // 80-100% → 90-100%
-    if (score >= 0.5) return 0.70 + (score - 0.5) * 0.67;   // 50-80% → 70-90%
-    if (score >= 0.3) return 0.55 + (score - 0.3) * 0.75;   // 30-50% → 55-70%
-    return Math.max(score * 1.8, 0.40);                       // Below 30% → min 40%
-  };
-
   const loadSimilarJobs = async () => {
     try {
       setLoading(true);
 
-      // Get jobs from same category and/or location
-      const filters = {
-        limit: 20, // Get more to filter and score
-        category: currentJob.category,
-        city: currentJob.location?.city,
-        excludeJobId: currentJob._id // Don't include current job
-      };
+      // Embedding-based similarity from the backend cache (PR-C). Falls back
+      // to category/city on the server side when the cache is empty.
+      const response = await jobsApi.getSimilarJobs(currentJob._id, limit);
 
-      const response = await jobsApi.getJobs(filters);
-
-      if (response.success && response.data.jobs) {
-        // Calculate similarity scores, filter test data, boost for display
-        const scoredJobs: ScoredJob[] = response.data.jobs
-          .filter(job => job._id !== currentJob._id) // Exclude current job
-          .filter(job => !/^test/i.test(job.title))  // Filter out test jobs
-          .map(job => ({
-            ...job,
-            similarityScore: boostScore(calculateSimilarityScore(job))
-          }))
-          .sort((a, b) => b.similarityScore - a.similarityScore) // Sort by highest score first
-          .slice(0, limit); // Take only the top results
-
-        setSimilarJobs(scoredJobs);
+      if (response.success && response.data?.similarJobs) {
+        const mapped: ScoredJob[] = response.data.similarJobs
+          .map(s => ({ ...s.job, similarityScore: s.score }))
+          .filter(j => j._id !== currentJob._id)
+          .filter(j => !/^test/i.test(j.title));
+        setSimilarJobs(mapped);
       } else {
         setSimilarJobs([]);
       }
@@ -213,17 +152,21 @@ const SimilarJobs = ({ currentJob, limit = 4 }: SimilarJobsProps) => {
                   {job.jobType}
                 </Badge>
                 <div className="flex items-center gap-2">
-                  {/* Similarity indicator */}
-                  <Badge
-                    variant="secondary"
-                    className={`text-xs ${
-                      job.similarityScore > 0.75 ? 'bg-green-100 text-green-700' :
-                      job.similarityScore > 0.65 ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-gray-100 text-gray-600'
-                    }`}
-                  >
-                    {Math.round(job.similarityScore * 100)}% ngjashmëri
-                  </Badge>
+                  {/* Similarity indicator — only shown when we have a real score
+                      from the embedding cache; suppressed for the fallback path
+                      where the backend returns score: null. */}
+                  {job.similarityScore != null && (
+                    <Badge
+                      variant="secondary"
+                      className={`text-xs ${
+                        job.similarityScore > 0.75 ? 'bg-green-100 text-green-700' :
+                        job.similarityScore > 0.65 ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {Math.round(job.similarityScore * 100)}% ngjashmëri
+                    </Badge>
+                  )}
                   <ArrowRight className="h-3 w-3 text-muted-foreground group-hover:text-primary transition-colors" />
                 </div>
               </div>

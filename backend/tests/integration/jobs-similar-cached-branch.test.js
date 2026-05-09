@@ -111,4 +111,48 @@ describe('jobs.js — GET /:id/similar cached branch (L736-778)', () => {
     const r = await request(app).get(`/api/jobs/${job._id}/similar`);
     expect(r.status).toBe(404);
   });
+
+  it('respects ?limit query param on the cached path (PR-C)', async () => {
+    const { user: emp } = await createVerifiedEmployer();
+    const target = await createJob(emp, { title: 'Target' });
+    const peers = [];
+    for (let i = 0; i < 8; i++) {
+      peers.push(await createJob(emp, { title: `Peer ${i}` }));
+    }
+    await Job.updateOne(
+      { _id: target._id },
+      {
+        $set: {
+          similarJobs: peers.map((p, i) => ({ jobId: p._id, score: 0.95 - i * 0.02, computedAt: new Date() })),
+          'similarityMetadata.lastComputed': new Date(),
+        },
+      }
+    );
+
+    const r3 = await request(app).get(`/api/jobs/${target._id}/similar?limit=3`);
+    expect(r3.status).toBe(200);
+    expect(r3.body.data.similarJobs.length).toBe(3);
+
+    const rDefault = await request(app).get(`/api/jobs/${target._id}/similar`);
+    expect(rDefault.body.data.similarJobs.length).toBe(8); // all 8, default limit 10
+  });
+
+  it('falls back to category/city when no cache and ?limit caps fallback length (PR-C)', async () => {
+    const { user: emp } = await createVerifiedEmployer();
+    const target = await createJob(emp, { title: 'No-cache target', category: 'Teknologji', city: 'Tiranë' });
+    // Seed 6 peers in same category — all should be eligible for fallback
+    for (let i = 0; i < 6; i++) {
+      await createJob(emp, { title: `Peer ${i}`, category: 'Teknologji', city: 'Tiranë' });
+    }
+
+    const r = await request(app).get(`/api/jobs/${target._id}/similar?limit=2`);
+    expect(r.status).toBe(200);
+    expect(r.body.data.cached).toBe(false);
+    expect(r.body.data.similarJobs.length).toBe(2);
+    // Fallback shape: each entry has {job, score: null, cached: false}
+    for (const s of r.body.data.similarJobs) {
+      expect(s).toHaveProperty('job');
+      expect(s.score).toBeNull();
+    }
+  });
 });

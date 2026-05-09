@@ -535,6 +535,17 @@ export const jobsApi = {
     return apiRequest<{ recommendations: Job[]; total: number; personalized: boolean }>(endpoint);
   },
 
+  // Get embedding-based similar jobs for a given job
+  getSimilarJobs: async (jobId: string, limit: number = 4): Promise<ApiResponse<{
+    similarJobs: Array<{ job: Job; score: number | null; originalScore?: number; computedAt?: string; cached?: boolean }>;
+    count: number;
+    cached: boolean;
+    computedAt?: string;
+    note?: string;
+  }>> => {
+    return apiRequest(`/jobs/${jobId}/similar?limit=${limit}`);
+  },
+
   // Create new job (employers only)
   createJob: async (jobData: {
     title: string;

@@ -762,6 +762,7 @@ router.get('/:id', validateObjectId('id'), optionalAuth, async (req, res) => {
 router.get('/:id/similar', validateObjectId('id'), async (req, res) => {
   try {
     const jobId = req.params.id;
+    const limit = sanitizeLimit(req.query.limit, 20, 10);
 
     // Validate job ID
     if (!mongoose.Types.ObjectId.isValid(jobId)) {
@@ -813,7 +814,7 @@ router.get('/:id/similar', validateObjectId('id'), async (req, res) => {
           computedAt: s.computedAt
         }))
         .filter(s => s.job) // Remove jobs that were deleted
-        .slice(0, 10);
+        .slice(0, limit);
 
       return res.json({
         success: true,
@@ -827,7 +828,7 @@ router.get('/:id/similar', validateObjectId('id'), async (req, res) => {
     }
 
     // If embeddings are being processed, use fallback
-    const fallbackJobs = await jobEmbeddingService.getSimilarJobsFallback(jobId);
+    const fallbackJobs = (await jobEmbeddingService.getSimilarJobsFallback(jobId)).slice(0, limit);
 
     res.json({
       success: true,
