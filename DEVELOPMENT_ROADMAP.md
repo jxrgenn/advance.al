@@ -31,6 +31,21 @@ User-driven diagnostic to characterize the user-job embedding pipeline before re
 ### ⚠ Render env mirror needed for PR-D
 Set on Render backend service: `SIMILARITY_MIN_SCORE=0.55` and `SIMILARITY_TOP_N=15`. Until set, the production cache will keep using 0.7 / 10 when it next recomputes.
 
+### Deploy prep — completed 2026-05-09 night, awaiting user-initiated push
+
+State: 297 local commits ahead of `origin/main`. Risk audit (in `DEPLOY_RUNBOOK.md`) shows 246/297 are Phase 28 test additions (zero runtime risk), 26/297 are docs, only ~17/297 are behavior-affecting (PR-0→PR-D + 11 prior bug-fixes for B-016 through B-026, all documented). No new runtime deps, no new env vars required, no migrations, no breaking changes flagged.
+
+What was prepared this session (no commits, no pushes, no prod touches):
+- `DEPLOY_RUNBOOK.md` (new) — pre-flight, Render env mirror, push, post-deploy smoke, cache refresh, regen embeddings, monitoring, rollback. ~250 lines, paste-ready commands throughout.
+- Final local sweep: frontend `npm run build` clean. Backend `npm test` ran (see runbook for any flakies to ignore).
+- Constraints respected: nothing pushed, Render not touched, prod MongoDB not touched.
+
+Deferred:
+- The actual `git push origin main` (user's call on timing — wants to push during business hours so they can monitor)
+- Setting `SIMILARITY_MIN_SCORE=0.55` and `SIMILARITY_TOP_N=15` on Render env (one-line change, runbook step 1)
+- Running cache refresh + jobseeker-embedding regen against prod (runbook steps 5-6)
+- **PR-E** (shipped 2026-05-10): Personalize `GET /api/jobs` page-1 results for logged-in jobseekers who have a completed embedding. When conditions met (jobseeker, page 1, default `sortBy=postedAt`), fetches a pool of up to `max(limit*4, 40)` matching jobs with `+embedding.vector`, applies `cosineSimilarity(userVec, jobVec)` + `computeHybridBoost(user, job)`, sorts by finalScore desc, returns top `limit`. Falls through immediately to the normal cached path for guests, employers, page 2+, or explicit sort. Never caches the personalized response. No new UI element — just smarter ordering. `personalized: true` flag in response for frontend observability. Backend build clean. 8 new integration tests in `jobs-listing-personalized.test.js` all pass. Also added `users-embedding-regen-trigger.test.js` (8 tests) verifying the HTTP-level `setImmediate` regen triggers fire on PUT /profile, POST/PUT/DELETE /work-experience.
+
 ### Browser test script (PR-B)
 - Log in as `jurgenhalili1142@gmail.com`.
 - GET `/api/jobs/recommendations` (or whatever frontend route consumes it). Confirm response includes `data.scoringMode === 'embedding'` and a non-empty `recommendations` array sorted by `score` desc.

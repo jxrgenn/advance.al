@@ -324,6 +324,68 @@ router.get('/', optionalAuth, async (req, res) => {
       filters.tier = tier;
     }
 
+    // PR-E: Personalize the default listing for logged-in jobseekers on page 1.
+    // Conditions: jobseeker role, completed embedding, page 1, default time sort.
+    // Falls through immediately if any condition is false (no overhead for guests).
+    if (req.user?.userType === 'jobseeker' && safePage === 1 && sortBy === 'postedAt') {
+      const userWithEmb = await User.findById(req.user._id)
+        .select('+profile.jobSeekerProfile.embedding.vector')
+        .lean();
+      const emb = userWithEmb?.profile?.jobSeekerProfile?.embedding;
+      if (emb?.status === 'completed' && Array.isArray(emb.vector) && emb.vector.length === 1536) {
+        const poolSize = Math.max(safeLimit * 4, 40);
+        const pool = await Job.searchJobs(safeSearch, filters)
+          .select('+embedding.vector')
+          .limit(poolSize)
+          .lean()
+          .exec();
+
+        if (pool.length > 0) {
+          const userVec = emb.vector;
+          const scored = pool.map(job => {
+            const jobVec = job.embedding?.vector;
+            let cosine = 0;
+            if (Array.isArray(jobVec) && jobVec.length === 1536) {
+              try { cosine = jobEmbeddingService.cosineSimilarity(userVec, jobVec); } catch { /* invalid vector */ }
+            }
+            const { boost } = userEmbeddingService.computeHybridBoost(userWithEmb, job);
+            const finalScore = Math.min(1, cosine + boost);
+            const jobOut = { ...job };
+            delete jobOut.embedding;
+            return { jobOut, finalScore };
+          });
+          scored.sort((a, b) => b.finalScore - a.finalScore);
+          const reranked = scored.slice(0, safeLimit).map(r => r.jobOut);
+
+          const totalJobs = await Job.countDocuments(Job.searchJobs(safeSearch, filters).getFilter());
+          const totalPages = Math.ceil(totalJobs / safeLimit);
+
+          return res.json({
+            success: true,
+            data: {
+              jobs: reranked,
+              pagination: {
+                currentPage: 1,
+                totalPages,
+                totalJobs,
+                hasNextPage: 1 < totalPages,
+                hasPrevPage: false,
+              },
+              filters: {
+                search: stripHtml(safeSearch || ''),
+                city,
+                category,
+                jobType,
+                minSalary: minSalary ? parseInt(minSalary) : null,
+                maxSalary: maxSalary ? parseInt(maxSalary) : null,
+              },
+              personalized: true,
+            }
+          });
+        }
+      }
+    }
+
     // Execute search
     let query = Job.searchJobs(safeSearch, filters);
 
