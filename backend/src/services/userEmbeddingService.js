@@ -53,15 +53,29 @@ const CATEGORY_PATTERNS = [
 function inferUserCategory(user) {
   const profile = user?.profile?.jobSeekerProfile;
   if (!profile) return null;
-  const haystack = [
-    profile.title || '',
+
+  // Title is by far the most reliable signal — it's what the user explicitly
+  // identifies as. Try title alone first. Skills are too noisy for primary
+  // inference (a banker with "SQL/Excel" in their skills would otherwise
+  // get classified as Teknologji because of `\bsql\b`, polluting downstream
+  // application generation and category-match boosting).
+  const title = (profile.title || '').toLowerCase().trim();
+  if (title) {
+    for (const { category, re } of CATEGORY_PATTERNS) {
+      if (re.test(title)) return category;
+    }
+  }
+
+  // Title gave no match — fall back to skills. Skills bleed less when title
+  // is genuinely empty (cold-start user with only a CV-parsed skills list).
+  const skillsHaystack = [
     (profile.skills || []).join(' '),
     ((profile.aiGeneratedCV?.skills?.technical) || []).join(' '),
     ((profile.aiGeneratedCV?.skills?.tools) || []).join(' '),
   ].join(' ').toLowerCase();
-  if (!haystack.trim()) return null;
+  if (!skillsHaystack.trim()) return null;
   for (const { category, re } of CATEGORY_PATTERNS) {
-    if (re.test(haystack)) return category;
+    if (re.test(skillsHaystack)) return category;
   }
   return null;
 }

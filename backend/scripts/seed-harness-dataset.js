@@ -455,24 +455,28 @@ async function seedUsers(opts) {
 
 async function pickApplicationsForUser(user, candidateJobs) {
   const profile = user.profile?.jobSeekerProfile || {};
-  const sysPrompt = `You are a realistic Albanian jobseeker. Given your profile and a list of available jobs, pick 3-8 jobs you would actually apply to. Realistic preferences: title alignment matters most, then location, then salary, then employer reputation. Output STRICT JSON.`;
+  const sysPrompt = `You are a realistic Albanian jobseeker. Given your profile and a list of available jobs (numbered), return the indices of 3-8 jobs you would actually apply to. Realistic preferences: title alignment matters most, then location, then salary. Output STRICT JSON only.`;
   const userPrompt = `MY PROFILE:
 title: ${profile.title}
 city: ${user.profile?.location?.city}
 experience: ${profile.experience}
 skills: ${(profile.skills || []).join(', ')}
 desired salary: ${profile.desiredSalary?.min}-${profile.desiredSalary?.max} ${profile.desiredSalary?.currency}
-bio: ${profile.bio}
+bio: ${(profile.bio || '').slice(0, 300)}
 
-AVAILABLE JOBS (id | title | category | city | seniority | salary):
-${candidateJobs.map(j => `${j._id} | ${j.title} | ${j.category} | ${j.location?.city} | ${j.seniority} | ${j.salary?.min || '?'}-${j.salary?.max || '?'} ${j.salary?.currency || ''}`).join('\n')}
+AVAILABLE JOBS:
+${candidateJobs.map((j, i) => `[${i}] ${j.title} (${j.category}, ${j.location?.city}, ${j.seniority}, salary ${j.salary?.min || '?'}-${j.salary?.max || '?'} ${j.salary?.currency || ''})`).join('\n')}
 
 Output JSON:
-{ "applyToJobIds": ["<id1>", "<id2>", ...] }
+{ "applyToIndices": [<integer>, <integer>, ...] }
 
-Pick between 3 and 8 ids. Only pick jobs you'd realistically apply to given your profile.`;
+Pick between 3 and 8 integer indices from the list above. Only pick jobs you'd realistically apply to given your profile.`;
   const result = await callLLMJSON(sysPrompt, userPrompt);
-  return Array.isArray(result.applyToJobIds) ? result.applyToJobIds : [];
+  const indices = Array.isArray(result.applyToIndices) ? result.applyToIndices : [];
+  return indices
+    .map(i => Number(i))
+    .filter(i => Number.isInteger(i) && i >= 0 && i < candidateJobs.length)
+    .map(i => candidateJobs[i]);
 }
 
 const ADJACENT_CATEGORIES = {
@@ -509,38 +513,42 @@ async function seedApplications(opts) {
   }
 
   let totalApps = 0;
+  let llmFails = 0;
+  let usersDone = 0;
   const tasks = users.map(u => limit(async () => {
     const cat = inferCat(u) || pick(Object.keys(jobsByCat));
     const adjacent = ADJACENT_CATEGORIES[cat] || [];
     const candidates = [
-      ...(jobsByCat[cat] || []).slice(0, 12),
+      ...(jobsByCat[cat] || []).slice(0, 14),
       ...adjacent.flatMap(c => (jobsByCat[c] || []).slice(0, 4)),
     ].slice(0, 25);
+    usersDone++;
     if (candidates.length === 0) return;
     try {
-      const ids = await pickApplicationsForUser(u, candidates);
-      const valid = ids.filter(id => candidates.some(j => String(j._id) === id));
-      for (const jobId of valid.slice(0, 8)) {
-        const job = candidates.find(j => String(j._id) === jobId);
-        if (!job) continue;
+      const picked = await pickApplicationsForUser(u, candidates);
+      for (const job of picked.slice(0, 8)) {
         try {
           await Application.create({
             jobId: job._id,
             jobSeekerId: u._id,
             employerId: job.employerId,
+            applicationMethod: 'one_click',
             status: pick(['pending','viewed','reviewed','shortlisted']),
             appliedAt: new Date(Date.now() - Math.floor(Math.random() * 21) * 86400000),
           });
           totalApps++;
-        } catch (e) { /* duplicate? skip */ }
+        } catch (e) {
+          if (!/duplicate key/i.test(e.message)) console.log(`\n    app create err: ${e.message.slice(0, 120)}`);
+        }
       }
-      process.stdout.write(`\r  Created ${totalApps} applications across ${users.length} users...`);
+      process.stdout.write(`\r  Apps: ${totalApps} created (${usersDone}/${users.length} users, ${llmFails} llm fails)   `);
     } catch (e) {
+      llmFails++;
       console.log(`\n    apps fail for ${u.email}: ${e.message.slice(0, 100)}`);
     }
   }));
   await Promise.all(tasks);
-  console.log(`\n  Total applications created: ${totalApps}`);
+  console.log(`\n  Total applications created: ${totalApps} (${llmFails} LLM failures)`);
 }
 
 // ──────────────────────────────────────────────────────────────────────────

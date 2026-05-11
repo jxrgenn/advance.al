@@ -31,6 +31,8 @@
 
 import 'dotenv/config';
 import mongoose from 'mongoose';
+import OpenAI from 'openai';
+import pLimit from 'p-limit';
 import User from '../src/models/User.js';
 import Job from '../src/models/Job.js';
 import Application from '../src/models/Application.js';
@@ -124,6 +126,134 @@ function pipelineCosine(user, jobs) {
   }).sort((a, b) => b.score - a.score);
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// Centroid subtraction (whitening — Su et al. 2021)
+// Subtract the mean job vector from each job vector before cosine. This
+// removes the shared "Albanian-job-text" baseline so cosine focuses on what's
+// distinctive about each job. Same for the user side using the user mean.
+// ──────────────────────────────────────────────────────────────────────────
+
+function meanVector(vectors) {
+  if (vectors.length === 0) return null;
+  const dim = vectors[0].length;
+  const mean = new Array(dim).fill(0);
+  for (const v of vectors) for (let i = 0; i < dim; i++) mean[i] += v[i];
+  for (let i = 0; i < dim; i++) mean[i] /= vectors.length;
+  return mean;
+}
+
+function subtract(a, b) {
+  const r = new Array(a.length);
+  for (let i = 0; i < a.length; i++) r[i] = a[i] - b[i];
+  return r;
+}
+
+let _jobCentroid = null;
+let _userCentroid = null;
+
+function computeCentroids(allJobs, allUsers) {
+  const jvecs = allJobs.map(j => j.embedding?.vector).filter(v => Array.isArray(v) && v.length === 1536);
+  const uvecs = allUsers.map(u => u.profile?.jobSeekerProfile?.embedding?.vector).filter(v => Array.isArray(v) && v.length === 1536);
+  _jobCentroid = meanVector(jvecs);
+  _userCentroid = meanVector(uvecs);
+}
+
+function pipelineWhitened(user, jobs) {
+  const userVec = user.profile?.jobSeekerProfile?.embedding?.vector;
+  if (!Array.isArray(userVec) || userVec.length !== 1536 || !_userCentroid || !_jobCentroid) {
+    return jobs.map(j => ({ job: j, score: 0 }));
+  }
+  const uw = subtract(userVec, _userCentroid);
+  return jobs.map(j => {
+    const jv = j.embedding?.vector;
+    let s = 0;
+    if (Array.isArray(jv) && jv.length === 1536) {
+      try { s = jobEmbeddingService.cosineSimilarity(uw, subtract(jv, _jobCentroid)); } catch {}
+    }
+    return { job: j, score: s };
+  }).sort((a, b) => b.score - a.score);
+}
+
+function pipelineWhitenedHybrid(user, jobs) {
+  const ranked = pipelineWhitened(user, jobs);
+  return ranked.map(r => {
+    const { boost } = userEmbeddingService.computeHybridBoost(user, r.job);
+    return { job: r.job, score: Math.min(1.5, r.score + boost) };
+  }).sort((a, b) => b.score - a.score);
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// LLM-as-cross-encoder reranking
+// Take top-K from the best dense pipeline, send (user, jobs) to gpt-4o-mini
+// to re-rank. This simulates what a real cross-encoder (Cohere rerank) would
+// do — proves the reranking thesis using infrastructure we already have.
+// ──────────────────────────────────────────────────────────────────────────
+
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+const llmLimit = pLimit(8);
+
+async function llmRerank(user, top) {
+  if (!openai || top.length === 0) return top;
+  const profile = user.profile?.jobSeekerProfile || {};
+  const userPrompt = `You are ranking jobs for a real Albanian jobseeker. Order ALL jobs from most-relevant to least-relevant for this person. Be honest about poor fits — many jobs in the list will be wrong for them; rank those last.
+
+JOBSEEKER PROFILE:
+title: ${profile.title || '(none)'}
+city: ${user.profile?.location?.city || '(none)'}
+experience: ${profile.experience || '(none)'}
+skills: ${(profile.skills || []).join(', ')}
+bio: ${(profile.bio || '').slice(0, 200)}
+
+${top.length} JOBS TO RANK:
+${top.map((r, i) => `[${i}] ${r.job.title} | ${r.job.category} | ${r.job.location?.city} | ${r.job.seniority}`).join('\n')}
+
+Output STRICT JSON: { "rankedIndices": [<int>, <int>, ...] }
+Include all ${top.length} integer indices, in order from BEST fit (first) to WORST fit (last).`;
+  try {
+    const resp = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are an expert job-recommendation reranker. Output STRICT JSON only.' },
+        { role: 'user', content: userPrompt },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0,
+    });
+    const result = JSON.parse(resp.choices[0].message.content);
+    const indices = Array.isArray(result.rankedIndices) ? result.rankedIndices : [];
+    const seen = new Set();
+    const reranked = [];
+    for (const i of indices) {
+      const idx = Number(i);
+      if (Number.isInteger(idx) && idx >= 0 && idx < top.length && !seen.has(idx)) {
+        seen.add(idx);
+        reranked.push(top[idx]);
+      }
+    }
+    // Append any indices the LLM forgot, preserving original order
+    for (let i = 0; i < top.length; i++) if (!seen.has(i)) reranked.push(top[i]);
+    return reranked;
+  } catch {
+    return top;
+  }
+}
+
+async function pipelineHybridRerank(user, jobs, ctx) {
+  const base = pipelineHybrid(user, jobs);
+  const top = base.slice(0, 20);
+  const reranked = await llmRerank(user, top);
+  const out = reranked.map((r, i) => ({ job: r.job, score: 1 - i / Math.max(1, reranked.length) }));
+  return [...out, ...base.slice(20)];
+}
+
+async function pipelineWhitenedHybridRerank(user, jobs, ctx) {
+  const base = pipelineWhitenedHybrid(user, jobs);
+  const top = base.slice(0, 20);
+  const reranked = await llmRerank(user, top);
+  const out = reranked.map((r, i) => ({ job: r.job, score: 1 - i / Math.max(1, reranked.length) }));
+  return [...out, ...base.slice(20)];
+}
+
 function pipelineHybrid(user, jobs) {
   const ranked = pipelineCosine(user, jobs);
   return ranked.map(r => {
@@ -179,11 +309,15 @@ function pipelineRRFHybrid(user, jobs, ctx) {
 }
 
 const PIPELINES = {
-  cosine:    { name: 'cosine (pure dense)',                     fn: pipelineCosine },
-  hybrid:    { name: 'cosine + hybrid boost (current prod)',    fn: pipelineHybrid },
-  bm25:      { name: 'BM25 (sparse only)',                      fn: pipelineBM25 },
-  rrf:       { name: 'RRF(cosine, BM25)',                       fn: pipelineRRF },
-  rrfHybrid: { name: 'RRF(cosine, BM25) + hybrid boost',        fn: pipelineRRFHybrid },
+  cosine:          { name: 'cosine (pure dense)',                     fn: pipelineCosine,           async: false },
+  hybrid:          { name: 'cosine + hybrid boost (current prod)',    fn: pipelineHybrid,           async: false },
+  bm25:            { name: 'BM25 (sparse only)',                      fn: pipelineBM25,             async: false },
+  rrf:             { name: 'RRF(cosine, BM25)',                       fn: pipelineRRF,              async: false },
+  rrfHybrid:       { name: 'RRF(cosine, BM25) + hybrid boost',        fn: pipelineRRFHybrid,        async: false },
+  whitened:        { name: 'cosine WHITENED (centroid subtraction)',  fn: pipelineWhitened,         async: false },
+  whitenedHybrid:  { name: 'whitened + hybrid boost',                 fn: pipelineWhitenedHybrid,   async: false },
+  hybridRerank:    { name: 'hybrid + LLM rerank top-20 (gpt-4o-mini)', fn: pipelineHybridRerank,    async: true },
+  whitenedHybridRerank: { name: 'whitened+hybrid+LLM rerank (combined)', fn: pipelineWhitenedHybridRerank, async: true },
 };
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -251,6 +385,9 @@ async function main() {
   const jobs = await Job.find({ isDeleted: false, status: 'active' })
     .select('+embedding.vector title category seniority jobType tags requirements description location salary postedAt tier')
     .lean();
+
+  // Pre-compute centroids once for whitening pipelines
+  computeCentroids(jobs, allUsers);
   const jobIds = new Set(jobs.map(j => String(j._id)));
 
   const apps = await Application.find({}).select('jobSeekerId jobId').lean();
@@ -281,16 +418,17 @@ async function main() {
     : PIPELINES;
 
   const results = {};
-  for (const [key, { name, fn }] of Object.entries(pipelinesToRun)) {
+  for (const [key, { name, fn, async: isAsync }] of Object.entries(pipelinesToRun)) {
     if (!fn) { console.log(`unknown pipeline: ${key}`); continue; }
     const perUser = [];
     let ndcg = 0, mrrSum = 0, r5 = 0, r10 = 0, r20 = 0, divSum = 0;
+    process.stdout.write(`Running ${key}...`);
 
-    for (const user of evalUsers) {
+    const evalOne = async (user) => {
       const ctx = {};
-      const ranked = fn(user, jobs, ctx);
+      const ranked = isAsync ? await llmLimit(() => fn(user, jobs, ctx)) : fn(user, jobs, ctx);
       const positives = positivesByUser.get(String(user._id));
-      const m = {
+      return {
         email: user.email,
         nPositives: positives.size,
         ndcg10:  ndcgAtK(ranked, positives, 10),
@@ -300,14 +438,13 @@ async function main() {
         r20:     recallAtK(ranked, positives, 20),
         div10:   diversityAtK(ranked, 10),
       };
+    };
+    const allMetrics = isAsync ? await Promise.all(evalUsers.map(evalOne)) : await Promise.all(evalUsers.map(evalOne));
+    for (const m of allMetrics) {
       perUser.push(m);
-      ndcg   += m.ndcg10;
-      mrrSum += m.mrr;
-      r5     += m.r5;
-      r10    += m.r10;
-      r20    += m.r20;
-      divSum += m.div10;
+      ndcg += m.ndcg10; mrrSum += m.mrr; r5 += m.r5; r10 += m.r10; r20 += m.r20; divSum += m.div10;
     }
+    process.stdout.write(' done\n');
 
     const n = Math.max(1, evalUsers.length);
     results[key] = {
