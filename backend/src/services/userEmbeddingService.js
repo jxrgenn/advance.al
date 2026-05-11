@@ -17,6 +17,55 @@ import { escapeRegex } from '../utils/sanitize.js';
  * Model: text-embedding-3-small (1536 dims) — same as jobs, enabling cross-comparison.
  */
 
+// Domain inference — maps a jobseeker profile to their most likely job
+// category. Language-agnostic: recognises both English (developer, software,
+// finance, sales) and Albanian (zhvillues, programues, financë, shitje) tokens
+// in title + skills. Used to apply a hard category-match boost on top of pure
+// cosine — without this, an AI Engineer with an old banking internship gets
+// banking jobs ranked too high because their embedding still carries that
+// content. Categories mirror the Job model enum values.
+// Patterns use a leading word boundary but no trailing one — Albanian has
+// case/gender suffixes (marketingu, financiar, dizajnere, recepsioniste,
+// shitësi, mjeku, kuzhinieri…) that strict `\b` would miss. Short standalone
+// tokens that risk false-positive substring matches still need explicit
+// boundaries — see qa/ux/ai/ml/java which are wrapped in `\b…\b` below.
+const CATEGORY_PATTERNS = [
+  { category: 'Teknologji', re: /(\b(?:software|develop|engineer|programm|programues|zhvillues|teknologji|backend|frontend|fullstack|full[- ]stack|devops|infrastructure|cloud|kubernetes|docker|python|javascript|typescript|react|nodejs?|node\.js)|\b(?:ai|ml|qa|java|api|sql|aws|gcp|sre|ios|web|mobile)\b)/i },
+  { category: 'Dizajn', re: /(\b(?:design|dizajn|grafik|figma|sketch|photoshop|illustrator|indesign)|\b(?:ux|ui)\b)/i },
+  { category: 'Marketing', re: /\b(marketing|seo|sem|advertis|brand|copywriter|growth|social[- ]media|content[- ]marketing|ads\b|google[- ]ads|tiktok|instagram)/i },
+  // `financ` covers finance/financial/financiar/financiare/financë; `bank` covers banking/bankar/bankare/bankë
+  { category: 'Financë', re: /\b(financ|kontabili|bank[aëi]?r?|banking|auditues?|audit\b|investim|investment|tax\b|tatim|accountant|accounting)/i },
+  { category: 'Burime Njerëzore', re: /(\b(?:human[- ]resources|recruit|burime[- ]njerëzore|rekrut|talent[- ]acquisition|people[- ]operations)|\bhr\b)/i },
+  // `shit` covers shitje/shitës/shitësi; `sales` covers sales/salesperson
+  { category: 'Shitje', re: /\b(sales|shit[ëje]|retail|merchandis|account[- ]manager|business[- ]development|b2b|b2c)/i },
+  // `mjek` covers mjek/mjeku/mjeke; `infermier` covers infermier/infermiere/infermierja; `farmacist` covers all variants
+  { category: 'Shëndetësi', re: /\b(doctor|nurse|mjek|infermier|farmacist|pharmacist|shëndet|healthcare|medical|clinic|klinik|spital|hospital)/i },
+  // `mësues` covers mësues/mësuese; `profesor` covers profesor/profesori/profesore; `lektor` covers lektor/lektore
+  { category: 'Arsim', re: /\b(teacher|professor|profesor|mësues|arsim|edukim|tutor|instructor|education|lektor)/i },
+  // `inxhinier` covers all engineering declensions; `arkitekt` covers arkitekt/arkitekte/arkitekti
+  { category: 'Inxhinieri', re: /\b(civil[- ]engineer|construction|inxhinier|autocad|architect|arkitekt|structural|ndërtim|elektricist|hidraulik)/i },
+  // `shofer` covers shofer/shoferi; `magazin` covers magazin/magazinë/magazinier
+  { category: 'Transport', re: /\b(driver|shofer|transport|logjistik|logistics|kamion|warehouse|magazin|supply[- ]chain)/i },
+  // `kuzhinier` covers kuzhinier/kuzhiniere/kuzhinieri; `kamarier` similar; `recepsionist` covers recepsionist/recepsioniste
+  { category: 'Turizëm', re: /\b(hotel|tourism|turizëm|turiz|hospitality|restaurant|chef|kuzhinier|waiter|kamarier|recepsionist)/i },
+];
+
+function inferUserCategory(user) {
+  const profile = user?.profile?.jobSeekerProfile;
+  if (!profile) return null;
+  const haystack = [
+    profile.title || '',
+    (profile.skills || []).join(' '),
+    ((profile.aiGeneratedCV?.skills?.technical) || []).join(' '),
+    ((profile.aiGeneratedCV?.skills?.tools) || []).join(' '),
+  ].join(' ').toLowerCase();
+  if (!haystack.trim()) return null;
+  for (const { category, re } of CATEGORY_PATTERNS) {
+    if (re.test(haystack)) return category;
+  }
+  return null;
+}
+
 // Map the user's `experience` enum to the same seniority bucket the Job model
 // uses (junior|mid|senior|lead). Drives the explicit seniority-preference line
 // in prepareJobSeekerText so cosine can match against the job's
@@ -506,25 +555,46 @@ class UserEmbeddingService {
   }
 
   /**
+   * Public delegate so callers (route, tests) can read the inferred user
+   * domain without re-implementing the heuristic.
+   */
+  inferUserCategory(user) {
+    return inferUserCategory(user);
+  }
+
+  /**
    * Hybrid recommendation boost — added on top of cosine similarity for the
    * user-facing `/api/jobs/recommendations` endpoint. Captures hard product
-   * constraints that pure semantic similarity misses (skills overlap, exact
-   * seniority match, location, salary fit, recency, tier).
+   * constraints that pure semantic similarity misses on a small same-domain
+   * dataset (multilingual `text-embedding-3-small` cosine clusters all jobs
+   * in 0.4–0.7 regardless of fit, so structured signals do the real work).
    *
-   * Max possible boost: 0.31 (skills 0.10 + seniority 0.05 + location 0.07 +
-   * salary 0.05 + recency 0.02 + tier 0.02). Final score clamped to [0, 1]
-   * by the caller.
+   * Max possible boost: 0.44 (category 0.10 + skills 0.15 + seniority 0.05 +
+   * location 0.07 + salary 0.05 + recency 0.02 + tier 0.00 — tier is mutually
+   * exclusive with non-tier so we just take whichever applies). Final score
+   * clamped to [0, 1] by the caller.
    *
    * @param {Object} user - jobseeker User doc (must include profile.jobSeekerProfile + profile.location)
-   * @param {Object} job - Job doc (tags, seniority, location, salary, postedAt, tier)
+   * @param {Object} job - Job doc (tags, seniority, location, salary, postedAt, tier, category)
    * @returns {{boost: number, breakdown: Object}} additive boost + breakdown for observability
    */
   computeHybridBoost(user, job) {
     const profile = user.profile?.jobSeekerProfile || {};
     const userCity = user.profile?.location?.city;
-    const breakdown = { skills: 0, seniority: 0, location: 0, salary: 0, recency: 0, tier: 0 };
+    const breakdown = { category: 0, skills: 0, seniority: 0, location: 0, salary: 0, recency: 0, tier: 0 };
 
-    // 1. Skills overlap (capped at +0.10 when 3+ tags match)
+    // 0. Category match — the strongest single signal we have, because
+    // cosine on this dataset doesn't reliably separate domains. Inferred
+    // language-agnostically from title + skills (English OR Albanian tokens).
+    const userCategory = inferUserCategory(user);
+    if (userCategory && job.category === userCategory) {
+      breakdown.category = 0.10;
+    }
+
+    // 1. Skills overlap (capped at +0.15 when 3+ tags match). Bumped from
+    // 0.10 because the prior weight was too small to overcome the narrow
+    // cosine range — a strong skills match should clearly dominate weak
+    // cosine signal from work-history bleed.
     const userSkills = new Set();
     const addLower = (s) => { if (typeof s === 'string' && s.trim()) userSkills.add(s.trim().toLowerCase()); };
     profile.skills?.forEach(addLower);
@@ -532,7 +602,7 @@ class UserEmbeddingService {
     profile.aiGeneratedCV?.skills?.tools?.forEach(addLower);
     if (userSkills.size > 0 && Array.isArray(job.tags) && job.tags.length > 0) {
       const overlap = job.tags.filter(t => typeof t === 'string' && userSkills.has(t.trim().toLowerCase())).length;
-      breakdown.skills = Math.min(overlap / 3, 1) * 0.10;
+      breakdown.skills = Math.min(overlap / 3, 1) * 0.15;
     }
 
     // 2. Seniority match
@@ -562,7 +632,7 @@ class UserEmbeddingService {
     // 6. Premium tier
     if (job.tier === 'premium') breakdown.tier = 0.02;
 
-    const boost = breakdown.skills + breakdown.seniority + breakdown.location + breakdown.salary + breakdown.recency + breakdown.tier;
+    const boost = breakdown.category + breakdown.skills + breakdown.seniority + breakdown.location + breakdown.salary + breakdown.recency + breakdown.tier;
     return { boost, breakdown };
   }
 }

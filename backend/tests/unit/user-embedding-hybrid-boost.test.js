@@ -72,25 +72,25 @@ describe('userEmbeddingService.computeHybridBoost', () => {
     });
     const { boost, breakdown } = userEmbeddingService.computeHybridBoost(u, job);
     expect(boost).toBe(0);
-    expect(breakdown).toEqual({ skills: 0, seniority: 0, location: 0, salary: 0, recency: 0, tier: 0 });
+    expect(breakdown).toEqual({ category: 0, skills: 0, seniority: 0, location: 0, salary: 0, recency: 0, tier: 0 });
   });
 
-  it('skills overlap: 1 match → 0.0333, 2 matches → 0.0667, 3+ matches → 0.10 (capped)', () => {
+  it('skills overlap: 1 match → 0.05, 2 matches → 0.10, 3+ matches → 0.15 (capped)', () => {
     const u = baseUser();
     const r1 = userEmbeddingService.computeHybridBoost(u, baseJob({ tags: ['React'] })).breakdown.skills;
     const r2 = userEmbeddingService.computeHybridBoost(u, baseJob({ tags: ['React', 'TypeScript'] })).breakdown.skills;
     const r3 = userEmbeddingService.computeHybridBoost(u, baseJob({ tags: ['React', 'TypeScript', 'Node.js'] })).breakdown.skills;
     const r4 = userEmbeddingService.computeHybridBoost(u, baseJob({ tags: ['React', 'TypeScript', 'Node.js', 'GraphQL'] })).breakdown.skills;
-    expect(r1).toBeCloseTo(0.0333, 3);
-    expect(r2).toBeCloseTo(0.0667, 3);
-    expect(r3).toBeCloseTo(0.10, 4);
-    expect(r4).toBeCloseTo(0.10, 4);
+    expect(r1).toBeCloseTo(0.05, 4);
+    expect(r2).toBeCloseTo(0.10, 4);
+    expect(r3).toBeCloseTo(0.15, 4);
+    expect(r4).toBeCloseTo(0.15, 4);
   });
 
   it('skills overlap is case-insensitive', () => {
     const u = baseUser({ jsp: { skills: ['REACT', 'typescript'] } });
     const job = baseJob({ tags: ['react', 'TypeScript'] });
-    expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.skills).toBeCloseTo(0.0667, 3);
+    expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.skills).toBeCloseTo(0.10, 4);
   });
 
   it('skills overlap merges manual + aiCV technical + tools', () => {
@@ -99,7 +99,7 @@ describe('userEmbeddingService.computeHybridBoost', () => {
       aiGeneratedCV: { skills: { technical: ['Python'], tools: ['Docker'] } },
     } });
     const job = baseJob({ tags: ['React', 'Python', 'Docker'] });
-    expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.skills).toBeCloseTo(0.10, 4);
+    expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.skills).toBeCloseTo(0.15, 4);
   });
 
   it('seniority match: +0.05 only on exact bucket match', () => {
@@ -170,10 +170,11 @@ describe('userEmbeddingService.computeHybridBoost', () => {
     expect(userEmbeddingService.computeHybridBoost(u, baseJob({ tier: 'featured' })).breakdown.tier).toBe(0);
   });
 
-  it('max possible boost = 0.31 (all components fire)', () => {
+  it('max possible boost = 0.46 (all components incl. category fire)', () => {
     const u = baseUser({
       profile: { location: { city: 'Tiranë' } },
       jsp: {
+        title: 'Software Engineer', // → category Teknologji
         experience: '5-10 vjet', // → senior
         skills: ['A', 'B', 'C'],
         desiredSalary: { min: 1000, max: 2000, currency: 'EUR' },
@@ -181,6 +182,7 @@ describe('userEmbeddingService.computeHybridBoost', () => {
       },
     });
     const job = baseJob({
+      category: 'Teknologji', // matches inferred user category → +0.10
       tags: ['A', 'B', 'C', 'D'],
       seniority: 'senior',
       location: { city: 'Tiranë', remote: false },
@@ -188,8 +190,94 @@ describe('userEmbeddingService.computeHybridBoost', () => {
       postedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
       tier: 'premium',
     });
-    const { boost } = userEmbeddingService.computeHybridBoost(u, job);
-    expect(boost).toBeCloseTo(0.31, 4);
+    const { boost, breakdown } = userEmbeddingService.computeHybridBoost(u, job);
+    expect(breakdown.category).toBe(0.10);
+    expect(breakdown.skills).toBeCloseTo(0.15, 4);
+    expect(boost).toBeCloseTo(0.46, 4);
+  });
+
+  describe('category match (inferred from title + skills, language-agnostic)', () => {
+    it('Software Engineer title + Teknologji job → +0.10', () => {
+      const u = baseUser({ jsp: { title: 'Software Engineer' } });
+      const job = baseJob({ category: 'Teknologji' });
+      expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.category).toBe(0.10);
+    });
+
+    it('Albanian title (Zhvillues Software) + Teknologji job → +0.10', () => {
+      const u = baseUser({ jsp: { title: 'Zhvillues Software', skills: [] } });
+      const job = baseJob({ category: 'Teknologji' });
+      expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.category).toBe(0.10);
+    });
+
+    it('Marketing user + Marketing job → +0.10', () => {
+      const u = baseUser({ jsp: { title: 'Specialiste Marketingu Dixhital', skills: ['SEO', 'Google Ads'] } });
+      const job = baseJob({ category: 'Marketing' });
+      expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.category).toBe(0.10);
+    });
+
+    it('Tech user + non-tech job → no category boost', () => {
+      const u = baseUser({ jsp: { title: 'Software Engineer' } });
+      const job = baseJob({ category: 'Shitje' });
+      expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.category).toBe(0);
+    });
+
+    it('User with no profile data → no category boost', () => {
+      const u = baseUser({ jsp: { title: undefined, skills: [], aiGeneratedCV: undefined } });
+      const job = baseJob({ category: 'Teknologji' });
+      expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.category).toBe(0);
+    });
+  });
+
+  describe('inferUserCategory (public delegate)', () => {
+    it('infers Teknologji from English tech title', () => {
+      const u = baseUser({ jsp: { title: 'AI Automation Engineer' } });
+      expect(userEmbeddingService.inferUserCategory(u)).toBe('Teknologji');
+    });
+    it('infers Teknologji from Albanian tech title', () => {
+      const u = baseUser({ jsp: { title: 'Zhvillues Software', skills: [] } });
+      expect(userEmbeddingService.inferUserCategory(u)).toBe('Teknologji');
+    });
+    it('infers Financë from accounting title', () => {
+      const u = baseUser({ jsp: { title: 'Menaxher Financiar', skills: ['Kontabilitet', 'Auditim'] } });
+      expect(userEmbeddingService.inferUserCategory(u)).toBe('Financë');
+    });
+    it('infers Shëndetësi from healthcare title', () => {
+      const u = baseUser({ jsp: { title: 'Infermiere e Licensuar', skills: [] } });
+      expect(userEmbeddingService.inferUserCategory(u)).toBe('Shëndetësi');
+    });
+    it('infers Arsim from teaching title', () => {
+      const u = baseUser({ jsp: { title: 'Mësuese Gjuhe Angleze', skills: [] } });
+      expect(userEmbeddingService.inferUserCategory(u)).toBe('Arsim');
+    });
+    it('infers Dizajn from graphic designer title', () => {
+      const u = baseUser({ jsp: { title: 'Dizajnere Grafike', skills: ['Photoshop', 'Figma'] } });
+      expect(userEmbeddingService.inferUserCategory(u)).toBe('Dizajn');
+    });
+    it('returns null when no title or skills', () => {
+      const u = baseUser({ jsp: { title: undefined, skills: [], aiGeneratedCV: undefined } });
+      expect(userEmbeddingService.inferUserCategory(u)).toBeNull();
+    });
+    it('returns null when nothing matches a known pattern', () => {
+      const u = baseUser({ jsp: { title: 'Lustraxhi i këpucëve', skills: [] } });
+      expect(userEmbeddingService.inferUserCategory(u)).toBeNull();
+    });
+
+    it('handles Albanian declensions (suffixes) — "Marketingu", "Financiar", "Dizajnere", "Recepsioniste"', () => {
+      const cases = [
+        ['Specialiste Marketingu Dixhital', 'Marketing'],
+        ['Menaxher Financiar', 'Financë'],
+        ['Dizajnere Grafike', 'Dizajn'],
+        ['Recepsioniste', 'Turizëm'],
+        ['Shofer Kamioni', 'Transport'],
+        ['Kuzhinier i Hotelit', 'Turizëm'],
+        ['Shitëse', 'Shitje'],
+        ['Elektricist', 'Inxhinieri'],
+      ];
+      for (const [title, expected] of cases) {
+        const u = baseUser({ jsp: { title, skills: [] } });
+        expect(userEmbeddingService.inferUserCategory(u)).toBe(expected);
+      }
+    });
   });
 
   it('tolerates malformed profile gracefully (no jobSeekerProfile, no location)', () => {
