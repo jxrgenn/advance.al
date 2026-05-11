@@ -3,6 +3,7 @@ import User from '../models/User.js';
 import Job from '../models/Job.js';
 import jobEmbeddingService from './jobEmbeddingService.js';
 import { escapeRegex } from '../utils/sanitize.js';
+import { isValidEmbeddingVector } from '../utils/embeddingConfig.js';
 
 /**
  * User Embedding Service
@@ -448,7 +449,7 @@ class UserEmbeddingService {
    */
   async findSemanticMatchesForJob(job) {
     // Guard: job must have a valid embedding
-    if (!job.embedding?.vector || job.embedding.vector.length !== 1536) {
+    if (!job.embedding?.vector || !isValidEmbeddingVector(job.embedding.vector)) {
       return { quickUsers: [], jobSeekers: [] };
     }
 
@@ -466,7 +467,7 @@ class UserEmbeddingService {
 
     for await (const qu of quickUserCursor) {
       const vec = qu.embedding?.vector;
-      if (!vec || vec.length !== 1536) continue;
+      if (!vec || !isValidEmbeddingVector(vec)) continue;
       try {
         const score = jobEmbeddingService.cosineSimilarity(jobVector, vec);
         if (score >= threshold) {
@@ -488,7 +489,7 @@ class UserEmbeddingService {
 
     for await (const u of jobSeekerCursor) {
       const vec = u.profile?.jobSeekerProfile?.embedding?.vector;
-      if (!vec || vec.length !== 1536) continue;
+      if (!vec || !isValidEmbeddingVector(vec)) continue;
       try {
         const score = jobEmbeddingService.cosineSimilarity(jobVector, vec);
         if (score >= threshold) {
@@ -517,7 +518,7 @@ class UserEmbeddingService {
    * @returns {Promise<Array<{job: Object, score: number}>>} Sorted desc by score
    */
   async findMatchingJobsForUser(userVector, options = {}) {
-    if (!userVector || userVector.length !== 1536) {
+    if (!isValidEmbeddingVector(userVector)) {
       return [];
     }
 
@@ -544,7 +545,7 @@ class UserEmbeddingService {
 
     for await (const job of jobCursor) {
       const vec = job.embedding?.vector;
-      if (!vec || vec.length !== 1536) continue;
+      if (!vec || !isValidEmbeddingVector(vec)) continue;
       try {
         const score = jobEmbeddingService.cosineSimilarity(userVector, vec);
         if (score >= minScore) {

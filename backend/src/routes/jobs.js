@@ -10,6 +10,8 @@ import { sanitizeLimit, validateObjectId, stripHtml, normalizeOneLine } from '..
 import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
 import crypto from 'crypto';
 import logger from '../config/logger.js';
+import { isValidEmbeddingVector } from '../utils/embeddingConfig.js';
+import recommendationReranker from '../services/recommendationReranker.js';
 
 const router = express.Router();
 
@@ -332,7 +334,7 @@ router.get('/', optionalAuth, async (req, res) => {
         .select('+profile.jobSeekerProfile.embedding.vector')
         .lean();
       const emb = userWithEmb?.profile?.jobSeekerProfile?.embedding;
-      if (emb?.status === 'completed' && Array.isArray(emb.vector) && emb.vector.length === 1536) {
+      if (emb?.status === 'completed' && isValidEmbeddingVector(emb.vector)) {
         const poolSize = Math.max(safeLimit * 4, 40);
         const pool = await Job.searchJobs(safeSearch, filters)
           .select('+embedding.vector')
@@ -345,7 +347,7 @@ router.get('/', optionalAuth, async (req, res) => {
           const scored = pool.map(job => {
             const jobVec = job.embedding?.vector;
             let cosine = 0;
-            if (Array.isArray(jobVec) && jobVec.length === 1536) {
+            if (isValidEmbeddingVector(jobVec)) {
               try { cosine = jobEmbeddingService.cosineSimilarity(userVec, jobVec); } catch { /* invalid vector */ }
             }
             const { boost } = userEmbeddingService.computeHybridBoost(userWithEmb, job);
@@ -483,7 +485,7 @@ router.get('/recommendations', authenticate, async (req, res) => {
 
     // === EMBEDDING PATH (primary) ===
     const emb = userWithEmb?.profile?.jobSeekerProfile?.embedding;
-    const hasEmbedding = emb?.status === 'completed' && Array.isArray(emb.vector) && emb.vector.length === 1536;
+    const hasEmbedding = emb?.status === 'completed' && isValidEmbeddingVector(emb.vector);
     if (hasEmbedding) {
       // Pull more candidates than `limit` so the hybrid re-rank has room.
       const candidates = await userEmbeddingService.findMatchingJobsForUser(emb.vector, {
@@ -501,7 +503,13 @@ router.get('/recommendations', authenticate, async (req, res) => {
 
       reranked.sort((a, b) => b.finalScore - a.finalScore);
 
-      const recommendations = reranked.slice(0, limit).map(({ job, finalScore }) => {
+      // Cross-encoder reranking: take a wider top slice than the user requested,
+      // send to LLM reranker, take final top-`limit`. Falls back silently to
+      // bi-encoder order on any rerank error.
+      const wideSlice = reranked.slice(0, Math.max(limit * 2, 20));
+      const { ranked: rerankedFinal, mode: rerankMode } = await recommendationReranker.rerank(userWithEmb, wideSlice);
+
+      const recommendations = rerankedFinal.slice(0, limit).map(({ job, finalScore }) => {
         const obj = job.toObject ? job.toObject() : { ...job };
         delete obj.embedding;
         obj.score = Number(finalScore.toFixed(4));
@@ -515,6 +523,7 @@ router.get('/recommendations', authenticate, async (req, res) => {
           total: recommendations.length,
           personalized: true,
           scoringMode: 'embedding',
+          rerankerMode: rerankMode,
         },
       });
     }

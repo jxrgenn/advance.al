@@ -62,6 +62,35 @@ SIMILARITY_TOP_N=15           # was 10
 
 **Why before push:** if env is set after push, prod runs new code briefly with old env (uses 0.7/10 → cache repopulates with too-strict threshold → users see fewer similar jobs until next 7-day recompute or manual refresh).
 
+### Embedding-system upgrade env (2026-05-11) — DO NOT set before regen
+
+The 2026-05-11 batch ships text-embedding-3-large @ 1024 dims (Matryoshka) plus an LLM cross-encoder reranker. Harness measured **+23% NDCG@10 / +17% R@10** vs current prod. New env vars to add to Render:
+
+```
+OPENAI_EMBEDDING_MODEL=text-embedding-3-large    # was text-embedding-3-small (default)
+OPENAI_EMBEDDING_DIMS=1024                       # Matryoshka truncation; default would be 3072
+RERANK_ENABLED=true                              # default true; toggle false to disable rerank
+```
+
+**Cutover sequence (avoids degraded service):**
+
+1. Push code first (env still on small/1536). Service runs as before — the dim check is now centralised but defaults to 1536.
+2. Run regen against prod with the NEW model env vars exported locally:
+   ```bash
+   cd backend
+   OPENAI_EMBEDDING_MODEL=text-embedding-3-large OPENAI_EMBEDDING_DIMS=1024 \
+     MONGODB_URI="<prod-uri>" node scripts/regenerate-job-embeddings.js
+   OPENAI_EMBEDDING_MODEL=text-embedding-3-large OPENAI_EMBEDDING_DIMS=1024 \
+     MONGODB_URI="<prod-uri>" node scripts/regenerate-jobseeker-embeddings.js
+   ```
+   Cost: ~$4 OpenAI for the entire prod corpus at current scale.
+3. Once both regens complete (~5–15 min), add `OPENAI_EMBEDDING_MODEL` and `OPENAI_EMBEDDING_DIMS` on Render. Render auto-restarts on env change.
+4. Verify by hitting `/api/jobs/recommendations` — response now includes `rerankerMode: 'gpt-4o-mini'`.
+
+**If you skip step 2:** the service expects 1024-dim vectors (post-env), DB still has 1536-dim vectors, dim check fails for everyone, recommendations falls back to heuristic until regen completes.
+
+**Monthly cost projection:** under $5/month at 5K users, ~$50/month at 50K users. Embeddings dominate; gpt-4o-mini reranker is ~10% of that. See commit message for detailed cost model.
+
 ---
 
 ## Step 2 — Verify Render env matches local (sanity)

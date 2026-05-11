@@ -1,6 +1,7 @@
 import { User, Job, CandidateMatch } from '../models/index.js';
 import jobEmbeddingService from './jobEmbeddingService.js';
 import logger from '../config/logger.js';
+import { isValidEmbeddingVector } from '../utils/embeddingConfig.js';
 
 /**
  * Candidate Matching Service
@@ -284,7 +285,7 @@ class CandidateMatchingService {
         throw new Error('Job not found');
       }
 
-      const jobVector = job.embedding?.vector?.length === 1536 ? job.embedding.vector : null;
+      const jobVector = isValidEmbeddingVector(job.embedding?.vector) ? job.embedding.vector : null;
 
       // Process candidates in batches via cursor to prevent OOM at scale
       const BATCH_SIZE = 500;
@@ -308,7 +309,7 @@ class CandidateMatchingService {
         let finalScore;
 
         const candidateVector = candidate.profile?.jobSeekerProfile?.embedding?.vector;
-        if (jobVector && candidateVector?.length === 1536) {
+        if (jobVector && isValidEmbeddingVector(candidateVector)) {
           try {
             embeddingScore = jobEmbeddingService.cosineSimilarity(jobVector, candidateVector);
             // Hybrid: embedding scaled to 0-50, heuristic scaled to 0-50

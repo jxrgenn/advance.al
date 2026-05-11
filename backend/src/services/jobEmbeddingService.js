@@ -4,6 +4,7 @@ import Job from '../models/Job.js';
 import JobQueue from '../models/JobQueue.js';
 import debugLogger from './debugLogger.js';
 import errorSanitizer from './errorSanitizer.js';
+import { EMBEDDING_MODEL, EMBEDDING_DIMS, isValidEmbeddingVector } from '../utils/embeddingConfig.js';
 
 /**
  * Job Embedding Service
@@ -27,7 +28,13 @@ class JobEmbeddingService {
     this.limit = pLimit(maxConcurrent);
 
     // Configuration
-    this.model = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
+    this.model = EMBEDDING_MODEL;
+    // Matryoshka truncation. text-embedding-3-* supports the `dimensions`
+    // parameter; 1024 dims at 3-large beats 1536 dims at 3-small per harness
+    // measurement (+23% NDCG@10 with hybrid boost) and uses 33% less storage.
+    // Pass dimensions to OpenAI only when caller explicitly set it (3-small
+    // doesn't support the parameter at smaller sizes the same way).
+    this.embeddingDims = process.env.OPENAI_EMBEDDING_DIMS ? EMBEDDING_DIMS : null;
     this.apiTimeout = parseInt(process.env.OPENAI_API_TIMEOUT || '30000');
     this.batchSize = parseInt(process.env.EMBEDDING_BATCH_SIZE || '500');
     this.similarityTopN = parseInt(process.env.SIMILARITY_TOP_N || '10');
@@ -212,8 +219,8 @@ class JobEmbeddingService {
       });
 
       // Validate vector
-      if (!Array.isArray(vector) || vector.length !== 1536) {
-        throw new Error(`Invalid embedding vector: expected 1536 dimensions, got ${vector?.length}`);
+      if (!isValidEmbeddingVector(vector)) {
+        throw new Error(`Invalid embedding vector: expected ${EMBEDDING_DIMS} dimensions, got ${vector?.length}`);
       }
 
       if (vector.every(v => v === 0)) {
@@ -425,12 +432,11 @@ class JobEmbeddingService {
       });
 
       // Use rate limiter
+      const embedRequest = { model: this.model, input: text };
+      if (this.embeddingDims) embedRequest.dimensions = this.embeddingDims;
       const result = await this.limit(() =>
         Promise.race([
-          this.openai.embeddings.create({
-            model: this.model,
-            input: text
-          }),
+          this.openai.embeddings.create(embedRequest),
           this.timeout(this.apiTimeout)
         ])
       );
@@ -494,7 +500,7 @@ class JobEmbeddingService {
         throw new Error(`Job ${jobId} not found`);
       }
 
-      if (!job.embedding?.vector || job.embedding.vector.length !== 1536) {
+      if (!job.embedding?.vector || !isValidEmbeddingVector(job.embedding.vector)) {
         throw new Error(`Job ${jobId} has no valid embedding`);
       }
 
