@@ -335,74 +335,75 @@ class JobEmbeddingService {
   extractRoleType(title) {
     if (!title) return null;
 
-    const titleLower = title.toLowerCase();
+    const t = title.toLowerCase();
+
+    // Short tokens (qa, ux, sre, ios, vue) must use word boundaries — bare
+    // substring matches caused false positives like "dyqani" (Albanian for
+    // store) being classified as a QA Engineer.
 
     // Mobile roles — checked FIRST so "React Native" doesn't get misclassified
     // as Frontend by the bare "react" keyword in the Frontend check below.
-    if (titleLower.includes('mobile') || titleLower.includes('ios') ||
-        titleLower.includes('android') || titleLower.includes('react native') ||
-        titleLower.includes('flutter')) {
+    if (t.includes('mobile') || /\b(ios|android|flutter)\b/.test(t) ||
+        t.includes('react native')) {
       return 'Mobile Developer';
     }
 
     // Full Stack roles — checked before Frontend/Backend so "Full Stack React"
     // doesn't get classified as Frontend.
-    if (titleLower.includes('full stack') || titleLower.includes('fullstack') ||
-        titleLower.includes('full-stack')) {
+    if (t.includes('full stack') || t.includes('fullstack') || t.includes('full-stack')) {
       return 'Full Stack Developer';
     }
 
     // Frontend roles
-    if (titleLower.includes('frontend') || titleLower.includes('front-end') ||
-        titleLower.includes('front end') || titleLower.includes('ui developer') ||
-        titleLower.includes('react') || titleLower.includes('vue') ||
-        titleLower.includes('angular')) {
+    if (t.includes('frontend') || t.includes('front-end') || t.includes('front end') ||
+        t.includes('ui developer') || /\b(react|vue|angular)\b/.test(t)) {
       return 'Frontend Developer';
     }
 
     // Backend roles
-    if (titleLower.includes('backend') || titleLower.includes('back-end') ||
-        titleLower.includes('back end') || titleLower.includes('api developer') ||
-        titleLower.includes('server') && !titleLower.includes('full')) {
+    if (t.includes('backend') || t.includes('back-end') || t.includes('back end') ||
+        t.includes('api developer') ||
+        (/\bserver\b/.test(t) && !t.includes('full'))) {
       return 'Backend Developer';
     }
 
     // DevOps roles
-    if (titleLower.includes('devops') || titleLower.includes('infrastructure') ||
-        titleLower.includes('sre') || titleLower.includes('cloud engineer')) {
+    if (t.includes('devops') || t.includes('infrastructure') ||
+        /\bsre\b/.test(t) || t.includes('cloud engineer')) {
       return 'DevOps Engineer';
     }
 
-    // Data roles
-    if (titleLower.includes('data scientist') || titleLower.includes('machine learning') ||
-        titleLower.includes('ml engineer') || titleLower.includes('ai engineer')) {
+    // Data Science / ML
+    if (t.includes('data scientist') || t.includes('machine learning') ||
+        t.includes('ml engineer') || t.includes('ai engineer')) {
       return 'Data Science / ML Engineer';
     }
 
-    if (titleLower.includes('data engineer') || titleLower.includes('data analyst')) {
+    if (t.includes('data engineer') || t.includes('data analyst')) {
       return 'Data Engineer';
     }
 
-    // QA/Testing roles
-    if (titleLower.includes('qa') || titleLower.includes('quality assurance') ||
-        titleLower.includes('test') && titleLower.includes('engineer')) {
+    // QA/Testing — word boundary on `qa` so "dyqani" doesn't match
+    if (/\bqa\b/.test(t) || t.includes('quality assurance') ||
+        (t.includes('test') && t.includes('engineer'))) {
       return 'QA Engineer';
     }
 
-    // Designer roles
-    if (titleLower.includes('designer') || titleLower.includes('ux') ||
-        titleLower.includes('ui/ux')) {
+    // Designer — word boundary on `ux` so "luxoz" doesn't match
+    if (t.includes('designer') || /\bux\b/.test(t) || t.includes('ui/ux')) {
       return 'Designer';
     }
 
-    // Product roles
-    if (titleLower.includes('product manager') || titleLower.includes('product owner')) {
+    // Product
+    if (t.includes('product manager') || t.includes('product owner')) {
       return 'Product Manager';
     }
 
-    // Generic software engineer
-    if (titleLower.includes('software engineer') || titleLower.includes('software developer') ||
-        titleLower.includes('programmer') || titleLower.includes('developer')) {
+    // Generic software engineer — English + Albanian title patterns.
+    // `zhvillues` = developer, `programues` = programmer (Albanian).
+    if (t.includes('software engineer') || t.includes('software developer') ||
+        t.includes('programmer') || t.includes('developer') ||
+        t.includes('zhvillues') || t.includes('programues')) {
       return 'Software Engineer';
     }
 

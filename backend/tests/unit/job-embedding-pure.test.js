@@ -90,6 +90,45 @@ describe('jobEmbeddingService.extractRoleType', () => {
     expect(jobEmbeddingService.extractRoleType('Marketing Manager')).toBeNull();
     expect(jobEmbeddingService.extractRoleType('Accountant')).toBeNull();
   });
+
+  // Regression: short-token bare-substring matches caused false positives on
+  // Albanian words (e.g. "Dyqani" → QA Engineer because it contains "qa").
+  it('does NOT classify Albanian non-tech titles as tech roles', () => {
+    // "Dyqani" contains "qa" — would falsely match QA Engineer under bare includes()
+    expect(jobEmbeddingService.extractRoleType('Menaxher Dyqani')).toBeNull();
+    expect(jobEmbeddingService.extractRoleType('Asistent Dyqani')).toBeNull();
+    // "luxoz" contains "ux" — would falsely match Designer under bare includes()
+    expect(jobEmbeddingService.extractRoleType('Pastrues i Luxoz')).toBeNull();
+    // Common Albanian non-tech titles
+    expect(jobEmbeddingService.extractRoleType('Specialist Burimesh Njerëzore')).toBeNull();
+    expect(jobEmbeddingService.extractRoleType('Inxhinier Ndërtimi')).toBeNull();
+    expect(jobEmbeddingService.extractRoleType('Mësues Matematike')).toBeNull();
+    expect(jobEmbeddingService.extractRoleType('Specialist Operacionesh Bankare')).toBeNull();
+  });
+
+  it('classifies Albanian software-engineering titles correctly', () => {
+    expect(jobEmbeddingService.extractRoleType('Zhvillues Software')).toBe('Software Engineer');
+    expect(jobEmbeddingService.extractRoleType('Zhvillues Web')).toBe('Software Engineer');
+    expect(jobEmbeddingService.extractRoleType('Programues Software Bankar')).toBe('Software Engineer');
+    expect(jobEmbeddingService.extractRoleType('Programues')).toBe('Software Engineer');
+  });
+
+  it('QA detection uses word boundaries (qa as standalone token, not substring)', () => {
+    expect(jobEmbeddingService.extractRoleType('QA Engineer')).toBe('QA Engineer');
+    expect(jobEmbeddingService.extractRoleType('QA Automation Specialist')).toBe('QA Engineer');
+    expect(jobEmbeddingService.extractRoleType('Quality Assurance Lead')).toBe('QA Engineer');
+    expect(jobEmbeddingService.extractRoleType('Test Engineer')).toBe('QA Engineer');
+    // Negatives: substrings only
+    expect(jobEmbeddingService.extractRoleType('Menaxher Dyqani')).toBeNull();
+    expect(jobEmbeddingService.extractRoleType('Shoqata Sportive')).toBeNull();
+  });
+
+  it('UX detection uses word boundaries (ux as standalone token)', () => {
+    expect(jobEmbeddingService.extractRoleType('UX Researcher')).toBe('Designer');
+    expect(jobEmbeddingService.extractRoleType('Senior UX Designer')).toBe('Designer');
+    // Negative: "ux" embedded in non-design words
+    expect(jobEmbeddingService.extractRoleType('Luxor Hotel Manager')).toBeNull();
+  });
 });
 
 describe('jobEmbeddingService.prepareTextForEmbedding', () => {
