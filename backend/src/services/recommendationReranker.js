@@ -24,7 +24,14 @@ import logger from '../config/logger.js';
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
-const RERANK_ENABLED = process.env.RERANK_ENABLED !== 'false';
+// Default OFF. Harness measurement (2026-05-11) showed LLM rerank helps
+// text-embedding-3-small (NDCG@10 0.321 → 0.358, +10.9%) but HURTS
+// text-embedding-3-large @ 1024 (NDCG@10 0.394 → 0.377, even with a rich
+// prompt). The reasoning: when the bi-encoder is strong, the rerank's
+// information bottleneck (top-20 jobs serialised into one LLM call) loses
+// signal the embeddings already captured. Set RERANK_ENABLED=true to opt
+// back in, e.g. for a temporary fallback or when running on 3-small.
+const RERANK_ENABLED = process.env.RERANK_ENABLED === 'true';
 const RERANK_MODEL = process.env.RERANK_MODEL || 'gpt-4o-mini';
 const RERANK_TOP_K = parseInt(process.env.RERANK_TOP_K, 10) || 20;
 const RERANK_TIMEOUT_MS = parseInt(process.env.RERANK_TIMEOUT_MS, 10) || 4000;
@@ -56,7 +63,15 @@ desired salary: ${profile.desiredSalary?.min || '?'}-${profile.desiredSalary?.ma
 bio: ${(profile.bio || '').slice(0, 200)}
 
 ${top.length} JOBS TO RANK:
-${top.map((r, i) => `[${i}] ${r.job.title} | ${r.job.category} | ${r.job.location?.city || '?'} | ${r.job.seniority || '?'}`).join('\n')}
+${top.map((r, i) => {
+  const j = r.job;
+  const desc = (j.description || '').slice(0, 180).replace(/\s+/g, ' ');
+  const tags = (j.tags || []).slice(0, 6).join(', ');
+  return `[${i}] ${j.title}
+    category: ${j.category} | city: ${j.location?.city || '?'} | seniority: ${j.seniority || '?'} | type: ${j.jobType || '?'}
+    tags: ${tags}
+    desc: ${desc}`;
+}).join('\n')}
 
 Output STRICT JSON: { "rankedIndices": [<int>, <int>, ...] }
 Include all ${top.length} integer indices in order from BEST fit (first) to WORST fit (last).`;

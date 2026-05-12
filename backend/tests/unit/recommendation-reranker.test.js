@@ -45,14 +45,22 @@ describe('recommendationReranker.rerank', () => {
     expect(r.ranked).toEqual([]);
   });
 
-  it('returns mode=fallback when OPENAI_API_KEY is unset', async () => {
+  it('returns mode=fallback when OPENAI_API_KEY is unset (and rerank explicitly enabled)', async () => {
     delete process.env.OPENAI_API_KEY;
-    delete process.env.RERANK_ENABLED;
+    process.env.RERANK_ENABLED = 'true';
     const { rerank } = await import('../../src/services/recommendationReranker.js');
     const cands = [candidate('a', 'A', 'Teknologji', 0.9), candidate('b', 'B', 'Shitje', 0.8)];
     const r = await rerank(buildUser(), cands);
     expect(r.mode).toBe('fallback');
     expect(r.ranked).toEqual(cands);
+  });
+
+  it('returns mode=disabled by default (RERANK_ENABLED unset)', async () => {
+    delete process.env.RERANK_ENABLED;
+    const { rerank } = await import('../../src/services/recommendationReranker.js');
+    const cands = [candidate('a', 'A', 'Teknologji', 0.9)];
+    const r = await rerank(buildUser(), cands);
+    expect(r.mode).toBe('disabled');
   });
 
   it('falls back gracefully on OpenAI error', async () => {

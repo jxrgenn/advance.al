@@ -75,22 +75,22 @@ describe('userEmbeddingService.computeHybridBoost', () => {
     expect(breakdown).toEqual({ category: 0, skills: 0, seniority: 0, location: 0, salary: 0, recency: 0, tier: 0 });
   });
 
-  it('skills overlap: 1 match → 0.05, 2 matches → 0.10, 3+ matches → 0.15 (capped)', () => {
+  it('skills overlap: 1 match → 0.0167, 2 matches → 0.0333, 3+ matches → 0.05 (capped)', () => {
     const u = baseUser();
     const r1 = userEmbeddingService.computeHybridBoost(u, baseJob({ tags: ['React'] })).breakdown.skills;
     const r2 = userEmbeddingService.computeHybridBoost(u, baseJob({ tags: ['React', 'TypeScript'] })).breakdown.skills;
     const r3 = userEmbeddingService.computeHybridBoost(u, baseJob({ tags: ['React', 'TypeScript', 'Node.js'] })).breakdown.skills;
     const r4 = userEmbeddingService.computeHybridBoost(u, baseJob({ tags: ['React', 'TypeScript', 'Node.js', 'GraphQL'] })).breakdown.skills;
-    expect(r1).toBeCloseTo(0.05, 4);
-    expect(r2).toBeCloseTo(0.10, 4);
-    expect(r3).toBeCloseTo(0.15, 4);
-    expect(r4).toBeCloseTo(0.15, 4);
+    expect(r1).toBeCloseTo(0.0167, 4);
+    expect(r2).toBeCloseTo(0.0333, 4);
+    expect(r3).toBeCloseTo(0.05, 4);
+    expect(r4).toBeCloseTo(0.05, 4);
   });
 
   it('skills overlap is case-insensitive', () => {
     const u = baseUser({ jsp: { skills: ['REACT', 'typescript'] } });
     const job = baseJob({ tags: ['react', 'TypeScript'] });
-    expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.skills).toBeCloseTo(0.10, 4);
+    expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.skills).toBeCloseTo(0.0333, 4);
   });
 
   it('skills overlap merges manual + aiCV technical + tools', () => {
@@ -99,7 +99,7 @@ describe('userEmbeddingService.computeHybridBoost', () => {
       aiGeneratedCV: { skills: { technical: ['Python'], tools: ['Docker'] } },
     } });
     const job = baseJob({ tags: ['React', 'Python', 'Docker'] });
-    expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.skills).toBeCloseTo(0.15, 4);
+    expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.skills).toBeCloseTo(0.05, 4);
   });
 
   it('seniority match: +0.05 only on exact bucket match', () => {
@@ -114,19 +114,19 @@ describe('userEmbeddingService.computeHybridBoost', () => {
     expect(userEmbeddingService.computeHybridBoost(u, baseJob({ seniority: 'mid' })).breakdown.seniority).toBe(0);
   });
 
-  it('location: same city wins +0.07', () => {
+  it('location: same city wins +0.10', () => {
     const u = baseUser({ profile: { location: { city: 'Tiranë' } } });
-    expect(userEmbeddingService.computeHybridBoost(u, baseJob({ location: { city: 'Tiranë', remote: false } })).breakdown.location).toBe(0.07);
+    expect(userEmbeddingService.computeHybridBoost(u, baseJob({ location: { city: 'Tiranë', remote: false } })).breakdown.location).toBe(0.10);
   });
 
   it('location: same city is case- and whitespace-tolerant', () => {
     const u = baseUser({ profile: { location: { city: '  tirAnë  ' } } });
-    expect(userEmbeddingService.computeHybridBoost(u, baseJob({ location: { city: 'Tiranë' } })).breakdown.location).toBe(0.07);
+    expect(userEmbeddingService.computeHybridBoost(u, baseJob({ location: { city: 'Tiranë' } })).breakdown.location).toBe(0.10);
   });
 
-  it('location: remote-eligible job + openToRemote user wins +0.07 even on city mismatch', () => {
+  it('location: remote-eligible job + openToRemote user wins +0.10 even on city mismatch', () => {
     const u = baseUser({ profile: { location: { city: 'Tiranë' } }, jsp: { openToRemote: true } });
-    expect(userEmbeddingService.computeHybridBoost(u, baseJob({ location: { city: 'Vlorë', remote: true } })).breakdown.location).toBe(0.07);
+    expect(userEmbeddingService.computeHybridBoost(u, baseJob({ location: { city: 'Vlorë', remote: true } })).breakdown.location).toBe(0.10);
   });
 
   it('location: no boost when neither city matches nor remote-eligibility aligns', () => {
@@ -163,14 +163,14 @@ describe('userEmbeddingService.computeHybridBoost', () => {
     expect(userEmbeddingService.computeHybridBoost(u, old).breakdown.recency).toBe(0);
   });
 
-  it('tier: +0.02 only for premium', () => {
+  it('tier: 0 in tuned weights (premium did not predict applications in harness)', () => {
     const u = baseUser();
-    expect(userEmbeddingService.computeHybridBoost(u, baseJob({ tier: 'premium' })).breakdown.tier).toBe(0.02);
+    expect(userEmbeddingService.computeHybridBoost(u, baseJob({ tier: 'premium' })).breakdown.tier).toBe(0);
     expect(userEmbeddingService.computeHybridBoost(u, baseJob({ tier: 'basic' })).breakdown.tier).toBe(0);
     expect(userEmbeddingService.computeHybridBoost(u, baseJob({ tier: 'featured' })).breakdown.tier).toBe(0);
   });
 
-  it('max possible boost = 0.46 (all components incl. category fire)', () => {
+  it('max possible boost = 0.52 (all components incl. category fire; tier=0)', () => {
     const u = baseUser({
       profile: { location: { city: 'Tiranë' } },
       jsp: {
@@ -182,7 +182,7 @@ describe('userEmbeddingService.computeHybridBoost', () => {
       },
     });
     const job = baseJob({
-      category: 'Teknologji', // matches inferred user category → +0.10
+      category: 'Teknologji', // matches inferred user category → +0.25
       tags: ['A', 'B', 'C', 'D'],
       seniority: 'senior',
       location: { city: 'Tiranë', remote: false },
@@ -191,28 +191,30 @@ describe('userEmbeddingService.computeHybridBoost', () => {
       tier: 'premium',
     });
     const { boost, breakdown } = userEmbeddingService.computeHybridBoost(u, job);
-    expect(breakdown.category).toBe(0.10);
-    expect(breakdown.skills).toBeCloseTo(0.15, 4);
-    expect(boost).toBeCloseTo(0.46, 4);
+    expect(breakdown.category).toBe(0.25);
+    expect(breakdown.skills).toBeCloseTo(0.05, 4);
+    expect(breakdown.location).toBe(0.10);
+    expect(breakdown.tier).toBe(0);
+    expect(boost).toBeCloseTo(0.52, 4);
   });
 
   describe('category match (inferred from title + skills, language-agnostic)', () => {
-    it('Software Engineer title + Teknologji job → +0.10', () => {
+    it('Software Engineer title + Teknologji job → +0.25', () => {
       const u = baseUser({ jsp: { title: 'Software Engineer' } });
       const job = baseJob({ category: 'Teknologji' });
-      expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.category).toBe(0.10);
+      expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.category).toBe(0.25);
     });
 
-    it('Albanian title (Zhvillues Software) + Teknologji job → +0.10', () => {
+    it('Albanian title (Zhvillues Software) + Teknologji job → +0.25', () => {
       const u = baseUser({ jsp: { title: 'Zhvillues Software', skills: [] } });
       const job = baseJob({ category: 'Teknologji' });
-      expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.category).toBe(0.10);
+      expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.category).toBe(0.25);
     });
 
-    it('Marketing user + Marketing job → +0.10', () => {
+    it('Marketing user + Marketing job → +0.25', () => {
       const u = baseUser({ jsp: { title: 'Specialiste Marketingu Dixhital', skills: ['SEO', 'Google Ads'] } });
       const job = baseJob({ category: 'Marketing' });
-      expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.category).toBe(0.10);
+      expect(userEmbeddingService.computeHybridBoost(u, job).breakdown.category).toBe(0.25);
     });
 
     it('Tech user + non-tech job → no category boost', () => {
@@ -284,18 +286,19 @@ describe('userEmbeddingService.computeHybridBoost', () => {
     const u = { profile: {} };
     const job = baseJob({ tags: ['React'], seniority: 'mid', tier: 'premium' });
     const { boost } = userEmbeddingService.computeHybridBoost(u, job);
-    // Only the tier boost should fire; others all gated on user fields
-    expect(boost).toBe(0.02);
+    // All weighted signals gate on user fields (and tier is 0 under tuned weights),
+    // so a totally-empty profile produces 0 boost.
+    expect(boost).toBe(0);
   });
 
   it('tolerates malformed job (no tags, no salary)', () => {
     const u = baseUser();
     const job = { seniority: 'mid', location: { city: 'Tiranë' }, postedAt: new Date(), tier: 'basic' };
     const { boost } = userEmbeddingService.computeHybridBoost(u, job);
-    // mid match + city match (Tiranë vs Tiranë... wait baseUser has city Tiranë? Let me check)
-    // baseUser has profile.location.city = 'Tiranë'. job.location.city = 'Tiranë'. So +0.07
-    // baseUser experience = 2-5 vjet → mid. job.seniority = mid → +0.05
+    // city match (Tiranë vs Tiranë) → +0.10
+    // experience 2-5 → mid + job.seniority mid → +0.05
     // recent posting → +0.02
-    expect(boost).toBeCloseTo(0.14, 4);
+    // Total 0.17
+    expect(boost).toBeCloseTo(0.17, 4);
   });
 });

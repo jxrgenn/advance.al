@@ -205,7 +205,15 @@ skills: ${(profile.skills || []).join(', ')}
 bio: ${(profile.bio || '').slice(0, 200)}
 
 ${top.length} JOBS TO RANK:
-${top.map((r, i) => `[${i}] ${r.job.title} | ${r.job.category} | ${r.job.location?.city} | ${r.job.seniority}`).join('\n')}
+${top.map((r, i) => {
+  const j = r.job;
+  const desc = (j.description || '').slice(0, 180).replace(/\s+/g, ' ');
+  const tags = (j.tags || []).slice(0, 6).join(', ');
+  return `[${i}] ${j.title}
+    category: ${j.category} | city: ${j.location?.city || '?'} | seniority: ${j.seniority || '?'} | type: ${j.jobType || '?'}
+    tags: ${tags}
+    desc: ${desc}`;
+}).join('\n')}
 
 Output STRICT JSON: { "rankedIndices": [<int>, <int>, ...] }
 Include all ${top.length} integer indices, in order from BEST fit (first) to WORST fit (last).`;
@@ -248,6 +256,136 @@ async function pipelineHybridRerank(user, jobs, ctx) {
 
 async function pipelineWhitenedHybridRerank(user, jobs, ctx) {
   const base = pipelineWhitenedHybrid(user, jobs);
+  const top = base.slice(0, 20);
+  const reranked = await llmRerank(user, top);
+  const out = reranked.map((r, i) => ({ job: r.job, score: 1 - i / Math.max(1, reranked.length) }));
+  return [...out, ...base.slice(20)];
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Multi-vector facet scoring (Wave 2)
+// User has 4 facet vectors (intent, skills, bio, currentRole); job has 3
+// (title, requirements, description). Score = weighted sum of facet-pair
+// cosine similarities. Solves the work-history-bleed problem at the source:
+// old work is in `currentRole` only (lowest weight), not bleeding into other
+// facets.
+// ──────────────────────────────────────────────────────────────────────────
+
+function cosineSafe(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length || a.length === 0) return 0;
+  let dot = 0, ma = 0, mb = 0;
+  for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; ma += a[i] * a[i]; mb += b[i] * b[i]; }
+  if (ma === 0 || mb === 0) return 0;
+  return dot / (Math.sqrt(ma) * Math.sqrt(mb));
+}
+
+// Initial weights (will tune via grid search in a later step)
+const FACET_WEIGHTS = {
+  intentTitle:        0.30,  // sim(user.intent, job.title)
+  skillsRequirements: 0.25,  // sim(user.skills, job.requirements)
+  skillsTitle:        0.15,  // sim(user.skills, job.title) — cross-match
+  bioDescription:     0.15,  // sim(user.bio, job.description)
+  currentRoleDesc:    0.15,  // sim(user.currentRole, job.description)
+};
+
+function pipelineFacets(user, jobs) {
+  const uf = user.facetEmbeddings || {};
+  const ui = uf.intent?.vector;
+  const us = uf.skills?.vector;
+  const ub = uf.bio?.vector;
+  const uc = uf.currentRole?.vector;
+  if (!ui && !us && !ub && !uc) {
+    // Cold-start: no facets, fall back to single-vector cosine
+    return pipelineCosine(user, jobs);
+  }
+  return jobs.map(j => {
+    const jf = j.facetEmbeddings || {};
+    const jt = jf.title?.vector;
+    const jr = jf.requirements?.vector;
+    const jd = jf.description?.vector;
+    let s = 0;
+    s += FACET_WEIGHTS.intentTitle        * cosineSafe(ui, jt);
+    s += FACET_WEIGHTS.skillsRequirements * cosineSafe(us, jr);
+    s += FACET_WEIGHTS.skillsTitle        * cosineSafe(us, jt);
+    s += FACET_WEIGHTS.bioDescription     * cosineSafe(ub, jd);
+    s += FACET_WEIGHTS.currentRoleDesc    * cosineSafe(uc, jd);
+    return { job: j, score: s };
+  }).sort((a, b) => b.score - a.score);
+}
+
+function pipelineFacetsHybrid(user, jobs) {
+  const ranked = pipelineFacets(user, jobs);
+  return ranked.map(r => {
+    const { boost } = userEmbeddingService.computeHybridBoost(user, r.job);
+    return { job: r.job, score: Math.min(1.5, r.score + boost) };
+  }).sort((a, b) => b.score - a.score);
+}
+
+async function pipelineFacetsHybridRerank(user, jobs, ctx) {
+  const base = pipelineFacetsHybrid(user, jobs);
+  const top = base.slice(0, 20);
+  const reranked = await llmRerank(user, top);
+  const out = reranked.map((r, i) => ({ job: r.job, score: 1 - i / Math.max(1, reranked.length) }));
+  return [...out, ...base.slice(20)];
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Single-vector @ 3-large (uses the sidecar embeddingLarge.vector stored by
+// the bakeoff script). Establishes a fair baseline for facets to beat.
+// ──────────────────────────────────────────────────────────────────────────
+
+function pipelineCosineLarge(user, jobs) {
+  const userVec = user.profile?.jobSeekerProfile?.embeddingLarge?.vector;
+  if (!Array.isArray(userVec)) return jobs.map(j => ({ job: j, score: 0 }));
+  return jobs.map(j => {
+    const jv = j.embeddingLarge?.vector;
+    let s = 0;
+    if (Array.isArray(jv) && jv.length === userVec.length) s = cosineSafe(userVec, jv);
+    return { job: j, score: s };
+  }).sort((a, b) => b.score - a.score);
+}
+
+function pipelineCosineLargeHybrid(user, jobs) {
+  const ranked = pipelineCosineLarge(user, jobs);
+  return ranked.map(r => {
+    const { boost } = userEmbeddingService.computeHybridBoost(user, r.job);
+    return { job: r.job, score: Math.min(1.5, r.score + boost) };
+  }).sort((a, b) => b.score - a.score);
+}
+
+// LARGE single-vec PLUS facet-as-booster: 0.7 * cosineLarge + 0.3 * facetScore.
+// Tests whether facets add complementary signal beyond what large captures.
+function pipelineLargePlusFacetsHybrid(user, jobs) {
+  const userVec = user.profile?.jobSeekerProfile?.embeddingLarge?.vector;
+  const uf = user.facetEmbeddings || {};
+  return jobs.map(j => {
+    const jv = j.embeddingLarge?.vector;
+    let cosLarge = 0;
+    if (Array.isArray(userVec) && Array.isArray(jv) && jv.length === userVec.length) {
+      cosLarge = cosineSafe(userVec, jv);
+    }
+    const jf = j.facetEmbeddings || {};
+    let facetScore = 0;
+    facetScore += 0.30 * cosineSafe(uf.intent?.vector,      jf.title?.vector);
+    facetScore += 0.20 * cosineSafe(uf.skills?.vector,      jf.requirements?.vector);
+    facetScore += 0.10 * cosineSafe(uf.skills?.vector,      jf.title?.vector);
+    facetScore += 0.30 * cosineSafe(uf.bio?.vector,         jf.description?.vector);
+    facetScore += 0.20 * cosineSafe(uf.currentRole?.vector, jf.description?.vector);
+    const { boost } = userEmbeddingService.computeHybridBoost(user, j);
+    return { job: j, score: Math.min(1.5, 0.7 * cosLarge + 0.3 * facetScore + boost) };
+  }).sort((a, b) => b.score - a.score);
+}
+
+async function pipelineLargePlusFacetsHybridRerank(user, jobs) {
+  const base = pipelineLargePlusFacetsHybrid(user, jobs);
+  const top = base.slice(0, 20);
+  const reranked = await llmRerank(user, top);
+  const out = reranked.map((r, i) => ({ job: r.job, score: 1 - i / Math.max(1, reranked.length) }));
+  return [...out, ...base.slice(20)];
+}
+
+async function pipelineCosineLargeHybridRerank(user, jobs) {
+  const base = pipelineCosineLargeHybrid(user, jobs);
   const top = base.slice(0, 20);
   const reranked = await llmRerank(user, top);
   const out = reranked.map((r, i) => ({ job: r.job, score: 1 - i / Math.max(1, reranked.length) }));
@@ -318,6 +456,14 @@ const PIPELINES = {
   whitenedHybrid:  { name: 'whitened + hybrid boost',                 fn: pipelineWhitenedHybrid,   async: false },
   hybridRerank:    { name: 'hybrid + LLM rerank top-20 (gpt-4o-mini)', fn: pipelineHybridRerank,    async: true },
   whitenedHybridRerank: { name: 'whitened+hybrid+LLM rerank (combined)', fn: pipelineWhitenedHybridRerank, async: true },
+  facets:          { name: 'multi-vector facets (4 user × 3 job)',     fn: pipelineFacets,           async: false },
+  facetsHybrid:    { name: 'facets + hybrid boost',                    fn: pipelineFacetsHybrid,     async: false },
+  facetsHybridRerank: { name: 'facets + hybrid + LLM rerank (full)',   fn: pipelineFacetsHybridRerank, async: true },
+  cosineLarge:     { name: 'cosine LARGE@1024',                        fn: pipelineCosineLarge,      async: false },
+  cosineLargeHybrid: { name: 'cosine LARGE@1024 + hybrid',             fn: pipelineCosineLargeHybrid, async: false },
+  cosineLargeHybridRerank: { name: 'LARGE + hybrid + rich-prompt rerank', fn: pipelineCosineLargeHybridRerank, async: true },
+  largePlusFacetsHybrid: { name: 'LARGE + facets (booster) + hybrid',  fn: pipelineLargePlusFacetsHybrid, async: false },
+  largePlusFacetsHybridRerank: { name: 'LARGE + facets + hybrid + rerank', fn: pipelineLargePlusFacetsHybridRerank, async: true },
 };
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -376,15 +522,18 @@ async function main() {
   await mongoose.connect(process.env.MONGODB_URI, { dbName: opts.db });
   console.log(`Connected to DB: ${opts.db}`);
 
-  const allUsers = await User.find({
+  // Use raw collections so unmapped schema fields (facetEmbeddings, sidecar
+  // vectors from experiments) come through unfiltered.
+  const allUsers = await mongoose.connection.collection('users').find({
     userType: 'jobseeker',
     isDeleted: false,
     'profile.jobSeekerProfile.embedding.status': 'completed',
-  }).select('+profile.jobSeekerProfile.embedding.vector').lean();
+  }).toArray();
 
-  const jobs = await Job.find({ isDeleted: false, status: 'active' })
-    .select('+embedding.vector title category seniority jobType tags requirements description location salary postedAt tier')
-    .lean();
+  const jobs = await mongoose.connection.collection('jobs').find({
+    isDeleted: false,
+    status: 'active',
+  }).toArray();
 
   // Pre-compute centroids once for whitening pipelines
   computeCentroids(jobs, allUsers);

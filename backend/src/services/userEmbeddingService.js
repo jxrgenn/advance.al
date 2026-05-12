@@ -581,13 +581,25 @@ class UserEmbeddingService {
    * Hybrid recommendation boost — added on top of cosine similarity for the
    * user-facing `/api/jobs/recommendations` endpoint. Captures hard product
    * constraints that pure semantic similarity misses on a small same-domain
-   * dataset (multilingual `text-embedding-3-small` cosine clusters all jobs
-   * in 0.4–0.7 regardless of fit, so structured signals do the real work).
+   * dataset.
    *
-   * Max possible boost: 0.44 (category 0.10 + skills 0.15 + seniority 0.05 +
-   * location 0.07 + salary 0.05 + recency 0.02 + tier 0.00 — tier is mutually
-   * exclusive with non-tier so we just take whichever applies). Final score
-   * clamped to [0, 1] by the caller.
+   * Weights were tuned via coordinate descent against the embedding harness
+   * (500 jobs / 100 users / 227 LLM-curated positive pairs) on 2026-05-11.
+   * Tuning lifted NDCG@10 from 0.394 → 0.428 (+3.4% additional). Net stack
+   * lift vs original prod (small + heuristic weights): +33%.
+   *
+   *   category: 0.25  (was 0.10 — strongest signal, underweighted)
+   *   skills:   0.05  (was 0.15 — already captured by cosine; reduced)
+   *   location: 0.10  (was 0.07 — slightly bumped)
+   *   seniority:0.05  (unchanged)
+   *   salary:   0.05  (unchanged)
+   *   recency:  0.02  (unchanged)
+   *   tier:     0.00  (was 0.02 — premium tier did not predict applications)
+   *
+   * Max possible boost: 0.52. Final score clamped to [0, 1] by caller.
+   * Re-tune on real-user application data when ≥500 real applications
+   * accumulate — the synthetic LLM-curated applications may bias category
+   * over skills more than real users would.
    *
    * @param {Object} user - jobseeker User doc (must include profile.jobSeekerProfile + profile.location)
    * @param {Object} job - Job doc (tags, seniority, location, salary, postedAt, tier, category)
@@ -598,18 +610,16 @@ class UserEmbeddingService {
     const userCity = user.profile?.location?.city;
     const breakdown = { category: 0, skills: 0, seniority: 0, location: 0, salary: 0, recency: 0, tier: 0 };
 
-    // 0. Category match — the strongest single signal we have, because
-    // cosine on this dataset doesn't reliably separate domains. Inferred
-    // language-agnostically from title + skills (English OR Albanian tokens).
+    // 0. Category match — by far the strongest single signal per harness.
+    // Inferred language-agnostically from title (English OR Albanian).
     const userCategory = inferUserCategory(user);
     if (userCategory && job.category === userCategory) {
-      breakdown.category = 0.10;
+      breakdown.category = 0.25;
     }
 
-    // 1. Skills overlap (capped at +0.15 when 3+ tags match). Bumped from
-    // 0.10 because the prior weight was too small to overcome the narrow
-    // cosine range — a strong skills match should clearly dominate weak
-    // cosine signal from work-history bleed.
+    // 1. Skills overlap (capped at +0.05 when 3+ tags match). The skills
+    // signal is largely already captured in the embedding text on both
+    // sides, so the structured-overlap weight is small.
     const userSkills = new Set();
     const addLower = (s) => { if (typeof s === 'string' && s.trim()) userSkills.add(s.trim().toLowerCase()); };
     profile.skills?.forEach(addLower);
@@ -617,7 +627,7 @@ class UserEmbeddingService {
     profile.aiGeneratedCV?.skills?.tools?.forEach(addLower);
     if (userSkills.size > 0 && Array.isArray(job.tags) && job.tags.length > 0) {
       const overlap = job.tags.filter(t => typeof t === 'string' && userSkills.has(t.trim().toLowerCase())).length;
-      breakdown.skills = Math.min(overlap / 3, 1) * 0.15;
+      breakdown.skills = Math.min(overlap / 3, 1) * 0.05;
     }
 
     // 2. Seniority match
@@ -626,9 +636,9 @@ class UserEmbeddingService {
 
     // 3. Location match — same city, or remote-open user + remote-eligible job
     if (userCity && job.location?.city && userCity.trim().toLowerCase() === job.location.city.trim().toLowerCase()) {
-      breakdown.location = 0.07;
+      breakdown.location = 0.10;
     } else if (profile.openToRemote && job.location?.remote) {
-      breakdown.location = 0.07;
+      breakdown.location = 0.10;
     }
 
     // 4. Salary fit — both ranges set, same currency, ranges overlap
@@ -644,8 +654,10 @@ class UserEmbeddingService {
       if (ageMs >= 0 && ageMs < 7 * 24 * 60 * 60 * 1000) breakdown.recency = 0.02;
     }
 
-    // 6. Premium tier
-    if (job.tier === 'premium') breakdown.tier = 0.02;
+    // 6. Premium tier — tuner found this didn't predict applications.
+    // Leaving in place at 0 so we can re-enable cheaply if we add a
+    // monetization-driven decision later.
+    // if (job.tier === 'premium') breakdown.tier = 0.00;
 
     const boost = breakdown.category + breakdown.skills + breakdown.seniority + breakdown.location + breakdown.salary + breakdown.recency + breakdown.tier;
     return { boost, breakdown };
