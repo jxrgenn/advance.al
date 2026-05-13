@@ -1,4 +1,22 @@
 /**
+ * ⚠️ RESEARCH ONLY — FALSIFIED 2026-05-12 (commit ca720e0).
+ *
+ * Multi-vector facets were tested exhaustively against the 500-job / 100-user /
+ * 227-application harness and LOST by 11–30% NDCG@10 vs simple cosine on
+ * text-embedding-3-large @ 1024 + tuned hybrid boost. Specifically:
+ *   facets-only best NDCG@10        = 0.299
+ *   large + facets-as-booster + hyb = 0.383
+ *   large@1024 cosine + tuned hyb   = 0.394   ← shipped
+ *
+ * Why facets didn't help here: (1) 3-large@1024 is already strong enough that
+ * the structural benefit of multi-vector vanishes; (2) our facet texts
+ * (especially "intent" = title+experience+city) are too short to embed with
+ * high signal; (3) 500 jobs is below the scale where ColBERT-style retrieval
+ * shines.
+ *
+ * Kept in tree so a future re-test (e.g. on 3-large@3072 or after corpus
+ * grows past ~5k jobs) is one-command. DO NOT WIRE INTO PRODUCTION CODE.
+ *
  * Wave 2 — multi-vector facet embeddings (DPR / structured retrieval).
  *
  * Generates 4 facet vectors per user and 3 facet vectors per job using
