@@ -106,6 +106,59 @@ class UserEmbeddingService {
     // Lower threshold for user-job matching: user text is shorter/less rich than job text
     // Job-job threshold is 0.7; user-job uses 0.55 to account for text length disparity
     this.threshold = parseFloat(process.env.USER_JOB_SIMILARITY_THRESHOLD || '0.55');
+    // Smart-cap params for new-job notification fan-out (see applySmartMatchCap).
+    // ABSOLUTE: hard ceiling on matches per population per job.
+    // RELATIVE_GAP: drop matches whose score is more than X below the top match
+    //   (adapts to score distribution — niche jobs keep all strong matches,
+    //   generic jobs get cut to just the best peers).
+    // SAFETY_VALVE_RATIO: if matches exceed X fraction of candidates, treat as
+    //   a likely bug (corrupted embedding, threshold misconfig) and bail.
+    this.notifyCapAbsolute = parseInt(process.env.USER_NOTIFY_CAP_ABSOLUTE || '50', 10);
+    this.notifyCapRelativeGap = parseFloat(process.env.USER_NOTIFY_CAP_RELATIVE_GAP || '0.15');
+    this.notifySafetyValveRatio = parseFloat(process.env.USER_NOTIFY_SAFETY_VALVE_RATIO || '0.5');
+    // Safety valve only activates when there are enough candidates to make the
+    // ratio statistically meaningful — a 1/1 or 5/8 match is not suspicious.
+    this.notifySafetyValveMinPopulation = parseInt(process.env.USER_NOTIFY_SAFETY_VALVE_MIN_POPULATION || '20', 10);
+  }
+
+  /**
+   * Smart cap for new-job notification fan-out.
+   *
+   * Layered caps:
+   *   1. Relative gap: drop matches whose score < topScore - RELATIVE_GAP.
+   *      Niche job with 8 strong matches keeps all 8. Generic job with 300
+   *      lukewarm matches gets cut to just the best cluster.
+   *   2. Absolute ceiling: take at most ABSOLUTE matches (default 50).
+   *   3. Safety valve: if matches.length > SAFETY_VALVE_RATIO * totalCandidates,
+   *      that's almost certainly a bug (zero vector, threshold off, vector
+   *      corruption). Returns empty + logs error rather than spam everyone.
+   *
+   * @param {Array<{user: Object, score: number}>} matches - sorted DESC by score
+   * @param {number} totalCandidates - how many users were scanned to produce matches
+   * @param {string} populationLabel - 'quickUsers' or 'jobSeekers' for logging
+   * @returns {Array<{user: Object, score: number}>}
+   */
+  applySmartMatchCap(matches, totalCandidates, populationLabel) {
+    if (matches.length === 0) return matches;
+
+    // Safety valve — only meaningful when the population is large enough that
+    // a high match ratio implies a bug rather than a small-dataset coincidence.
+    if (totalCandidates >= this.notifySafetyValveMinPopulation &&
+        matches.length / totalCandidates > this.notifySafetyValveRatio) {
+      try {
+        // eslint-disable-next-line no-console
+        console.error(`[notify-cap] safety valve tripped for ${populationLabel}: ${matches.length}/${totalCandidates} matched (>${(this.notifySafetyValveRatio * 100).toFixed(0)}%). Skipping fan-out. Likely a bug (zero vector, threshold misconfig, embedding corruption).`);
+      } catch (_) { /* logging never blocks */ }
+      return [];
+    }
+
+    // Relative-gap filter: keep only matches within RELATIVE_GAP of top
+    const topScore = matches[0].score;
+    const relativeFloor = topScore - this.notifyCapRelativeGap;
+    const gapFiltered = matches.filter(m => m.score >= relativeFloor);
+
+    // Absolute ceiling
+    return gapFiltered.slice(0, this.notifyCapAbsolute);
   }
 
   /**
@@ -459,6 +512,7 @@ class UserEmbeddingService {
 
     // --- QuickUsers (batch processing via cursor to prevent OOM) ---
     const matchedQuickUsers = [];
+    let quickUserCandidates = 0;
     const quickUserCursor = QuickUser.find({
       isActive: true,
       convertedToFullUser: false,
@@ -466,6 +520,7 @@ class UserEmbeddingService {
     }).select('+embedding.vector').batchSize(BATCH_SIZE).cursor();
 
     for await (const qu of quickUserCursor) {
+      quickUserCandidates++;
       const vec = qu.embedding?.vector;
       if (!vec || !isValidEmbeddingVector(vec)) continue;
       try {
@@ -476,9 +531,11 @@ class UserEmbeddingService {
       } catch (_) { /* skip malformed vectors */ }
     }
     matchedQuickUsers.sort((a, b) => b.score - a.score);
+    const cappedQuickUsers = this.applySmartMatchCap(matchedQuickUsers, quickUserCandidates, 'quickUsers');
 
     // --- Jobseeker Users (opt-in only, batch processing via cursor) ---
     const matchedJobSeekers = [];
+    let jobSeekerCandidates = 0;
     const jobSeekerCursor = User.find({
       userType: 'jobseeker',
       isDeleted: false,
@@ -488,6 +545,7 @@ class UserEmbeddingService {
     }).select('+profile.jobSeekerProfile.embedding.vector').batchSize(BATCH_SIZE).cursor();
 
     for await (const u of jobSeekerCursor) {
+      jobSeekerCandidates++;
       const vec = u.profile?.jobSeekerProfile?.embedding?.vector;
       if (!vec || !isValidEmbeddingVector(vec)) continue;
       try {
@@ -498,8 +556,9 @@ class UserEmbeddingService {
       } catch (_) { /* skip malformed vectors */ }
     }
     matchedJobSeekers.sort((a, b) => b.score - a.score);
+    const cappedJobSeekers = this.applySmartMatchCap(matchedJobSeekers, jobSeekerCandidates, 'jobSeekers');
 
-    return { quickUsers: matchedQuickUsers, jobSeekers: matchedJobSeekers };
+    return { quickUsers: cappedQuickUsers, jobSeekers: cappedJobSeekers };
   }
 
   /**
