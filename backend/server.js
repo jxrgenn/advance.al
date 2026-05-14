@@ -220,8 +220,15 @@ if (process.env.NODE_ENV === 'development') {
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-// Ensure upload directories exist
-mkdirSync(path.join(process.cwd(), 'uploads', 'resumes'), { recursive: true });
+// Ensure upload directories exist (dev-only fallback path; production uses
+// Cloudinary). Wrapped in try/catch because Render's container filesystem is
+// read-only outside of writable mounts, and the dir doesn't need to exist there.
+try {
+  mkdirSync(path.join(process.cwd(), 'uploads', 'resumes'), { recursive: true });
+} catch (err) {
+  if (err.code !== 'EACCES' && err.code !== 'EROFS') throw err;
+  // Read-only fs (Render container) — skip silently; production uses Cloudinary.
+}
 
 // NOTE: Local uploads served through authenticated endpoint only (not static)
 // Cloudinary handles file serving in production
