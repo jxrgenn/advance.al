@@ -16,6 +16,31 @@ import { isValidEmbeddingVector } from '../utils/embeddingConfig.js';
  * cosineSimilarity() to avoid duplicate API connections and rate-limit conflicts.
  *
  * Model: text-embedding-3-small (1536 dims) — same as jobs, enabling cross-comparison.
+ *
+ * ============================================================================
+ * EMBEDDING TRIGGER CONTRACT
+ * ============================================================================
+ * Every route or service that mutates an embedding-relevant field on
+ * User-jobseeker / QuickUser MUST call fireEmbedding({kind,id,reason}) from
+ * services/embeddingTrigger.js. The embeddingRetryWorker (10-min cron) is a
+ * safety net, not a substitute for triggering at the source.
+ *
+ * Embedding-relevant fields (mutation MUST trigger re-embed):
+ *   Jobseeker (User):
+ *     profile.jobSeekerProfile.{title, bio, skills, experience, workHistory,
+ *     education, aiGeneratedCV.{professionalSummary, skills.*, languages,
+ *     certifications}}, profile.location.city
+ *   QuickUser:
+ *     interests, customInterests, location, parsedCV.{title, skills, summary,
+ *     experience, industries, education, languages}
+ *
+ * Filter-only fields (DO NOT trigger; verified via prepareXxxText below):
+ *   Jobseeker: email, phone, name, avatar, savedJobs, notificationPrefs
+ *   QuickUser: preferences.{emailFrequency, jobTypes, remoteWork, salaryRange}
+ *
+ * If you mutate a filter-only field via a route handler, add a one-line
+ * code comment `// no-embedding: <reason>` for clarity (see PUT /preferences).
+ * ============================================================================
  */
 
 // Domain inference — maps a jobseeker profile to their most likely job

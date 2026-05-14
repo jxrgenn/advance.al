@@ -253,6 +253,9 @@ Output JSON:
     const jt = jobTypes[i] || 'full-time';
     const currency = Math.random() < 0.7 ? 'EUR' : 'ALL';
     try {
+      // No per-job fireEmbedding kick here: Stage 5 (seedEmbeddings) batch-
+      // generates embeddings for every pending Job after the create stage
+      // completes. Per-job kicks would double-fire OpenAI calls.
       const job = await Job.create({
         employerId: emp._id,
         title: String(j.title || '').slice(0, 100),

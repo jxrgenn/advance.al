@@ -8,7 +8,7 @@ import { generateCVDocument } from '../services/cvDocumentService.js';
 import User from '../models/User.js';
 import File from '../models/File.js';
 import logger from '../config/logger.js';
-import userEmbeddingService from '../services/userEmbeddingService.js';
+import { fireEmbedding } from '../services/embeddingTrigger.js';
 
 const router = express.Router();
 
@@ -98,7 +98,7 @@ router.post('/generate', authenticate, requireJobSeeker, cvGenerateLimiter, asyn
     });
 
     // Re-generate embedding with rich AI CV data (skills, summary, certs, languages)
-    setImmediate(() => userEmbeddingService.generateJobSeekerEmbedding(req.user._id).catch(e => logger.error('Embedding regen error (cv gen):', e.message)));
+    fireEmbedding({ kind: 'jobseeker', id: req.user._id, reason: 'cv-generate' });
 
     res.json({
       success: true,

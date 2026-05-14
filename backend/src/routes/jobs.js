@@ -13,6 +13,7 @@ import logger from '../config/logger.js';
 import { isValidEmbeddingVector } from '../utils/embeddingConfig.js';
 import recommendationReranker from '../services/recommendationReranker.js';
 import { logEvent } from '../services/eventLogger.js';
+import { fireEmbedding } from '../services/embeddingTrigger.js';
 
 const router = express.Router();
 
@@ -1228,16 +1229,14 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
     // Populate employer info for response
     await job.populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.firstName profile.lastName profile.location');
 
-    // Queue embedding generation (async, non-blocking)
-    // Notifications are sent AFTER embedding completes (in the worker) to avoid race condition
-    setImmediate(async () => {
-      try {
-        await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10, {
-          notifyUsers: job.status === 'active' // Worker will notify matching users after embedding
-        });
-      } catch (error) {
-        logger.error('Error queueing embedding for job:', error.message);
-      }
+    // Queue embedding generation (async, non-blocking).
+    // Notifications are sent AFTER embedding completes (in the worker) — the
+    // notifyUsers flag is read by the worker post-completion to avoid race.
+    fireEmbedding({
+      kind: 'job',
+      id: job._id,
+      reason: 'create',
+      extraMetadata: { notifyUsers: job.status === 'active' },
     });
 
     // F-10 fix: invalidate admin:dashboard cache on create
@@ -1344,21 +1343,19 @@ router.put('/:id', validateObjectId('id'), authenticate, requireEmployer, requir
 
     await job.save();
 
-    // Re-queue embedding generation after update (async, non-blocking)
+    // Re-queue embedding generation after update (async, non-blocking).
+    // Clear similar-jobs cache + reset status to 'pending' first so the
+    // worker sees a fresh task.
     setImmediate(async () => {
       try {
-        // Clear old similar jobs since content changed
         await Job.findByIdAndUpdate(job._id, {
-          $set: {
-            similarJobs: [],
-            'embedding.status': 'pending'
-          }
+          $set: { similarJobs: [], 'embedding.status': 'pending' },
         });
-        await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10);
       } catch (error) {
-        logger.error('Error re-queueing embedding for job:', error.message);
+        logger.error('Error resetting embedding status on update:', error.message);
       }
     });
+    fireEmbedding({ kind: 'job', id: job._id, reason: 'update' });
 
     // F-10 fix: invalidate admin:dashboard cache on update
     cacheDelete('admin:dashboard').catch(() => {});
@@ -1508,6 +1505,10 @@ router.post('/:id/renew', validateObjectId('id'), authenticate, requireEmployer,
     job.viewCount = 0;
 
     await job.save();
+
+    // Re-embed on repost: employers commonly edit description/skills during
+    // the closed period; the old vector may no longer match the current text.
+    fireEmbedding({ kind: 'job', id: job._id, reason: 'renew' });
 
     res.json({
       success: true,

@@ -7,13 +7,13 @@ import mammoth from 'mammoth';
 import { body, validationResult } from 'express-validator';
 import { User, SystemConfiguration } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer, requireAdmin } from '../middleware/auth.js';
-import userEmbeddingService from '../services/userEmbeddingService.js';
 import resendEmailService from '../lib/resendEmailService.js';
 import { uploadToCloudinary, deleteFromCloudinary } from '../config/cloudinary.js';
 import logger from '../config/logger.js';
 import { sanitizeLimit, validateObjectId, stripHtml, normalizeOneLine } from '../utils/sanitize.js';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { parseUserProfileCV } from '../services/cvParsingService.js';
+import { fireEmbedding } from '../services/embeddingTrigger.js';
 
 const router = express.Router();
 
@@ -403,13 +403,7 @@ router.put('/profile', authenticate, async (req, res) => {
       const hasProfileChange = jobSeekerProfile && ['title', 'skills', 'bio', 'experience'].some(f => jobSeekerProfile[f] !== undefined);
       const hasLocationChange = location && location.city !== undefined;
       if (hasProfileChange || hasLocationChange) {
-        setImmediate(async () => {
-          try {
-            await userEmbeddingService.generateJobSeekerEmbedding(user._id);
-          } catch (error) {
-            logger.error('Error regenerating jobseeker embedding:', error.message);
-          }
-        });
+        fireEmbedding({ kind: 'jobseeker', id: user._id, reason: 'profile-update' });
       }
     }
 
@@ -927,8 +921,7 @@ router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter,
           $set: { 'profile.jobSeekerProfile.aiGeneratedCV.languages': parsedData.languages }
         });
       }
-      setImmediate(() => userEmbeddingService.generateJobSeekerEmbedding(req.user._id)
-        .catch(e => logger.error('Embedding regen error (parse-resume):', e.message)));
+      fireEmbedding({ kind: 'jobseeker', id: req.user._id, reason: 'parse-resume' });
     }
 
     res.json({
@@ -1374,7 +1367,7 @@ router.post('/work-experience', authenticate, requireJobSeeker, [
     await user.save();
 
     // Re-generate embedding with new work history data
-    setImmediate(() => userEmbeddingService.generateJobSeekerEmbedding(user._id).catch(e => logger.error('Embedding regen error (add work):', e.message)));
+    fireEmbedding({ kind: 'jobseeker', id: user._id, reason: 'add-work' });
 
     res.json({
       success: true,
@@ -1442,7 +1435,7 @@ router.post('/education', authenticate, requireJobSeeker, [
     await user.save();
 
     // Re-generate embedding with new education data
-    setImmediate(() => userEmbeddingService.generateJobSeekerEmbedding(user._id).catch(e => logger.error('Embedding regen error (add edu):', e.message)));
+    fireEmbedding({ kind: 'jobseeker', id: user._id, reason: 'add-edu' });
 
     res.json({
       success: true,
@@ -1498,7 +1491,7 @@ router.put('/work-experience/:experienceId', validateObjectId('experienceId'), a
     await user.save();
 
     // Re-generate embedding with updated work history
-    setImmediate(() => userEmbeddingService.generateJobSeekerEmbedding(user._id).catch(e => logger.error('Embedding regen error (edit work):', e.message)));
+    fireEmbedding({ kind: 'jobseeker', id: user._id, reason: 'edit-work' });
 
     res.json({
       success: true,
@@ -1551,7 +1544,7 @@ router.put('/education/:educationId', validateObjectId('educationId'), authentic
     await user.save();
 
     // Re-generate embedding with updated education
-    setImmediate(() => userEmbeddingService.generateJobSeekerEmbedding(user._id).catch(e => logger.error('Embedding regen error (edit edu):', e.message)));
+    fireEmbedding({ kind: 'jobseeker', id: user._id, reason: 'edit-edu' });
 
     res.json({
       success: true,
@@ -1588,7 +1581,7 @@ router.delete('/work-experience/:experienceId', validateObjectId('experienceId')
     await user.save();
 
     // Re-generate embedding after work history removal
-    setImmediate(() => userEmbeddingService.generateJobSeekerEmbedding(user._id).catch(e => logger.error('Embedding regen error (del work):', e.message)));
+    fireEmbedding({ kind: 'jobseeker', id: user._id, reason: 'del-work' });
 
     res.json({
       success: true,
@@ -1625,7 +1618,7 @@ router.delete('/education/:educationId', validateObjectId('educationId'), authen
     await user.save();
 
     // Re-generate embedding after education removal
-    setImmediate(() => userEmbeddingService.generateJobSeekerEmbedding(user._id).catch(e => logger.error('Embedding regen error (del edu):', e.message)));
+    fireEmbedding({ kind: 'jobseeker', id: user._id, reason: 'del-edu' });
 
     res.json({
       success: true,

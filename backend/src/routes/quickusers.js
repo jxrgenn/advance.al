@@ -304,10 +304,12 @@ router.post('/', quickUserLimiter, handleMultipart, quickUserValidation, handleV
         logger.error('Error sending welcome email:', error.message);
       }
 
-      // Parse CV first (if uploaded) — so embedding can include parsed data
+      // Parse CV first (if uploaded) — so embedding can include parsed data.
+      // fireEmbeddingAfter:false because the explicit await below generates
+      // the embedding (and the notify step depends on it being ready).
       if (pdfBuffer) {
         try {
-          await parseQuickUserCV(quickUser._id, pdfBuffer);
+          await parseQuickUserCV(quickUser._id, pdfBuffer, { fireEmbeddingAfter: false });
         } catch (error) {
           logger.error('Error parsing QuickUser CV:', error.message);
         }
@@ -584,7 +586,11 @@ router.put('/:id/preferences', validateObjectId('id'), async (req, res) => {
       });
     }
 
-    // Update preferences
+    // Update preferences.
+    // no-embedding: preferences.{emailFrequency,jobTypes,remoteWork,salaryRange}
+    // are filter/notification fields only — prepareQuickUserText reads
+    // interests/customInterests/location/parsedCV. See contract in
+    // services/userEmbeddingService.js header.
     if (preferences.emailFrequency) {
       quickUser.preferences.emailFrequency = preferences.emailFrequency;
     }

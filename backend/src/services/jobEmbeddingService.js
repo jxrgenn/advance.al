@@ -14,6 +14,28 @@ import { EMBEDDING_MODEL, EMBEDDING_DIMS, isValidEmbeddingVector } from '../util
  * - Generating embeddings via OpenAI API
  * - Computing similarity scores between jobs
  * - Managing embedding lifecycle
+ *
+ * ============================================================================
+ * EMBEDDING TRIGGER CONTRACT
+ * ============================================================================
+ * Every route or service that mutates an embedding-relevant Job field MUST
+ * call fireEmbedding({kind:'job',id,reason}) from services/embeddingTrigger.js.
+ * The embeddingRetryWorker (10-min cron) is a safety net, not a substitute
+ * for triggering at the source.
+ *
+ * Embedding-relevant fields (mutation MUST trigger re-embed):
+ *   title, description, requirements, responsibilities, benefits, skills,
+ *   tags, category, jobType, seniority, location.city, salary range,
+ *   companyName (via populated employerId)
+ *
+ * Filter-only fields (DO NOT trigger):
+ *   applicationUrl, contactEmail, viewCount, status (active/paused/closed/
+ *   expired/pending_*), expiresAt, postedAt, isFeatured, tier, isDeleted
+ *
+ * Idempotency: queueEmbeddingGeneration de-duplicates pending tasks per
+ * jobId, so calling it multiple times in flight is safe (returns existing
+ * task instead of fanning out duplicates).
+ * ============================================================================
  */
 
 class JobEmbeddingService {

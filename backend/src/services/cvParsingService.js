@@ -3,6 +3,7 @@ import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import mammoth from 'mammoth';
 import { QuickUser } from '../models/index.js';
 import logger from '../config/logger.js';
+import { fireEmbedding } from './embeddingTrigger.js';
 
 // Lazy-init to avoid throwing at import time when API key is not yet set.
 // `_clientOverride` is a test-only injection hook; production code never sets it.
@@ -109,10 +110,19 @@ Be accurate. Only extract what is clearly stated or strongly implied. Do not fab
 /**
  * Parse a QuickUser's uploaded CV (PDF or DOCX) and save structured data.
  * Called asynchronously after signup — non-blocking.
+ *
+ * Auto-kicks an embedding regeneration after a successful parse (parsedCV is
+ * embedding-relevant; see prepareQuickUserText). Callers that await their
+ * OWN explicit `generateQuickUserEmbedding` call in the same chain can pass
+ * `{ fireEmbeddingAfter: false }` to avoid a redundant second OpenAI call.
+ *
  * @param {string} quickUserId - The QuickUser's MongoDB ID
  * @param {Buffer} fileBuffer - The raw file buffer (PDF or DOCX)
+ * @param {object} [opts]
+ * @param {boolean} [opts.fireEmbeddingAfter=true] - Kick embedding regen after parse
  */
-export async function parseQuickUserCV(quickUserId, fileBuffer) {
+export async function parseQuickUserCV(quickUserId, fileBuffer, opts = {}) {
+  const fireEmbeddingAfter = opts.fireEmbeddingAfter !== false;
   try {
     if (!process.env.OPENAI_API_KEY) {
       logger.warn('OpenAI API key not configured — skipping CV parsing');
@@ -158,6 +168,13 @@ export async function parseQuickUserCV(quickUserId, fileBuffer) {
       skillCount: parsed.skills?.length,
       industries: parsed.industries
     });
+
+    // Parsed-CV content is embedding-relevant (skills, summary, industries
+    // feed prepareQuickUserText). Kick re-embed so any caller — not just the
+    // signup chain — gets a fresh vector after parse.
+    if (fireEmbeddingAfter) {
+      fireEmbedding({ kind: 'quickuser', id: quickUserId, reason: 'cv-parse' });
+    }
 
     return parsed;
   } catch (error) {
