@@ -518,6 +518,51 @@ userSchema.virtual('profile.fullName').get(function() {
   return `${this.profile.firstName} ${this.profile.lastName}`;
 });
 
+// Cascade orphan-prevention: when a User is deleted programmatically, also
+// remove their Jobs (if employer) and Applications. This catches every
+// programmatic delete path — `accountCleanup.purgeDeletedAccounts` already
+// does the same explicitly inside a transaction, but this hook ensures any
+// future code path (one-off scripts, admin endpoints, test cleanup) can't
+// create orphan jobs by deleting an employer User document directly.
+//
+// NOTE: Atlas UI deletes bypass Mongoose entirely and still need to be
+// handled manually. The read-time filter in notificationService.js is the
+// belt-and-braces defense against that case.
+//
+// Triggered for both `Model.deleteOne(filter)` and `Model.deleteMany(filter)`
+// query forms via the { document: false, query: true } middleware target.
+async function cascadeUserDeletion(filter) {
+  try {
+    const { default: Job } = await import('./Job.js');
+    const { default: Application } = await import('./Application.js');
+    const usersToDelete = await mongoose.model('User').find(filter).select('_id userType').lean();
+    if (!usersToDelete.length) return;
+    const userIds = usersToDelete.map(u => u._id);
+    const employerIds = usersToDelete.filter(u => u.userType === 'employer').map(u => u._id);
+    // Applications they SENT (as jobseeker) — drop
+    await Application.deleteMany({ jobSeekerId: { $in: userIds } });
+    // For employers: also drop applications TO their jobs, then the jobs themselves
+    if (employerIds.length) {
+      const jobs = await Job.find({ employerId: { $in: employerIds } }).select('_id').lean();
+      const jobIds = jobs.map(j => j._id);
+      if (jobIds.length) await Application.deleteMany({ jobId: { $in: jobIds } });
+      await Job.deleteMany({ employerId: { $in: employerIds } });
+    }
+  } catch (err) {
+    // Logging only — don't block the original delete. The user is going away
+    // either way; an orphan job is bad but not worse than a half-failed delete.
+    // eslint-disable-next-line no-console
+    console.error('[User.cascadeDelete] error:', err.message);
+  }
+}
+
+userSchema.pre('deleteOne', { document: false, query: true }, async function() {
+  await cascadeUserDeletion(this.getFilter());
+});
+userSchema.pre('deleteMany', { document: false, query: true }, async function() {
+  await cascadeUserDeletion(this.getFilter());
+});
+
 // Hash password before saving
 userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();

@@ -223,7 +223,16 @@ advance.al - Platforma #1 e Punës në Shqipëri
     const firstName = user.profile?.firstName || 'Kandidat';
     const safeFirstName = escapeHtml(firstName);
     const count = jobs.length;
-    const subject = safeSubject(`${count} ${count === 1 ? 'punë e re' : 'punë të reja'} për ju në advance.al`);
+    // Albanian agreement: pozicion is masculine. "1 pozicion i ri" (sg) vs
+    // "N pozicione të reja" (pl). Verb "përputhet" (3rd-sg) vs "përputhen" (3rd-pl).
+    // Demonstrative "ky" (sg-masc) vs "këto" (pl-fem-collective for nouns).
+    // "punë" (job, feminine): "punë e re" (sg) vs "punë të reja" (pl).
+    const isSingular = count === 1;
+    const subject = safeSubject(`${count} ${isSingular ? 'punë e re' : 'punë të reja'} për ju në advance.al`);
+    const positionsPhrase = isSingular ? '1 pozicion të ri' : `${count} pozicione të reja`;
+    const matchesVerb = isSingular ? 'përputhet' : 'përputhen';
+    const thisOrThese = isSingular ? 'Ky pozicion' : 'Këto pozicione';
+    const groupingSentence = isSingular ? '' : ' Ne i grupojmë në një email për të mos ju shqetësuar shumë herë.';
 
     const textJobLines = jobs.map((job, i) => {
       const company = job.employerId?.profile?.employerProfile?.companyName || 'Kompani';
@@ -234,7 +243,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
     const textContent = `
 Përshëndetje ${firstName},
 
-Gjetëm ${count} ${count === 1 ? 'pozicion të ri' : 'pozicione të reja'} që përputhen me profilin tuaj:
+Gjetëm ${positionsPhrase} që ${matchesVerb} me profilin tuaj:
 
 ${textJobLines}
 
@@ -273,14 +282,14 @@ advance.al - Platforma #1 e Punës në Shqipëri
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0;">
   <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-      <h1 style="margin: 0;">🎯 ${count} ${count === 1 ? 'punë e re' : 'punë të reja'} për ju!</h1>
-      <p style="margin: 10px 0 0 0;">Përshëndetje ${safeFirstName}, gjenim pozicione që përputhen me profilin tuaj.</p>
+      <h1 style="margin: 0;">🎯 ${count} ${isSingular ? 'punë e re' : 'punë të reja'} për ju!</h1>
+      <p style="margin: 10px 0 0 0;">Përshëndetje ${safeFirstName}, gjetëm ${positionsPhrase} që ${matchesVerb} me profilin tuaj.</p>
     </div>
     <div style="background: #fff; padding: 24px; border: 1px solid #e0e0e0;">
       ${htmlJobCards}
       <p style="font-size: 14px; color: #666; margin-top: 24px;">
         💡 <strong>Përse mora këtë email?</strong><br>
-        Keni aktivizuar njoftimet e punës dhe këto pozicione përputhen me profilin tuaj. Ne i grupojmë në një email për të mos ju shqetësuar shumë herë.
+        Keni aktivizuar njoftimet e punës dhe ${thisOrThese.toLowerCase()} ${matchesVerb} me profilin tuaj.${groupingSentence}
       </p>
     </div>
     <div style="background: #f8f9fa; padding: 20px; border-radius: 0 0 10px 10px; font-size: 12px; color: #666;">
@@ -374,8 +383,20 @@ advance.al - Platforma #1 e Punës në Shqipëri
   async notifyMatchingUsers(job) {
     try {
       // Load job with embedding vector (select: false by default)
-      const jobWithVector = await Job.findById(job._id).select('+embedding.vector');
+      const jobWithVector = await Job.findById(job._id).select('+embedding.vector').populate('employerId', '_id');
       const jobForSemantic = jobWithVector || job;
+
+      // Defense-in-depth: refuse to fan-out a job whose employer was deleted.
+      // The cascade hook on User prevents this for programmatic deletes; this
+      // guard handles Atlas-UI deletes + pre-existing orphans.
+      if (jobWithVector && jobWithVector.employerId == null) {
+        logger.warn('notifyMatchingUsers: refusing to fan-out orphan job', { jobId: String(job._id), title: jobWithVector.title });
+        return {
+          success: true,
+          message: 'Job has no live employer — skipped fan-out (orphan).',
+          stats: { totalUsers: 0, notificationsSent: 0, errors: 0, breakdown: { quickUsers: 0, jobSeekers: 0, semanticMatches: 0, keywordMatches: 0 } }
+        };
+      }
 
       // ── 1. Semantic matching (QuickUsers + full jobseekers) ──────────────────
       let semanticQuickUsers = [];

@@ -106,11 +106,17 @@ async function processOneUser(user) {
   // Resolve the queued jobs to current state — they may have been closed/deleted
   // in the time between queue and flush. Skip stale entries.
   const jobIds = (user.pendingJobAlerts || []).map(p => p.jobId).filter(Boolean);
-  const jobs = await Job.find({
+  const rawJobs = await Job.find({
     _id: { $in: jobIds },
     status: 'active',
     isDeleted: { $ne: true },
   }).populate('employerId', 'profile.employerProfile.companyName');
+
+  // Defense-in-depth against orphan jobs (employer was deleted, job remained).
+  // The User.pre('deleteOne') cascade in models/User.js prevents this for
+  // programmatic deletes, but Atlas UI / direct Mongo intervention bypass
+  // Mongoose hooks. Filter at read time so an orphan never reaches an inbox.
+  const jobs = rawJobs.filter(j => j.employerId != null);
 
   // Always clear the queue, even if no live jobs remain — they're stale either way.
   if (jobs.length === 0) {

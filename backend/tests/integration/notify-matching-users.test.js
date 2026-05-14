@@ -269,7 +269,9 @@ describe('notificationService.notifyMatchingUsers', () => {
     // Pass a bad job whose findById throws
     const original = Job.findById;
     Job.findById = () => ({
-      select: () => Promise.reject(new Error('DB connection lost')),
+      select: () => ({
+        populate: () => Promise.reject(new Error('DB connection lost')),
+      }),
     });
     try {
       const r = await notificationService.notifyMatchingUsers({ _id: 'bogus' });
