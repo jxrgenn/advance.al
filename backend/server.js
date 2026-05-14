@@ -423,6 +423,15 @@ const server = app.listen(PORT, () => {
     }, 60000);
   }).catch(() => {});
 
+  // Job-alerts digest flush — runs every 15 min by default. Sends one consolidated
+  // email per jobseeker whose oldest queued match crossed the digest window.
+  import('./src/services/jobAlertsDigest.js').then(({ flushPendingJobAlerts }) => {
+    const flushIntervalMs = parseInt(process.env.JOB_ALERT_DIGEST_FLUSH_INTERVAL_MS || `${15 * 60 * 1000}`, 10);
+    activeIntervals.push(setInterval(() => {
+      flushPendingJobAlerts().catch(err => logger.error('Job-alert digest flush error:', err.message));
+    }, flushIntervalMs));
+  }).catch(() => {});
+
   // Account cleanup: permanently delete soft-deleted accounts after 30-day retention (privacy policy)
   import('./src/services/accountCleanup.js').then(({ purgeDeletedAccounts }) => {
     // Run daily

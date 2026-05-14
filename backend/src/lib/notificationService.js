@@ -212,6 +212,88 @@ advance.al - Platforma #1 e Punës në Shqipëri
     return { subject, textContent, htmlContent };
   }
 
+  /**
+   * Build a single email summarising multiple matched jobs queued during the
+   * digest window. Used by the per-jobseeker digest flush in jobAlertsDigest.js.
+   *
+   * @param {Object} user - jobseeker User document
+   * @param {Array<Object>} jobs - list of Job docs (sorted desc by matchScore)
+   */
+  generateJobAlertsDigestEmail(user, jobs) {
+    const firstName = user.profile?.firstName || 'Kandidat';
+    const safeFirstName = escapeHtml(firstName);
+    const count = jobs.length;
+    const subject = safeSubject(`${count} ${count === 1 ? 'punë e re' : 'punë të reja'} për ju në advance.al`);
+
+    const textJobLines = jobs.map((job, i) => {
+      const company = job.employerId?.profile?.employerProfile?.companyName || 'Kompani';
+      const salary = job.salary ? ` — ${job.salary.min}-${job.salary.max} ${job.salary.currency}` : '';
+      return `${i + 1}. ${job.title} — ${company} (${job.location?.city || ''})${salary}\n   https://advance.al/jobs/${job._id}`;
+    }).join('\n\n');
+
+    const textContent = `
+Përshëndetje ${firstName},
+
+Gjetëm ${count} ${count === 1 ? 'pozicion të ri' : 'pozicione të reja'} që përputhen me profilin tuaj:
+
+${textJobLines}
+
+---
+Menaxhoni njoftimet nga profili juaj: https://advance.al/profile
+
+advance.al - Platforma #1 e Punës në Shqipëri
+`;
+
+    const htmlJobCards = jobs.map(job => {
+      const company = job.employerId?.profile?.employerProfile?.companyName || 'Kompani';
+      const safeTitle = escapeHtml(job.title);
+      const safeCompany = escapeHtml(company);
+      const safeCity = escapeHtml(job.location?.city || '');
+      const safeCategory = escapeHtml(job.category || '');
+      const salaryLine = job.salary
+        ? `<div style="margin: 4px 0; font-size: 13px;"><strong>💰</strong> ${job.salary.min}-${job.salary.max} ${job.salary.currency}</div>`
+        : '';
+      return `
+        <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin: 12px 0; border-left: 4px solid #667eea;">
+          <div style="font-size: 17px; font-weight: bold; color: #667eea; margin-bottom: 6px;">${safeTitle}</div>
+          <div style="margin: 4px 0; font-size: 13px;"><strong>🏢</strong> ${safeCompany}</div>
+          <div style="margin: 4px 0; font-size: 13px;"><strong>📍</strong> ${safeCity}${job.location?.remote ? ' <span style="color:#28a745;">(distancë)</span>' : ''}${safeCategory ? ` · <span style="color:#666;">${safeCategory}</span>` : ''}</div>
+          ${salaryLine}
+          <div style="margin-top: 10px;">
+            <a href="https://advance.al/jobs/${job._id}?utm_source=email&utm_medium=digest&utm_campaign=job_match"
+               style="display: inline-block; background: #667eea; color: white; padding: 8px 18px; text-decoration: none; border-radius: 20px; font-size: 13px; font-weight: 600;">Shiko detajet →</a>
+          </div>
+        </div>`;
+    }).join('');
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="sq">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${escapeHtml(subject)}</title></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+      <h1 style="margin: 0;">🎯 ${count} ${count === 1 ? 'punë e re' : 'punë të reja'} për ju!</h1>
+      <p style="margin: 10px 0 0 0;">Përshëndetje ${safeFirstName}, gjenim pozicione që përputhen me profilin tuaj.</p>
+    </div>
+    <div style="background: #fff; padding: 24px; border: 1px solid #e0e0e0;">
+      ${htmlJobCards}
+      <p style="font-size: 14px; color: #666; margin-top: 24px;">
+        💡 <strong>Përse mora këtë email?</strong><br>
+        Keni aktivizuar njoftimet e punës dhe këto pozicione përputhen me profilin tuaj. Ne i grupojmë në një email për të mos ju shqetësuar shumë herë.
+      </p>
+    </div>
+    <div style="background: #f8f9fa; padding: 20px; border-radius: 0 0 10px 10px; font-size: 12px; color: #666;">
+      <p><strong>advance.al</strong> - Platforma #1 e Punës në Shqipëri</p>
+      <p><a href="https://advance.al/profile" style="color: #667eea; text-decoration: none;">⚙️ Menaxho njoftimet</a></p>
+    </div>
+  </div>
+</body></html>
+`;
+
+    return { subject, textContent, htmlContent };
+  }
+
   // Send job notification to a full jobseeker account (User model)
   async sendJobNotificationToFullUser(user, job) {
     try {
@@ -359,34 +441,35 @@ advance.al - Platforma #1 e Punës në Shqipëri
         }
       }
 
-      // ── 5. Notify full jobseeker accounts ────────────────────────────────────
-      for (let i = 0; i < allJobSeekers.length; i += batchSize) {
-        const batch = allJobSeekers.slice(i, i + batchSize);
-        const batchResults = await Promise.allSettled(
-          batch.map(user => this.sendJobNotificationToFullUser(user, job))
-        );
-
-        batchResults.forEach((result, index) => {
-          if (result.status === 'fulfilled') {
-            results.push(result.value);
-            result.value.success ? successCount++ : errorCount++;
-          } else {
-            logger.error(`JobSeeker batch error for ${batch[index]._id}:`, result.reason?.message || result.reason);
-            errorCount++;
-          }
-        });
-
-        if (i + batchSize < allJobSeekers.length) {
-          await new Promise(resolve => setTimeout(resolve, batchDelay));
+      // ── 5. Queue full jobseeker accounts for 2h digest (instead of immediate send) ──
+      // Per UX rationale: a busy afternoon with 5 matching jobs would otherwise
+      // produce 5 separate emails to the same user. Now we batch into a single
+      // digest. The flush cron in server.js sends when the user's oldest queued
+      // alert exceeds the digest window (default 2h).
+      let queuedCount = 0;
+      const digestModule = await import('../services/jobAlertsDigest.js');
+      // semanticJobSeekers retains { user, score } pairs; allJobSeekers is the
+      // capped doc array. Build a quick score lookup so we preserve match scores.
+      const scoreByUserId = new Map(
+        (semanticJobSeekers || []).map(e => [e.user._id.toString(), e.score])
+      );
+      for (const u of allJobSeekers) {
+        try {
+          const r = await digestModule.queueMatchForDigest(u, job, scoreByUserId.get(u._id.toString()) || 0);
+          if (r.queued) queuedCount++;
+        } catch (err) {
+          logger.error(`Digest queue error for jobseeker ${u._id}:`, err.message);
+          errorCount++;
         }
       }
 
       return {
         success: true,
-        message: `Notifications sent to ${successCount} users`,
+        message: `Notifications sent to ${successCount} users, queued ${queuedCount} jobseeker digests`,
         stats: {
           totalUsers: totalTargets,
           notificationsSent: successCount,
+          jobseekersQueuedForDigest: queuedCount,
           errors: errorCount,
           breakdown: {
             quickUsers: allQuickUsers.length,

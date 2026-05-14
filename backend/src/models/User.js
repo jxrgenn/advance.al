@@ -488,6 +488,16 @@ const userSchema = new Schema({
   refreshTokens: [{
     token: { type: String, required: true },
     createdAt: { type: Date, default: Date.now, expires: 604800 } // 7 days TTL
+  }],
+
+  // Per-jobseeker 2h digest queue for new-job notifications. New matches push
+  // here instead of sending immediately; the cron in server.js flushes them
+  // into a single digest email when the oldest entry is older than the window.
+  // (Top-level — not part of profile data; it's a transient notification queue.)
+  pendingJobAlerts: [{
+    jobId: { type: Schema.Types.ObjectId, ref: 'Job' },
+    matchScore: Number,
+    queuedAt: { type: Date, default: Date.now }
   }]
 }, {
   timestamps: true,
