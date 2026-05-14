@@ -915,6 +915,22 @@ router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter,
       // File upload succeeded — don't fail the whole request
     }
 
+    // When parsing succeeded: (a) persist AI-extracted languages directly. The
+    // frontend preview UI applies title/bio/skills/workExperience/education via
+    // separate endpoints, but languages have no UI surface and would otherwise
+    // be discarded. (b) trigger embedding regen so a CV upload alone refreshes
+    // the user's vector — defense-in-depth in case the user dismisses the
+    // frontend confirmation UI before applying the parsed fields.
+    if (parsedData) {
+      if (parsedData.languages?.length) {
+        await User.findByIdAndUpdate(req.user._id, {
+          $set: { 'profile.jobSeekerProfile.aiGeneratedCV.languages': parsedData.languages }
+        });
+      }
+      setImmediate(() => userEmbeddingService.generateJobSeekerEmbedding(req.user._id)
+        .catch(e => logger.error('Embedding regen error (parse-resume):', e.message)));
+    }
+
     res.json({
       success: true,
       message: parsedData
