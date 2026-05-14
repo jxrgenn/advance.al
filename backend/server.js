@@ -439,6 +439,17 @@ const server = app.listen(PORT, () => {
     }, flushIntervalMs));
   }).catch(() => {});
 
+  // Embedding-retry worker — guarantees every Job/jobseeker/QuickUser
+  // eventually reaches embedding.status='completed'. Runs every 10 min by
+  // default, per-entity cooldown of 1h (so a permanently-broken record
+  // is retried at most ~24×/day, not every tick).
+  import('./src/services/embeddingRetryWorker.js').then(({ retryAll }) => {
+    const interval = parseInt(process.env.EMBEDDING_RETRY_INTERVAL_MS || `${10 * 60 * 1000}`, 10);
+    activeIntervals.push(setInterval(() => {
+      retryAll().catch(err => logger.error('Embedding retry worker error:', err.message));
+    }, interval));
+  }).catch(() => {});
+
   // Account cleanup: permanently delete soft-deleted accounts after 30-day retention (privacy policy)
   import('./src/services/accountCleanup.js').then(({ purgeDeletedAccounts }) => {
     // Run daily

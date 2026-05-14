@@ -12,6 +12,7 @@ import crypto from 'crypto';
 import logger from '../config/logger.js';
 import { isValidEmbeddingVector } from '../utils/embeddingConfig.js';
 import recommendationReranker from '../services/recommendationReranker.js';
+import { logEvent } from '../services/eventLogger.js';
 
 const router = express.Router();
 
@@ -811,6 +812,18 @@ router.get('/:id', validateObjectId('id'), optionalAuth, async (req, res) => {
     // Increment view count fire-and-forget (don't block response)
     if (!req.user || !req.user._id.equals(job.employerId._id)) {
       Job.updateOne({ _id: job._id }, { $inc: { viewCount: 1 } }).catch(() => {});
+      // Log structured view event (deduplicated 10-min window per user+job).
+      // `source` derived from optional ?ref= query param so the frontend can
+      // mark whether the view came via recommendation / similar / search.
+      const refSource = typeof req.query.ref === 'string' && ['recommendation', 'search', 'similar', 'email'].includes(req.query.ref)
+        ? req.query.ref
+        : 'direct';
+      logEvent({
+        userId: req.user?.userType === 'jobseeker' ? req.user._id : null,
+        jobId: job._id,
+        type: 'view',
+        source: refSource,
+      });
     }
 
     res.json({
@@ -1486,7 +1499,12 @@ router.post('/:id/renew', validateObjectId('id'), authenticate, requireEmployer,
 
     job.status = requireApproval ? 'pending_approval' : 'active';
     job.postedAt = new Date();
-    job.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+    // expiresAt is set by the Job model's default (postedAt + JOB_TTL_DAYS).
+    // Explicitly recompute here for the repost path since we're reusing an
+    // existing Job document; the model pre-save hook would clamp anything
+    // longer than the policy maximum but recomputing avoids relying on it.
+    const { JOB_TTL_DAYS } = await import('../models/Job.js');
+    job.expiresAt = new Date(Date.now() + JOB_TTL_DAYS * 24 * 60 * 60 * 1000);
     job.viewCount = 0;
 
     await job.save();

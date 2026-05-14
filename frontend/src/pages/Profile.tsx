@@ -1861,6 +1861,29 @@ const Profile = () => {
                   </Card>
                 )}
 
+                {!currentCV && (
+                  <Card className="border-2 border-blue-200 bg-blue-50">
+                    <CardContent className="pt-6">
+                      <div className="flex items-start gap-3">
+                        <Sparkles className="h-6 w-6 text-blue-600 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-blue-900 mb-1">
+                            Ngarko CV-në për përputhje më të mira
+                          </p>
+                          <p className="text-xs text-blue-800 leading-relaxed">
+                            Pa CV, sistemi përputh vetëm sipas titullit dhe aftësive që ke
+                            shtuar. Ngarko CV-në që AI të analizojë të gjithë përvojën tënde
+                            dhe të të dërgojë vetëm punët më të mira për ty.
+                          </p>
+                          <p className="text-xs text-blue-700 mt-2">
+                            ↓ Klik te kutia më poshtë për të ngarkuar CV-në.
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 <Card data-tutorial="cv-upload">
                   <CardHeader>
                     <CardTitle>CV dhe Dokumente</CardTitle>

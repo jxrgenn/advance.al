@@ -1711,6 +1711,9 @@ router.post('/saved-jobs/:jobId', validateObjectId('jobId'), authenticate, requi
 
     await user.saveJob(req.params.jobId);
 
+    const { logEvent } = await import('../services/eventLogger.js');
+    logEvent({ userId: req.user._id, jobId: req.params.jobId, type: 'save', source: 'direct' });
+
     res.json({
       success: true,
       message: 'Puna u ruajt në të preferuarat!',
@@ -1749,6 +1752,9 @@ router.delete('/saved-jobs/:jobId', validateObjectId('jobId'), authenticate, req
     }
 
     await user.unsaveJob(req.params.jobId);
+
+    const { logEvent } = await import('../services/eventLogger.js');
+    logEvent({ userId: req.user._id, jobId: req.params.jobId, type: 'unsave', source: 'direct' });
 
     res.json({
       success: true,

@@ -382,6 +382,11 @@ class UserEmbeddingService {
    * @returns {Promise<Array<number>|null>} 1536-dim vector, or null if text too short
    */
   async generateQuickUserEmbedding(quickUserId) {
+    // Stamped on EVERY exit path (success / text-too-short / OpenAI error /
+    // generic error). The retry worker uses this for per-entity cooldown so a
+    // permanently-broken record (e.g. empty text) is retried at most once per
+    // cooldown window, not on every cron tick.
+    const attemptStartedAt = new Date();
     try {
       const quickUser = await QuickUser.findById(quickUserId);
       if (!quickUser) throw new Error(`QuickUser ${quickUserId} not found`);
@@ -392,7 +397,8 @@ class UserEmbeddingService {
         await QuickUser.findByIdAndUpdate(quickUserId, {
           $set: {
             'embedding.status': 'failed',
-            'embedding.error': 'Not enough interest/location data to generate embedding'
+            'embedding.error': 'Not enough interest/location data to generate embedding',
+            'embedding.lastAttemptedAt': attemptStartedAt
           }
         });
         return null;
@@ -400,7 +406,7 @@ class UserEmbeddingService {
 
       // Mark as processing
       await QuickUser.findByIdAndUpdate(quickUserId, {
-        $set: { 'embedding.status': 'processing' }
+        $set: { 'embedding.status': 'processing', 'embedding.lastAttemptedAt': attemptStartedAt }
       });
 
       // Reuse jobEmbeddingService's shared OpenAI client + rate limiter
@@ -411,7 +417,8 @@ class UserEmbeddingService {
           'embedding.vector': vector,
           'embedding.status': 'completed',
           'embedding.generatedAt': new Date(),
-          'embedding.error': null
+          'embedding.error': null,
+          'embedding.lastAttemptedAt': attemptStartedAt
         }
       });
 
@@ -420,7 +427,8 @@ class UserEmbeddingService {
       await QuickUser.findByIdAndUpdate(quickUserId, {
         $set: {
           'embedding.status': 'failed',
-          'embedding.error': error.message?.substring(0, 200)
+          'embedding.error': error.message?.substring(0, 200),
+          'embedding.lastAttemptedAt': attemptStartedAt
         }
       }).catch(() => {}); // swallow secondary error
 
@@ -435,6 +443,7 @@ class UserEmbeddingService {
    * @returns {Promise<Array<number>|null>}
    */
   async generateJobSeekerEmbedding(userId) {
+    const attemptStartedAt = new Date();
     try {
       const user = await User.findById(userId);
       if (!user) throw new Error(`User ${userId} not found`);
@@ -446,7 +455,8 @@ class UserEmbeddingService {
         await User.findByIdAndUpdate(userId, {
           $set: {
             'profile.jobSeekerProfile.embedding.status': 'failed',
-            'profile.jobSeekerProfile.embedding.error': 'Not enough profile data to generate embedding'
+            'profile.jobSeekerProfile.embedding.error': 'Not enough profile data to generate embedding',
+            'profile.jobSeekerProfile.embedding.lastAttemptedAt': attemptStartedAt
           }
         });
         return null;
@@ -454,7 +464,7 @@ class UserEmbeddingService {
 
       // Mark as processing
       await User.findByIdAndUpdate(userId, {
-        $set: { 'profile.jobSeekerProfile.embedding.status': 'processing' }
+        $set: { 'profile.jobSeekerProfile.embedding.status': 'processing', 'profile.jobSeekerProfile.embedding.lastAttemptedAt': attemptStartedAt }
       });
 
       const vector = await jobEmbeddingService.callOpenAIWithRetry(text, `js-${userId}`);
@@ -464,7 +474,8 @@ class UserEmbeddingService {
           'profile.jobSeekerProfile.embedding.vector': vector,
           'profile.jobSeekerProfile.embedding.status': 'completed',
           'profile.jobSeekerProfile.embedding.generatedAt': new Date(),
-          'profile.jobSeekerProfile.embedding.error': null
+          'profile.jobSeekerProfile.embedding.error': null,
+          'profile.jobSeekerProfile.embedding.lastAttemptedAt': attemptStartedAt
         }
       });
 
@@ -473,7 +484,8 @@ class UserEmbeddingService {
       await User.findByIdAndUpdate(userId, {
         $set: {
           'profile.jobSeekerProfile.embedding.status': 'failed',
-          'profile.jobSeekerProfile.embedding.error': error.message?.substring(0, 200)
+          'profile.jobSeekerProfile.embedding.error': error.message?.substring(0, 200),
+          'profile.jobSeekerProfile.embedding.lastAttemptedAt': attemptStartedAt
         }
       }).catch(() => {});
 

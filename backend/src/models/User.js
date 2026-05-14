@@ -145,7 +145,12 @@ const jobSeekerProfileSchema = new Schema({
     vector:      { type: [Number], select: false },  // excluded from normal queries (large field)
     status:      { type: String, enum: ['pending', 'processing', 'completed', 'failed'], default: 'pending' },
     generatedAt: { type: Date },
-    error:       { type: String }
+    error:       { type: String },
+    // Stamped by userEmbeddingService on every generate attempt (success OR failure).
+    // The retry worker uses this for per-entity cooldown (default 1h between
+    // attempts on the same record) so a permanently-broken record can't burn
+    // OpenAI budget by being retried every cron tick.
+    lastAttemptedAt: { type: Date }
   },
 
   // AI-Generated CV Data

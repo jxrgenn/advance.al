@@ -4,6 +4,12 @@ import logger from '../config/logger.js';
 
 const { Schema } = mongoose;
 
+// Hard product policy: a job posting is live for at most 21 days. Default
+// expiresAt + clamp logic + the hourly expiry cron all reference this.
+// Override only via env if the policy ever changes.
+const JOB_TTL_DAYS = parseInt(process.env.JOB_TTL_DAYS || '21', 10);
+export { JOB_TTL_DAYS };
+
 const jobSchema = new Schema({
   employerId: {
     type: Schema.Types.ObjectId,
@@ -147,8 +153,9 @@ const jobSchema = new Schema({
   expiresAt: {
     type: Date,
     default: function() {
-      // 30 days from now
-      return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      // 21 days from now — hard product policy. Employers can extend via
+      // re-publishing, but no single posting stays live past 21 days.
+      return new Date(Date.now() + JOB_TTL_DAYS * 24 * 60 * 60 * 1000);
     }
   },
   isDeleted: {
@@ -413,10 +420,21 @@ jobSchema.pre('validate', async function(next) {
   next();
 });
 
-// Auto-expire jobs after 30 days
+// Auto-expire jobs after JOB_TTL_DAYS days (default 21). Also clamps any
+// caller-supplied expiresAt that exceeds postedAt + JOB_TTL_DAYS — so even
+// if an employer or admin tries to set a 60-day expiry via PUT, it gets
+// silently capped to the policy maximum.
 jobSchema.pre('save', function(next) {
   if (this.isNew && !this.expiresAt) {
-    this.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    this.expiresAt = new Date(Date.now() + JOB_TTL_DAYS * 24 * 60 * 60 * 1000);
+  }
+  // Clamp at the policy maximum: postedAt + JOB_TTL_DAYS. Applies on create
+  // and on every save where expiresAt is being modified.
+  if (this.isModified('expiresAt') && this.postedAt && this.expiresAt) {
+    const maxAllowed = new Date(new Date(this.postedAt).getTime() + JOB_TTL_DAYS * 24 * 60 * 60 * 1000);
+    if (this.expiresAt > maxAllowed) {
+      this.expiresAt = maxAllowed;
+    }
   }
   // Track if location-count-relevant fields changed (for post-save hook)
   this._locationCountChanged = this.isNew || this.isModified('status') || this.isModified('isDeleted') || this.isModified('location.city');

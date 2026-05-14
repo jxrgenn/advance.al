@@ -164,7 +164,10 @@ const quickUserSchema = new Schema({
     vector:      { type: [Number], select: false },  // excluded from normal queries (large field)
     status:      { type: String, enum: ['pending', 'processing', 'completed', 'failed'], default: 'pending' },
     generatedAt: { type: Date },
-    error:       { type: String }
+    error:       { type: String },
+    // Stamped by userEmbeddingService on every generate attempt (success OR failure).
+    // Used by the retry worker for per-entity cooldown (default 1h).
+    lastAttemptedAt: { type: Date }
   }
 }, {
   timestamps: true,

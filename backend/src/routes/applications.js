@@ -161,6 +161,15 @@ router.post('/apply', authenticate, requireJobSeeker, applyLimiter, applyValidat
 
     await application.save();
 
+    // Engagement event — fire-and-forget
+    const { logEvent } = await import('../services/eventLogger.js');
+    logEvent({
+      userId: req.user._id,
+      jobId,
+      type: 'apply',
+      source: typeof req.body.source === 'string' ? req.body.source : 'direct',
+    });
+
     // Populate application data for response
     await application.populate([
       {
