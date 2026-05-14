@@ -327,6 +327,21 @@ quickUserSchema.statics.findMatchesForJob = function(job) {
     isActive: true,
     convertedToFullUser: false,
 
+    // Keyword path is a FALLBACK only: skip users who already have a completed
+    // embedding — those are handled by the semantic path in
+    // userEmbeddingService.findSemanticMatchesForJob, which produces
+    // higher-quality vector-based matches. Partitioning these two populations
+    // on embedding.status prevents double-notification and makes the dedup
+    // in notificationService a defensive backstop rather than load-bearing.
+    $and: [
+      {
+        $or: [
+          { 'embedding.status': { $exists: false } },
+          { 'embedding.status': { $ne: 'completed' } }
+        ]
+      }
+    ],
+
     // Location match
     $or: [
       { location: job.location.city }
@@ -344,14 +359,14 @@ quickUserSchema.statics.findMatchesForJob = function(job) {
     jobKeywords.push(...job.tags);
   }
 
-  query.$and = [
+  query.$and.push(
     {
       $or: [
         { interests: { $in: jobKeywords } },
         { customInterests: { $in: jobKeywords.map(k => new RegExp(escapeRegex(k), 'i')) } }
       ]
     }
-  ];
+  );
 
   // Apply frequency-based filtering
   const now = new Date();

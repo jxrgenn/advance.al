@@ -143,6 +143,60 @@ describe('notificationService.notifyMatchingUsers', () => {
     expect(r.stats.breakdown.jobSeekers).toBeGreaterThanOrEqual(1);
   });
 
+  it('QuickUsers with completed embeddings go through semantic path ONLY, never keyword (PR-G partition)', async () => {
+    // Regression for PR-G: after the keyword-fallback filter, a QuickUser with
+    // a completed embedding must NEVER be returned by QuickUser.findMatchesForJob.
+    // The dedup logic in notifyMatchingUsers stays as a defensive backstop but
+    // shouldn't be load-bearing anymore.
+    const { user: emp } = await createEmployer();
+    const job = await createJob(emp, {
+      category: 'Teknologji', city: 'Tiranë',
+      tags: ['react', 'frontend'],
+    });
+    job.embedding = {
+      vector: vectorAt(21), model: 'text-embedding-3-small', dimensions: 1536,
+      generatedAt: new Date(), status: 'completed', retries: 0, error: null,
+    };
+    await job.save();
+
+    // Two QuickUsers — both would keyword-match (location + interest). But one has
+    // a completed embedding (PR-G semantic territory) and the other doesn't.
+    const semanticOnly = await QuickUser.create({
+      firstName: 'Semantic', lastName: 'Only',
+      email: 'semantic-only@example.com',
+      location: 'Tiranë',
+      interests: ['Teknologji'],
+      embedding: {
+        vector: vectorAt(21), model: 'text-embedding-3-small', dimensions: 1536,
+        generatedAt: new Date(), status: 'completed', error: null,
+      },
+    });
+    const keywordOnly = await QuickUser.create({
+      firstName: 'Keyword', lastName: 'Only',
+      email: 'keyword-only@example.com',
+      location: 'Tiranë',
+      interests: ['Teknologji'],
+      embedding: { status: 'failed', error: 'parse blew up' },
+    });
+
+    // Sanity check: keyword path only returns the user without a completed embedding
+    const keywordHits = await QuickUser.findMatchesForJob(job);
+    expect(keywordHits.map(u => u.email).sort()).toEqual(['keyword-only@example.com']);
+
+    // End-to-end: notifyMatchingUsers reaches both users but via different paths
+    const r = await notificationService.notifyMatchingUsers(job);
+    expect(r.success).toBe(true);
+    expect(r.stats.breakdown.quickUsers).toBe(2); // 1 semantic + 1 keyword
+    expect(r.stats.breakdown.semanticMatches).toBeGreaterThanOrEqual(1);
+    expect(r.stats.breakdown.keywordMatches).toBe(1);
+
+    // Each user notified exactly once (no double-send via the partition)
+    const refreshSem = await QuickUser.findById(semanticOnly._id);
+    const refreshKey = await QuickUser.findById(keywordOnly._id);
+    expect(refreshSem.notificationCount).toBe(1);
+    expect(refreshKey.notificationCount).toBe(1);
+  });
+
   it('deduplicates QuickUsers found by both semantic and keyword matching', async () => {
     const { user: emp } = await createEmployer();
     const job = await createJob(emp, {

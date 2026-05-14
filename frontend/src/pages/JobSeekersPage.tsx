@@ -35,10 +35,11 @@ import {
   Modal,
   Loader,
   FileInput,
+  Alert,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { Play, Users, Bell, HelpCircle, X, Lightbulb, CheckCircle, ArrowRight, Briefcase, Zap, UserPlus, FileText, Send, Download, Eye, EyeOff, Mail, RefreshCw, Upload } from "lucide-react";
+import { Play, Users, Bell, HelpCircle, X, Lightbulb, CheckCircle, ArrowRight, Briefcase, Zap, UserPlus, FileText, Send, Download, Eye, EyeOff, Mail, RefreshCw, Upload, Sparkles } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi, quickUsersApi, cvApi } from "@/lib/api";
 import { validateForm, jobSeekerSignupRules, formatValidationErrors, normalizeAlbanianPhone } from "@/lib/formValidation";
@@ -1462,14 +1463,32 @@ Telefoni: _______________`;
                     </Box>
 
                     <Box>
+                      <Alert
+                        icon={<Sparkles size={18} />}
+                        color={resumeFile ? 'green' : 'blue'}
+                        variant="light"
+                        mb="xs"
+                      >
+                        <Text size="sm" fw={500}>
+                          {resumeFile
+                            ? '✓ CV e ngarkuar — do të marrësh përputhje të personalizuara'
+                            : 'Ngarko CV-në për përputhje të personalizuara'}
+                        </Text>
+                        {!resumeFile && (
+                          <Text size="xs" c="dimmed" mt={4}>
+                            Pa CV do të marrësh vetëm njoftime bazë sipas interesave. Me CV, AI analizon
+                            përvojën dhe aftësitë e tua dhe të dërgon vetëm punët më të mira për ty.
+                          </Text>
+                        )}
+                      </Alert>
                       <FileInput
-                        placeholder="Ngarko CV-në tënde (PDF ose DOCX, opsionale)"
-                        description="Ngarko CV-në tënde për të rritur shanset e përputhjes me punë"
+                        placeholder="Zgjidh skedarin (PDF ose DOCX)"
                         accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
                         leftSection={<Upload size={16} />}
                         value={resumeFile}
                         onChange={setResumeFile}
                         clearable
+                        size="md"
                       />
                       {resumeFile && resumeFile.size > 5 * 1024 * 1024 && (
                         <Text size="xs" c="red" mt="xs">
