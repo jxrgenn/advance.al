@@ -86,6 +86,9 @@ const EmployerRegister = () => {
     if (!location.trim()) return 'Vendndodhja është e detyrueshme';
     if (!industry) return 'Sektori i kompanisë është i detyrueshëm';
     if (industry === 'Tjetër' && !customIndustry.trim()) return 'Shkruani sektorin e kompanisë';
+    const descLen = description.trim().length;
+    if (descLen < 400) return `Përshkrimi i kompanisë duhet të ketë të paktën 400 karaktere (aktualisht ${descLen})`;
+    if (descLen > 1000) return `Përshkrimi i kompanisë nuk mund të ketë më shumë se 1000 karaktere (aktualisht ${descLen})`;
     return null;
   };
 
@@ -355,13 +358,29 @@ const EmployerRegister = () => {
                       </select>
                     </div>
 
-                    <Textarea
-                      id="description"
-                      placeholder="Përshkrimi i kompanisë (opsional)"
-                      rows={4}
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                    />
+                    <div className="space-y-1">
+                      <Textarea
+                        id="description"
+                        placeholder="Përshkruani kompaninë: çfarë bëni, vlerat tuaja, kulturën dhe pse dikush do të donte të punonte tek ju. Minimumi 400 karaktere."
+                        rows={6}
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        required
+                        minLength={400}
+                        maxLength={1000}
+                      />
+                      <p
+                        className={`text-xs ${
+                          description.trim().length === 0
+                            ? 'text-muted-foreground'
+                            : description.trim().length < 400
+                              ? 'text-red-500'
+                              : 'text-green-600'
+                        }`}
+                      >
+                        {description.trim().length}/400 minimumi {description.trim().length > 1000 ? '(mbi 1000 — shkurto)' : ''}
+                      </p>
+                    </div>
 
                     <div className="flex gap-3">
                       <Button type="button" variant="outline" onClick={prevStep} className="flex-1">

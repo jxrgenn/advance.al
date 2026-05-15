@@ -99,7 +99,7 @@ describe('auth.js — success paths', () => {
         companyName: 'TestCo',
         industry: 'Tech',
         companySize: '11-50',
-        description: 'A test company',
+        description: 'A test company with a detailed enough description to satisfy the new 400 character minimum requirement that was added during the post-Phase-3 QA cleanup. This text exists purely for test fixtures and pads out the field to meet validator constraints without affecting the assertions further down which only check companyName, companySize, and userType. Keep this padding stable so future test maintenance is obvious.',
         website: 'testco.al',
       });
 

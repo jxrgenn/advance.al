@@ -266,7 +266,15 @@ const registerValidation = [
   body('phone')
     .optional()
     .matches(/^\+\d{8,}$/)
-    .withMessage('Numri i telefonit duhet të ketë të paktën 8 shifra')
+    .withMessage('Numri i telefonit duhet të ketë të paktën 8 shifra'),
+  // Employer-only: company description is required at signup and must be 400-1000 chars.
+  // Existing employers with shorter/empty descriptions are unaffected (validator on User
+  // model only fires when a value is provided + only on save).
+  body('description')
+    .if(body('userType').equals('employer'))
+    .trim()
+    .isLength({ min: 400, max: 1000 })
+    .withMessage('Përshkrimi i kompanisë duhet të ketë midis 400-1000 karaktere'),
 ];
 
 // Login validation rules

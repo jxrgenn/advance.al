@@ -287,7 +287,7 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto p-4 sm:p-6 m-4">
+      <DialogContent className="max-w-2xl w-[calc(100vw-1rem)] sm:w-auto max-h-[92vh] sm:max-h-[85vh] overflow-y-auto p-3 sm:p-6 mx-2 sm:mx-4 my-2 sm:my-4">
         <DialogHeader className="space-y-3 mb-1">
           <DialogTitle className="flex items-center gap-2">
             <Send className="h-5 w-5 text-primary" />

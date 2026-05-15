@@ -121,7 +121,8 @@ export async function createEmployer(overrides = {}) {
           'Arsim', 'Ndërtim', 'Turizëm'
         ]),
         companySize: faker.helpers.arrayElement(['1-10', '11-50', '51-200', '201-500', '501+']),
-        description: faker.company.catchPhrase(),
+        // Long enough to satisfy the 400-char minimum added in the post-Phase-3 QA cleanup.
+        description: faker.lorem.paragraphs(3, ' '),
         website: faker.internet.url(),
         logo: null,
         verified: isVerified,

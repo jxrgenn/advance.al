@@ -55,6 +55,7 @@ describe('auth.js — error / edge branches', () => {
           companyName: 'Co',
           industry: 'Tech',
           companySize: '999-9999', // invalid enum
+          description: 'A padding string for the 400-character employer description floor introduced in the post-Phase-3 QA cleanup. This text exists purely to satisfy the description validator and is not under test here; the assertion targets the manual madhësia/companySize branch downstream of the express-validator chain (line 338 in auth.js). Keep this fixture string at least 400 characters so the chain falls through to the manual check that this test exercises.',
         });
       expect(r.status).toBe(400);
       expect(r.body.message).toMatch(/madhësia/i);
