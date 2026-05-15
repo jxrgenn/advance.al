@@ -283,6 +283,10 @@ export default async function handler(req, res) {
     const out = await handleRoute(req);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', out.cacheControl || 's-maxage=300');
+    // CDN must partition cache by UA — the rewrite that lands here is UA-gated,
+    // so the same path serves different bodies to bots vs humans. Without Vary
+    // a primed edge node can serve the wrong cached body to the wrong audience.
+    res.setHeader('Vary', 'User-Agent');
     // Mark as bot-served so logs/dashboards can distinguish from SPA traffic.
     res.setHeader('X-Bot-Prerender', '1');
     return res.status(out.status || 200).send(out.html);
@@ -304,6 +308,7 @@ export default async function handler(req, res) {
 </html>`;
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    res.setHeader('Vary', 'User-Agent');
     res.setHeader('X-Bot-Prerender-Error', '1');
     return res.status(200).send(minimal);
   }
