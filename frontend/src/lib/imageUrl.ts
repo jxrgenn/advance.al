@@ -17,7 +17,10 @@ export function optimizedCloudinaryUrl(
 ): string | undefined {
   if (!url || typeof url !== 'string') return url ?? undefined;
   if (!url.includes('res.cloudinary.com')) return url;
-  if (url.includes('/upload/f_auto') || url.includes('/upload/q_auto')) return url; // already optimized
+  // Only skip if the URL already has f_auto applied (the most important
+  // transform). A URL with just q_auto or just w_X should still get f_auto
+  // injected so we don't ship JPEGs when AVIF/WebP is available.
+  if (/\/upload\/[^/]*\bf_auto\b[^/]*\//.test(url)) return url;
   const { width, height, quality = 'auto', crop = 'fill' } = opts;
   const transforms = [
     'f_auto',

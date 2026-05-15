@@ -244,7 +244,7 @@ const SavedJobs = () => {
                     onApply={handleApply}
                     hasApplied={appliedJobIds.includes(job._id)}
                     initialSaved={true}
-                    onUnsave={() => handleUnsaveJob(job._id)}
+                    onUnsave={handleUnsaveJob}
                   />
                 ))}
               </div>
@@ -267,7 +267,7 @@ const SavedJobs = () => {
                         onApply={handleApply}
                         hasApplied={appliedJobIds.includes(job._id)}
                         initialSaved={true}
-                        onUnsave={() => handleUnsaveJob(job._id)}
+                        onUnsave={handleUnsaveJob}
                       />
                     </div>
                   ))}

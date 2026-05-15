@@ -13,6 +13,7 @@ import { createEmployer, createJobseeker, createVerifiedEmployer } from '../fact
 import { createJob, createJobs, createPremiumJob, createRemoteJob } from '../factories/job.factory.js';
 import { createAuthHeaders, createPublicHeaders } from '../helpers/auth.helper.js';
 import Job from '../../src/models/Job.js';
+import SystemConfiguration from '../../src/models/SystemConfiguration.js';
 
 describe('Jobs API - Integration Tests', () => {
   beforeAll(async () => {
@@ -68,6 +69,56 @@ describe('Jobs API - Integration Tests', () => {
       expect(response.body.data.job.employerId._id).toBe(employer._id.toString());
       expect(response.body.data.job.slug).toMatch(/senior-software-engineer/);
       expect(['active', 'pending_payment']).toContain(response.body.data.job.status);
+    });
+
+    // QA-D4: paywall trigger — when payment_enabled=true and the employer
+    // is not whitelisted, the created job must be in pending_payment so the
+    // frontend can route to /payment/job/:id instead of publishing.
+    it('paywall: status=pending_payment when payment_enabled=true and employer not whitelisted', async () => {
+      await SystemConfiguration.updateOne(
+        { key: 'payment_enabled' },
+        { $set: { value: true } },
+        { upsert: true }
+      );
+      // Re-seed the doc fully if upsert created a partial — minimal shape
+      // matches the seed in src/models/SystemConfiguration.js.
+      const existing = await SystemConfiguration.findOne({ key: 'payment_enabled' });
+      if (!existing.dataType) {
+        await SystemConfiguration.updateOne(
+          { key: 'payment_enabled' },
+          { $set: { category: 'payment', dataType: 'boolean', value: true, defaultValue: true, validation: { required: true } } }
+        );
+      }
+
+      const { user: employer } = await createVerifiedEmployer({ freePostingEnabled: false });
+      const jobData = {
+        title: 'Paywalled Position',
+        description: 'A job that should land in pending_payment because the system has payment_enabled=true and this employer is not whitelisted via freePostingEnabled.',
+        category: 'Teknologji',
+        jobType: 'full-time',
+        location: { city: 'Tiranë' },
+        platformCategories: {
+          diaspora: false, ngaShtepia: false, partTime: false,
+          administrata: false, sezonale: false
+        },
+        requirements: ['1+ years'],
+      };
+
+      const response = await request(app)
+        .post('/api/jobs')
+        .set(createAuthHeaders(employer))
+        .send(jobData);
+
+      expect(response.status).toBe(201);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.job.status).toBe('pending_payment');
+      expect(response.body.data.job.paymentRequired).toBeGreaterThan(0);
+
+      // Restore for sibling tests in this describe-block that don't expect paywall.
+      await SystemConfiguration.updateOne(
+        { key: 'payment_enabled' },
+        { $set: { value: false } }
+      );
     });
 
     it('TC-20.4: should reject job creation without authentication', async () => {
