@@ -307,6 +307,27 @@ const handleValidationErrors = (req, res, next) => {
   next();
 };
 
+// @route   GET /api/auth/check-email
+// @desc    Boolean availability check for an email. Returns {available} only —
+//          no info about user type, status, or anything else. Used by
+//          frontend signup forms to surface "already registered" inline
+//          on blur (no need to wait for full submit). Rate-limited.
+// @access  Public
+router.get('/check-email', authLimiter, async (req, res) => {
+  const raw = req.query.email;
+  if (typeof raw !== 'string' || !/^\S+@\S+\.\S+$/.test(raw)) {
+    return res.json({ available: true });  // do not leak validity info on invalid input
+  }
+  try {
+    const email = raw.trim().toLowerCase();
+    const exists = await User.exists({ email });
+    res.json({ available: !exists });
+  } catch (err) {
+    logger.error('auth/check-email error', { error: err.message });
+    res.status(500).json({ available: true });  // fail-open: never block on infra hiccup
+  }
+});
+
 // @route   POST /api/auth/initiate-registration
 // @desc    Step 1: Validate data, cache it, send verification code
 // @access  Public

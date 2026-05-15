@@ -10,6 +10,7 @@ import { Building, Mail, Lock, MapPin, Users, CreditCard, Briefcase, Eye, EyeOff
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi } from "@/lib/api";
+import { useEmailAvailability } from "@/hooks/useEmailAvailability";
 
 const INDUSTRIES = [
   'Teknologji Informacioni',
@@ -70,6 +71,7 @@ const EmployerRegister = () => {
   const [industry, setIndustry] = useState('');
   const [customIndustry, setCustomIndustry] = useState('');
   const [description, setDescription] = useState('');
+  const emailAvailability = useEmailAvailability();
 
   const validateStep1 = (): string | null => {
     if (!companyName.trim()) return 'Emri i kompanisë është i detyrueshëm';
@@ -77,6 +79,7 @@ const EmployerRegister = () => {
     if (!contactLastName.trim()) return 'Mbiemri i personit të kontaktit është i detyrueshëm';
     if (!email.trim()) return 'Email-i është i detyrueshëm';
     if (!/\S+@\S+\.\S+/.test(email)) return 'Email-i nuk është i vlefshëm';
+    if (emailAvailability.status === 'taken') return 'Ky email është tashmë i regjistruar. Provoni hyrjen.';
     if (password.length < 8) return 'Fjalëkalimi duhet të ketë të paktën 8 karaktere';
     if (password !== confirmPassword) return 'Fjalëkalimet nuk përputhen';
     return null;
@@ -242,17 +245,33 @@ const EmployerRegister = () => {
                       />
                     </div>
 
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="company-email"
-                        type="email"
-                        placeholder="Email i kompanisë *"
-                        className="pl-10"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                      />
+                    <div className="space-y-1">
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          id="company-email"
+                          type="email"
+                          placeholder="Email i kompanisë *"
+                          className="pl-10"
+                          value={email}
+                          onChange={(e) => {
+                            setEmail(e.target.value);
+                            if (emailAvailability.status !== 'idle') emailAvailability.reset();
+                          }}
+                          onBlur={() => emailAvailability.check(email)}
+                          required
+                          aria-invalid={emailAvailability.status === 'taken'}
+                        />
+                      </div>
+                      {emailAvailability.status === 'taken' && (
+                        <p className="text-sm text-red-500">
+                          Ky email është tashmë i regjistruar.{' '}
+                          <Link to="/login" className="underline font-medium">Hyni në llogari</Link>
+                        </p>
+                      )}
+                      {emailAvailability.status === 'checking' && (
+                        <p className="text-xs text-muted-foreground">Po kontrollojmë email-in…</p>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

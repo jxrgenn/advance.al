@@ -349,6 +349,18 @@ const apiRequest = async <T>(
 
 // Authentication API
 export const authApi = {
+  // Boolean email-availability check (used by signup forms onBlur).
+  // Returns { available: true } on invalid input / network errors so the form
+  // never blocks on a hiccup — the real submit is the authoritative check.
+  checkEmail: async (email: string): Promise<{ available: boolean }> => {
+    try {
+      const r = (await apiRequest<{ available: boolean }>(`/auth/check-email?email=${encodeURIComponent(email)}`, { method: 'GET' })) as unknown as { available?: boolean };
+      return { available: typeof r.available === 'boolean' ? r.available : true };
+    } catch {
+      return { available: true };
+    }
+  },
+
   // Step 1: Validate data and send verification code
   initiateRegistration: async (userData: {
     email: string;

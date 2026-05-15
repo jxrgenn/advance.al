@@ -46,6 +46,7 @@ import { authApi, quickUsersApi, cvApi } from "@/lib/api";
 import { validateForm, jobSeekerSignupRules, formatValidationErrors, normalizeAlbanianPhone } from "@/lib/formValidation";
 import { InputWithCounter } from "@/components/CharacterCounter";
 import { JOB_CATEGORIES } from "@/constants/jobCategories";
+import { useEmailAvailability } from "@/hooks/useEmailAvailability";
 
 const JobSeekersPage = () => {
   const navigate = useNavigate();
@@ -117,6 +118,10 @@ const JobSeekersPage = () => {
 
   // Use ref to track scroll lock state - refs can be read synchronously by event listeners
   const isScrollLockedRef = useRef(false);
+
+  // Separate availability checkers per form so blurring one doesn't reset the other.
+  const fullEmailAvail = useEmailAvailability();
+  const quickEmailAvail = useEmailAvailability();
 
   // Mantine form for full registration
   const fullForm = useForm({
@@ -319,6 +324,17 @@ Telefoni: _______________`;
     try {
       setLoading(true);
 
+      if (fullEmailAvail.status === 'taken') {
+        notifications.show({
+          title: 'Email i regjistruar',
+          message: 'Ky email është tashmë i regjistruar. Provoni hyrjen ose përdorni një email tjetër.',
+          color: 'red',
+          autoClose: 6000,
+        });
+        setLoading(false);
+        return;
+      }
+
       // Validate using validation system
       const validationData = {
         firstName: values.firstName,
@@ -434,6 +450,17 @@ Telefoni: _______________`;
   const handleQuickSubmit = async (values: typeof quickForm.values) => {
     try {
       setLoading(true);
+
+      if (quickEmailAvail.status === 'taken') {
+        notifications.show({
+          title: 'Email i regjistruar',
+          message: 'Ky email është tashmë i regjistruar. Provoni hyrjen ose përdorni një email tjetër.',
+          color: 'red',
+          autoClose: 6000,
+        });
+        setLoading(false);
+        return;
+      }
 
       // Validate using validation system
       const validationData = {
@@ -1287,6 +1314,12 @@ Telefoni: _______________`;
                         placeholder="Email *"
                         type="email"
                         {...fullForm.getInputProps('email')}
+                        onBlur={() => fullEmailAvail.check(fullForm.values.email)}
+                        onChange={(e) => {
+                          fullForm.setFieldValue('email', e.currentTarget.value);
+                          if (fullEmailAvail.status !== 'idle') fullEmailAvail.reset();
+                        }}
+                        error={fullEmailAvail.status === 'taken' ? 'Ky email është tashmë i regjistruar. Provoni hyrjen.' : (fullForm.errors.email as string | undefined)}
                         required
                       />
                     </Box>
@@ -1415,6 +1448,12 @@ Telefoni: _______________`;
                         placeholder="Email *"
                         type="email"
                         {...quickForm.getInputProps('email')}
+                        onBlur={() => quickEmailAvail.check(quickForm.values.email)}
+                        onChange={(e) => {
+                          quickForm.setFieldValue('email', e.currentTarget.value);
+                          if (quickEmailAvail.status !== 'idle') quickEmailAvail.reset();
+                        }}
+                        error={quickEmailAvail.status === 'taken' ? 'Ky email është tashmë i regjistruar. Provoni hyrjen.' : (quickForm.errors.email as string | undefined)}
                         required
                       />
                     </Box>
