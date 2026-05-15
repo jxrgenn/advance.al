@@ -24,19 +24,32 @@ describe('applications.js — POST /apply validation 400 (L46-54)', () => {
   afterEach(async () => { await clearTestDB(); await seedLocations(); });
   afterAll(async () => { await closeTestDB(); });
 
-  it('returns 400 with field-level error when jobId is not a Mongo ID', async () => {
+  // Phase B (PR-L) — jobId validator was relaxed from isMongoId() to isString()
+  // so the apply route can accept slug URLs. Format-only failures are now
+  // limited to empty/too-long strings; unknown slugs return 404 from the
+  // dual-lookup handler instead of 400 from the validator.
+  it('returns 400 when jobId is empty', async () => {
     const { user: js } = await createJobseeker({ emailVerified: true });
     const r = await request(app)
       .post('/api/applications/apply')
       .set(createAuthHeaders(js))
-      .send({ jobId: 'not-a-mongo-id', applicationMethod: 'one_click' });
+      .send({ jobId: '', applicationMethod: 'one_click' });
 
     expect(r.status).toBe(400);
     expect(r.body.success).toBe(false);
-    expect(r.body.message).toMatch(/Gabime në validim/);
-    expect(Array.isArray(r.body.errors)).toBe(true);
     expect(r.body.errors.some(e => e.field === 'jobId')).toBe(true);
-    expect(r.body.errors.some(e => /pavlefshme/.test(e.message))).toBe(true);
+  });
+
+  it('returns 404 when jobId is a syntactically-valid string with no matching slug or _id', async () => {
+    const { user: js } = await createJobseeker({ emailVerified: true });
+    const r = await request(app)
+      .post('/api/applications/apply')
+      .set(createAuthHeaders(js))
+      .send({ jobId: 'definitely-no-such-slug-exists', applicationMethod: 'one_click' });
+
+    expect(r.status).toBe(404);
+    expect(r.body.success).toBe(false);
+    expect(r.body.message).toMatch(/Puna nuk u gjet|nuk u gjet/i);
   });
 
   it('returns 400 when applicationMethod is not one_click/custom_form', async () => {

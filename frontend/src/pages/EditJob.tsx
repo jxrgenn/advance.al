@@ -49,6 +49,7 @@ const EditJob = () => {
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingJob, setLoadingJob] = useState(true);
+  const [loadedJobId, setLoadedJobId] = useState<string | null>(null);
   const [requirements, setRequirements] = useState<string[]>(['']);
   const [benefits, setBenefits] = useState<string[]>(['']);
   const [tags, setTags] = useState<string[]>(['']);
@@ -111,6 +112,7 @@ const EditJob = () => {
 
       if (response.success && response.data) {
         const job = response.data.job;
+        setLoadedJobId(job._id);
 
         const mapJobTypeFromBackend = (type: string) => type;
         const mapCategoryFromBackend = (category: string) => category;
@@ -391,7 +393,10 @@ const EditJob = () => {
           : []
       };
 
-      const response = await jobsApi.updateJob(id!, jobData);
+      // Use the canonical ObjectId captured at load time — the URL `id` may now
+      // be a slug after the Phase B SEO migration, and PUT /api/jobs/:id still
+      // requires ObjectId validation.
+      const response = await jobsApi.updateJob(loadedJobId || id!, jobData);
 
       if (response.success) {
         notifications.show({

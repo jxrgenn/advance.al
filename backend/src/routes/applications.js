@@ -6,7 +6,7 @@ import { authenticate, requireJobSeeker, requireEmployer } from '../middleware/a
 import resendEmailService from '../lib/resendEmailService.js';
 import { cacheDelete } from '../config/redis.js';
 import mongoose from 'mongoose';
-import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
+import { sanitizeLimit, validateObjectId, stripHtml, isObjectIdString } from '../utils/sanitize.js';
 import logger from '../config/logger.js';
 
 const router = express.Router();
@@ -57,10 +57,15 @@ const handleValidationErrors = (req, res, next) => {
 };
 
 // Application validation
+// NOTE: `jobId` accepts either a 24-char hex ObjectId or a URL slug. The
+// handler resolves it to the canonical _id via dual-lookup. Phase B SEO
+// migration (slug-based URLs) required this — old isMongoId() validation
+// would 400 any slug-driven apply request.
 const applyValidation = [
   body('jobId')
-    .isMongoId()
-    .withMessage('ID e punës është e pavlefshme'),
+    .isString().withMessage('ID e punës është e pavlefshme')
+    .trim()
+    .isLength({ min: 1, max: 200 }).withMessage('ID e punës është e pavlefshme'),
   body('applicationMethod')
     .isIn(['one_click', 'custom_form'])
     .withMessage('Metoda e aplikimit duhet të jetë one_click ose custom_form'),
@@ -83,7 +88,7 @@ const applyValidation = [
 // @access  Private (Job Seekers only)
 router.post('/apply', authenticate, requireJobSeeker, applyLimiter, applyValidation, handleValidationErrors, async (req, res) => {
   try {
-    const { jobId, applicationMethod, customAnswers = [], coverLetter = '' } = req.body;
+    let { jobId, applicationMethod, customAnswers = [], coverLetter = '' } = req.body;
 
     // Soft gate: require verified email to apply
     if (!req.user.emailVerified) {
@@ -93,9 +98,14 @@ router.post('/apply', authenticate, requireJobSeeker, applyLimiter, applyValidat
       });
     }
 
-    // Check if job exists and is active
+    // Dual-lookup: jobId may be a 24-char hex ObjectId OR a slug (Phase B SEO).
+    // Resolve to the canonical job document, then use its _id for everything
+    // downstream (existence check, dedup query, Application insert, Notification).
+    const jobQuery = isObjectIdString(jobId)
+      ? { _id: jobId }
+      : { slug: jobId };
     const job = await Job.findOne({
-      _id: jobId,
+      ...jobQuery,
       status: 'active',
       isDeleted: false,
       expiresAt: { $gt: new Date() }
@@ -107,6 +117,11 @@ router.post('/apply', authenticate, requireJobSeeker, applyLimiter, applyValidat
         message: 'Puna nuk u gjet ose nuk është më aktive'
       });
     }
+
+    // Reassign jobId to the canonical ObjectId — every subsequent operation
+    // (Application insert, dedup query, Notification, eventLogger) is keyed
+    // on the real _id, never the slug.
+    jobId = job._id;
 
     // Check if user already applied
     const existingApplication = await Application.findOne({

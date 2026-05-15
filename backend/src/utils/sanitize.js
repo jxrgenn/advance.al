@@ -5,6 +5,30 @@
 import mongoose from 'mongoose';
 
 /**
+ * Strict check: is `s` a 24-char hex string (Mongo ObjectId surface form)?
+ * Note: mongoose.Types.ObjectId.isValid() returns true for some 12-byte strings
+ * that aren't actual hex — we want the surface-format check, not the canonical.
+ */
+export function isObjectIdString(s) {
+  return typeof s === 'string' && /^[0-9a-fA-F]{24}$/.test(s);
+}
+
+/**
+ * Job dual-lookup: accept either a 24-char hex ObjectId or a slug, find the job.
+ * Used by routes that historically took :id but now must tolerate slug URLs
+ * after the Phase B SEO migration. Returns the Mongoose document (not lean)
+ * so the caller can attach or save if needed; pass `.lean()` upstream if read-only.
+ * Pass extraFilter to narrow (e.g. { isDeleted: false }).
+ */
+export async function findJobByIdOrSlug(JobModel, idOrSlug, extraFilter = {}) {
+  if (!idOrSlug || typeof idOrSlug !== 'string') return null;
+  const query = isObjectIdString(idOrSlug)
+    ? { _id: idOrSlug, ...extraFilter }
+    : { slug: idOrSlug, ...extraFilter };
+  return JobModel.findOne(query);
+}
+
+/**
  * Express middleware: validate that named route params are valid MongoDB ObjectIds.
  * Usage: router.get('/:id', validateObjectId('id'), handler)
  * Usage: router.get('/:id/foo/:otherId', validateObjectId('id', 'otherId'), handler)

@@ -10,7 +10,7 @@ import { authenticate, requireJobSeeker, requireEmployer, requireAdmin } from '.
 import resendEmailService from '../lib/resendEmailService.js';
 import { uploadToCloudinary, deleteFromCloudinary } from '../config/cloudinary.js';
 import logger from '../config/logger.js';
-import { sanitizeLimit, validateObjectId, stripHtml, normalizeOneLine } from '../utils/sanitize.js';
+import { sanitizeLimit, validateObjectId, stripHtml, normalizeOneLine, isObjectIdString } from '../utils/sanitize.js';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { parseUserProfileCV } from '../services/cvParsingService.js';
 import { fireEmbedding } from '../services/embeddingTrigger.js';
@@ -1673,16 +1673,20 @@ router.post('/saved-jobs/check-bulk', authenticate, requireJobSeeker, async (req
   }
 });
 
-// @route   POST /api/users/saved-jobs/:jobId
-// @desc    Save a job
+// @route   POST /api/users/saved-jobs/:idOrSlug
+// @desc    Save a job (accepts ObjectId or slug — Phase B SEO migration)
 // @access  Private (Job Seeker only)
-router.post('/saved-jobs/:jobId', validateObjectId('jobId'), authenticate, requireJobSeeker, async (req, res) => {
+router.post('/saved-jobs/:jobId', authenticate, requireJobSeeker, async (req, res) => {
   try {
     const { Job } = await import('../models/index.js');
 
-    // Check if job exists and is active
+    // Dual-lookup: param may be 24-char hex ObjectId or slug.
+    const param = req.params.jobId;
+    const jobQuery = isObjectIdString(param)
+      ? { _id: param }
+      : { slug: param };
     const job = await Job.findOne({
-      _id: req.params.jobId,
+      ...jobQuery,
       isDeleted: false,
       status: 'active'
     });
@@ -1702,16 +1706,18 @@ router.post('/saved-jobs/:jobId', validateObjectId('jobId'), authenticate, requi
       });
     }
 
-    await user.saveJob(req.params.jobId);
+    // From here on, always use the canonical ObjectId (job._id),
+    // never the URL param (which might be a slug).
+    await user.saveJob(job._id);
 
     const { logEvent } = await import('../services/eventLogger.js');
-    logEvent({ userId: req.user._id, jobId: req.params.jobId, type: 'save', source: 'direct' });
+    logEvent({ userId: req.user._id, jobId: job._id, type: 'save', source: 'direct' });
 
     res.json({
       success: true,
       message: 'Puna u ruajt në të preferuarat!',
       data: {
-        jobId: req.params.jobId,
+        jobId: job._id,
         saved: true
       }
     });
@@ -1731,10 +1737,10 @@ router.post('/saved-jobs/:jobId', validateObjectId('jobId'), authenticate, requi
   }
 });
 
-// @route   DELETE /api/users/saved-jobs/:jobId
-// @desc    Unsave a job
+// @route   DELETE /api/users/saved-jobs/:idOrSlug
+// @desc    Unsave a job (accepts ObjectId or slug — Phase B SEO migration)
 // @access  Private (Job Seeker only)
-router.delete('/saved-jobs/:jobId', validateObjectId('jobId'), authenticate, requireJobSeeker, async (req, res) => {
+router.delete('/saved-jobs/:jobId', authenticate, requireJobSeeker, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     if (!user) {
@@ -1744,16 +1750,33 @@ router.delete('/saved-jobs/:jobId', validateObjectId('jobId'), authenticate, req
       });
     }
 
-    await user.unsaveJob(req.params.jobId);
+    // Resolve param (might be slug) to canonical ObjectId before unsave.
+    // If user has the job stored in savedJobs, that array always holds
+    // ObjectIds (schema-enforced), so we must look up the job first.
+    const param = req.params.jobId;
+    let resolvedJobId = param;
+    if (!isObjectIdString(param)) {
+      const { Job } = await import('../models/index.js');
+      const job = await Job.findOne({ slug: param }).select('_id');
+      if (!job) {
+        return res.status(404).json({
+          success: false,
+          message: 'Puna nuk u gjet'
+        });
+      }
+      resolvedJobId = job._id;
+    }
+
+    await user.unsaveJob(resolvedJobId);
 
     const { logEvent } = await import('../services/eventLogger.js');
-    logEvent({ userId: req.user._id, jobId: req.params.jobId, type: 'unsave', source: 'direct' });
+    logEvent({ userId: req.user._id, jobId: resolvedJobId, type: 'unsave', source: 'direct' });
 
     res.json({
       success: true,
       message: 'Puna u hoq nga të preferuarat',
       data: {
-        jobId: req.params.jobId,
+        jobId: resolvedJobId,
         saved: false
       }
     });
@@ -1842,10 +1865,10 @@ router.get('/saved-jobs', authenticate, requireJobSeeker, async (req, res) => {
   }
 });
 
-// @route   GET /api/users/saved-jobs/check/:jobId
-// @desc    Check if a job is saved
+// @route   GET /api/users/saved-jobs/check/:idOrSlug
+// @desc    Check if a job is saved (accepts ObjectId or slug — Phase B SEO migration)
 // @access  Private (Job Seeker only)
-router.get('/saved-jobs/check/:jobId', validateObjectId('jobId'), authenticate, requireJobSeeker, async (req, res) => {
+router.get('/saved-jobs/check/:jobId', authenticate, requireJobSeeker, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     if (!user) {
@@ -1855,12 +1878,34 @@ router.get('/saved-jobs/check/:jobId', validateObjectId('jobId'), authenticate, 
       });
     }
 
-    const isSaved = user.isJobSaved(req.params.jobId);
+    // Resolve param (might be slug) to canonical ObjectId before checking.
+    // savedJobs is stored as ObjectIds — slug lookups always return false.
+    const param = req.params.jobId;
+    let resolvedJobId = param;
+    if (!isObjectIdString(param)) {
+      const { Job } = await import('../models/index.js');
+      const job = await Job.findOne({ slug: param }).select('_id');
+      if (!job) {
+        // Job doesn't exist — by definition not saved
+        return res.json({
+          success: true,
+          data: { jobId: param, isSaved: false, saved: false }
+        });
+      }
+      resolvedJobId = job._id;
+    }
+
+    const isSaved = user.isJobSaved(resolvedJobId);
 
     res.json({
       success: true,
+      // Backend historically returned `saved`; frontend api.ts contract says
+      // `isSaved`. They never matched → bookmark icon never reflected DB state
+      // → users could re-save the same job N times. Returning BOTH keys keeps
+      // any old consumers working while satisfying the canonical contract.
       data: {
-        jobId: req.params.jobId,
+        jobId: resolvedJobId,
+        isSaved,
         saved: isSaved
       }
     });

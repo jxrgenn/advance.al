@@ -6,7 +6,7 @@ import { authenticate, requireEmployer, requireVerifiedEmployer, optionalAuth } 
 import notificationService from '../lib/notificationService.js';
 import jobEmbeddingService from '../services/jobEmbeddingService.js';
 import userEmbeddingService from '../services/userEmbeddingService.js';
-import { sanitizeLimit, validateObjectId, stripHtml, normalizeOneLine } from '../utils/sanitize.js';
+import { sanitizeLimit, validateObjectId, stripHtml, normalizeOneLine, isObjectIdString } from '../utils/sanitize.js';
 import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
 import crypto from 'crypto';
 import logger from '../config/logger.js';
@@ -855,24 +855,19 @@ router.get('/:id', optionalAuth, async (req, res) => {
   }
 });
 
-// @route   GET /api/jobs/:id/similar
-// @desc    Get similar jobs for a job
+// @route   GET /api/jobs/:idOrSlug/similar
+// @desc    Get similar jobs for a job (accepts ObjectId or slug — Phase B SEO)
 // @access  Public
-router.get('/:id/similar', validateObjectId('id'), async (req, res) => {
+router.get('/:id/similar', async (req, res) => {
   try {
-    const jobId = req.params.id;
+    const param = req.params.id;
     const limit = sanitizeLimit(req.query.limit, 20, 10);
 
-    // Validate job ID
-    if (!mongoose.Types.ObjectId.isValid(jobId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'ID e punës nuk është e vlefshme'
-      });
-    }
-
-    // Check if job exists
-    const job = await Job.findById(jobId);
+    // Dual-lookup: param can be 24-char hex ObjectId or slug.
+    const jobQuery = isObjectIdString(param)
+      ? { _id: param }
+      : { slug: param };
+    const job = await Job.findOne(jobQuery);
 
     if (!job || job.isDeleted) {
       return res.status(404).json({
@@ -880,6 +875,7 @@ router.get('/:id/similar', validateObjectId('id'), async (req, res) => {
         message: 'Puna nuk u gjet'
       });
     }
+    const jobId = job._id;
 
     // Check if similar jobs are already computed
     if (job.similarJobs && job.similarJobs.length > 0) {

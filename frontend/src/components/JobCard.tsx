@@ -26,7 +26,7 @@ interface JobCardProps {
   isRecommended?: boolean;
   initialSaved?: boolean;
   compact?: boolean;
-  onUnsave?: () => void;
+  onUnsave?: (jobId: string) => void;
 }
 
 const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, initialSaved, onUnsave }: JobCardProps) => {
@@ -44,7 +44,10 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, init
     navigate(`/jobs/${(job as any).slug || job._id}`);
   };
 
-  // Only check individually if initialSaved was not provided by parent
+  // Only check individually if initialSaved was not provided by parent.
+  // Depend on PRIMITIVE values (user._id), NOT the user object itself — the
+  // AuthContext re-creates the object on every render which would re-fire
+  // this effect each tick and silently overwrite an in-flight user click.
   useEffect(() => {
     if (initialSaved !== undefined) return;
     const checkIfSaved = async () => {
@@ -63,7 +66,13 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, init
     };
 
     checkIfSaved();
-  }, [job._id, isAuthenticated, user, initialSaved]);
+  }, [job._id, isAuthenticated, user?._id, user?.userType, initialSaved]);
+
+  // Sync local `isSaved` when parent's bulk-checked `initialSaved` arrives /
+  // changes after mount. Without this, a parent re-fetch wouldn't reflect.
+  useEffect(() => {
+    if (initialSaved !== undefined) setIsSaved(initialSaved);
+  }, [initialSaved]);
 
   const handleSaveToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -98,7 +107,7 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, init
             title: "Puna u hoq nga të ruajturat",
             description: "Puna nuk është më në listën tuaj të punëve të ruajtura."
           });
-          onUnsave?.();
+          onUnsave?.(job._id);
         }
       } else {
         const response = await usersApi.saveJob(job._id);

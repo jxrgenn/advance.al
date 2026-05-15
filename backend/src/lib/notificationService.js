@@ -53,7 +53,7 @@ Një punë e re që përputhet me interesat tuaja është publikuar:
 📝 Përshkrimi:
 ${job.description.substring(0, 200)}...
 
-👀 Shiko detajet e plota dhe apliko: https://advance.al/jobs/${job._id}
+👀 Shiko detajet e plota dhe apliko: https://advance.al/jobs/${job.slug || job._id}
 
 ---
 
@@ -92,7 +92,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
       <p>${safeDescription}${job.description?.length > 300 ? '...' : ''}</p>
 
       <div style="text-align: center; margin: 30px 0;">
-        <a href="https://advance.al/jobs/${job._id}?utm_source=email&utm_medium=notification&utm_campaign=job_match&token=${user.unsubscribeToken}"
+        <a href="https://advance.al/jobs/${job.slug || job._id}?utm_source=email&utm_medium=notification&utm_campaign=job_match&token=${user.unsubscribeToken}"
            style="display: inline-block; background: #667eea; color: white; padding: 15px 30px; text-decoration: none; border-radius: 25px; font-weight: bold;">
           👀 Shiko Detajet dhe Apliko
         </a>
@@ -126,7 +126,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
   // Generate SMS content for job notification
   generateJobNotificationSMS(user, job) {
     const companyName = job.employerId?.profile?.employerProfile?.companyName || 'Kompani';
-    return `🎯 Punë e re: ${job.title} në ${companyName}, ${job.location.city}. Shiko: https://advance.al/jobs/${job._id} | Çregjistrohu: ${user.getUnsubscribeUrl()}`;
+    return `🎯 Punë e re: ${job.title} në ${companyName}, ${job.location.city}. Shiko: https://advance.al/jobs/${job.slug || job._id} | Çregjistrohu: ${user.getUnsubscribeUrl()}`;
   }
 
   // Generate email content for a full jobseeker account (no unsubscribe token — they manage via profile)
@@ -158,7 +158,7 @@ Një punë e re që përputhet me profilin tuaj është publikuar:
 📝 Përshkrimi:
 ${job.description.substring(0, 200)}...
 
-👀 Shiko detajet e plota dhe apliko: https://advance.al/jobs/${job._id}
+👀 Shiko detajet e plota dhe apliko: https://advance.al/jobs/${job.slug || job._id}
 
 ---
 Mund të çaktivizoni njoftimet nga faqja juaj e profilit: https://advance.al/profile
@@ -192,7 +192,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
       <p><strong>📝 Përshkrimi i shkurtër:</strong></p>
       <p>${safeDescription}${job.description?.length > 300 ? '...' : ''}</p>
       <div style="text-align: center; margin: 30px 0;">
-        <a href="https://advance.al/jobs/${job._id}?utm_source=email&utm_medium=notification&utm_campaign=job_match_account"
+        <a href="https://advance.al/jobs/${job.slug || job._id}?utm_source=email&utm_medium=notification&utm_campaign=job_match_account"
            style="display: inline-block; background: #667eea; color: white; padding: 15px 30px; text-decoration: none; border-radius: 25px; font-weight: bold;">👀 Shiko Detajet dhe Apliko</a>
       </div>
       <p style="font-size: 14px; color: #666;">
@@ -237,7 +237,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
     const textJobLines = jobs.map((job, i) => {
       const company = job.employerId?.profile?.employerProfile?.companyName || 'Kompani';
       const salary = job.salary ? ` — ${job.salary.min}-${job.salary.max} ${job.salary.currency}` : '';
-      return `${i + 1}. ${job.title} — ${company} (${job.location?.city || ''})${salary}\n   https://advance.al/jobs/${job._id}`;
+      return `${i + 1}. ${job.title} — ${company} (${job.location?.city || ''})${salary}\n   https://advance.al/jobs/${job.slug || job._id}`;
     }).join('\n\n');
 
     const textContent = `
@@ -269,7 +269,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
           <div style="margin: 4px 0; font-size: 13px;"><strong>📍</strong> ${safeCity}${job.location?.remote ? ' <span style="color:#28a745;">(distancë)</span>' : ''}${safeCategory ? ` · <span style="color:#666;">${safeCategory}</span>` : ''}</div>
           ${salaryLine}
           <div style="margin-top: 10px;">
-            <a href="https://advance.al/jobs/${job._id}?utm_source=email&utm_medium=digest&utm_campaign=job_match"
+            <a href="https://advance.al/jobs/${job.slug || job._id}?utm_source=email&utm_medium=digest&utm_campaign=job_match"
                style="display: inline-block; background: #667eea; color: white; padding: 8px 18px; text-decoration: none; border-radius: 20px; font-size: 13px; font-weight: 600;">Shiko detajet →</a>
           </div>
         </div>`;
@@ -569,7 +569,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
             <div style="font-weight: bold; color: #333; margin-bottom: 5px;">${safeTitle}</div>
             <div style="font-size: 13px; color: #666;">🏢 ${safeCompany} &nbsp; 📍 ${safeCity}${salaryText ? ` &nbsp; 💰 ${salaryText}` : ''}</div>
             <div style="margin-top: 10px;">
-              <a href="https://advance.al/jobs/${job._id}?utm_source=email&utm_medium=welcome_match&utm_campaign=new_user_jobs"
+              <a href="https://advance.al/jobs/${job.slug || job._id}?utm_source=email&utm_medium=welcome_match&utm_campaign=new_user_jobs"
                  style="display: inline-block; background: #667eea; color: white; padding: 8px 16px; text-decoration: none; border-radius: 20px; font-size: 13px; font-weight: bold;">Shiko Detajet</a>
             </div>
           </div>`;
@@ -577,7 +577,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
 
       const jobListText = matches.map(({ job }) => {
         const company = job.employerId?.profile?.employerProfile?.companyName || 'Kompani';
-        return `- ${job.title} (${company}, ${job.location?.city || ''}) → https://advance.al/jobs/${job._id}`;
+        return `- ${job.title} (${company}, ${job.location?.city || ''}) → https://advance.al/jobs/${job.slug || job._id}`;
       }).join('\n');
 
       const subject = `🎯 Gjenim ${matches.length} punë që përputhen me profilin tuaj!`;
