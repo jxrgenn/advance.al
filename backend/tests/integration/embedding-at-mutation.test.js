@@ -16,6 +16,7 @@
 
 import { describe, it, expect, beforeAll, afterAll, afterEach, jest } from '@jest/globals';
 import request from 'supertest';
+import { Document, Packer, Paragraph, TextRun } from 'docx';
 import app from '../../server.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
 import { seedLocations } from '../fixtures/locations.fixture.js';
@@ -28,6 +29,19 @@ import { fireEmbedding } from '../../src/services/embeddingTrigger.js';
 import { parseQuickUserCV, _setOpenAIClient } from '../../src/services/cvParsingService.js';
 import QuickUser from '../../src/models/QuickUser.js';
 import logger from '../../src/config/logger.js';
+import { makeOpenAIStub } from '../helpers/openai-stub.js';
+
+async function makeDocx(text = 'Senior Frontend Engineer with 4 years of React, TypeScript, and Next.js experience.') {
+  const doc = new Document({
+    sections: [{
+      children: [
+        new Paragraph({ children: [new TextRun(text)] }),
+        new Paragraph({ children: [new TextRun('Skills: React, TypeScript, Next.js, Tailwind.')] }),
+      ],
+    }],
+  });
+  return Packer.toBuffer(doc);
+}
 
 async function flushImmediate() {
   for (let i = 0; i < 10; i++) {
@@ -132,76 +146,79 @@ describe('Embedded by construction — fireEmbedding contract', () => {
   });
 
   describe('QuickUser CV parse (G2)', () => {
-    it('parseQuickUserCV auto-fires embedding after successful parse', async () => {
+    it('parseQuickUserCV SUCCESS path auto-fires embedding (G2 fix)', async () => {
       const spy = jest.spyOn(userEmbeddingService, 'generateQuickUserEmbedding').mockResolvedValue([0.1]);
 
-      // Stub the OpenAI client to return deterministic parsed data
-      _setOpenAIClient({
-        chat: { completions: { create: async () => ({
-          choices: [{ message: { content: JSON.stringify({
-            title: 'Frontend Developer',
-            skills: ['React', 'TypeScript'],
-            experience: '3 years',
-            industries: ['Tech'],
-            education: 'BSc CS',
-            languages: ['English'],
-            summary: 'Frontend engineer with 3 years of React experience.',
-          }) } }],
-        }) } },
-      });
+      // Real DOCX + stubbed OpenAI so extractTextFromCV succeeds, parseWithAI
+      // returns deterministic data, parsedCV.status flips to 'completed', and
+      // the success-path fireEmbedding call inside parseQuickUserCV runs.
+      _setOpenAIClient(makeOpenAIStub({ cv: {
+        title: 'Frontend Engineer',
+        skills: ['React', 'TypeScript'],
+        experience: '2-5 vjet',
+        industries: ['Teknologji'],
+        summary: 'Frontend engineer.',
+        education: 'BSc',
+        languages: ['English'],
+      } }));
 
       const qu = await QuickUser.create({
         firstName: 'Test', lastName: 'User',
-        email: 'cvtest@example.com',
+        email: 'cvtest-success@example.com',
         location: 'Tiranë',
         interests: ['Teknologji'],
       });
 
-      // Minimal fake PDF buffer — extractTextFromCV would normally parse it,
-      // but we don't need real PDF text since we stub OpenAI. We just need
-      // enough text to clear the 20-char minimum, which the parser will fail
-      // on a bogus buffer — so we override extractTextFromCV via a fake PDF.
-      // Simpler: write a fixture string directly into the parser path.
-      // Workaround: call parseQuickUserCV with a buffer that the pdf parser
-      // will reject; the spy on generateQuickUserEmbedding fires only on
-      // success — so instead, assert the auto-fire param default by inspecting
-      // the function signature side-channel: call parseQuickUserCV with a
-      // string buffer too small to parse, and assert NO embedding fires
-      // (failure path). Then separately verify the SUCCESS path via a unit
-      // test on the trigger.
-
-      // Bogus buffer -> extractTextFromCV will fail; parseQuickUserCV catches
-      // and sets parsedCV.status=failed, returns null, does NOT fire.
-      const result = await parseQuickUserCV(qu._id, Buffer.from('xx'));
+      const docx = await makeDocx();
+      const result = await parseQuickUserCV(qu._id, docx);
       await flushImmediate();
 
-      expect(result).toBeNull();
-      expect(spy).not.toHaveBeenCalled(); // failure path does NOT fire — correct
+      expect(result).toBeTruthy();
+      expect(result.title).toBe('Frontend Engineer');
+      expect(spy).toHaveBeenCalled();
+      expect(String(spy.mock.calls[0][0])).toBe(String(qu._id));
     });
 
-    it('parseQuickUserCV with fireEmbeddingAfter:false does NOT fire on success path', async () => {
-      // Direct unit-style test of the opt-out: hijack the internal flow by
-      // running a minimal happy-path scenario. We mock extractText + parseWithAI
-      // by stubbing OpenAI completion + supplying a buffer that the PDF parser
-      // can decode. Easiest: skip the PDF/AI machinery and just verify the
-      // helper's opt-out wiring at the parameter level via a wrapping spy.
-      //
-      // Since the success path requires a real-ish PDF, we instead verify
-      // the opt-out by inspecting that the function accepts and respects the
-      // option. The signup chain (quickusers.js:308) passes false and is
-      // covered indirectly by the quickusers signup test suite.
+    it('parseQuickUserCV SUCCESS path with fireEmbeddingAfter:false does NOT fire', async () => {
       const spy = jest.spyOn(userEmbeddingService, 'generateQuickUserEmbedding').mockResolvedValue([0.1]);
+
+      _setOpenAIClient(makeOpenAIStub({ cv: {
+        title: 'Marketing Manager',
+        skills: ['SEO', 'Content'],
+        experience: '2-5 vjet',
+        industries: ['Marketing'],
+        summary: 'Marketing pro.',
+        education: 'BA',
+        languages: ['English'],
+      } }));
 
       const qu = await QuickUser.create({
         firstName: 'OptOut', lastName: 'Test',
-        email: 'optout@example.com',
+        email: 'optout-success@example.com',
         location: 'Tiranë',
         interests: ['Marketing'],
       });
 
-      // Bogus buffer → parse fails → no fire either way. Test passes by
-      // confirming the param doesn't crash + no fire on failure path.
-      const result = await parseQuickUserCV(qu._id, Buffer.from('xx'), { fireEmbeddingAfter: false });
+      const docx = await makeDocx('Marketing manager with SEO + content expertise.');
+      const result = await parseQuickUserCV(qu._id, docx, { fireEmbeddingAfter: false });
+      await flushImmediate();
+
+      expect(result).toBeTruthy();
+      expect(result.title).toBe('Marketing Manager');
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('parseQuickUserCV FAILURE path (bogus buffer) does NOT fire', async () => {
+      const spy = jest.spyOn(userEmbeddingService, 'generateQuickUserEmbedding').mockResolvedValue([0.1]);
+
+      const qu = await QuickUser.create({
+        firstName: 'Fail', lastName: 'Test',
+        email: 'cvtest-fail@example.com',
+        location: 'Tiranë',
+        interests: ['Teknologji'],
+      });
+
+      const result = await parseQuickUserCV(qu._id, Buffer.from('xx'));
       await flushImmediate();
 
       expect(result).toBeNull();

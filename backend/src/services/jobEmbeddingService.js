@@ -23,14 +23,16 @@ import { EMBEDDING_MODEL, EMBEDDING_DIMS, isValidEmbeddingVector } from '../util
  * The embeddingRetryWorker (10-min cron) is a safety net, not a substitute
  * for triggering at the source.
  *
- * Embedding-relevant fields (mutation MUST trigger re-embed):
- *   title, description, requirements, responsibilities, benefits, skills,
- *   tags, category, jobType, seniority, location.city, salary range,
- *   companyName (via populated employerId)
+ * Embedding-relevant fields (mutation MUST trigger re-embed) — verified
+ * against prepareTextForEmbedding below:
+ *   title, category, seniority, description, requirements, tags, jobType,
+ *   location.city
  *
- * Filter-only fields (DO NOT trigger):
- *   applicationUrl, contactEmail, viewCount, status (active/paused/closed/
- *   expired/pending_*), expiresAt, postedAt, isFeatured, tier, isDeleted
+ * Filter-only fields (DO NOT trigger; not read by prepareTextForEmbedding):
+ *   companyName, responsibilities, benefits, salary, skills (as a separate
+ *   field — tags carries the technology list), applicationUrl, contactEmail,
+ *   viewCount, status (active/paused/closed/expired/pending_*), expiresAt,
+ *   postedAt, isFeatured, tier, isDeleted
  *
  * Idempotency: queueEmbeddingGeneration de-duplicates pending tasks per
  * jobId, so calling it multiple times in flight is safe (returns existing

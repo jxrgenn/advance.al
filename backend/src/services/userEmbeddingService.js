@@ -25,18 +25,22 @@ import { isValidEmbeddingVector } from '../utils/embeddingConfig.js';
  * services/embeddingTrigger.js. The embeddingRetryWorker (10-min cron) is a
  * safety net, not a substitute for triggering at the source.
  *
- * Embedding-relevant fields (mutation MUST trigger re-embed):
+ * Embedding-relevant fields (mutation MUST trigger re-embed) — verified
+ * against prepareJobSeekerText / prepareQuickUserText below:
  *   Jobseeker (User):
  *     profile.jobSeekerProfile.{title, bio, skills, experience, workHistory,
- *     education, aiGeneratedCV.{professionalSummary, skills.*, languages,
- *     certifications}}, profile.location.city
+ *     education, aiGeneratedCV.{professionalSummary, skills.technical,
+ *     skills.tools, skills.soft, languages, certifications}}, profile.location.city
  *   QuickUser:
  *     interests, customInterests, location, parsedCV.{title, skills, summary,
  *     experience, industries, education, languages}
  *
- * Filter-only fields (DO NOT trigger; verified via prepareXxxText below):
- *   Jobseeker: email, phone, name, avatar, savedJobs, notificationPrefs
- *   QuickUser: preferences.{emailFrequency, jobTypes, remoteWork, salaryRange}
+ * Filter-only fields (DO NOT trigger):
+ *   Jobseeker: email, phone, name, avatar, savedJobs, notificationPrefs,
+ *              employerProfile.* (employers have no embedding),
+ *              headline (not read by prepareJobSeekerText)
+ *   QuickUser: preferences.{emailFrequency, jobTypes, remoteWork, salaryRange},
+ *              firstName, lastName, email, phone
  *
  * If you mutate a filter-only field via a route handler, add a one-line
  * code comment `// no-embedding: <reason>` for clarity (see PUT /preferences).
