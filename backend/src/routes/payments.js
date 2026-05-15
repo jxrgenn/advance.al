@@ -84,7 +84,9 @@ router.post('/paysera/initiate', authenticate, requireEmployer, async (req, res)
     const amountEur = tier === 'promoted' ? pricing.promoted : pricing.standard;
 
     // Persist tier choice so the callback knows what was charged.
-    job.tier = tier === 'promoted' ? 'premium' : 'standard';
+    // Job.tier enum is ['basic', 'premium', 'featured'] — promoted maps to
+    // 'premium', standard maps to 'basic' (the default).
+    job.tier = tier === 'promoted' ? 'premium' : 'basic';
     job.paymentRequired = amountEur;
     await job.save();
 
