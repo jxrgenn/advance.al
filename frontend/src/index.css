@@ -165,9 +165,11 @@ All colors MUST be HSL.
     max-width: 100vw; /* Ensure container doesn't exceed viewport */
   }
 
-  /* Add spacing between navbar and content - navbar is h-16 (64px) */
+  /* Navbar is h-16 (64px); main reserves exactly that, so navbar bottom
+     touches content top with no white sliver. Pages add their own internal
+     breathing room (e.g. py-8) for content spacing. */
   main {
-    @apply pt-20;
+    @apply pt-16;
   }
 
   /* Consistent card spacing */

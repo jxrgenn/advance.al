@@ -76,7 +76,7 @@ const PaymentJobPosting = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Navigation />
-      <main className="flex-1 container py-12 pt-28">
+      <main className="flex-1 container py-8">
         <div className="max-w-2xl mx-auto">
           <Button variant="ghost" onClick={() => navigate('/employer-dashboard')} className="mb-6">
             <ArrowLeft className="h-4 w-4 mr-2" /> Kthehu te paneli

@@ -160,7 +160,7 @@ const CompaniesPageSimple = () => {
       <Navigation />
 
       {/* Header */}
-      <section className="bg-gradient-to-br from-primary/10 to-background pt-20 pb-6 md:py-8">
+      <section className="bg-gradient-to-br from-primary/10 to-background py-6 md:py-8">
         <div className="container mx-auto px-4">
           <div className="text-center space-y-6">
             <h1 className="text-4xl md:text-5xl font-bold">

@@ -1044,7 +1044,7 @@ const AdminDashboard = () => {
     <div className="min-h-screen bg-background">
       <Navigation />
 
-      <div className="container py-8 pt-20">
+      <div className="container py-8">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="mb-8 flex justify-between items-center">
@@ -1685,7 +1685,7 @@ const AdminDashboard = () => {
                       {/* Job Header */}
                       <div className="flex items-start justify-between">
                         <div className="space-y-1">
-                          <h3 className="font-semibold text-lg"><a href={`/jobs/${job._id}`} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">{job.title}</a></h3>
+                          <h3 className="font-semibold text-lg"><a href={`/jobs/${(job as any).slug || job._id}`} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">{job.title}</a></h3>
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
                             <div className="flex items-center gap-1">
                               <Building className="h-4 w-4" />
@@ -1839,7 +1839,7 @@ const AdminDashboard = () => {
                       {/* Job Header */}
                       <div className="flex items-start justify-between">
                         <div className="space-y-1">
-                          <h3 className="font-semibold text-lg"><a href={`/jobs/${job._id}`} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">{job.title}</a></h3>
+                          <h3 className="font-semibold text-lg"><a href={`/jobs/${(job as any).slug || job._id}`} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">{job.title}</a></h3>
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
                             <div className="flex items-center gap-1">
                               <Building className="h-4 w-4" />
@@ -1959,7 +1959,7 @@ const AdminDashboard = () => {
                       {/* Job Header */}
                       <div className="flex items-start justify-between">
                         <div className="space-y-1">
-                          <h3 className="font-semibold text-lg"><a href={`/jobs/${job._id}`} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">{job.title}</a></h3>
+                          <h3 className="font-semibold text-lg"><a href={`/jobs/${(job as any).slug || job._id}`} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">{job.title}</a></h3>
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
                             <div className="flex items-center gap-1">
                               <Building className="h-4 w-4" />

@@ -1571,7 +1571,7 @@ const Profile = () => {
         </div>
       )}
 
-      <div className="container py-8 pt-20">
+      <div className="container py-8">
         {/* Tutorial Help Button */}
         {!showTutorial && user && user.userType === 'jobseeker' && (
           <Card className="border-blue-200 bg-blue-50/50 mb-6">

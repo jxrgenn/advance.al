@@ -298,7 +298,7 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
           {/* Profile Completeness Tip — non-blocking, just informational */}
           {profileCompleteness < 40 && (
             <Card className="border-blue-200 bg-blue-50">
@@ -315,12 +315,12 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
 
           {/* Profile Summary */}
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-3 sm:p-4">
               <h3 className="font-medium mb-3 flex items-center gap-2">
                 <User className="h-4 w-4" />
                 Të dhënat tuaja
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-sm">
                 <div className="flex items-center gap-2">
                   <User className="h-3 w-3 text-muted-foreground" />
                   <span>{user?.profile?.firstName} {user?.profile?.lastName}</span>
@@ -358,7 +358,7 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
 
           {/* CV Section */}
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-3 sm:p-4">
               <h3 className="font-medium mb-3 flex items-center gap-2">
                 <FileText className="h-4 w-4" />
                 CV / Rezyme
@@ -419,7 +419,7 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
           {/* Custom Questions */}
           {job.customQuestions && job.customQuestions.length > 0 && (
             <Card>
-              <CardContent className="p-4">
+              <CardContent className="p-3 sm:p-4">
                 <h3 className="font-medium mb-3 flex items-center gap-2">
                   <FileText className="h-4 w-4" />
                   Pyetje të kompanisë
@@ -458,7 +458,7 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
 
           {/* Cover Letter Option */}
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-3 sm:p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-medium flex items-center gap-2">
                   <FileText className="h-4 w-4" />
@@ -495,7 +495,7 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
 
           {/* Application Summary */}
           <Card className="bg-muted/30">
-            <CardContent className="p-4">
+            <CardContent className="p-3 sm:p-4">
               <h3 className="font-medium mb-3 flex items-center gap-2">
                 <CheckCircle className="h-4 w-4" />
                 Përmbledhje e aplikimit

@@ -16,7 +16,7 @@ const Privacy = () => {
       <Navigation />
 
       {/* Header */}
-      <section className="pt-36 sm:pt-28 pb-12 bg-gradient-to-br from-primary/5 to-primary/10">
+      <section className="pt-8 pb-12 bg-gradient-to-br from-primary/5 to-primary/10">
         <div className="container mx-auto px-4 text-center">
           <div className="bg-primary/10 p-4 rounded-full w-16 h-16 mx-auto flex items-center justify-center mb-6">
             <Shield className="h-8 w-8 text-primary" />

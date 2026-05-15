@@ -426,7 +426,7 @@ const Jobs = () => {
     <div className="min-h-screen bg-background">
       <Navigation />
 
-      <div className="container py-8 pt-20">
+      <div className="container py-8">
         {/* Premium Jobs Carousel - Always visible, sticky */}
         {premiumJobs.length > 0 && (
           <div className="sticky top-16 z-20 bg-background/95 backdrop-blur-sm pt-2 pb-2 mb-6">

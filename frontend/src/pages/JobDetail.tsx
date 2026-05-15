@@ -67,14 +67,24 @@ const JobDetail = () => {
   const isScrollLockedRef = useRef(false);
 
   useEffect(() => {
-    if (id) {
-      loadJob(id);
-      if (user && user.userType === 'jobseeker') {
-        checkIfApplied(id);
-        checkIfSaved(id);
-      }
+    if (id) loadJob(id);
+  }, [id]);
+
+  // Apply/save checks must use the canonical job._id (always an ObjectId),
+  // NOT the URL param which can now be a slug after the Phase B slug migration.
+  // Backend endpoints behind these calls validate ObjectId.
+  //
+  // Dependency stability: use stable PRIMITIVE values (user._id string + userType),
+  // not the `user` object itself — AuthContext re-creates the object on every
+  // render, which would re-fire this effect each tick and silently overwrite
+  // the user's in-flight click result (e.g. setIsSaved(true) → wiped by stale
+  // re-check 16ms later).
+  useEffect(() => {
+    if (job?._id && user?.userType === 'jobseeker') {
+      checkIfApplied(job._id);
+      checkIfSaved(job._id);
     }
-  }, [id, user]);
+  }, [job?._id, user?._id, user?.userType]);
 
   const checkIfApplied = async (jobId: string) => {
     try {
@@ -770,7 +780,7 @@ const JobDetail = () => {
       {/* Tutorial Overlay */}
       <TutorialOverlay />
 
-      <div className="container py-8 pt-20">
+      <div className="container py-8">
         <Button
           variant="ghost"
           onClick={() => navigate("/jobs")}

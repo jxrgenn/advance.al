@@ -151,7 +151,7 @@ const SavedJobs = () => {
     <div className="min-h-screen bg-background">
       <Navigation />
 
-      <div className="container py-8 pt-20">
+      <div className="container py-8">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
           <Button
