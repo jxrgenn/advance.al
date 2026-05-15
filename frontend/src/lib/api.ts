@@ -2078,3 +2078,30 @@ export const cvApi = {
     return apiRequest('/cv/my-cv');
   }
 };
+
+// Paysera payment API
+export const paymentsApi = {
+  /**
+   * Initiate a Paysera redirect-flow payment for a pending_payment job.
+   * Returns either a real Paysera URL (when keys are configured) or a
+   * relative `/payment/fake-success?jobId=...` URL in dev when keys are not set.
+   */
+  initiatePaysera: (jobId: string, tier: 'standard' | 'promoted') =>
+    apiRequest<{ redirectUrl: string; amountEur: number; tier: 'standard' | 'promoted'; fake?: boolean }>(
+      '/payments/paysera/initiate',
+      {
+        method: 'POST',
+        body: JSON.stringify({ jobId, tier }),
+      }
+    ),
+
+  /**
+   * Dev-only auto-accept fallback when Paysera is not configured.
+   * Flips the job from pending_payment → active server-side.
+   */
+  fakeSuccess: (jobId: string) =>
+    apiRequest<{ jobId: string; status: string }>(
+      `/payments/paysera/fake-success/${jobId}`,
+      { method: 'GET' }
+    ),
+};

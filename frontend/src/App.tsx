@@ -40,6 +40,9 @@ const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Unsubscribe = lazy(() => import("./pages/Unsubscribe"));
 const Preferences = lazy(() => import("./pages/Preferences"));
 const PaymentJobPosting = lazy(() => import("./pages/PaymentJobPosting"));
+const PaymentSuccess = lazy(() => import("./pages/PaymentSuccess"));
+const PaymentCancel = lazy(() => import("./pages/PaymentCancel"));
+const PaymentFakeSuccess = lazy(() => import("./pages/PaymentFakeSuccess"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -137,6 +140,14 @@ const App = () => (
                 <Route path="/payment/job/:jobId" element={
                   <ProtectedRoute allowedUserTypes={['employer']}>
                     <PaymentJobPosting />
+                  </ProtectedRoute>
+                } />
+                {/* Paysera redirects users back to these — public (no auth header on redirect) */}
+                <Route path="/payment/success" element={<PaymentSuccess />} />
+                <Route path="/payment/cancel" element={<PaymentCancel />} />
+                <Route path="/payment/fake-success" element={
+                  <ProtectedRoute allowedUserTypes={['employer']}>
+                    <PaymentFakeSuccess />
                   </ProtectedRoute>
                 } />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

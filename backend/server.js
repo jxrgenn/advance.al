@@ -49,6 +49,7 @@ import matchingRoutes from './src/routes/matching.js';
 import cvRoutes from './src/routes/cv.js';
 import adminEmbeddingsRoutes from './src/routes/admin/embeddings.js';
 import healthzRoutes from './src/routes/healthz.js';
+import paymentRoutes from './src/routes/payments.js';
 import { Job, SystemConfiguration } from './src/models/index.js';
 import { redis } from './src/config/redis.js';
 
@@ -319,6 +320,7 @@ app.use('/api/quickusers', quickUserRoutes);
 app.use('/api/companies', companiesRoutes);
 app.use('/api/matching', matchingRoutes);
 app.use('/api/cv', cvRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // Welcome Route
 app.get('/', (req, res) => {
