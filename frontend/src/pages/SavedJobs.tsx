@@ -1,14 +1,28 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import JobCard from "@/components/JobCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Briefcase, Loader2, Bookmark, ArrowLeft } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Briefcase, Loader2, Bookmark, ArrowLeft, ChevronDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { usersApi, applicationsApi, Job } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
+
+// Albanian labels for non-active statuses shown on inactive saved-jobs.
+// Active jobs render normally without a badge.
+const statusLabel = (s?: string): string => {
+  switch (s) {
+    case 'expired': return 'I skaduar';
+    case 'closed': return 'I mbyllur';
+    case 'paused': return 'I pauzuar';
+    case 'pending_payment': return 'Pritet pagesa';
+    case 'draft': return 'Draft';
+    default: return 'Joaktiv';
+  }
+};
 
 const SavedJobs = () => {
   const [savedJobs, setSavedJobs] = useState<Job[]>([]);
@@ -169,10 +183,10 @@ const SavedJobs = () => {
               <Bookmark className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-foreground">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground">
                 Punët e Ruajtura
               </h1>
-              <p className="text-muted-foreground">
+              <p className="text-sm sm:text-base text-muted-foreground">
                 {loading ? "Duke ngarkuar..." : `${pagination.totalJobs} punë të ruajtura`}
               </p>
             </div>
@@ -212,21 +226,54 @@ const SavedJobs = () => {
           </Card>
         )}
 
-        {/* Job Listings */}
-        {!loading && savedJobs && savedJobs.length > 0 && (
+        {/* Job Listings — partitioned: active jobs above, inactive in a
+            collapsed gray section below so users can see saved-but-stale
+            postings without them eating attention. */}
+        {!loading && savedJobs && savedJobs.length > 0 && (() => {
+          const isActive = (j: Job) => j.status === 'active';
+          const activeJobs = savedJobs.filter(isActive);
+          const inactiveJobs = savedJobs.filter((j) => !isActive(j));
+          return (
           <>
-            <div className="grid gap-6">
-              {savedJobs.map((job) => (
-                <JobCard
-                  key={job._id}
-                  job={job}
-                  onApply={handleApply}
-                  hasApplied={appliedJobIds.includes(job._id)}
-                  initialSaved={true}
-                  onUnsave={() => handleUnsaveJob(job._id)}
-                />
-              ))}
-            </div>
+            {activeJobs.length > 0 && (
+              <div className="grid gap-6">
+                {activeJobs.map((job) => (
+                  <JobCard
+                    key={job._id}
+                    job={job}
+                    onApply={handleApply}
+                    hasApplied={appliedJobIds.includes(job._id)}
+                    initialSaved={true}
+                    onUnsave={() => handleUnsaveJob(job._id)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {inactiveJobs.length > 0 && (
+              <details className="mt-10 group">
+                <summary className="cursor-pointer flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground select-none">
+                  <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                  {inactiveJobs.length} {inactiveJobs.length === 1 ? 'punë joaktive' : 'punë joaktive'} (e skaduar / e mbyllur)
+                </summary>
+                <div className="grid gap-6 mt-4 opacity-60">
+                  {inactiveJobs.map((job) => (
+                    <div key={job._id} className="relative">
+                      <Badge variant="secondary" className="absolute top-3 right-3 z-10">
+                        {statusLabel(job.status)}
+                      </Badge>
+                      <JobCard
+                        job={job}
+                        onApply={handleApply}
+                        hasApplied={appliedJobIds.includes(job._id)}
+                        initialSaved={true}
+                        onUnsave={() => handleUnsaveJob(job._id)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
 
             {/* Pagination */}
             {pagination.totalPages > 1 && (
@@ -275,7 +322,8 @@ const SavedJobs = () => {
               </div>
             )}
           </>
-        )}
+          );
+        })()}
       </div>
 
       <Footer />
