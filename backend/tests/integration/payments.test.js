@@ -249,6 +249,36 @@ describe('Paysera payments — integration', () => {
       }
     });
 
+    it('PAYSERA_ALLOW_FAKE_SUCCESS=true bypasses the prod-503 gate', async () => {
+      clearPayseraEnv();
+      const originalEnv = process.env.NODE_ENV;
+      const originalAllow = process.env.PAYSERA_ALLOW_FAKE_SUCCESS;
+      process.env.NODE_ENV = 'production';
+      process.env.PAYSERA_ALLOW_FAKE_SUCCESS = 'true';
+
+      try {
+        const { user: emp } = await createVerifiedEmployer();
+        const job = await createJobPendingPayment(emp);
+
+        const res = await request(app)
+          .post('/api/payments/paysera/initiate')
+          .set(createAuthHeaders(emp))
+          .send({ jobId: job._id.toString(), tier: 'standard' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.redirectUrl).toBe(`/payment/fake-success?jobId=${job._id}`);
+        expect(res.body.data.fake).toBe(true);
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+        if (originalAllow === undefined) {
+          delete process.env.PAYSERA_ALLOW_FAKE_SUCCESS;
+        } else {
+          process.env.PAYSERA_ALLOW_FAKE_SUCCESS = originalAllow;
+        }
+      }
+    });
+
     it('uses pricing from SystemConfiguration when configured', async () => {
       // Seed custom pricing
       await SystemConfiguration.findOneAndUpdate(

@@ -280,6 +280,9 @@ const jobSchema = new Schema({
     type: String,
     enum: ['paysera', 'dev-fake', 'admin-manual']
   },
+  paymentReminderSentAt: {
+    type: Date
+  },
 
   // Stats
   viewCount: {

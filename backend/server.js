@@ -456,6 +456,15 @@ const server = app.listen(PORT, () => {
     }, interval));
   }).catch(() => {});
 
+  // Payment-reminder worker: emails employers whose jobs are stuck in
+  // pending_payment for >PAYMENT_REMINDER_AFTER_HOURS. Sends ONCE per job.
+  import('./src/services/paymentReminderWorker.js').then(({ sendDuePaymentReminders }) => {
+    const interval = parseInt(process.env.PAYMENT_REMINDER_INTERVAL_MS || `${60 * 60 * 1000}`, 10);
+    activeIntervals.push(setInterval(() => {
+      sendDuePaymentReminders().catch(err => logger.error('Payment reminder worker error:', err.message));
+    }, interval));
+  }).catch(() => {});
+
   // Account cleanup: permanently delete soft-deleted accounts after 30-day retention (privacy policy)
   import('./src/services/accountCleanup.js').then(({ purgeDeletedAccounts }) => {
     // Run daily

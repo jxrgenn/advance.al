@@ -68,6 +68,11 @@ const EmployerDashboard = () => {
   const [selectedJobForMatching, setSelectedJobForMatching] = useState<Job | null>(null);
   const [candidateMatches, setCandidateMatches] = useState<CandidateMatch[]>([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
+  // Per-job marker — set to the jobId after a fetch completes. The empty-state
+  // branch only renders when this matches the currently-selected job, which
+  // prevents the "no candidates" flash when opening the modal for a different
+  // job (the global candidateMatches state would otherwise show 0 briefly).
+  const [matchesLastFetchedFor, setMatchesLastFetchedFor] = useState<string | null>(null);
   const [hasMatchingAccess, setHasMatchingAccess] = useState<Record<string, boolean>>({});
   const [purchasingAccess, setPurchasingAccess] = useState(false);
 
@@ -844,6 +849,10 @@ const EmployerDashboard = () => {
       setSelectedJobForMatching(job);
       setMatchingModalOpen(true);
       setLoadingMatches(true);
+      // Reset per-job tracking — empty state won't render until we
+      // re-mark matchesLastFetchedFor === job._id after a successful fetch.
+      setMatchesLastFetchedFor(null);
+      setCandidateMatches([]);
 
       // Check if employer has access to this job
       const accessResponse = await matchingApi.checkAccess(job._id);
@@ -858,12 +867,14 @@ const EmployerDashboard = () => {
 
           if (matchesResponse.success && matchesResponse.data) {
             setCandidateMatches(matchesResponse.data.matches);
+            setMatchesLastFetchedFor(job._id);
           } else {
             throw new Error(matchesResponse.message || 'Failed to load candidates');
           }
         } else {
           // No access - show payment prompt
           setCandidateMatches([]);
+          setMatchesLastFetchedFor(job._id);
         }
       }
 
@@ -2290,6 +2301,13 @@ const EmployerDashboard = () => {
                       </>
                     )}
                   </Button>
+                </div>
+              ) : matchesLastFetchedFor !== selectedJobForMatching._id ? (
+                /* Fetch hasn't finished yet for THIS job — show spinner instead
+                   of flashing the empty state with stale candidateMatches. */
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <span className="ml-2 text-muted-foreground">Duke ngarkuar kandidatët...</span>
                 </div>
               ) : candidateMatches.length === 0 ? (
                 /* No Matches Found */

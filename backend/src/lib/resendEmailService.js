@@ -1338,6 +1338,114 @@ advance.al`;
       return { success: false, error: error.message };
     }
   }
+
+  // Send payment reminder — fired from paymentReminderWorker when a job has
+  // been in pending_payment status for >threshold hours without paying.
+  // Sent ONCE per job (worker gates on Job.paymentReminderSentAt).
+  async sendPaymentReminderEmail({ to, employerName, jobTitle, amountEur, jobId }) {
+    if (!this.enabled) {
+      return { success: false, message: 'Email service disabled' };
+    }
+
+    try {
+      const safeName    = escapeHtml(employerName || 'Punëdhënës');
+      const safeJob     = escapeHtml(jobTitle || '');
+      const safeAmount  = Number(amountEur || 0).toFixed(2);
+      const frontendBase = process.env.FRONTEND_URL || 'https://advance.al';
+      const paymentLink = `${frontendBase}/payment/job/${jobId}`;
+
+      const subject = safeSubject(`⏰ Po të kujtojmë: pagesa për postimin "${jobTitle || ''}"`);
+
+      const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: Arial, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
+    <div style="text-align: center; margin-bottom: 30px; padding: 20px 0; border-bottom: 2px solid #f59e0b;">
+      <h1 style="color: #f59e0b; margin: 0; font-size: 28px; font-weight: bold;">advance.al</h1>
+      <p style="color: #6b7280; margin: 5px 0 0 0; font-size: 16px;">Po të kujtojmë</p>
+    </div>
+
+    <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 30px; margin: 20px 0;">
+      <h2 style="color: #78350f; margin-top: 0; font-size: 22px;">⏰ Po të kujtojmë</h2>
+      <p style="color: #92400e; line-height: 1.6; font-size: 16px;">
+        Përshëndetje <strong>${safeName}</strong>,
+      </p>
+      <p style="color: #92400e; line-height: 1.6; font-size: 16px;">
+        Vumë re që ke filluar të postosh punën <strong>"${safeJob}"</strong>, por pagesa nuk u kompletua. Puna nuk është e publikuar ende — për ta bërë të dukshme për kandidatët, plotëso pagesën.
+      </p>
+    </div>
+
+    <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px; margin: 20px 0;">
+      <h3 style="color: #1f2937; margin: 0 0 12px 0; font-size: 18px;">Detajet</h3>
+      <table style="width: 100%; border-collapse: collapse; color: #374151; font-size: 15px;">
+        <tr>
+          <td style="padding: 8px 0; color: #6b7280;">Titulli</td>
+          <td style="padding: 8px 0; text-align: right; font-weight: 600;">${safeJob}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #6b7280;">Shuma</td>
+          <td style="padding: 8px 0; text-align: right; font-weight: 600;">€${safeAmount}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="text-align: center; margin: 30px 0;">
+      <a href="${paymentLink}"
+         style="background: #f59e0b; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
+        💳 Plotëso pagesën
+      </a>
+    </div>
+
+    <p style="color: #6b7280; font-size: 13px; line-height: 1.6; padding: 0 8px; text-align: center;">
+      Nëse nuk dëshiron më ta publikosh këtë punë, mund ta fshish nga paneli i punëdhënësit.
+    </p>
+
+    <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+      <p style="color: #9ca3af; font-size: 12px;">© ${new Date().getFullYear()} advance.al — Platforma e Punës në Shqipëri</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+      const textContent = `Po të kujtojmë — advance.al
+
+Përshëndetje ${employerName || 'Punëdhënës'},
+
+Ke filluar të postosh punën "${jobTitle}", por pagesa nuk u kompletua. Puna nuk është e publikuar ende.
+
+Shuma: €${safeAmount}
+
+Plotëso pagesën: ${paymentLink}
+
+Nëse nuk dëshiron më ta publikosh, mund ta fshish nga paneli i punëdhënësit.
+
+--
+advance.al`;
+
+      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+        from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
+        to: this.getRecipientEmail(to),
+        subject,
+        html: htmlContent,
+        text: textContent,
+      }));
+
+      if (emailResult.error) {
+        logger.error('Resend payment reminder error:', emailResult.error);
+        throw new Error('Failed to send payment reminder email');
+      }
+
+      return { success: true, emailId: emailResult.data?.id };
+    } catch (error) {
+      logger.error('Error sending payment reminder email:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 // Create singleton instance

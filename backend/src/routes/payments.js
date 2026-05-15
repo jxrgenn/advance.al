@@ -156,17 +156,26 @@ router.post('/paysera/initiate', initiateLimiter, authenticate, requireEmployer,
       userAgent: req.headers['user-agent'],
     });
 
-    // Dev/staging fallback: skip Paysera when keys aren't set. Only
-    // production strictly requires real keys — anything else (dev, test,
-    // staging, empty NODE_ENV) gets the fake-success path so the UI flow
-    // is testable end-to-end.
+    // Dev/staging fallback: skip Paysera when keys aren't set.
+    // Two override paths to the fake-success URL:
+    //   (a) PAYSERA_ALLOW_FAKE_SUCCESS=true (explicit, works in any env)
+    //   (b) NODE_ENV !== 'production' (implicit, classic dev fallback)
+    // Production WITH no keys + no explicit allow → 503.
     if (!isConfigured()) {
-      if (process.env.NODE_ENV !== 'production') {
+      const allowFakeSuccess = process.env.PAYSERA_ALLOW_FAKE_SUCCESS === 'true';
+      if (allowFakeSuccess || process.env.NODE_ENV !== 'production') {
         return res.json({
           success: true,
           data: { redirectUrl: `/payment/fake-success?jobId=${jobId}`, fake: true, amountEur, tier },
         });
       }
+      logger.warn('paysera/initiate 503 — service unconfigured', {
+        NODE_ENV: process.env.NODE_ENV,
+        hasProjectId: !!process.env.PAYSERA_PROJECT_ID,
+        hasSignPassword: !!process.env.PAYSERA_SIGN_PASSWORD,
+        allowFakeSuccess,
+        hint: 'set PAYSERA_ALLOW_FAKE_SUCCESS=true to bypass in non-prod use cases',
+      });
       return res.status(503).json({
         success: false,
         message: 'Sistemi i pagesave nuk është konfiguruar. Kontakto admin-in.',

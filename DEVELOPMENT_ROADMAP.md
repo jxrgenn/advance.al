@@ -74,6 +74,20 @@ User decisions: Paysera standard checkout flow + dev auto-accept fallback; auto-
 
 10-job €280 package, Paysera Wallet/subscriptions/refunds, multi-currency still deferred.
 
+## 🧹 **POST-PHASE-3 QA CLEANUP — ROUND 6 — STARTED 2026-05-15**
+
+After Rounds G+H shipped, user found 5 follow-ups: noisy 404 console error on RecentlyViewedJobs; Paysera 503 STILL fires (root cause: their local .env has `NODE_ENV=production` — H2's fix needed an explicit override); toast close-X invisible on mobile; "Show candidates" briefly flashes empty-state before list; explicit feature ask for follow-up emails to nudge unpaid employers.
+
+- **QA-I1 — quieter RecentlyViewedJobs 404** (SHIPPED): downgrade `console.error` to no-log for 404s (kept for other errors). The component already filters null returns — only the log noise was the complaint.
+- **QA-I2 — Paysera bulletproof override + diag:env** (SHIPPED): root cause confirmed by writing `backend/scripts/diagnose-env.js` (`npm run diag:env`): user's `.env` has `NODE_ENV=production`. New override `PAYSERA_ALLOW_FAKE_SUCCESS=true` bypasses the 503 gate regardless of NODE_ENV — user sets this in their .env to unblock dev. 503 branch now logs `{ NODE_ENV, hasProjectId, hasSignPassword, allowFakeSuccess, hint }` so future debugging is one log line. .env.example documents both new vars. Test added: PAYSERA_ALLOW_FAKE_SUCCESS=true + NODE_ENV=production + no keys returns fake-success URL.
+- **QA-I3 — toast mobile close-X visible + centered** (SHIPPED): ToastClose className `opacity-0 group-hover:opacity-100` → `opacity-100 sm:opacity-0 sm:group-hover:opacity-100` so the X is always tappable on touch devices (no hover state on mobile). ToastViewport gets `items-center sm:items-stretch` so toasts visually center on the mobile top strip instead of left-aligning.
+- **QA-I4 — candidates modal per-job tracking** (SHIPPED): new `matchesLastFetchedFor: string | null` state in EmployerDashboard. Reset at start of `handleViewCandidates`, set to `job._id` after each fetch completes. Render branches: if `matchesLastFetchedFor !== selectedJobForMatching._id`, show spinner (still loading for THIS job); otherwise check empty-state vs list. Prevents the "no candidates" flash when opening modal for a job whose data hasn't loaded yet.
+- **QA-I5 — payment reminder worker** (SHIPPED): new Job field `paymentReminderSentAt`, new `sendPaymentReminderEmail()` on resendEmailService (Albanian HTML+text, amber theme, CTA → `/payment/job/:id`), new `backend/src/services/paymentReminderWorker.js` with `sendDuePaymentReminders()` — finds pending_payment jobs older than `PAYMENT_REMINDER_AFTER_HOURS` (default 24) without `paymentReminderSentAt`, sends one email per job, marks them. Idempotent. Registered in server.js as setInterval (cadence `PAYMENT_REMINDER_INTERVAL_MS`, default 1h). Also logs `PaymentEvent` event `reminder_sent` (new enum value) for the audit trail. 6 integration tests cover age threshold, idempotency, isDeleted skip, status filter, audit log.
+
+Round 6 tests: 32/32 payments + 13/13 admin-payments + 6/6 reminder + 34/34 jobs regression + 25/25 payseraService = 110/110.
+
+10-job €280 package, Paysera Wallet/subscriptions/refunds, multi-currency still deferred. PDF invoice + refund flow + multi-stage reminder remain P3.
+
 ## 🧹 **POST-PHASE-3 QA CLEANUP — ROUND 5 — STARTED 2026-05-15**
 
 After Round 4 user tested: mobile fixed ✓ but desktop still off-center ("size almost good, can be a bit wider"). Also wanted the BEST possible Paysera integration thinking of EVERYTHING. Locked decisions (AskUserQuestion): enable payment_enabled now; block deletion of pending_payment jobs outright; plain text+HTML receipt email (no PDF in this round).

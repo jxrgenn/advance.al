@@ -60,8 +60,13 @@ const RecentlyViewedJobs = ({
               return response.data.job;
             }
             return null;
-          } catch (error) {
-            console.error(`Error fetching job ${item.jobId}:`, error);
+          } catch (error: any) {
+            // 404 is expected here: the job may have been deleted, soft-deleted,
+            // or moved out of public visibility (e.g., pending_payment after a
+            // failed flow). Quietly drop it from the list — only log real errors.
+            if (error?.status !== 404) {
+              console.error(`Error fetching job ${item.jobId}:`, error);
+            }
             return null;
           }
         });

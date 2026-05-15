@@ -36,6 +36,7 @@ const paymentEventSchema = new Schema({
       'idempotent_replay',
       'fake_success',
       'admin_manual_accept',
+      'reminder_sent',
     ],
     required: true,
   },
