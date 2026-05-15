@@ -1196,11 +1196,43 @@ export const statsApi = {
 };
 
 // Admin API
+export type AdminPayment = {
+  _id: string;
+  title: string;
+  slug?: string;
+  status: string;
+  paymentStatus: string;
+  paymentMethod?: 'paysera' | 'dev-fake' | 'admin-manual';
+  paymentRequired: number;
+  paymentId?: string;
+  paymentInitiatedAt?: string;
+  paidAt?: string;
+  tier: string;
+  employer: { _id: string; email: string; name: string };
+};
+
 export const adminApi = {
   // Get employers pending verification
   getPendingEmployers: async (): Promise<ApiResponse<{ employers: User[] }>> => {
     return apiRequest<{ employers: User[] }>('/users/admin/pending-employers');
   },
+
+  // QA-G5: list payments with filters + pagination
+  listPayments: async (params: { status?: 'all' | 'pending_payment' | 'paid' | 'failed'; employerEmail?: string; page?: number; limit?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.status) qs.set('status', params.status);
+    if (params.employerEmail) qs.set('employerEmail', params.employerEmail);
+    if (params.page) qs.set('page', String(params.page));
+    if (params.limit) qs.set('limit', String(params.limit));
+    return apiRequest<{ payments: AdminPayment[]; pagination: { page: number; limit: number; total: number; pages: number } }>(`/admin/payments?${qs.toString()}`);
+  },
+
+  // QA-G5: manual mark-paid override (admin only). Reason >= 5 chars.
+  manualAcceptPayment: async (jobId: string, reason: string) =>
+    apiRequest<{ jobId: string; status: string; paymentStatus: string; paymentMethod: string; paymentId: string; paidAt: string }>(
+      `/admin/payments/${jobId}/manual-accept`,
+      { method: 'POST', body: JSON.stringify({ reason }) }
+    ),
 
   // Verify or reject employer
   verifyEmployer: async (id: string, action: 'approve' | 'reject'): Promise<ApiResponse<{ employer: User }>> => {

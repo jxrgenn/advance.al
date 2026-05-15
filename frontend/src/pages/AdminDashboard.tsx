@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import BusinessDashboard from "@/pages/BusinessDashboard";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -19,7 +19,7 @@ import {
   Users, Briefcase, TrendingUp, TrendingDown, DollarSign,
   Eye, UserPlus, FileText, AlertTriangle, Settings,
   BarChart3, Activity, Database, Shield, Star, Trash2, Edit,
-  ChevronLeft, ChevronRight, Calendar, Send, Zap, Download, Search
+  ChevronLeft, ChevronRight, Calendar, Send, Zap, Download, Search, Loader2
 } from "lucide-react";
 
 interface DashboardStats {
@@ -54,6 +54,183 @@ interface DashboardStats {
 }
 
 // Configuration Setting Component
+// QA-G5: Admin payments panel — list + manual-accept override.
+// Read-only list is the common case; manual-accept is the "callback was
+// lost" recovery path. Reason is required and ends up in the
+// PaymentEvent audit log so the override is reviewable later.
+const AdminPaymentsPanel = () => {
+  const [loading, setLoading] = useState(true);
+  const [payments, setPayments] = useState<import("@/lib/api").AdminPayment[]>([]);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending_payment' | 'paid' | 'failed'>('all');
+  const [emailFilter, setEmailFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [acceptModalJobId, setAcceptModalJobId] = useState<string | null>(null);
+  const [acceptReason, setAcceptReason] = useState('');
+  const [accepting, setAccepting] = useState(false);
+  const { toast } = useToast();
+
+  const fetchPayments = async () => {
+    setLoading(true);
+    try {
+      const r = await adminApi.listPayments({ status: statusFilter, employerEmail: emailFilter, page, limit: 25 });
+      if (r.success && r.data) {
+        setPayments(r.data.payments);
+        setTotalPages(r.data.pagination.pages || 1);
+      }
+    } catch (err: any) {
+      toast({ title: 'Gabim', description: err?.message || 'S\'mund të ngarkohen pagesat', variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPayments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, page]);
+
+  const handleManualAccept = async () => {
+    if (!acceptModalJobId || acceptReason.trim().length < 5) {
+      toast({ title: 'Arsye e pavlefshme', description: 'Jepni një arsye të paktën 5 karaktere.', variant: 'destructive' });
+      return;
+    }
+    try {
+      setAccepting(true);
+      const r = await adminApi.manualAcceptPayment(acceptModalJobId, acceptReason.trim());
+      if (r.success) {
+        toast({ title: 'Miratuar', description: 'Puna u shënua si e paguar.' });
+        setAcceptModalJobId(null);
+        setAcceptReason('');
+        await fetchPayments();
+      } else {
+        toast({ title: 'Gabim', description: r.message || 'Miratimi dështoi', variant: 'destructive' });
+      }
+    } catch (err: any) {
+      toast({ title: 'Gabim', description: err?.message || 'Miratimi dështoi', variant: 'destructive' });
+    } finally {
+      setAccepting(false);
+    }
+  };
+
+  const statusLabel = (paymentStatus: string, status: string) => {
+    if (paymentStatus === 'paid') return { label: 'E paguar', color: 'bg-green-100 text-green-800 border-green-200' };
+    if (paymentStatus === 'failed') return { label: 'E dështuar', color: 'bg-red-100 text-red-800 border-red-200' };
+    if (status === 'pending_payment') return { label: 'Pritet pagesa', color: 'bg-amber-100 text-amber-800 border-amber-200' };
+    return { label: paymentStatus, color: 'bg-gray-100 text-gray-800 border-gray-200' };
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Pagesat</CardTitle>
+        <CardDescription>Shih pagesat aktive, miratosh manualisht kur callback-u Paysera dështon.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          {(['all', 'pending_payment', 'paid', 'failed'] as const).map(s => (
+            <Button key={s} size="sm" variant={statusFilter === s ? 'default' : 'outline'} onClick={() => { setStatusFilter(s); setPage(1); }}>
+              {s === 'all' ? 'Të gjitha' : s === 'pending_payment' ? 'Në pritje' : s === 'paid' ? 'Paguar' : 'Dështuar'}
+            </Button>
+          ))}
+          <div className="flex items-center gap-2 ml-auto">
+            <input
+              type="text"
+              value={emailFilter}
+              onChange={(e) => setEmailFilter(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { setPage(1); fetchPayments(); } }}
+              placeholder="filter email…"
+              className="text-sm border rounded px-2 py-1 h-8"
+            />
+            <Button size="sm" variant="outline" onClick={() => { setPage(1); fetchPayments(); }}>Filtro</Button>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
+        ) : payments.length === 0 ? (
+          <div className="text-center text-muted-foreground py-6 text-sm">Nuk u gjetën pagesa.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs text-muted-foreground">
+                  <th className="py-2 pr-3">Pun&euml;</th>
+                  <th className="py-2 pr-3">Pun&euml;dh&euml;n&euml;s</th>
+                  <th className="py-2 pr-3">Statusi</th>
+                  <th className="py-2 pr-3">Metoda</th>
+                  <th className="py-2 pr-3 text-right">Shuma</th>
+                  <th className="py-2 pr-3">Data</th>
+                  <th className="py-2 pr-3">Veprime</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map(p => {
+                  const sl = statusLabel(p.paymentStatus, p.status);
+                  return (
+                    <tr key={p._id} className="border-b last:border-0">
+                      <td className="py-2 pr-3 max-w-[220px] truncate">{p.title}</td>
+                      <td className="py-2 pr-3 max-w-[200px] truncate">
+                        <div className="font-medium truncate">{p.employer.name}</div>
+                        <div className="text-xs text-muted-foreground truncate">{p.employer.email}</div>
+                      </td>
+                      <td className="py-2 pr-3"><span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs ${sl.color}`}>{sl.label}</span></td>
+                      <td className="py-2 pr-3 text-xs">{p.paymentMethod || '—'}</td>
+                      <td className="py-2 pr-3 text-right">€{Number(p.paymentRequired || 0).toFixed(2)}</td>
+                      <td className="py-2 pr-3 text-xs">
+                        {p.paidAt ? new Date(p.paidAt).toLocaleString('sq-AL') : p.paymentInitiatedAt ? new Date(p.paymentInitiatedAt).toLocaleString('sq-AL') : '—'}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {p.paymentStatus !== 'paid' && (
+                          <Button size="sm" variant="outline" onClick={() => { setAcceptModalJobId(p._id); setAcceptReason(''); }}>
+                            Shëno si e paguar
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="flex justify-center gap-2 pt-2">
+            <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>‹ Më parë</Button>
+            <span className="text-sm py-1.5 text-muted-foreground">Faqja {page} / {totalPages}</span>
+            <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Pasardhëse ›</Button>
+          </div>
+        )}
+      </CardContent>
+
+      <Dialog open={!!acceptModalJobId} onOpenChange={(o) => { if (!o) setAcceptModalJobId(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Shëno pagesën si të kryer</DialogTitle>
+            <DialogDescription>
+              Kjo ndryshon punën në "aktive" dhe regjistron arsyen në audit-log. Përdor vetëm kur ke konfirmim jashtë sistemit (p.sh. ticket Paysera).
+            </DialogDescription>
+          </DialogHeader>
+          <textarea
+            value={acceptReason}
+            onChange={(e) => setAcceptReason(e.target.value)}
+            placeholder="Arsye (min 5 karaktere) — p.sh. 'Paysera ticket #98765 konfirmuar përmes emailit më 14.05.'"
+            className="w-full border rounded p-2 text-sm min-h-[100px]"
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setAcceptModalJobId(null)} disabled={accepting}>Anulo</Button>
+            <Button onClick={handleManualAccept} disabled={accepting || acceptReason.trim().length < 5}>
+              {accepting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Konfirmo
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+};
+
 const ConfigurationSetting = ({ setting, onUpdate, onReset }: any) => {
   const [value, setValue] = useState(setting.value);
   const [reason, setReason] = useState('');
@@ -1148,9 +1325,10 @@ const AdminDashboard = () => {
                 <TabsTrigger value="employers">Punëdhënës</TabsTrigger>
                 <TabsTrigger value="analytics">Analitika</TabsTrigger>
               </TabsList>
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="content">Përmbajtja</TabsTrigger>
                 <TabsTrigger value="business">Çmimet</TabsTrigger>
+                <TabsTrigger value="payments">Pagesat</TabsTrigger>
               </TabsList>
             </div>
 
@@ -1649,6 +1827,11 @@ const AdminDashboard = () => {
             {/* System Tab */}
             <TabsContent value="business" className="space-y-6">
               <BusinessDashboard />
+            </TabsContent>
+
+            {/* QA-G5: Payments Tab */}
+            <TabsContent value="payments" className="space-y-6">
+              <AdminPaymentsPanel />
             </TabsContent>
           </Tabs>
         </div>

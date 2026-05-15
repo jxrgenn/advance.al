@@ -1,6 +1,6 @@
 import express from 'express';
 import mongoose from 'mongoose';
-import { User, Job, Application, QuickUser } from '../models/index.js';
+import { User, Job, Application, QuickUser, PaymentEvent } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { escapeRegex, sanitizeLimit } from '../utils/sanitize.js';
 import notificationService from '../lib/notificationService.js';
@@ -1151,6 +1151,156 @@ router.post('/backfill-job-embeddings', async (req, res) => {
   } catch (error) {
     logger.error('Backfill job embeddings error:', error.message);
     res.status(500).json({ success: false, message: 'Gabim në backfill' });
+  }
+});
+
+// ============================================================
+// QA-G5: Admin payments visibility + manual mark-paid override
+// ============================================================
+
+// @route   GET /api/admin/payments
+// @desc    List jobs joined with their payment state, filterable.
+//          Filters: status=pending_payment|paid|failed|all, employerEmail (substring),
+//          dateFrom/dateTo (ISO), page, limit.
+// @access  Private (Admin only)
+router.get('/payments', async (req, res) => {
+  try {
+    const {
+      status = 'all',
+      employerEmail = '',
+      dateFrom,
+      dateTo,
+      page = 1,
+      limit = 25,
+    } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limNum = sanitizeLimit(limit, 25, 100);
+
+    const jobQuery = { isDeleted: false };
+
+    if (status === 'pending_payment') {
+      jobQuery.status = 'pending_payment';
+    } else if (status === 'paid') {
+      jobQuery.paymentStatus = 'paid';
+    } else if (status === 'failed') {
+      jobQuery.paymentStatus = 'failed';
+    } else if (status === 'all') {
+      // include any job that has touched the payment pipeline
+      jobQuery.$or = [
+        { status: 'pending_payment' },
+        { paymentStatus: { $in: ['paid', 'failed'] } },
+        { paymentInitiatedAt: { $exists: true, $ne: null } },
+      ];
+    }
+
+    if (dateFrom || dateTo) {
+      jobQuery.paymentInitiatedAt = {};
+      if (dateFrom) jobQuery.paymentInitiatedAt.$gte = new Date(dateFrom);
+      if (dateTo) jobQuery.paymentInitiatedAt.$lte = new Date(dateTo);
+    }
+
+    // Filter by employer email substring: resolve user ids first.
+    if (employerEmail && employerEmail.trim()) {
+      const safe = escapeRegex(employerEmail.trim());
+      const employerIds = await User.find({ email: { $regex: safe, $options: 'i' }, userType: 'employer' }).distinct('_id');
+      jobQuery.employerId = { $in: employerIds };
+    }
+
+    const total = await Job.countDocuments(jobQuery);
+    const docs = await Job.find(jobQuery)
+      .sort({ paymentInitiatedAt: -1, updatedAt: -1 })
+      .skip((pageNum - 1) * limNum)
+      .limit(limNum)
+      .populate('employerId', 'email profile.firstName profile.employerProfile.companyName')
+      .lean();
+
+    res.json({
+      success: true,
+      data: {
+        payments: docs.map(j => ({
+          _id: j._id,
+          title: j.title,
+          slug: j.slug,
+          status: j.status,
+          paymentStatus: j.paymentStatus,
+          paymentMethod: j.paymentMethod,
+          paymentRequired: j.paymentRequired,
+          paymentId: j.paymentId,
+          paymentInitiatedAt: j.paymentInitiatedAt,
+          paidAt: j.paidAt,
+          tier: j.tier,
+          employer: {
+            _id: j.employerId?._id,
+            email: j.employerId?.email,
+            name: j.employerId?.profile?.employerProfile?.companyName || j.employerId?.profile?.firstName || '—',
+          },
+        })),
+        pagination: { page: pageNum, limit: limNum, total, pages: Math.ceil(total / limNum) },
+      },
+    });
+  } catch (error) {
+    logger.error('admin/payments list error:', error.message);
+    res.status(500).json({ success: false, message: 'Gabim në marrjen e pagesave' });
+  }
+});
+
+// @route   POST /api/admin/payments/:jobId/manual-accept
+// @desc    Override: mark a job as paid (status=active, paymentStatus=paid)
+//          when the real Paysera callback was lost / never delivered. Requires
+//          a non-empty `reason` so the PaymentEvent audit trail captures WHY.
+// @access  Private (Admin only)
+router.post('/payments/:jobId/manual-accept', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const { reason } = req.body || {};
+    if (!reason || typeof reason !== 'string' || reason.trim().length < 5) {
+      return res.status(400).json({ success: false, message: 'Reason required (min 5 chars)' });
+    }
+    if (!mongoose.isValidObjectId(jobId)) {
+      return res.status(400).json({ success: false, message: 'jobId i pavlefshëm' });
+    }
+
+    const job = await Job.findById(jobId);
+    if (!job || job.isDeleted) {
+      return res.status(404).json({ success: false, message: 'Puna nuk u gjet' });
+    }
+    if (job.paymentStatus === 'paid') {
+      return res.status(409).json({ success: false, message: 'Tashmë e paguar' });
+    }
+
+    const adminPaymentId = `admin-${req.user._id}-${Date.now()}`;
+    job.status = 'active';
+    job.paymentStatus = 'paid';
+    job.paymentMethod = 'admin-manual';
+    job.paymentId = adminPaymentId;
+    job.paidAt = new Date();
+    await job.save();
+
+    await PaymentEvent.create({
+      jobId: job._id,
+      employerId: job.employerId,
+      event: 'admin_manual_accept',
+      orderId: `job-${jobId}`,
+      paymentId: adminPaymentId,
+      amountCents: Math.round((job.paymentRequired || 0) * 100),
+      notes: `admin=${req.user.email || req.user._id}; reason=${reason.trim()}`,
+    }).catch(err => logger.warn('admin manual-accept PaymentEvent failed', { error: err.message }));
+
+    res.json({
+      success: true,
+      data: {
+        jobId: String(job._id),
+        status: job.status,
+        paymentStatus: job.paymentStatus,
+        paymentMethod: job.paymentMethod,
+        paymentId: job.paymentId,
+        paidAt: job.paidAt,
+      },
+    });
+  } catch (error) {
+    logger.error('admin/payments manual-accept error:', error.message);
+    res.status(500).json({ success: false, message: 'Gabim në miratimin manual' });
   }
 });
 
