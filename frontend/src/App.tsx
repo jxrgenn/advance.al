@@ -39,6 +39,7 @@ const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Unsubscribe = lazy(() => import("./pages/Unsubscribe"));
 const Preferences = lazy(() => import("./pages/Preferences"));
+const PaymentJobPosting = lazy(() => import("./pages/PaymentJobPosting"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -133,6 +134,11 @@ const App = () => (
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/unsubscribe" element={<Unsubscribe />} />
                 <Route path="/preferences" element={<Preferences />} />
+                <Route path="/payment/job/:jobId" element={
+                  <ProtectedRoute allowedUserTypes={['employer']}>
+                    <PaymentJobPosting />
+                  </ProtectedRoute>
+                } />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>

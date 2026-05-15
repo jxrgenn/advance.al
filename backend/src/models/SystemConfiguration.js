@@ -330,20 +330,20 @@ systemConfigurationSchema.statics.createDefaultSettings = async function(adminUs
     {
       category: 'payment',
       key: 'pricing_standard_posting',
-      value: 28,
+      value: 35,
       dataType: 'number',
       description: 'Çmimi për postim standart pune (EUR)',
-      defaultValue: 28,
+      defaultValue: 35,
       isPublic: true,
       validation: { required: true, min: 0, max: 1000 }
     },
     {
       category: 'payment',
       key: 'pricing_promoted_posting',
-      value: 45,
+      value: 49,
       dataType: 'number',
       description: 'Çmimi për postim të promovuar pune (EUR)',
-      defaultValue: 45,
+      defaultValue: 49,
       isPublic: true,
       validation: { required: true, min: 0, max: 1000 }
     },

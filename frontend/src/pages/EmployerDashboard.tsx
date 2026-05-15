@@ -1272,7 +1272,7 @@ const EmployerDashboard = () => {
                             <Users className="h-3 w-3 sm:h-4 sm:w-4" />
                             <span className="sr-only sm:not-sr-only sm:ml-1 hidden sm:inline">Kandidatë</span>
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => window.open(`/jobs/${job._id}`, '_blank')} className="h-8 w-8 sm:h-9 sm:w-auto sm:px-3">
+                          <Button size="sm" variant="outline" onClick={() => window.open(`/jobs/${(job as any).slug || job._id}`, '_blank')} className="h-8 w-8 sm:h-9 sm:w-auto sm:px-3">
                             <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
                             <span className="sr-only sm:not-sr-only sm:ml-1 hidden sm:inline">Shiko</span>
                           </Button>
@@ -2223,9 +2223,10 @@ const EmployerDashboard = () => {
                         <span>Aksesi i përjetshëm për këtë pozicion</span>
                       </li>
                     </ul>
-                    <div className="text-xl font-bold text-primary mb-2">DEMO: GRATIS</div>
+                    <div className="text-xl font-bold text-primary mb-2">€15 / postim</div>
                     <p className="text-[10px] text-muted-foreground">
-                      (Version demonstrativ - pagesa gjithmonë kalon me sukses)
+                      Pagesa nëpërmjet Paysera. Aksesi mbetet i hapur përjetë për këtë pozicion.
+                      Ndërsa Paysera është në përgatitje, butoni më poshtë jep akses pa pagesë.
                     </p>
                   </div>
                   <Button
@@ -2242,7 +2243,7 @@ const EmployerDashboard = () => {
                     ) : (
                       <>
                         <Users className="mr-2 h-4 w-4" />
-                        Shiko Kandidatët (DEMO)
+                        Shiko Kandidatët (provë falas)
                       </>
                     )}
                   </Button>

@@ -421,10 +421,19 @@ const PostJob = () => {
 
       if (response.success) {
         clearDraft();
+
+        // Backend may set status='pending_payment' for non-whitelisted employers.
+        // In that case we route to the paywall instead of the dashboard so the
+        // job isn't visible until Paysera (or admin override) clears it.
+        const createdJob: any = response.data;
+        const requiresPayment = createdJob?.status === 'pending_payment' || createdJob?.paymentRequired === true;
+
         notifications.show({
-          title: "Puna u postua!",
-          message: "Puna juaj u postua me sukses dhe është tani e dukshme për kandidatët.",
-          color: "green"
+          title: requiresPayment ? "Puna u krijua — pritet pagesa" : "Puna u postua!",
+          message: requiresPayment
+            ? "Plotëso pagesën për ta publikuar punën."
+            : "Puna juaj u postua me sukses dhe është tani e dukshme për kandidatët.",
+          color: requiresPayment ? "blue" : "green"
         });
 
         // Reset form
@@ -449,10 +458,13 @@ const PostJob = () => {
           sezonale: false
         });
 
-        // Redirect to employer dashboard after successful submission
         setTimeout(() => {
-          navigate('/employer-dashboard');
-        }, 2000);
+          if (requiresPayment && createdJob?._id) {
+            navigate(`/payment/job/${createdJob._id}`);
+          } else {
+            navigate('/employer-dashboard');
+          }
+        }, 1500);
 
       } else {
         throw new Error(response.message || 'Failed to create job');
