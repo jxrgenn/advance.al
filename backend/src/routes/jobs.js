@@ -1405,6 +1405,22 @@ router.delete('/:id', validateObjectId('id'), authenticate, requireEmployer, asy
       });
     }
 
+    // QA-G2: prevent silently orphaning an in-flight Paysera session.
+    // Owner must use the dedicated cancel flow (?force=true) from the
+    // /payment/job/:id page, which explicitly marks paymentStatus=failed
+    // BEFORE soft-deleting.
+    const force = String(req.query.force || '').toLowerCase() === 'true';
+    if (job.status === 'pending_payment' && !force) {
+      return res.status(409).json({
+        success: false,
+        message: 'Kjo punë është në pritje të pagesës. Përfundo ose anulo pagesën përpara fshirjes.'
+      });
+    }
+    if (job.status === 'pending_payment' && force) {
+      job.paymentStatus = 'failed';
+      await job.save();
+    }
+
     await job.softDelete();
 
     // F-10 fix: invalidate admin:dashboard cache on delete

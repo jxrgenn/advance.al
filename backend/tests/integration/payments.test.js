@@ -37,6 +37,7 @@ import { createJobPendingPayment, createJob } from '../factories/job.factory.js'
 import { createAuthHeaders } from '../helpers/auth.helper.js';
 import Job from '../../src/models/Job.js';
 import SystemConfiguration from '../../src/models/SystemConfiguration.js';
+import PaymentEvent from '../../src/models/PaymentEvent.js';
 
 const TEST_PROJECT_ID = '12345';
 const TEST_SIGN_PASSWORD = 'integration-test-secret';
@@ -460,6 +461,161 @@ describe('Paysera payments — integration', () => {
       expect(updated.status).toBe('active');
       expect(updated.paymentStatus).toBe('paid');
       expect(updated.paymentId).toMatch(/^dev-fake-/);
+    });
+  });
+
+  // ============================================================
+  // QA-G2: PaymentEvent audit log + new Job fields
+  // ============================================================
+  describe('QA-G2 PaymentEvent + paidAt/paymentMethod/paymentInitiatedAt', () => {
+    it('initiate writes a PaymentEvent with event=initiated and sets paymentInitiatedAt', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const job = await createJobPendingPayment(emp);
+
+      await request(app)
+        .post('/api/payments/paysera/initiate')
+        .set(createAuthHeaders(emp))
+        .send({ jobId: job._id.toString(), tier: 'standard' });
+
+      const events = await PaymentEvent.find({ jobId: job._id }).lean();
+      expect(events.length).toBe(1);
+      expect(events[0].event).toBe('initiated');
+      expect(events[0].tier).toBe('standard');
+      expect(String(events[0].employerId)).toBe(String(emp._id));
+      expect(events[0].amountCents).toBeGreaterThan(0);
+
+      const updated = await Job.findById(job._id);
+      expect(updated.paymentInitiatedAt).toBeInstanceOf(Date);
+    });
+
+    it('callback status=1 sets paidAt + paymentMethod=paysera and logs callback_received + callback_paid', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const job = await createJobPendingPayment(emp);
+      const { data, ss1 } = buildSignedCallback({
+        orderId: `job-${job._id}`,
+        status: '1',
+        requestid: 'evt-paid-1',
+      });
+
+      await request(app)
+        .post('/api/payments/paysera/callback')
+        .type('form')
+        .send({ data, ss1 });
+
+      const updated = await Job.findById(job._id);
+      expect(updated.status).toBe('active');
+      expect(updated.paymentMethod).toBe('paysera');
+      expect(updated.paidAt).toBeInstanceOf(Date);
+
+      const events = await PaymentEvent.find({ jobId: job._id }).sort({ createdAt: 1 }).lean();
+      const eventNames = events.map(e => e.event);
+      expect(eventNames).toContain('callback_received');
+      expect(eventNames).toContain('callback_paid');
+    });
+
+    it('idempotent replay logs idempotent_replay and does NOT re-set paidAt', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const job = await createJobPendingPayment(emp);
+      const { data, ss1 } = buildSignedCallback({
+        orderId: `job-${job._id}`,
+        status: '1',
+        requestid: 'evt-dup-1',
+      });
+
+      await request(app).post('/api/payments/paysera/callback').type('form').send({ data, ss1 });
+      const first = await Job.findById(job._id);
+      const firstPaidAt = first.paidAt;
+
+      await new Promise(r => setTimeout(r, 10));
+
+      await request(app).post('/api/payments/paysera/callback').type('form').send({ data, ss1 });
+      const second = await Job.findById(job._id);
+
+      expect(second.paidAt.getTime()).toBe(firstPaidAt.getTime());
+
+      const events = await PaymentEvent.find({ jobId: job._id }).lean();
+      const replayCount = events.filter(e => e.event === 'idempotent_replay').length;
+      expect(replayCount).toBe(1);
+    });
+
+    it('invalid signature logs callback_failed with signature-mismatch note', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const job = await createJobPendingPayment(emp);
+      const { data } = buildSignedCallback({ orderId: `job-${job._id}` });
+
+      await request(app)
+        .post('/api/payments/paysera/callback')
+        .type('form')
+        .send({ data, ss1: 'b'.repeat(32) });
+
+      const events = await PaymentEvent.find({ event: 'callback_failed' }).lean();
+      expect(events.length).toBeGreaterThanOrEqual(1);
+      expect(events.some(e => /signature/i.test(e.notes || ''))).toBe(true);
+    });
+
+    it('fake-success sets paymentMethod=dev-fake and logs fake_success', async () => {
+      clearPayseraEnv();
+      const { user: emp } = await createVerifiedEmployer();
+      const job = await createJobPendingPayment(emp);
+
+      await request(app)
+        .get(`/api/payments/paysera/fake-success/${job._id}`)
+        .set(createAuthHeaders(emp));
+
+      const updated = await Job.findById(job._id);
+      expect(updated.paymentMethod).toBe('dev-fake');
+      expect(updated.paidAt).toBeInstanceOf(Date);
+
+      const events = await PaymentEvent.find({ jobId: job._id, event: 'fake_success' }).lean();
+      expect(events.length).toBe(1);
+    });
+  });
+
+  // ============================================================
+  // QA-G2: DELETE guard on pending_payment jobs
+  // ============================================================
+  describe('QA-G2 DELETE guard for pending_payment', () => {
+    it('returns 409 when owner tries to delete a pending_payment job without force=true', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const job = await createJobPendingPayment(emp);
+
+      const res = await request(app)
+        .delete(`/api/jobs/${job._id}`)
+        .set(createAuthHeaders(emp));
+
+      expect(res.status).toBe(409);
+      expect(res.body.message).toMatch(/pages/i);
+
+      const stillThere = await Job.findById(job._id);
+      expect(stillThere.isDeleted).toBe(false);
+    });
+
+    it('allows delete with ?force=true and marks paymentStatus=failed first', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const job = await createJobPendingPayment(emp);
+
+      const res = await request(app)
+        .delete(`/api/jobs/${job._id}?force=true`)
+        .set(createAuthHeaders(emp));
+
+      expect(res.status).toBe(200);
+
+      const after = await Job.findById(job._id);
+      expect(after.isDeleted).toBe(true);
+      expect(after.paymentStatus).toBe('failed');
+    });
+
+    it('non-pending_payment jobs delete normally (no force needed)', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const job = await createJob(emp, { status: 'active' });
+
+      const res = await request(app)
+        .delete(`/api/jobs/${job._id}`)
+        .set(createAuthHeaders(emp));
+
+      expect(res.status).toBe(200);
+      const after = await Job.findById(job._id);
+      expect(after.isDeleted).toBe(true);
     });
   });
 });

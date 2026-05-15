@@ -26,13 +26,41 @@
  */
 
 import express from 'express';
-import { Job, SystemConfiguration } from '../models/index.js';
+import crypto from 'crypto';
+import rateLimit from 'express-rate-limit';
+import { Job, SystemConfiguration, PaymentEvent } from '../models/index.js';
 import { authenticate, requireEmployer } from '../middleware/auth.js';
 import { createPaymentUrl, verifyCallback, isConfigured } from '../services/payseraService.js';
 import logger from '../config/logger.js';
 import { fireEmbedding } from '../services/embeddingTrigger.js';
 
 const router = express.Router();
+
+// Rate limit POST /paysera/initiate: 10 per minute per authenticated user.
+// Prevents accidental or malicious init storms (each one creates a Paysera
+// session URL + a PaymentEvent row). Callback endpoint is NOT limited
+// because Paysera's legitimate retry behavior depends on it being reachable.
+const initiateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: process.env.NODE_ENV === 'development' ? 10000 : 10,
+  skip: () =>
+    process.env.NODE_ENV !== 'production' &&
+    process.env.SKIP_RATE_LIMIT === 'true',
+  keyGenerator: (req) => req.user?._id ? `user:${req.user._id}` : `ip:${req.ip}`,
+  message: { success: false, message: 'Shumë tentativa pagese — provoni përsëri pas një minute.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false, xForwardedForHeader: false },
+});
+
+// Best-effort PaymentEvent writer — never throws into the route handler.
+async function logPaymentEvent(fields) {
+  try {
+    await PaymentEvent.create(fields);
+  } catch (err) {
+    logger.warn('PaymentEvent create failed', { error: err.message, event: fields.event });
+  }
+}
 
 const FRONTEND_URL = () => process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? 'https://advance.al' : 'http://localhost:5173');
 const BACKEND_URL  = () => process.env.BACKEND_URL  || (process.env.NODE_ENV === 'production' ? 'https://advance-al.onrender.com' : 'http://localhost:3001');
@@ -59,7 +87,7 @@ async function readPricing() {
 }
 
 // POST /api/payments/paysera/initiate
-router.post('/paysera/initiate', authenticate, requireEmployer, async (req, res) => {
+router.post('/paysera/initiate', initiateLimiter, authenticate, requireEmployer, async (req, res) => {
   try {
     const { jobId, tier } = req.body || {};
     if (!jobId || typeof jobId !== 'string') {
@@ -88,7 +116,19 @@ router.post('/paysera/initiate', authenticate, requireEmployer, async (req, res)
     // 'premium', standard maps to 'basic' (the default).
     job.tier = tier === 'promoted' ? 'premium' : 'basic';
     job.paymentRequired = amountEur;
+    job.paymentInitiatedAt = new Date();
     await job.save();
+
+    await logPaymentEvent({
+      jobId: job._id,
+      employerId: req.user._id,
+      event: 'initiated',
+      orderId: `job-${jobId}`,
+      amountCents: Math.round(amountEur * 100),
+      tier,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
 
     // Dev fallback: skip Paysera entirely when keys aren't set.
     if (!isConfigured()) {
@@ -135,15 +175,25 @@ async function handleCallback(req, res) {
       return res.status(503).send('not configured');
     }
 
+    const payloadHash = crypto.createHash('md5').update(String(data)).digest('hex');
+
     const { valid, params } = verifyCallback(data, ss1);
     if (!valid) {
       logger.warn('paysera/callback signature mismatch', { ip: req.ip });
+      await logPaymentEvent({
+        jobId: undefined, // unknown — couldn't decode payload
+        event: 'callback_failed',
+        payloadHash,
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+        notes: 'signature mismatch',
+      }).catch(() => {});
       return res.status(400).send('bad signature');
     }
 
-    const status   = params.status;
-    const orderId  = params.orderid;        // we set this to `job-${jobId}`
-    const requestid = params.requestid;     // unique per Paysera transaction
+    const status      = params.status;
+    const orderId     = params.orderid;        // we set this to `job-${jobId}`
+    const requestid   = params.requestid;      // unique per Paysera transaction
     const amountCents = parseInt(params.amount, 10);
 
     if (!orderId || !orderId.startsWith('job-')) {
@@ -155,11 +205,44 @@ async function handleCallback(req, res) {
     const job = await Job.findById(jobId);
     if (!job) {
       logger.warn('paysera/callback job not found', { jobId, orderId });
+      await logPaymentEvent({
+        jobId: undefined,
+        event: 'callback_failed',
+        orderId,
+        payloadHash,
+        notes: 'job not found',
+      });
       return res.status(404).send('job not found');
     }
 
+    // Log every recognized inbound callback BEFORE deciding what to do —
+    // gives us reception evidence even if downstream processing fails.
+    await logPaymentEvent({
+      jobId: job._id,
+      employerId: job.employerId,
+      event: 'callback_received',
+      orderId,
+      paymentId: requestid,
+      amountCents,
+      status,
+      payloadHash,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
     // Idempotency: if we've already marked this requestid paid, no-op.
     if (job.paymentId && job.paymentId === requestid) {
+      logger.info('paysera/callback idempotent replay', { jobId, requestid });
+      await logPaymentEvent({
+        jobId: job._id,
+        employerId: job.employerId,
+        event: 'idempotent_replay',
+        orderId,
+        paymentId: requestid,
+        amountCents,
+        status,
+        payloadHash,
+      });
       return res.send('OK');
     }
 
@@ -168,8 +251,20 @@ async function handleCallback(req, res) {
       job.status = 'active';
       job.paymentStatus = 'paid';
       job.paymentId = requestid;
+      job.paidAt = new Date();
+      job.paymentMethod = 'paysera';
       await job.save();
       logger.info('paysera/callback job paid + activated', { jobId, requestid, amountCents });
+      await logPaymentEvent({
+        jobId: job._id,
+        employerId: job.employerId,
+        event: 'callback_paid',
+        orderId,
+        paymentId: requestid,
+        amountCents,
+        status,
+        payloadHash,
+      });
       // Fire embedding kick — the job content didn't change, but its
       // visibility just did, so make sure the vector is current for
       // matching cycles.
@@ -183,8 +278,29 @@ async function handleCallback(req, res) {
       job.paymentStatus = 'pending';
       await job.save();
       logger.info('paysera/callback non-final status', { jobId, status });
+      await logPaymentEvent({
+        jobId: job._id,
+        employerId: job.employerId,
+        event: 'callback_pending',
+        orderId,
+        paymentId: requestid,
+        amountCents,
+        status,
+        payloadHash,
+      });
     } else {
       logger.warn('paysera/callback unhandled status', { jobId, status });
+      await logPaymentEvent({
+        jobId: job._id,
+        employerId: job.employerId,
+        event: 'callback_failed',
+        orderId,
+        paymentId: requestid,
+        amountCents,
+        status,
+        payloadHash,
+        notes: `unhandled status: ${status}`,
+      });
     }
 
     // Paysera retries until it receives "OK" (case-sensitive per spec).
@@ -223,7 +339,19 @@ router.get('/paysera/fake-success/:jobId', authenticate, requireEmployer, async 
     job.paymentStatus = 'paid';
     job.paymentId = 'dev-fake-' + Date.now();
     job.paidAt = new Date();
+    job.paymentMethod = 'dev-fake';
     await job.save();
+
+    await logPaymentEvent({
+      jobId: job._id,
+      employerId: req.user._id,
+      event: 'fake_success',
+      orderId: `job-${jobId}`,
+      paymentId: job.paymentId,
+      amountCents: Math.round((job.paymentRequired || 0) * 100),
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
 
     try {
       fireEmbedding({ kind: 'job', id: jobId, reason: 'fake-paid' });

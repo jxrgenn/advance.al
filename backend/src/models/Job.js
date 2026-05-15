@@ -270,6 +270,16 @@ const jobSchema = new Schema({
   paymentId: {
     type: String
   },
+  paidAt: {
+    type: Date
+  },
+  paymentInitiatedAt: {
+    type: Date
+  },
+  paymentMethod: {
+    type: String,
+    enum: ['paysera', 'dev-fake', 'admin-manual']
+  },
 
   // Stats
   viewCount: {

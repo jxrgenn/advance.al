@@ -15,6 +15,7 @@ import BusinessCampaign from './BusinessCampaign.js';
 import PricingRule from './PricingRule.js';
 import RevenueAnalytics from './RevenueAnalytics.js';
 import CandidateMatch from './CandidateMatch.js';
+import PaymentEvent from './PaymentEvent.js';
 
 export {
   User,
@@ -32,5 +33,6 @@ export {
   BusinessCampaign,
   PricingRule,
   RevenueAnalytics,
-  CandidateMatch
+  CandidateMatch,
+  PaymentEvent
 };

@@ -76,7 +76,7 @@ const PaymentJobPosting = () => {
     if (!ok) return;
     try {
       setCancelling(true);
-      await jobsApi.deleteJob(jobId);
+      await jobsApi.deleteJob(jobId, { force: true });
       toast({ title: 'Postimi u anulua', description: 'Mund të krijoni një postim të ri kur jeni gati.' });
       navigate('/employer-dashboard');
     } catch {
