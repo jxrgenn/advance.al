@@ -572,30 +572,17 @@ describe('Paysera payments — integration', () => {
   });
 
   // ============================================================
-  // QA-G2: DELETE guard on pending_payment jobs
+  // QA-H4: DELETE behavior on pending_payment jobs — normal delete,
+  //        paymentStatus set to 'failed' for audit reconciliation,
+  //        callback after delete refuses to activate the ghost.
   // ============================================================
-  describe('QA-G2 DELETE guard for pending_payment', () => {
-    it('returns 409 when owner tries to delete a pending_payment job without force=true', async () => {
+  describe('QA-H4 pending_payment DELETE + callback-after-delete', () => {
+    it('owner can delete a pending_payment job normally (no force flag needed)', async () => {
       const { user: emp } = await createVerifiedEmployer();
       const job = await createJobPendingPayment(emp);
 
       const res = await request(app)
         .delete(`/api/jobs/${job._id}`)
-        .set(createAuthHeaders(emp));
-
-      expect(res.status).toBe(409);
-      expect(res.body.message).toMatch(/pages/i);
-
-      const stillThere = await Job.findById(job._id);
-      expect(stillThere.isDeleted).toBe(false);
-    });
-
-    it('allows delete with ?force=true and marks paymentStatus=failed first', async () => {
-      const { user: emp } = await createVerifiedEmployer();
-      const job = await createJobPendingPayment(emp);
-
-      const res = await request(app)
-        .delete(`/api/jobs/${job._id}?force=true`)
         .set(createAuthHeaders(emp));
 
       expect(res.status).toBe(200);
@@ -605,7 +592,7 @@ describe('Paysera payments — integration', () => {
       expect(after.paymentStatus).toBe('failed');
     });
 
-    it('non-pending_payment jobs delete normally (no force needed)', async () => {
+    it('non-pending_payment jobs delete normally', async () => {
       const { user: emp } = await createVerifiedEmployer();
       const job = await createJob(emp, { status: 'active' });
 
@@ -616,6 +603,38 @@ describe('Paysera payments — integration', () => {
       expect(res.status).toBe(200);
       const after = await Job.findById(job._id);
       expect(after.isDeleted).toBe(true);
+    });
+
+    it('callback for a soft-deleted job does NOT activate the ghost', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const job = await createJobPendingPayment(emp);
+
+      // Owner deletes mid-session
+      await request(app).delete(`/api/jobs/${job._id}`).set(createAuthHeaders(emp));
+
+      // Paysera callback arrives after deletion
+      const { data, ss1 } = buildSignedCallback({
+        orderId: `job-${job._id}`,
+        status: '1',
+        requestid: 'evt-after-delete',
+      });
+      const res = await request(app)
+        .post('/api/payments/paysera/callback')
+        .type('form')
+        .send({ data, ss1 });
+
+      expect(res.status).toBe(200);
+      expect(res.text).toBe('OK');
+
+      const after = await Job.findById(job._id);
+      expect(after.isDeleted).toBe(true);
+      // softDelete() flips status to 'closed', but the key invariant is
+      // it was NEVER promoted to 'active' by the late-arriving callback.
+      expect(after.status).not.toBe('active');
+      expect(after.paymentStatus).toBe('failed');   // never marked paid
+
+      const failedEvents = await PaymentEvent.find({ jobId: job._id, event: 'callback_failed' }).lean();
+      expect(failedEvents.some(e => /deleted/i.test(e.notes || ''))).toBe(true);
     });
   });
 });

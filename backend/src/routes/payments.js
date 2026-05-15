@@ -156,9 +156,12 @@ router.post('/paysera/initiate', initiateLimiter, authenticate, requireEmployer,
       userAgent: req.headers['user-agent'],
     });
 
-    // Dev fallback: skip Paysera entirely when keys aren't set.
+    // Dev/staging fallback: skip Paysera when keys aren't set. Only
+    // production strictly requires real keys — anything else (dev, test,
+    // staging, empty NODE_ENV) gets the fake-success path so the UI flow
+    // is testable end-to-end.
     if (!isConfigured()) {
-      if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
+      if (process.env.NODE_ENV !== 'production') {
         return res.json({
           success: true,
           data: { redirectUrl: `/payment/fake-success?jobId=${jobId}`, fake: true, amountEur, tier },
@@ -239,6 +242,27 @@ async function handleCallback(req, res) {
         notes: 'job not found',
       });
       return res.status(404).send('job not found');
+    }
+
+    // Defensive: employer may have deleted the pending_payment job before
+    // the callback arrived. We refuse to resurrect / activate a soft-deleted
+    // job, but acknowledge the callback with 200 OK so Paysera stops retrying.
+    // The payment goes "lost" on our side — admin reconciles via the audit
+    // log if a customer later complains.
+    if (job.isDeleted) {
+      logger.warn('paysera/callback for deleted job — skipping activation', { jobId, requestid });
+      await logPaymentEvent({
+        jobId: job._id,
+        employerId: job.employerId,
+        event: 'callback_failed',
+        orderId,
+        paymentId: requestid,
+        amountCents,
+        status,
+        payloadHash,
+        notes: 'job was deleted before callback arrived',
+      });
+      return res.send('OK');
     }
 
     // Log every recognized inbound callback BEFORE deciding what to do —

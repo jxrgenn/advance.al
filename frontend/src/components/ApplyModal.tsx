@@ -287,7 +287,7 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="fixed inset-0 translate-x-0 translate-y-0 sm:left-[50%] sm:top-[50%] sm:right-auto sm:bottom-auto sm:translate-x-[-50%] sm:translate-y-[-50%] w-full sm:w-auto sm:max-w-3xl h-full sm:h-auto sm:max-h-[85vh] rounded-none sm:rounded-lg border-0 sm:border overflow-y-auto p-4 sm:p-6 m-0">
+      <DialogContent className="fixed inset-0 translate-x-0 translate-y-0 sm:left-[50%] sm:top-[calc(50%+2rem)] sm:right-auto sm:bottom-auto sm:translate-x-[-50%] sm:translate-y-[-50%] w-full sm:w-auto sm:max-w-3xl h-full sm:h-auto sm:max-h-[80vh] rounded-none sm:rounded-lg border-0 sm:border overflow-y-auto p-4 sm:p-6 m-0">
         <DialogHeader className="space-y-3 mb-1">
           <DialogTitle className="flex items-center gap-2">
             <Send className="h-5 w-5 text-primary" />

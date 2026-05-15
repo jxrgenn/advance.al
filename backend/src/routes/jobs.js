@@ -1413,18 +1413,13 @@ router.delete('/:id', validateObjectId('id'), authenticate, requireEmployer, asy
       });
     }
 
-    // QA-G2: prevent silently orphaning an in-flight Paysera session.
-    // Owner must use the dedicated cancel flow (?force=true) from the
-    // /payment/job/:id page, which explicitly marks paymentStatus=failed
-    // BEFORE soft-deleting.
-    const force = String(req.query.force || '').toLowerCase() === 'true';
-    if (job.status === 'pending_payment' && !force) {
-      return res.status(409).json({
-        success: false,
-        message: 'Kjo punë është në pritje të pagesës. Përfundo ose anulo pagesën përpara fshirjes.'
-      });
-    }
-    if (job.status === 'pending_payment' && force) {
+    // Unpaid jobs are deletable like any other. Per user mental model:
+    // pending_payment is a transient state — if the employer abandons it,
+    // the job is gone. We do mark paymentStatus='failed' before
+    // soft-deleting so any orphaned Paysera callback that later arrives
+    // can be reconciled against the audit log, and the callback handler
+    // refuses to activate isDeleted jobs.
+    if (job.status === 'pending_payment') {
       job.paymentStatus = 'failed';
       await job.save();
     }

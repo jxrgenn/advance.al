@@ -432,15 +432,7 @@ const PostJob = () => {
         const createdJob: any = (response.data as any)?.job ?? response.data;
         const requiresPayment = createdJob?.status === 'pending_payment' || createdJob?.paymentRequired === true;
 
-        notifications.show({
-          title: requiresPayment ? "Puna u krijua — pritet pagesa" : "Puna u postua!",
-          message: requiresPayment
-            ? "Plotëso pagesën për ta publikuar punën."
-            : "Puna juaj u postua me sukses dhe është tani e dukshme për kandidatët.",
-          color: requiresPayment ? "blue" : "green"
-        });
-
-        // Reset form
+        // Reset form state regardless of branch
         jobForm.reset();
         setRequirements(['']);
         setBenefits(['']);
@@ -448,12 +440,10 @@ const PostJob = () => {
         setSalaryPeriod('monthly');
         setCurrentStep(0);
 
-        // Set new expiry date
         const expiryDate = new Date();
         expiryDate.setDate(expiryDate.getDate() + 30);
         jobForm.setFieldValue('expiresAt', expiryDate.toISOString().split('T')[0]);
 
-        // Reset platformCategories
         jobForm.setFieldValue('platformCategories', {
           diaspora: false,
           ngaShtepia: false,
@@ -462,13 +452,19 @@ const PostJob = () => {
           sezonale: false
         });
 
-        setTimeout(() => {
-          if (requiresPayment && createdJob?._id) {
-            navigate(`/payment/job/${createdJob._id}`);
-          } else {
-            navigate('/employer-dashboard');
-          }
-        }, 1500);
+        if (requiresPayment && createdJob?._id) {
+          // Paywall path: navigate immediately to the tier-selector page.
+          // No toast — the page itself is clear about what to do, and a
+          // flash toast followed by a redirect looks like an error.
+          navigate(`/payment/job/${createdJob._id}`);
+        } else {
+          notifications.show({
+            title: "Puna u postua!",
+            message: "Puna juaj u postua me sukses dhe është tani e dukshme për kandidatët.",
+            color: "green"
+          });
+          setTimeout(() => navigate('/employer-dashboard'), 1500);
+        }
 
       } else {
         throw new Error(response.message || 'Failed to create job');

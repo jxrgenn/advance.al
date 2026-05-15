@@ -608,13 +608,11 @@ export const jobsApi = {
     });
   },
 
-  // Delete job (employers only).
-  // Pass force=true to cancel a pending_payment job (the server blocks
-  // ungated deletion of pending_payment jobs to prevent orphaning an
-  // in-flight Paysera session).
-  deleteJob: async (id: string, opts: { force?: boolean } = {}): Promise<ApiResponse<any>> => {
-    const qs = opts.force ? '?force=true' : '';
-    return apiRequest(`/jobs/${id}${qs}`, {
+  // Delete job (employers only). Unpaid (pending_payment) jobs delete
+  // normally — the server marks paymentStatus=failed before soft-deleting
+  // so any orphaned Paysera callback can be reconciled.
+  deleteJob: async (id: string): Promise<ApiResponse<any>> => {
+    return apiRequest(`/jobs/${id}`, {
       method: 'DELETE',
     });
   },
