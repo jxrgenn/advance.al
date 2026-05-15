@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { MapPin, Euro, Building, CheckCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { Job } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { optimizedCloudinaryUrl } from "@/lib/imageUrl";
 
 interface PremiumJobsCarouselProps {
   jobs: Job[];
@@ -128,9 +129,11 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
                           <div className={`bg-white shadow-sm rounded-lg flex items-center justify-center transition-all duration-300 ease-out ${isStuck ? 'w-10 h-10 md:w-11 md:h-11' : 'w-14 h-14 md:w-16 md:h-16'}`}>
                             {job.employerId?.profile?.employerProfile?.logo ? (
                               <img
-                                src={job.employerId.profile.employerProfile.logo}
+                                src={optimizedCloudinaryUrl(job.employerId.profile.employerProfile.logo, { width: 128 })}
                                 alt={`${job.employerId.profile.employerProfile.companyName} logo`}
                                 className={`max-w-full max-h-full object-contain rounded transition-all duration-300 ease-out ${isStuck ? 'p-1' : 'p-2'}`}
+                                loading="lazy"
+                                decoding="async"
                                 onError={(e) => {
                                   const target = e.target as HTMLImageElement;
                                   target.style.display = 'none';

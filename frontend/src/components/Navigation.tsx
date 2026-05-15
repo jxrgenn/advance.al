@@ -19,6 +19,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { optimizedCloudinaryUrl } from "@/lib/imageUrl";
 import { Badge } from "@/components/ui/badge";
 import { notificationsApi, Notification } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -161,7 +162,7 @@ const Navigation = () => {
       return '/profile';
     }
     if (notification.relatedJob?._id) {
-      return `/jobs/${notification.relatedJob._id}`;
+      return `/jobs/${(notification.relatedJob as any).slug || notification.relatedJob._id}`;
     }
     return null;
   };
@@ -401,11 +402,12 @@ loadNotifications();
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                     <Avatar className="h-8 w-8">
-                      <AvatarImage src={
+                      <AvatarImage src={optimizedCloudinaryUrl(
                         user?.userType === 'jobseeker'
                           ? user?.profile?.jobSeekerProfile?.profilePhoto
-                          : (typeof user?.profile?.employerProfile?.logo === 'string' ? user?.profile?.employerProfile?.logo : undefined)
-                      } alt="Profile" />
+                          : (typeof user?.profile?.employerProfile?.logo === 'string' ? user?.profile?.employerProfile?.logo : undefined),
+                        { width: 64 }
+                      )} alt="Profile" />
                       <AvatarFallback className="text-sm">
                         {getUserInitials(user?.profile?.firstName || '', user?.profile?.lastName || '')}
                       </AvatarFallback>

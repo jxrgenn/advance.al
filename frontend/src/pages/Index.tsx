@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import SEO from "@/components/SEO";
 import Navigation from "@/components/Navigation";
@@ -554,8 +554,10 @@ const Index = () => {
     await loadJobs(1, false);
   };
 
-  // Merge recommendations with regular jobs intelligently
-  const getMergedJobs = () => {
+  // Merge recommendations with regular jobs intelligently.
+  // Memoized so JobCard children don't see a fresh array on every re-render
+  // (the array reference change otherwise breaks React.memo for JobCard).
+  const mergedJobs = useMemo(() => {
     const recommendationIds = new Set(recommendations.map(job => job._id));
     const hasActiveFilters = searchQuery || selectedLocations.length > 0 || selectedType ||
       Object.values(coreFilters).some(Boolean) ||
@@ -567,22 +569,15 @@ const Index = () => {
       (advancedFilters.salaryRange[0] > 0 || advancedFilters.salaryRange[1] < 2000);
 
     if (hasActiveFilters) {
-      // When filtering, mark existing jobs as recommended if they match
-      return jobs.map(job => ({
-        ...job,
-        isRecommended: recommendationIds.has(job._id)
-      }));
+      return jobs.map(job => ({ ...job, isRecommended: recommendationIds.has(job._id) }));
     }
 
-    // When not filtering, show recommendations first, then regular jobs
     const regularJobs = jobs.filter(job => !recommendationIds.has(job._id));
-    const recommendedJobs = recommendations.map(job => ({
-      ...job,
-      isRecommended: true
-    }));
-
+    const recommendedJobs = recommendations.map(job => ({ ...job, isRecommended: true }));
     return [...recommendedJobs, ...regularJobs];
-  };
+  }, [jobs, recommendations, searchQuery, selectedLocations, selectedType, coreFilters, advancedFilters]);
+
+  const getMergedJobs = () => mergedJobs;
 
   const isJobsRoute = location.pathname === "/jobs";
 

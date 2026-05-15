@@ -5,8 +5,9 @@ import { useNavigate } from "react-router-dom";
 import { Job, usersApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useEffect } from "react";
+import { useState, useEffect, memo } from "react";
 import { useRecentlyViewed } from "@/hooks/useRecentlyViewed";
+import { optimizedCloudinaryUrl } from "@/lib/imageUrl";
 
 // Client-side salary formatter — Mongoose virtuals are stripped by .lean()
 const formatSalary = (salary: { min?: number; max?: number; currency: string; negotiable?: boolean }) => {
@@ -190,9 +191,11 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, init
               <div className="w-12 h-12 sm:w-16 sm:h-16 md:w-24 md:h-24 bg-white border border-border sm:border-2 rounded-md sm:rounded-lg flex items-center justify-center shadow-sm">
                 {job.employerId?.profile?.employerProfile?.logo ? (
                   <img
-                    src={job.employerId.profile.employerProfile.logo}
+                    src={optimizedCloudinaryUrl(job.employerId.profile.employerProfile.logo, { width: 96 })}
                     alt={`${job.employerId.profile.employerProfile.companyName} logo`}
                     className="max-w-full max-h-full object-contain rounded"
+                    loading="lazy"
+                    decoding="async"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
                       target.style.display = 'none';
@@ -236,4 +239,4 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, init
   );
 };
 
-export default JobCard;
+export default memo(JobCard);
