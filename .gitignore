@@ -73,3 +73,6 @@ backend/backend/
 # Generated coverage reports (Phase 28)
 backend/coverage/
 coverage/
+
+# Embedding eval harness — local per-run snapshots, not source
+backend/scripts/.embedding-snapshots/
