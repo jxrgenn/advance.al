@@ -1344,18 +1344,20 @@ router.put('/:id', validateObjectId('id'), authenticate, requireEmployer, requir
     await job.save();
 
     // Re-queue embedding generation after update (async, non-blocking).
-    // Clear similar-jobs cache + reset status to 'pending' first so the
-    // worker sees a fresh task.
+    // Reset + queue happen in the SAME setImmediate so the worker always sees
+    // a fresh 'pending' state before it picks up the task. Bypasses
+    // fireEmbedding here because we need deterministic ordering with the
+    // reset; fireEmbedding's own setImmediate could interleave.
     setImmediate(async () => {
       try {
         await Job.findByIdAndUpdate(job._id, {
           $set: { similarJobs: [], 'embedding.status': 'pending' },
         });
+        await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10, { reason: 'update' });
       } catch (error) {
-        logger.error('Error resetting embedding status on update:', error.message);
+        logger.error('Error re-queueing embedding for job:', error.message);
       }
     });
-    fireEmbedding({ kind: 'job', id: job._id, reason: 'update' });
 
     // F-10 fix: invalidate admin:dashboard cache on update
     cacheDelete('admin:dashboard').catch(() => {});

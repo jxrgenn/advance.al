@@ -28,6 +28,7 @@ import userEmbeddingService from '../../src/services/userEmbeddingService.js';
 import { fireEmbedding } from '../../src/services/embeddingTrigger.js';
 import { parseQuickUserCV, _setOpenAIClient } from '../../src/services/cvParsingService.js';
 import QuickUser from '../../src/models/QuickUser.js';
+import User from '../../src/models/User.js';
 import logger from '../../src/config/logger.js';
 import { makeOpenAIStub } from '../helpers/openai-stub.js';
 
@@ -223,6 +224,188 @@ describe('Embedded by construction — fireEmbedding contract', () => {
 
       expect(result).toBeNull();
       expect(spy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Standardized jobseeker kick sites', () => {
+    async function setupJobseeker() {
+      const { user: js } = await createJobseeker();
+      return js;
+    }
+
+    it('POST /users/work-experience kicks jobseeker embedding', async () => {
+      const spy = jest.spyOn(userEmbeddingService, 'generateJobSeekerEmbedding').mockResolvedValue([0.1]);
+      const js = await setupJobseeker();
+
+      const r = await request(app)
+        .post('/api/users/work-experience')
+        .set(createAuthHeaders(js))
+        .send({ position: 'Backend Dev', company: 'TechCo', startDate: '2024-01' });
+
+      expect(r.status).toBe(200);
+      await flushImmediate();
+      expect(spy).toHaveBeenCalled();
+      expect(String(spy.mock.calls[0][0])).toBe(String(js._id));
+    });
+
+    it('POST /users/education kicks jobseeker embedding', async () => {
+      const spy = jest.spyOn(userEmbeddingService, 'generateJobSeekerEmbedding').mockResolvedValue([0.1]);
+      const js = await setupJobseeker();
+
+      const r = await request(app)
+        .post('/api/users/education')
+        .set(createAuthHeaders(js))
+        .send({ degree: 'BSc', institution: 'UT', startDate: '2018-09' });
+
+      expect(r.status).toBe(200);
+      await flushImmediate();
+      expect(spy).toHaveBeenCalled();
+      expect(String(spy.mock.calls[0][0])).toBe(String(js._id));
+    });
+
+    it('PUT /users/work-experience/:id kicks jobseeker embedding', async () => {
+      const js = await setupJobseeker();
+      await request(app)
+        .post('/api/users/work-experience')
+        .set(createAuthHeaders(js))
+        .send({ position: 'Old', company: 'OldCo', startDate: '2020-01' });
+      // The route stores entries with a UUID `id` field but the PUT/DELETE
+      // URLs require the Mongoose subdoc _id. Fetch it from the DB.
+      const refreshed = await User.findById(js._id);
+      const expId = refreshed.profile.jobSeekerProfile.workHistory[0]._id;
+
+      const spy = jest.spyOn(userEmbeddingService, 'generateJobSeekerEmbedding').mockResolvedValue([0.1]);
+      const r = await request(app)
+        .put(`/api/users/work-experience/${expId}`)
+        .set(createAuthHeaders(js))
+        .send({ position: 'New', company: 'NewCo', startDate: '2020-01' });
+
+      expect(r.status).toBe(200);
+      await flushImmediate();
+      expect(spy).toHaveBeenCalled();
+      expect(String(spy.mock.calls[0][0])).toBe(String(js._id));
+    });
+
+    it('PUT /users/education/:id kicks jobseeker embedding', async () => {
+      const js = await setupJobseeker();
+      await request(app)
+        .post('/api/users/education')
+        .set(createAuthHeaders(js))
+        .send({ degree: 'BSc', institution: 'UT', startDate: '2018-09' });
+      const refreshed = await User.findById(js._id);
+      const eduId = refreshed.profile.jobSeekerProfile.education[0]._id;
+
+      const spy = jest.spyOn(userEmbeddingService, 'generateJobSeekerEmbedding').mockResolvedValue([0.1]);
+      const r = await request(app)
+        .put(`/api/users/education/${eduId}`)
+        .set(createAuthHeaders(js))
+        .send({ degree: 'MSc', institution: 'UT', startDate: '2018-09' });
+
+      expect(r.status).toBe(200);
+      await flushImmediate();
+      expect(spy).toHaveBeenCalled();
+      expect(String(spy.mock.calls[0][0])).toBe(String(js._id));
+    });
+
+    it('DELETE /users/work-experience/:id kicks jobseeker embedding', async () => {
+      const js = await setupJobseeker();
+      await request(app)
+        .post('/api/users/work-experience')
+        .set(createAuthHeaders(js))
+        .send({ position: 'X', company: 'Y', startDate: '2020-01' });
+      const refreshed = await User.findById(js._id);
+      const expId = refreshed.profile.jobSeekerProfile.workHistory[0]._id;
+
+      const spy = jest.spyOn(userEmbeddingService, 'generateJobSeekerEmbedding').mockResolvedValue([0.1]);
+      const r = await request(app)
+        .delete(`/api/users/work-experience/${expId}`)
+        .set(createAuthHeaders(js));
+
+      expect(r.status).toBe(200);
+      await flushImmediate();
+      expect(spy).toHaveBeenCalled();
+      expect(String(spy.mock.calls[0][0])).toBe(String(js._id));
+    });
+
+    it('DELETE /users/education/:id kicks jobseeker embedding', async () => {
+      const js = await setupJobseeker();
+      await request(app)
+        .post('/api/users/education')
+        .set(createAuthHeaders(js))
+        .send({ degree: 'BSc', institution: 'UT', startDate: '2018-09' });
+      const refreshed = await User.findById(js._id);
+      const eduId = refreshed.profile.jobSeekerProfile.education[0]._id;
+
+      const spy = jest.spyOn(userEmbeddingService, 'generateJobSeekerEmbedding').mockResolvedValue([0.1]);
+      const r = await request(app)
+        .delete(`/api/users/education/${eduId}`)
+        .set(createAuthHeaders(js));
+
+      expect(r.status).toBe(200);
+      await flushImmediate();
+      expect(spy).toHaveBeenCalled();
+      expect(String(spy.mock.calls[0][0])).toBe(String(js._id));
+    });
+  });
+
+  describe('POST /api/cv/generate kick', () => {
+    it('kicks jobseeker embedding after CV generation', async () => {
+      // Lazy import to avoid loading openaiService twice across test files
+      const { _setOpenAIClient: setCVClient } = await import('../../src/services/openaiService.js');
+      setCVClient({
+        chat: { completions: { create: async () => ({
+          choices: [{ message: { content: JSON.stringify({
+            language: 'sq',
+            personalInfo: { fullName: 'T', email: 't@x.co', phone: '', address: '', dateOfBirth: '', nationality: '', linkedIn: '', portfolio: '' },
+            professionalSummary: 'Engineer with 5 years experience.',
+            workExperience: [],
+            education: [],
+            skills: { technical: ['React'], soft: [], tools: [] },
+            languages: [],
+            certifications: [],
+            hobbies: [],
+          }) } }],
+        }) } },
+      });
+      process.env.OPENAI_API_KEY = 'sk-test-stub';
+
+      const { user: js } = await createJobseeker();
+      const spy = jest.spyOn(userEmbeddingService, 'generateJobSeekerEmbedding').mockResolvedValue([0.1]);
+
+      const r = await request(app)
+        .post('/api/cv/generate')
+        .set(createAuthHeaders(js))
+        .send({ naturalLanguageInput: 'I am a software engineer with five years of React experience working at tech startups in Tirana.' });
+
+      expect(r.status).toBe(200);
+      await flushImmediate();
+
+      expect(spy).toHaveBeenCalled();
+      expect(String(spy.mock.calls[0][0])).toBe(String(js._id));
+
+      setCVClient(null);
+    });
+  });
+
+  describe('PUT /api/jobs/:id update kick (race-fix verification)', () => {
+    it('PUT /jobs/:id queues embedding with reason=update', async () => {
+      const { user: emp } = await createEmployer();
+      const job = await createJob(emp);
+
+      const spy = jest.spyOn(jobEmbeddingService, 'queueEmbeddingGeneration').mockResolvedValue({});
+
+      const r = await request(app)
+        .put(`/api/jobs/${job._id}`)
+        .set(createAuthHeaders(emp))
+        .send({ title: 'Updated Engineering Role', description: 'Updated description with new content that is sufficiently long to pass the 50-character minimum validation rule.' });
+
+      expect(r.status).toBe(200);
+      await flushImmediate();
+      await new Promise(r => setTimeout(r, 50)); // give the setImmediate's await chain time
+
+      const updateCall = spy.mock.calls.find(c => c[2]?.reason === 'update');
+      expect(updateCall).toBeDefined();
+      expect(String(updateCall[0])).toBe(String(job._id));
     });
   });
 

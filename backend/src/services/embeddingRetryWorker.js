@@ -32,6 +32,21 @@ import logger from '../config/logger.js';
 
 const COOLDOWN_MS = parseInt(process.env.EMBEDDING_RETRY_COOLDOWN_MS || `${60 * 60 * 1000}`, 10);
 const BATCH_SIZE = parseInt(process.env.EMBEDDING_RETRY_BATCH_SIZE || '25', 10);
+const INTERVAL_MS = parseInt(process.env.EMBEDDING_RETRY_INTERVAL_MS || `${10 * 60 * 1000}`, 10);
+
+// Module-scope heartbeat state. Updated at the end of retryAll() and
+// exposed via getWorkerStats() so /healthz/embeddings can confirm the
+// worker is still ticking. Null until the first tick.
+let _lastTickAt = null;
+let _lastTickStats = null;
+
+export function getWorkerStats() {
+  return {
+    lastTickAt: _lastTickAt,
+    lastTickStats: _lastTickStats,
+    intervalMs: INTERVAL_MS,
+  };
+}
 
 /**
  * Retry stuck jobseeker (User) embeddings.
@@ -179,6 +194,9 @@ export async function retryAll(opts = {}) {
   if (totalProcessed > 0) {
     logger.info('embeddingRetryWorker: tick complete', all);
   }
+  // Update heartbeat regardless of work — proves the worker is alive.
+  _lastTickAt = new Date();
+  _lastTickStats = { ...all, totalProcessed };
   return all;
 }
 

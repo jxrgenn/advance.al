@@ -48,6 +48,7 @@ import businessControlRoutes from './src/routes/business-control.js';
 import matchingRoutes from './src/routes/matching.js';
 import cvRoutes from './src/routes/cv.js';
 import adminEmbeddingsRoutes from './src/routes/admin/embeddings.js';
+import healthzRoutes from './src/routes/healthz.js';
 import { Job, SystemConfiguration } from './src/models/index.js';
 import { redis } from './src/config/redis.js';
 
@@ -295,6 +296,9 @@ app.use('/api', async (req, res, next) => {
   }
   next();
 });
+
+// Health-check routes (public, no auth, no rate limiter — for monitors)
+app.use('/healthz', healthzRoutes);
 
 // API Routes
 app.use('/api/auth', authRoutes);
