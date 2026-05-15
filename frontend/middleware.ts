@@ -1,18 +1,17 @@
 /**
  * middleware.ts — Vercel Edge Middleware
  *
- * Routes bot/crawler User-Agents through Prerender.io so they receive
- * fully-rendered HTML (with content + JSON-LD if present) instead of the
- * empty SPA shell. Humans pass through to the SPA unchanged.
+ * Routes bot/crawler User-Agents through our own /api/seo function so they
+ * receive fully-rendered HTML (content + JSON-LD) instead of the empty SPA
+ * shell. Humans pass through unchanged.
  *
- * Behavior:
- *  - If PRERENDER_TOKEN env var is unset → middleware no-ops (safe to deploy)
- *  - Only GET requests to HTML paths are routed; static assets, /api, /assets,
- *    favicon, robots.txt, sitemap.xml, llms.txt are skipped
- *  - On Prerender failure, falls through to the SPA so the site never goes down
+ * Why middleware (not just a vercel.json rewrite): the root path "/" is
+ * served from the static filesystem (dist/index.html) BEFORE vercel.json
+ * rewrites are evaluated, so a UA-gated rewrite at "source: /" never fires
+ * for "/". Edge Middleware runs before filesystem and fixes this.
  *
- * To enable: set PRERENDER_TOKEN in Vercel → Settings → Environment Variables.
- * Token comes from your prerender.io dashboard.
+ * Failure mode: any error fetching /api/seo falls through to the SPA so
+ * the site never goes down.
  */
 
 export const config = {
@@ -86,9 +85,6 @@ const BOT_AGENTS = [
 ];
 
 export default async function middleware(request: Request): Promise<Response | void> {
-  const token = (globalThis as any).process?.env?.PRERENDER_TOKEN;
-  if (!token) return; // Not configured yet — pass through to SPA
-
   if (request.method !== 'GET') return;
 
   const ua = (request.headers.get('user-agent') || '').toLowerCase();
@@ -99,16 +95,25 @@ export default async function middleware(request: Request): Promise<Response | v
 
   const url = new URL(request.url);
 
-  // Skip if Prerender token is being requested (avoid loops)
-  if (url.hostname.includes('prerender.io')) return;
+  // Don't loop on /api/seo itself.
+  if (url.pathname.startsWith('/api/')) return;
 
-  const prerenderUrl = `https://service.prerender.io/${url.toString()}`;
+  // Route bots through our own /api/seo function. This is necessary for the
+  // root path "/" because Vercel's static filesystem serves dist/index.html
+  // BEFORE evaluating vercel.json rewrites — so the bot-conditional rewrite
+  // never fires for "/". Middleware runs before filesystem, fixing this.
+  // For non-root paths the vercel.json rewrite would also work, but routing
+  // them through middleware keeps the behavior uniform and the cache path
+  // single.
+  const target = new URL(url.toString());
+  target.pathname = '/api/seo';
+  target.searchParams.set('path', url.pathname);
 
   try {
-    const res = await fetch(prerenderUrl, {
+    const res = await fetch(target.toString(), {
       headers: {
-        'X-Prerender-Token': token,
         'User-Agent': request.headers.get('user-agent') || '',
+        'X-Forwarded-For': request.headers.get('x-forwarded-for') || '',
       },
     });
 
@@ -117,8 +122,10 @@ export default async function middleware(request: Request): Promise<Response | v
       status: res.status,
       headers: {
         'Content-Type': res.headers.get('content-type') || 'text/html; charset=utf-8',
-        'X-Prerender': 'served',
-        'Cache-Control': res.headers.get('cache-control') || 'public, max-age=300',
+        'Cache-Control': res.headers.get('cache-control') || 's-maxage=300',
+        'Vary': 'User-Agent',
+        'X-Bot-Prerender': res.headers.get('x-bot-prerender') || '1',
+        'X-Bot-Middleware': '1',
       },
     });
   } catch {
