@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { cacheDelete } from '../config/redis.js';
 import logger from '../config/logger.js';
+import { JOB_CATEGORIES } from '../constants/jobCategories.js';
 
 const { Schema } = mongoose;
 
@@ -98,11 +99,7 @@ const jobSchema = new Schema({
   category: {
     type: String,
     required: true,
-    enum: [
-      'Teknologji', 'Marketing', 'Shitje', 'Financë', 'Burime Njerëzore',
-      'Inxhinieri', 'Dizajn', 'Menaxhim', 'Shëndetësi', 'Arsim',
-      'Turizëm', 'Ndërtim', 'Transport', 'Tjetër'
-    ]
+    enum: JOB_CATEGORIES,
   },
   seniority: {
     type: String,

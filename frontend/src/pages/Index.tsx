@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import SEO from "@/components/SEO";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import JobCard from "@/components/JobCard";
@@ -21,6 +22,7 @@ import { Search, MapPin, Filter, Briefcase, Loader2, Calendar, DollarSign, Clock
 import { useToast } from "@/hooks/use-toast";
 import { jobsApi, locationsApi, applicationsApi, usersApi, Job, Location } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { JOB_CATEGORIES } from "@/constants/jobCategories";
 
 const Index = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -582,8 +584,30 @@ const Index = () => {
     return [...recommendedJobs, ...regularJobs];
   };
 
+  const isJobsRoute = location.pathname === "/jobs";
+
   return (
     <div className="min-h-screen bg-background">
+      <SEO
+        title={isJobsRoute ? "Të gjitha punët" : undefined}
+        description={
+          isJobsRoute
+            ? "Shfletoni të gjitha punët aktive në Shqipëri — Tiranë, Durrës, Vlorë, Shkodër, Elbasan e më shumë. Filtrim sipas qytetit, kategorisë dhe lloji i punës."
+            : undefined
+        }
+        path={isJobsRoute ? "/jobs" : "/"}
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "ItemList",
+          "name": isJobsRoute ? "Punët aktive në Advance.al" : "Pozicione të zgjedhura",
+          "itemListElement": jobs.slice(0, 10).map((j, i) => ({
+            "@type": "ListItem",
+            "position": i + 1,
+            "url": `https://advance.al/jobs/${(j as any).slug || j._id}`,
+            "name": j.title,
+          })),
+        }}
+      />
       <Navigation />
 
       <div className="container py-8 pt-20">
@@ -899,20 +923,7 @@ const Index = () => {
                       {expandedCategory === 'categories' && (
                         <div className="px-3 pb-3">
                           <div className="space-y-2">
-                            {[
-                              'Teknologji',
-                              'Marketing',
-                              'Shitje',
-                              'Financë',
-                              'Burime Njerëzore',
-                              'Inxhinieri',
-                              'Dizajn',
-                              'Menaxhim',
-                              'Shëndetësi',
-                              'Arsim',
-                              'Turizëm',
-                              'Ndërtim'
-                            ].map((category) => (
+                            {JOB_CATEGORIES.map((category) => (
                               <div key={category} className="flex items-center space-x-2">
                                 <Checkbox
                                   id={category}

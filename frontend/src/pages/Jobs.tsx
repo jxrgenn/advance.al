@@ -20,6 +20,7 @@ import { Search, MapPin, Filter, Briefcase, Loader2, Calendar, DollarSign, Clock
 import { useToast } from "@/hooks/use-toast";
 import { jobsApi, locationsApi, applicationsApi, Job, Location } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { JOB_CATEGORIES } from "@/constants/jobCategories";
 
 const Jobs = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -883,22 +884,7 @@ const Jobs = () => {
                 <Label className="text-base font-semibold">Kategoritë e punës</Label>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {[
-                  'Teknologji',
-                  'Marketing',
-                  'Shitje',
-                  'Financë',
-                  'Burime Njerëzore',
-                  'Inxhinieri',
-                  'Dizajn',
-                  'Menaxhim',
-                  'Shëndetësi',
-                  'Arsim',
-                  'Turizëm',
-                  'Ndërtim',
-                  'Transport',
-                  'Tjetër'
-                ].map((category) => (
+                {JOB_CATEGORIES.map((category) => (
                   <div key={category} className="flex items-center space-x-2">
                     <Checkbox
                       id={category}

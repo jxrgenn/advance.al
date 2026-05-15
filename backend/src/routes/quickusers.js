@@ -13,6 +13,7 @@ import { uploadToCloudinary } from '../config/cloudinary.js';
 import { parseQuickUserCV } from '../services/cvParsingService.js';
 import { stripHtml, validateObjectId } from '../utils/sanitize.js';
 import logger from '../config/logger.js';
+import { JOB_CATEGORIES } from '../constants/jobCategories.js';
 
 // Check if Cloudinary is configured
 const isCloudinaryConfigured = () =>
@@ -108,11 +109,7 @@ const quickUserValidation = [
     .isArray({ min: 1 })
     .withMessage('Duhet të zgjidhni të paktën një interes'),
   body('interests.*')
-    .isIn([
-      'Teknologji', 'Marketing', 'Shitje', 'Financë', 'Burime Njerëzore',
-      'Inxhinieri', 'Dizajn', 'Menaxhim', 'Shëndetësi', 'Arsim',
-      'Turizëm', 'Ndërtim', 'Transport', 'Tjetër'
-    ])
+    .isIn(JOB_CATEGORIES)
     .withMessage('Interesi i zgjedhur nuk është i vlefshëm'),
   body('phone')
     .optional()

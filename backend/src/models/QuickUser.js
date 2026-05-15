@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import crypto from 'crypto';
 import { escapeRegex } from '../utils/sanitize.js';
+import { JOB_CATEGORIES } from '../constants/jobCategories.js';
 
 const { Schema } = mongoose;
 
@@ -36,11 +37,7 @@ const quickUserSchema = new Schema({
   },
   interests: [{
     type: String,
-    enum: [
-      'Teknologji', 'Marketing', 'Shitje', 'Financë', 'Burime Njerëzore',
-      'Inxhinieri', 'Dizajn', 'Menaxhim', 'Shëndetësi', 'Arsim',
-      'Turizëm', 'Ndërtim', 'Transport', 'Tjetër'
-    ]
+    enum: JOB_CATEGORIES,
   }],
   customInterests: [{
     type: String,

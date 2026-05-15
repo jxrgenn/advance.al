@@ -4,6 +4,7 @@ import mammoth from 'mammoth';
 import { QuickUser } from '../models/index.js';
 import logger from '../config/logger.js';
 import { fireEmbedding } from './embeddingTrigger.js';
+import { JOB_CATEGORIES } from '../constants/jobCategories.js';
 
 // Lazy-init to avoid throwing at import time when API key is not yet set.
 // `_clientOverride` is a test-only injection hook; production code never sets it.
@@ -90,7 +91,7 @@ async function parseWithAI(cvText) {
 - "title": the person's current or most recent job title (string, e.g. "Software Engineer")
 - "skills": array of specific skills mentioned (max 15, e.g. ["React", "Node.js", "SQL"])
 - "experience": approximate total years of experience (string, e.g. "3 vjet" or "5 years")
-- "industries": array of industries the person has worked in, using these Albanian categories where possible: Teknologji, Marketing, Shitje, Financë, Burime Njerëzore, Inxhinieri, Dizajn, Menaxhim, Shëndetësi, Arsim, Turizëm, Ndërtim, Transport. Max 3.
+- "industries": array of industries the person has worked in, using these Albanian categories where possible: ${JOB_CATEGORIES.filter(c => c !== 'Tjetër').join(', ')}. Max 3.
 - "education": highest education level with field (string, e.g. "Bachelor në Informatikë")
 - "languages": array of languages spoken (e.g. ["Shqip", "English", "Italian"])
 - "summary": a 1-2 sentence professional summary of the candidate

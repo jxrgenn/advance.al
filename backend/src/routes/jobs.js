@@ -14,6 +14,7 @@ import { isValidEmbeddingVector } from '../utils/embeddingConfig.js';
 import recommendationReranker from '../services/recommendationReranker.js';
 import { logEvent } from '../services/eventLogger.js';
 import { fireEmbedding } from '../services/embeddingTrigger.js';
+import { JOB_CATEGORIES } from '../constants/jobCategories.js';
 
 const router = express.Router();
 
@@ -46,7 +47,7 @@ const createJobValidation = [
     .isLength({ min: 50, max: 5000 })
     .withMessage('Përshkrimi duhet të ketë midis 50-5000 karaktere'),
   body('category')
-    .isIn(['Teknologji', 'Marketing', 'Shitje', 'Financë', 'Burime Njerëzore', 'Inxhinieri', 'Dizajn', 'Menaxhim', 'Shëndetësi', 'Arsim', 'Turizëm', 'Ndërtim', 'Transport', 'Tjetër'])
+    .isIn(JOB_CATEGORIES)
     .withMessage('Kategoria e zgjedhur nuk është e vlefshme'),
   body('jobType')
     .isIn(['full-time', 'part-time', 'internship'])
@@ -79,20 +80,25 @@ const createJobValidation = [
     .optional()
     .isArray()
     .withMessage('Tags duhet të jenë një listë'),
-  // Platform Categories (Required)
+  // Platform Categories (Optional — employer can post without selecting any)
   body('platformCategories.diaspora')
+    .optional()
     .isBoolean()
     .withMessage('Diaspora duhet të jetë true ose false'),
   body('platformCategories.ngaShtepia')
+    .optional()
     .isBoolean()
     .withMessage('Nga shtëpia duhet të jetë true ose false'),
   body('platformCategories.partTime')
+    .optional()
     .isBoolean()
     .withMessage('Part Time duhet të jetë true ose false'),
   body('platformCategories.administrata')
+    .optional()
     .isBoolean()
     .withMessage('Administrata duhet të jetë true ose false'),
   body('platformCategories.sezonale')
+    .optional()
     .isBoolean()
     .withMessage('Sezonale duhet të jetë true ose false')
 ];
@@ -113,7 +119,7 @@ const updateJobValidation = [
     .withMessage('Përshkrimi duhet të ketë midis 50-5000 karaktere'),
   body('category')
     .optional()
-    .isIn(['Teknologji', 'Marketing', 'Shitje', 'Financë', 'Burime Njerëzore', 'Inxhinieri', 'Dizajn', 'Menaxhim', 'Shëndetësi', 'Arsim', 'Turizëm', 'Ndërtim', 'Transport', 'Tjetër'])
+    .isIn(JOB_CATEGORIES)
     .withMessage('Kategoria e zgjedhur nuk është e vlefshme'),
   body('jobType')
     .optional()
@@ -787,20 +793,28 @@ router.get('/employer/my-jobs', authenticate, requireEmployer, async (req, res) 
   }
 });
 
-// @route   GET /api/jobs/:id
-// @desc    Get single job by ID
+// @route   GET /api/jobs/:idOrSlug
+// @desc    Get single job by ObjectId or SEO slug (slug-friendly URLs for crawlers)
 // @access  Public
-router.get('/:id', validateObjectId('id'), optionalAuth, async (req, res) => {
+router.get('/:id', optionalAuth, async (req, res) => {
   try {
     // Public single-job detail. Do NOT populate the employer's login email
     // here — anonymous callers would get a list of every employer's auth email
     // by scraping job pages, enabling credential-stuffing attacks.
     // companyName / website / description / phone / whatsapp are intentionally
     // shown so applicants can contact the employer.
-    const job = await Job.findOne({
-      _id: req.params.id,
-      isDeleted: false
-    }).populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.employerProfile.phone profile.employerProfile.whatsapp profile.location profile.employerProfile.description profile.employerProfile.website profile.firstName profile.lastName')
+    //
+    // Dual-lookup: the URL segment is either a 24-char hex ObjectId or a slug.
+    // Slug field is unique + indexed (Job.js:292) and generated automatically
+    // pre-validate (Job.js:394). Old `/jobs/:objectId` URLs continue to work
+    // forever — Phase 29 SEO migration to `/jobs/:slug` for new postings.
+    const param = req.params.id;
+    const isObjectId = typeof param === 'string' && /^[0-9a-fA-F]{24}$/.test(param);
+    const query = isObjectId
+      ? { _id: param, isDeleted: false }
+      : { slug: param, isDeleted: false };
+
+    const job = await Job.findOne(query).populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.employerProfile.phone profile.employerProfile.whatsapp profile.location profile.employerProfile.description profile.employerProfile.website profile.firstName profile.lastName')
       .lean();
 
     if (!job) {

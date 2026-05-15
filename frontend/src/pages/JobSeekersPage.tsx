@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import SEO from "@/components/SEO";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import RotatingContact from "@/components/RotatingContact";
@@ -44,6 +45,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { authApi, quickUsersApi, cvApi } from "@/lib/api";
 import { validateForm, jobSeekerSignupRules, formatValidationErrors, normalizeAlbanianPhone } from "@/lib/formValidation";
 import { InputWithCounter } from "@/components/CharacterCounter";
+import { JOB_CATEGORIES } from "@/constants/jobCategories";
 
 const JobSeekersPage = () => {
   const navigate = useNavigate();
@@ -152,10 +154,7 @@ const JobSeekersPage = () => {
     },
   });
 
-  const jobCategories = [
-    'Teknologji', 'Marketing', 'Shitje', 'Financë', 'Burime Njerëzore',
-    'Inxhinieri', 'Dizajn', 'Menaxhim', 'Shëndetësi', 'Arsim', 'Tjetër'
-  ];
+  const jobCategories = JOB_CATEGORIES;
 
   // CV Template Text
   const cvTemplateText = `INFORMACIONI PERSONAL
@@ -473,13 +472,8 @@ Telefoni: _______________`;
       const formattedPhone = normalizeAlbanianPhone(values.phone);
 
       // Separate recognized interests from custom ones
-      const validInterests = [
-        'Teknologji', 'Marketing', 'Shitje', 'Financë', 'Burime Njerëzore',
-        'Inxhinieri', 'Dizajn', 'Menaxhim', 'Shëndetësi', 'Arsim',
-        'Turizëm', 'Ndërtim', 'Transport', 'Tjetër'
-      ];
-      const recognized = values.interests.filter((i: string) => validInterests.includes(i));
-      const custom = values.interests.filter((i: string) => !validInterests.includes(i));
+      const recognized = values.interests.filter((i: string) => (JOB_CATEGORIES as readonly string[]).includes(i));
+      const custom = values.interests.filter((i: string) => !(JOB_CATEGORIES as readonly string[]).includes(i));
 
       const response = await quickUsersApi.createQuickUser({
         firstName: values.firstName,
@@ -1030,6 +1024,19 @@ Telefoni: _______________`;
 
   return (
     <Box style={{ minHeight: '100vh' }}>
+      <SEO
+        title="Për Kandidatët"
+        description="Gjeni punën e duhur në Shqipëri me Advance.al. Krijoni profilin, ngarkoni CV-në dhe merrni rekomandime të personalizuara me përputhje semantike AI."
+        path="/jobseekers"
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "Për Kandidatët — Advance.al",
+          "url": "https://advance.al/jobseekers",
+          "inLanguage": "sq-AL",
+          "audience": { "@type": "Audience", "audienceType": "Job seekers in Albania" },
+        }}
+      />
       <Navigation />
 
       {/* Tutorial Overlay */}

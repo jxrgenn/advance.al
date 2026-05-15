@@ -33,6 +33,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import Footer from "@/components/Footer";
 import { validateForm, postJobRules, formatValidationErrors } from "@/lib/formValidation";
 import { TextAreaWithCounter, InputWithCounter } from "@/components/CharacterCounter";
+import { JOB_CATEGORY_OPTIONS } from "@/constants/jobCategories";
 
 const JOB_DRAFT_KEY = 'postjob-draft';
 
@@ -1080,22 +1081,8 @@ const PostJob = () => {
                 label="Kategoria"
                 placeholder="Zgjidhni kategorinë"
                 {...jobForm.getInputProps('category')}
-                data={[
-                  { value: 'Teknologji', label: 'Teknologji' },
-                  { value: 'Marketing', label: 'Marketing' },
-                  { value: 'Shitje', label: 'Shitje' },
-                  { value: 'Financë', label: 'Financë' },
-                  { value: 'Burime Njerëzore', label: 'Burime Njerëzore' },
-                  { value: 'Inxhinieri', label: 'Inxhinieri' },
-                  { value: 'Dizajn', label: 'Dizajn' },
-                  { value: 'Menaxhim', label: 'Menaxhim' },
-                  { value: 'Shëndetësi', label: 'Shëndetësi' },
-                  { value: 'Arsim', label: 'Arsim' },
-                  { value: 'Turizëm', label: 'Turizëm' },
-                  { value: 'Ndërtim', label: 'Ndërtim' },
-                  { value: 'Transport', label: 'Transport' },
-                  { value: 'Tjetër', label: 'Tjetër' }
-                ]}
+                data={JOB_CATEGORY_OPTIONS}
+                searchable
                 required
               />
               <Select
@@ -1117,11 +1104,11 @@ const PostJob = () => {
                 placeholder="Zgjidhni nivelin e përvojës"
                 {...jobForm.getInputProps('experienceLevel')}
                 data={[
-                  { value: 'entry', label: 'Entry Level' },
-                  { value: 'junior', label: 'Junior' },
-                  { value: 'mid', label: 'Mid Level' },
-                  { value: 'senior', label: 'Senior' },
-                  { value: 'lead', label: 'Lead/Manager' }
+                  { value: 'entry', label: 'Pa përvojë (Fillestar)' },
+                  { value: 'junior', label: 'Junior — 1-3 vjet përvojë' },
+                  { value: 'mid', label: 'Mesatar — 3-5 vjet përvojë' },
+                  { value: 'senior', label: 'Senior — 5+ vjet përvojë' },
+                  { value: 'lead', label: 'Lider / Menaxher' }
                 ]}
                 description="Specifikoni nivelin e përvojës së kërkuar për këtë pozicion"
               />
@@ -1326,12 +1313,12 @@ const PostJob = () => {
 
             <Box data-tutorial="platformCategories">
               <MultiSelect
-                label="Kategoritë e Platformës"
-                placeholder="Zgjidhni kategoritë"
+                label="Kategoritë e Platformës (Opsionale)"
+                placeholder="Mund të zgjidhni asnjë, një ose më shumë"
                 description={
                   user?.profile?.employerProfile?.isAdministrataAccount
                     ? "Llogaria juaj është e shënuar si Administrata — të gjitha punët do të kenë automatikisht këtë etiketë"
-                    : "Kategoritë që përputhen me këtë pozicion për të rritur dukshmërinë"
+                    : "Opsionale. Mund të lini bosh ose të zgjidhni një a më shumë kategori për të rritur dukshmërinë në kërkime të specializuara"
                 }
                 data={[
                   { value: 'diaspora', label: 'Diaspora - Për shqiptarë jashtë vendit' },

@@ -8,27 +8,11 @@ import { useSearchParams } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Settings, Loader2, CheckCircle, XCircle } from "lucide-react";
+import { JOB_CATEGORIES } from "@/constants/jobCategories";
 
 // Construct API URL safely — handle both with and without /api suffix
 const rawApiUrl = import.meta.env.VITE_API_URL || "http://localhost:3001/api";
 const apiUrl = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`;
-
-const JOB_CATEGORIES = [
-  "Teknologji",
-  "Marketing",
-  "Shitje",
-  "Financë",
-  "Burime Njerëzore",
-  "Inxhinieri",
-  "Dizajn",
-  "Menaxhim",
-  "Shëndetësi",
-  "Arsim",
-  "Turizëm",
-  "Ndërtim",
-  "Transport",
-  "Tjetër",
-];
 
 interface QuickUserPreferences {
   emailNotifications: boolean;
