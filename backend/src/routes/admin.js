@@ -8,6 +8,7 @@ import jobEmbeddingService from '../services/jobEmbeddingService.js';
 import userEmbeddingService from '../services/userEmbeddingService.js';
 import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
 import logger from '../config/logger.js';
+import { pingJob } from '../lib/indexNow.js';
 
 const router = express.Router();
 
@@ -780,6 +781,7 @@ router.patch('/jobs/:jobId/manage', async (req, res) => {
           logger.error('Error in post-approval notification:', err.message);
         }
       });
+      setImmediate(() => { pingJob(job); });
     }
 
     res.json({
@@ -1015,6 +1017,7 @@ router.patch('/jobs/:id/approve', async (req, res) => {
           logger.error('Error in post-approval notification:', err.message);
         }
       });
+      setImmediate(() => { pingJob(job); });
     }
 
     res.json({
@@ -1276,6 +1279,7 @@ router.post('/payments/:jobId/manual-accept', async (req, res) => {
     job.paymentId = adminPaymentId;
     job.paidAt = new Date();
     await job.save();
+    setImmediate(() => { pingJob(job); });
 
     await PaymentEvent.create({
       jobId: job._id,

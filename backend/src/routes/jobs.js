@@ -14,6 +14,7 @@ import { isValidEmbeddingVector } from '../utils/embeddingConfig.js';
 import recommendationReranker from '../services/recommendationReranker.js';
 import { logEvent } from '../services/eventLogger.js';
 import { fireEmbedding } from '../services/embeddingTrigger.js';
+import { pingJob } from '../lib/indexNow.js';
 import { JOB_CATEGORIES } from '../constants/jobCategories.js';
 
 const router = express.Router();
@@ -1248,6 +1249,13 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
       reason: 'create',
       extraMetadata: { notifyUsers: job.status === 'active' },
     });
+
+    // Notify Bing/Yandex/etc. via IndexNow so this job appears in search
+    // engines within minutes rather than days. Fire-and-forget — failure is
+    // silent and never blocks the response.
+    if (job.status === 'active') {
+      setImmediate(() => { pingJob(job); });
+    }
 
     // F-10 fix: invalidate admin:dashboard cache on create
     cacheDelete('admin:dashboard').catch(() => {});

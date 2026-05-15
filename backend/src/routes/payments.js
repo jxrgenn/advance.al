@@ -34,6 +34,7 @@ import { createPaymentUrl, verifyCallback, isConfigured } from '../services/pays
 import logger from '../config/logger.js';
 import { fireEmbedding } from '../services/embeddingTrigger.js';
 import resendEmailService from '../lib/resendEmailService.js';
+import { pingJob } from '../lib/indexNow.js';
 
 const router = express.Router();
 
@@ -279,6 +280,7 @@ async function handleCallback(req, res) {
       job.paidAt = new Date();
       job.paymentMethod = 'paysera';
       await job.save();
+      setImmediate(() => { pingJob(job); });
       logger.info('paysera/callback job paid + activated', { jobId, requestid, amountCents });
       await logPaymentEvent({
         jobId: job._id,
@@ -371,6 +373,7 @@ router.get('/paysera/fake-success/:jobId', authenticate, requireEmployer, async 
     job.paidAt = new Date();
     job.paymentMethod = 'dev-fake';
     await job.save();
+    setImmediate(() => { pingJob(job); });
 
     await logPaymentEvent({
       jobId: job._id,

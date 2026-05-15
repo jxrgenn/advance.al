@@ -6,6 +6,42 @@
 **CURRENT STATUS:** 🟢 **DEPLOY-READY. Phase 23 overnight suite now 799/799 GREEN (chromium-desktop). 4 additional production bugs found and fixed during full-coverage Tier 3: (1) verification code in-memory fallback never hit when Redis disabled — codes silently dropped; (2) employer registration `companyName`/`industry`/`description` not sanitized — stored XSS; (3) `User.addRefreshToken` had no FIFO cap, concurrent logins exceeded 5-token limit; (4) `/stats/public` 5-min in-memory cache served stale data with no test-mode bypass. All four shipped clean. 8 prior bugs from Phase 24 still in. Frontend + backend builds clean.**
 **Phase:** Phases 0-25 complete. Phase 25 (Tier 3) brought Phase 23 overnight to 799/799. Remaining out-of-scope items require external infrastructure or manual judgment (see `MANUAL_QA_CHECKLIST.md`).
 
+## 🚀 **SEO/GEO POST-LAUNCH PLAN (added 2026-05-15)**
+
+Phase A/B/B.5/C all shipped tonight. What's left:
+
+### Tier 1 — week of launch (LOW EFFORT, HIGH ROI)
+- ✅ **IndexNow integration** — DONE 2026-05-15. Lib at `backend/src/lib/indexNow.js`; hooked into job create, admin approval, payment completion. Backfill script at `backend/scripts/indexnow-backfill.js`. Key file at `frontend/public/ec873bbed088d12068b5a827e0f6ddb5.txt`. Pings Bing + Yandex + Naver + Seznam on every new/activated job (Google does NOT participate).
+- ⏳ **Sitemap regen** — sitemap.xml currently has 0 job URLs. Run `node scripts/generate-sitemap.mjs` against prod API and commit, then redeploy. Do this weekly or wire to a cron.
+- ⏳ **Google Indexing API for JobPostings** — separate from IndexNow. Requires Google Cloud project + service account + GSC ownership. Used to push JobPosting URLs to Google instantly. ~50 lines of code once the service account exists. User must do GCP/GSC setup first.
+- ⏳ **Backlinks bootstrap** — when LinkedIn / Facebook / Wikidata pages exist, link advance.al from every bio + every "About"/"Website" field. Quality backlinks > quantity. 3 trustworthy links beats 50 directory drops.
+
+### Tier 2 — 3-month content blitz (HIGH VALUE FOR GEO)
+After ~3 months of operational data, write evergreen content tailored to AI-citable queries:
+- **Salary guides** — "Pagat në IT në Shqipëri 2026", per-city/per-role tables. AI assistants get asked this constantly; nobody else has authoritative Albanian-language data.
+- **City landing pages** — `/jobs/tirane`, `/jobs/durres`, etc. with original copy about each city's market.
+- **Industry guides** — `/karriera/teknologji`, `/karriera/turizem`, etc.
+- **Career advice articles** — "Si të shkruash një CV", interview prep, salary negotiation.
+- **All ALL content must be VISIBLE TO HUMANS at clean URLs**, listed in sitemap.xml, with Article + FAQ JSON-LD schema. NO bot-only cloaking — that gets you penalized by Google AND blacklisted by AI vendors. See note below.
+
+### Tier 2.5 — "orphan blog" pattern (SAFE, ENCOURAGED)
+User asked: "blogs accessible only via specific URLs, nothing from the website links them?"
+- ✅ SAFE. This is **not** cloaking — it's the orphan-page pattern. Same content served to everyone; just not linked from the main nav.
+- Submit those URLs in `sitemap.xml` so crawlers find them; AI bots will too.
+- Content quality bar still applies — thin / spammy content gets penalized regardless of linking strategy.
+- Distinction:
+  - ❌ **Cloaking** = same URL, different content per UA → Google manual action
+  - ✅ **Orphan pages** = unlinked URLs, same content for everyone → totally fine
+  - ✅ **Dynamic rendering** = our Phase C, prerendered for bots, hydrated for humans, same content → Google-endorsed
+
+### Tier 3 — schema + perf polish
+- BreadcrumbList JSON-LD on JobDetail
+- FAQ schema on About/Employers/Jobseekers
+- Core Web Vitals audit (LCP, CLS, INP)
+- hreflang if/when English version added
+
+---
+
 ## 🧹 **POST-PHASE-3 QA CLEANUP — STARTED 2026-05-15**
 
 User QA'd the live deployed app and surfaced a batch of UX/content/perf/payment issues. Plan: `/Users/user/.claude/plans/velvet-seeking-feather.md`. Ships as 5 small commits (C1-C5). User decisions: add 4 new categories (keep existing 14, final 18); Paysera scaffolding only (live key arriving later); perf quick-wins only (no React Query refactor); email-exists onBlur check on BOTH signup flows.
