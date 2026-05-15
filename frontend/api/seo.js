@@ -193,7 +193,12 @@ function staticPageMeta(pathname) {
 
 async function handleRoute(req) {
   const reqUrl = new URL(req.url || '/', SITE_URL);
-  const pathname = reqUrl.pathname.replace(/\/$/, '') || '/';
+  // Edge Middleware fetches us with the original path as ?path=<path>.
+  // Prefer that when present; otherwise fall back to the request's own
+  // pathname (used when vercel.json rewrites send us the request directly).
+  const forwardedPath = reqUrl.searchParams.get('path');
+  const rawPath = forwardedPath && forwardedPath.startsWith('/') ? forwardedPath : reqUrl.pathname;
+  const pathname = rawPath.replace(/\/$/, '') || '/';
 
   // /jobs/<slug-or-id>
   const jobMatch = pathname.match(/^\/jobs\/([^/]+)$/);
