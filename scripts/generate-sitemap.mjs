@@ -90,6 +90,19 @@ function buildJobUrlEntries(jobs) {
     .join('\n');
 }
 
+async function loadBlogArticles() {
+  // Use dynamic import so we don't crash if the file is missing or has syntax
+  // errors; sitemap generation must remain robust.
+  try {
+    const url = new URL('../frontend/api/_lib/articles/index.js', import.meta.url);
+    const mod = await import(url.href);
+    return Array.isArray(mod.PUBLISHED_ARTICLES) ? mod.PUBLISHED_ARTICLES : [];
+  } catch (err) {
+    console.warn(`  (blog articles not loaded: ${err.message})`);
+    return [];
+  }
+}
+
 async function main() {
   console.log(`generate-sitemap.mjs`);
   console.log(`  API:  ${API_URL}`);
@@ -100,7 +113,33 @@ async function main() {
   const jobs = await fetchAllActiveJobs();
   console.log(`\nfetched ${jobs.length} jobs total`);
 
-  const dynamicEntries = buildJobUrlEntries(jobs);
+  const articles = await loadBlogArticles();
+  console.log(`fetched ${articles.length} blog articles`);
+
+  const blogEntries = articles
+    .map(
+      (a) => `  <url>
+    <loc>${SITE_URL}/blog/${escapeXml(a.slug)}</loc>
+    <lastmod>${escapeXml((a.dateModified || a.datePublished || today).slice(0, 10))}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>`,
+    )
+    .join('\n');
+
+  const blogIndexEntry = articles.length > 0
+    ? `  <url>
+    <loc>${SITE_URL}/blog</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>`
+    : '';
+
+  const jobDynamicEntries = buildJobUrlEntries(jobs);
+  const dynamicEntries = [blogIndexEntry, blogEntries, jobDynamicEntries]
+    .filter(Boolean)
+    .join('\n');
 
   const existing = await readFile(SITEMAP_PATH, 'utf8');
 

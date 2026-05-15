@@ -126,6 +126,63 @@ export function jobPostingJsonLd(job) {
   return ld;
 }
 
+// Article schema for blog content. Drives Google's rich-result eligibility
+// for articles and signals freshness/authorship to AI crawlers.
+// Required fields per https://developers.google.com/search/docs/appearance/structured-data/article
+export function articleJsonLd(article, canonicalUrl) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: article.title,
+    description: article.description,
+    author: {
+      '@type': 'Organization',
+      name: article.author || 'Ekipi i advance.al',
+      url: `${SITE_URL}/about`,
+    },
+    publisher: {
+      '@type': 'Organization',
+      name: SITE_NAME,
+      logo: { '@type': 'ImageObject', url: DEFAULT_OG_IMAGE },
+    },
+    datePublished: article.datePublished,
+    dateModified: article.dateModified || article.datePublished,
+    mainEntityOfPage: { '@type': 'WebPage', '@id': canonicalUrl },
+    image: article.image || DEFAULT_OG_IMAGE,
+    inLanguage: 'sq-AL',
+  };
+}
+
+// Breadcrumb trail surfaced as a horizontal nav under the page title in SERPs.
+export function breadcrumbJsonLd(items) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items.map((it, idx) => ({
+      '@type': 'ListItem',
+      position: idx + 1,
+      name: it.name,
+      item: it.url,
+    })),
+  };
+}
+
+// FAQ rich-result schema. Surfaces as accordion-style Q&A in Google SERPs and
+// is one of the highest-citation signals for AI assistants when they answer
+// "how do I X" queries.
+export function faqPageJsonLd(faq) {
+  if (!Array.isArray(faq) || faq.length === 0) return null;
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faq.map((qa) => ({
+      '@type': 'Question',
+      name: qa.q,
+      acceptedAnswer: { '@type': 'Answer', text: qa.a },
+    })),
+  };
+}
+
 export function itemListJsonLd(jobs, listName) {
   const safeJobs = Array.isArray(jobs) ? jobs : [];
   return {

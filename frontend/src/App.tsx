@@ -43,6 +43,8 @@ const PaymentJobPosting = lazy(() => import("./pages/PaymentJobPosting"));
 const PaymentSuccess = lazy(() => import("./pages/PaymentSuccess"));
 const PaymentCancel = lazy(() => import("./pages/PaymentCancel"));
 const PaymentFakeSuccess = lazy(() => import("./pages/PaymentFakeSuccess"));
+const Blog = lazy(() => import("./pages/Blog"));
+const BlogArticle = lazy(() => import("./pages/BlogArticle"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -87,6 +89,8 @@ const App = () => (
                 <Route path="/about" element={<AboutUs />} />
                 <Route path="/employers" element={<EmployersPage />} />
                 <Route path="/jobseekers" element={<JobSeekersPage />} />
+                <Route path="/blog" element={<Blog />} />
+                <Route path="/blog/:slug" element={<BlogArticle />} />
                 {/* TEMPORARILY DISABLED - No companies using platform yet */}
                 {/* <Route path="/companies" element={<CompaniesPageSimple />} /> */}
                 {/* <Route path="/company/:id" element={<CompanyProfile />} /> */}

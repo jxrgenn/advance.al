@@ -42,7 +42,11 @@ import {
   jobPostingJsonLd,
   itemListJsonLd,
   buildBotHtml,
+  articleJsonLd,
+  breadcrumbJsonLd,
+  faqPageJsonLd,
 } from './_lib/seo-templates.js';
+import { PUBLISHED_ARTICLES, ARTICLES_BY_SLUG } from './_lib/articles/index.js';
 
 // Render API base. Configurable via env so this same function can run against
 // staging in the future. Default points at production Render service.
@@ -251,6 +255,69 @@ async function handleRoute(req) {
         canonical: `${SITE_URL}/jobs`,
         bodyContent: renderJobsListBody(jobs),
         jsonLdBlocks: [itemListJsonLd(jobs, 'Punët aktive në Advance.al')],
+      }),
+    };
+  }
+
+  // /blog/<slug> — individual article
+  const blogMatch = pathname.match(/^\/blog\/([a-z0-9-]+)$/);
+  if (blogMatch) {
+    const slug = blogMatch[1];
+    const article = ARTICLES_BY_SLUG[slug];
+    if (!article) {
+      return {
+        status: 404,
+        cacheControl: 's-maxage=60',
+        html: buildBotHtml({
+          title: 'Artikulli nuk u gjet',
+          description: 'Ky artikull nuk ekziston ose është hequr nga Advance.al.',
+          canonical: `${SITE_URL}${pathname}`,
+          noindex: true,
+          bodyContent: `    <section><h1>Artikulli nuk u gjet</h1><p><a href="${SITE_URL}/blog">Shiko të gjitha artikujt</a></p></section>`,
+        }),
+      };
+    }
+    const canonical = `${SITE_URL}/blog/${slug}`;
+    const jsonLd = [
+      articleJsonLd(article, canonical),
+      breadcrumbJsonLd([
+        { name: 'Faqja kryesore', url: `${SITE_URL}/` },
+        { name: 'Blog', url: `${SITE_URL}/blog` },
+        { name: article.title, url: canonical },
+      ]),
+    ];
+    const faqLd = faqPageJsonLd(article.faq);
+    if (faqLd) jsonLd.push(faqLd);
+    return {
+      status: 200,
+      cacheControl: 's-maxage=3600, stale-while-revalidate=86400',
+      html: buildBotHtml({
+        title: article.title,
+        description: article.description,
+        canonical,
+        bodyContent: `    <article>\n${article.bodyHtml}\n    </article>`,
+        jsonLdBlocks: jsonLd,
+      }),
+    };
+  }
+
+  // /blog — listing page
+  if (pathname === '/blog') {
+    const articles = PUBLISHED_ARTICLES;
+    const description = articles.length > 0
+      ? `${articles.length} artikuj për karrierën, tregun e punës dhe këshilla praktike për kërkuesit e punës në Shqipëri.`
+      : 'Artikuj për karrierën, tregun e punës dhe këshilla praktike për kërkuesit e punës në Shqipëri.';
+    const list = articles
+      .map((a) => `        <li><a href="${SITE_URL}/blog/${escapeHtml(a.slug)}"><strong>${escapeHtml(a.title)}</strong></a> — <time datetime="${escapeHtml(a.datePublished)}">${escapeHtml(a.datePublished)}</time><br/>${escapeHtml(a.description)}</li>`)
+      .join('\n');
+    return {
+      status: 200,
+      cacheControl: 's-maxage=600, stale-while-revalidate=3600',
+      html: buildBotHtml({
+        title: 'Blog — këshilla karriere dhe tregu i punës',
+        description,
+        canonical: `${SITE_URL}/blog`,
+        bodyContent: `    <section>\n      <h1>Blog</h1>\n      <p>${escapeHtml(description)}</p>\n${articles.length > 0 ? `      <ul>\n${list}\n      </ul>` : '      <p>Së shpejti.</p>'}\n    </section>`,
       }),
     };
   }
