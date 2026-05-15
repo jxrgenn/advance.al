@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, CheckCircle, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin, Play, Lightbulb, HelpCircle, Upload, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, CheckCircle, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin, Play, Lightbulb, HelpCircle, Upload, ChevronDown, ChevronUp, CreditCard } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import ReportUserModal from "@/components/ReportUserModal";
 import { useToast } from "@/hooks/use-toast";
@@ -1195,10 +1195,30 @@ const EmployerDashboard = () => {
                   </div>
                 ) : (
                   <>
+                    {/* QA-G4: pending_payment banner — surface unpaid posts prominently */}
+                    {(() => {
+                      const pendingCount = jobs.filter(j => j.status === 'pending_payment').length;
+                      if (pendingCount === 0) return null;
+                      return (
+                        <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                          <CreditCard className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-amber-900 text-sm sm:text-base">
+                              Keni {pendingCount} postim{pendingCount === 1 ? '' : 'e'} në pritje të pagesës
+                            </p>
+                            <p className="text-xs sm:text-sm text-amber-800 mt-1">
+                              Paguaj për t'i publikuar dhe për t'i bërë të dukshme për kandidatët.
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     {/* Job status filter */}
                     <div className="flex flex-wrap gap-2 mb-4">
                       {[
                         { value: 'all', label: 'Të gjitha', count: jobs.length },
+                        { value: 'pending_payment', label: 'Pritet pagesa', count: jobs.filter(j => j.status === 'pending_payment').length },
                         { value: 'active', label: 'Aktive', count: jobs.filter(j => j.status === 'active').length },
                         { value: 'paused', label: 'Pezulluar', count: jobs.filter(j => j.status === 'paused').length },
                         { value: 'closed', label: 'Mbyllur', count: jobs.filter(j => j.status === 'closed').length },
@@ -1237,10 +1257,22 @@ const EmployerDashboard = () => {
                         <div className="flex-1 min-w-0 space-y-1">
                           <div className="flex items-start flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
                             <h3 className="font-medium text-foreground text-sm sm:text-base truncate pr-2">{job.title}</h3>
-                            <Badge variant={job.status === 'active' ? 'default' : 'secondary'} className="text-xs flex-shrink-0">
+                            <Badge
+                              variant={
+                                job.status === 'active' ? 'default' :
+                                  job.status === 'pending_payment' ? 'outline' : 'secondary'
+                              }
+                              className={
+                                job.status === 'pending_payment'
+                                  ? 'text-xs flex-shrink-0 border-amber-400 bg-amber-50 text-amber-800'
+                                  : 'text-xs flex-shrink-0'
+                              }
+                            >
                               {job.status === 'active' ? 'Aktive' :
-                                job.status === 'paused' ? 'Pezulluar' :
-                                  job.status === 'closed' ? 'Mbyllur' : 'Draft'}
+                                job.status === 'pending_payment' ? 'Pritet pagesa' :
+                                  job.status === 'paused' ? 'Pezulluar' :
+                                    job.status === 'closed' ? 'Mbyllur' :
+                                      job.status === 'expired' ? 'Skaduar' : 'Draft'}
                             </Badge>
                           </div>
                           <div className="text-xs sm:text-sm text-muted-foreground truncate">
@@ -1258,14 +1290,25 @@ const EmployerDashboard = () => {
                             Postuar: {new Date(job.postedAt).toLocaleDateString('sq-AL')}
                           </div>
                         </div>
-                        <div 
+                        <div
                           className="flex items-center gap-1 sm:gap-2 ml-2 flex-shrink-0"
                           data-tutorial={index === 0 ? "job-actions" : undefined}
                         >
-                          <Button 
-                            size="sm" 
-                            variant="default" 
-                            onClick={() => handleViewCandidates(job)} 
+                          {job.status === 'pending_payment' && (
+                            <Button
+                              size="sm"
+                              variant="default"
+                              onClick={() => navigate(`/payment/job/${job._id}`)}
+                              className="h-8 sm:h-9 px-2 sm:px-3 bg-amber-500 text-white hover:bg-amber-600"
+                            >
+                              <CreditCard className="h-3 w-3 sm:h-4 sm:w-4" />
+                              <span className="ml-1 hidden sm:inline">Paguaj tani</span>
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="default"
+                            onClick={() => handleViewCandidates(job)}
                             className="h-8 w-8 sm:h-9 sm:w-auto sm:px-3 bg-primary text-primary-foreground hover:bg-primary/90"
                             data-tutorial={index === 0 ? "view-applications" : undefined}
                           >
