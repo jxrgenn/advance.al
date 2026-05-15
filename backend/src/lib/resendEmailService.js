@@ -1211,6 +1211,133 @@ advance.al`;
       throw error;
     }
   }
+
+  // Send payment receipt — fired from routes/payments.js on a successful
+  // Paysera callback (status=1) AND on dev fake-success. Fire-and-forget
+  // from the caller (any throw here just logs and is swallowed by the
+  // route handler — we don't want a Resend hiccup to fail a paid callback).
+  async sendPaymentReceiptEmail({ to, employerName, jobTitle, amountEur, tier, paymentDate, paymentId }) {
+    if (!this.enabled) {
+      return { success: false, message: 'Email service disabled' };
+    }
+
+    try {
+      const safeName    = escapeHtml(employerName || 'Punëdhënës');
+      const safeJob     = escapeHtml(jobTitle || '');
+      const safeAmount  = Number(amountEur).toFixed(2);
+      const safeTierAl  = tier === 'promoted' ? 'I Promovuar' : 'Standart';
+      const safePayId   = escapeHtml(paymentId || '');
+      const dateStr     = (paymentDate instanceof Date ? paymentDate : new Date()).toLocaleDateString('sq-AL', {
+        year: 'numeric', month: 'long', day: 'numeric',
+      });
+
+      const subject = safeSubject(`🧾 Faturë pagesë — advance.al — €${safeAmount}`);
+
+      const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: Arial, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
+    <div style="text-align: center; margin-bottom: 30px; padding: 20px 0; border-bottom: 2px solid #16a34a;">
+      <h1 style="color: #16a34a; margin: 0; font-size: 28px; font-weight: bold;">advance.al</h1>
+      <p style="color: #6b7280; margin: 5px 0 0 0; font-size: 16px;">Konfirmim pagese</p>
+    </div>
+    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 30px; margin: 20px 0;">
+      <h2 style="color: #14532d; margin-top: 0; font-size: 22px;">✅ Pagesa u krye me sukses</h2>
+      <p style="color: #166534; line-height: 1.6; font-size: 16px;">
+        Përshëndetje <strong>${safeName}</strong>,
+      </p>
+      <p style="color: #166534; line-height: 1.6; font-size: 16px;">
+        Faleminderit për pagesën. Puna juaj është publikuar dhe është tashmë e dukshme për kandidatët.
+      </p>
+    </div>
+
+    <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px; margin: 20px 0;">
+      <h3 style="color: #1f2937; margin: 0 0 16px 0; font-size: 18px;">Detajet e faturës</h3>
+      <table style="width: 100%; border-collapse: collapse; color: #374151; font-size: 15px;">
+        <tr>
+          <td style="padding: 8px 0; color: #6b7280;">Titulli i punës</td>
+          <td style="padding: 8px 0; text-align: right; font-weight: 600;">${safeJob}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #6b7280;">Paketa</td>
+          <td style="padding: 8px 0; text-align: right;">${safeTierAl}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #6b7280;">Data e pagesës</td>
+          <td style="padding: 8px 0; text-align: right;">${dateStr}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #6b7280;">ID e transaksionit</td>
+          <td style="padding: 8px 0; text-align: right; font-family: monospace; font-size: 13px;">${safePayId}</td>
+        </tr>
+        <tr style="border-top: 2px solid #e5e7eb;">
+          <td style="padding: 12px 0 0 0; color: #1f2937; font-weight: 600;">Totali</td>
+          <td style="padding: 12px 0 0 0; text-align: right; font-size: 20px; font-weight: 700; color: #16a34a;">€${safeAmount}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="text-align: center; margin: 30px 0;">
+      <a href="https://advance.al/employer-dashboard"
+         style="background: #16a34a; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
+        🏠 Hap panelin
+      </a>
+    </div>
+
+    <p style="color: #6b7280; font-size: 13px; line-height: 1.6; padding: 0 8px;">
+      Ruajeni këtë email si dëshmi të pagesës. Për çdo pyetje rreth pagesës, na kontaktoni në support@advance.al duke përmendur ID-në e transaksionit më sipër.
+    </p>
+
+    <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+      <p style="color: #9ca3af; font-size: 12px;">© ${new Date().getFullYear()} advance.al — Platforma e Punës në Shqipëri</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+      const textContent = `Konfirmim pagese — advance.al
+
+Përshëndetje ${employerName || 'Punëdhënës'},
+
+Faleminderit për pagesën. Puna "${jobTitle}" është publikuar.
+
+Detajet e faturës
+- Paketa: ${safeTierAl}
+- Data e pagesës: ${dateStr}
+- ID e transaksionit: ${paymentId}
+- Totali: €${safeAmount}
+
+Hap panelin: https://advance.al/employer-dashboard
+
+Ruajeni këtë email si dëshmi të pagesës.
+
+--
+advance.al`;
+
+      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+        from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
+        to: this.getRecipientEmail(to),
+        subject,
+        html: htmlContent,
+        text: textContent,
+      }));
+
+      if (emailResult.error) {
+        logger.error('Resend payment receipt error:', emailResult.error);
+        throw new Error('Failed to send payment receipt email');
+      }
+
+      return { success: true, emailId: emailResult.data?.id };
+    } catch (error) {
+      logger.error('Error sending payment receipt email:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 // Create singleton instance

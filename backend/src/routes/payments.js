@@ -28,11 +28,12 @@
 import express from 'express';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
-import { Job, SystemConfiguration, PaymentEvent } from '../models/index.js';
+import { Job, SystemConfiguration, PaymentEvent, User } from '../models/index.js';
 import { authenticate, requireEmployer } from '../middleware/auth.js';
 import { createPaymentUrl, verifyCallback, isConfigured } from '../services/payseraService.js';
 import logger from '../config/logger.js';
 import { fireEmbedding } from '../services/embeddingTrigger.js';
+import resendEmailService from '../lib/resendEmailService.js';
 
 const router = express.Router();
 
@@ -59,6 +60,30 @@ async function logPaymentEvent(fields) {
     await PaymentEvent.create(fields);
   } catch (err) {
     logger.warn('PaymentEvent create failed', { error: err.message, event: fields.event });
+  }
+}
+
+// Fire-and-forget receipt email. Never throws into the route handler —
+// a Resend hiccup must not fail a paid callback (Paysera would retry,
+// triggering a double activation).
+async function sendReceiptEmailSafe({ job, paymentTier }) {
+  try {
+    const employer = await User.findById(job.employerId).select('email profile').lean();
+    if (!employer?.email) {
+      logger.warn('sendReceiptEmail: employer or email missing', { jobId: job._id });
+      return;
+    }
+    await resendEmailService.sendPaymentReceiptEmail({
+      to: employer.email,
+      employerName: employer.profile?.firstName || employer.profile?.employerProfile?.companyName,
+      jobTitle: job.title,
+      amountEur: job.paymentRequired,
+      tier: paymentTier,                     // 'standard' | 'promoted'
+      paymentDate: job.paidAt || new Date(),
+      paymentId: job.paymentId,
+    });
+  } catch (err) {
+    logger.warn('sendReceiptEmail failed (non-fatal)', { error: err.message, jobId: job?._id });
   }
 }
 
@@ -265,6 +290,11 @@ async function handleCallback(req, res) {
         status,
         payloadHash,
       });
+      // Receipt email — fire-and-forget, swallowed errors.
+      sendReceiptEmailSafe({
+        job,
+        paymentTier: job.tier === 'premium' ? 'promoted' : 'standard',
+      });
       // Fire embedding kick — the job content didn't change, but its
       // visibility just did, so make sure the vector is current for
       // matching cycles.
@@ -351,6 +381,12 @@ router.get('/paysera/fake-success/:jobId', authenticate, requireEmployer, async 
       amountCents: Math.round((job.paymentRequired || 0) * 100),
       ip: req.ip,
       userAgent: req.headers['user-agent'],
+    });
+
+    // Receipt email — same in dev so the email path is QA-able pre-keys.
+    sendReceiptEmailSafe({
+      job,
+      paymentTier: job.tier === 'premium' ? 'promoted' : 'standard',
     });
 
     try {
