@@ -18,6 +18,15 @@ User QA'd the live deployed app and surfaced a batch of UX/content/perf/payment 
 
 10-job €280 package and live Paysera HTTP integration explicitly deferred.
 
+## 🧹 **POST-PHASE-3 QA CLEANUP — ROUND 2 — STARTED 2026-05-15**
+
+User QA'd the first round (commits 82051ed → 1bc8b55) and found 10 more issues. Plan: `/Users/user/.claude/plans/velvet-seeking-feather.md`. Ships as 4 small commits (D1-D4). User decisions: flip `payment_enabled` default to true + backfill script; Saved Jobs gets two-section (Active top / Inactive collapsed gray); white sliver fixed by `main { pt-16 }` so navbar-bottom == content-top; ApplyModal inner Cards switch to `p-3 sm:p-4`.
+
+- **QA-D1 — Paywall + signup fixes** (IN PROGRESS): (a) PostJob.tsx reads `response.data.job` not `response.data` so paywall redirect actually fires; (b) EmployerRegister `validateStep1` becomes async + calls `authApi.checkEmail` directly when status is `'idle'` so users who don't blur before clicking Continue still get blocked on taken emails; (c) PostJob city auto-fills from `user.profile.location.city` once user hydrates; (d) `payment_enabled` default flips false→true + new `scripts/enable-payments.js` flips the live prod doc; (e) hardcoded 28€/45€ in `PricingSection.tsx` + `EmployersPage.tsx` updated to 35€/49€.
+- **QA-D2 — Layout polish** (pending): index.css `main { pt-20 }` → `pt-16`; remove redundant per-page `pt-20`/`pt-28`/`pt-36` navbar-clearance overrides; ApplyModal inner Cards `p-4` → `p-3 sm:p-4`; PaymentJobPosting page padding normalized.
+- **QA-D3 — Saved Jobs active/inactive split** (pending): backend stops filtering saved jobs by status; frontend partitions into Active grid + collapsed Inactive section with Albanian status badges (`I skaduar`, `I mbyllur`, etc.); title `text-xl sm:text-2xl md:text-3xl`.
+- **QA-D4 — Tests + perf hardening** (pending): integration test for `payment_enabled=true → status=pending_payment`; `imageUrl` `f_auto` regex tightened; JobCard `onUnsave` API takes `jobId` param so parent callbacks can be `useCallback`-stable for memo to actually hold; full backend test sweep.
+
 ## 🧪 **EMBEDDING SYSTEM AUDIT — MAY 9, 2026**
 
 User-driven diagnostic to characterize the user-job embedding pipeline before rewiring `/api/jobs/recommendations` to use embeddings (the endpoint currently runs a heuristic and ignores embeddings entirely). 38-mutation diagnostic against `jurgenhalili1142@gmail.com` over 70 active jobs (text-embedding-3-small, 1536d). Diagnostic harness at `backend/scripts/embeddings-{diagnostic,runner,inspect-job}.js`. Snapshots at `backend/scripts/.embedding-snapshots/` (gitignored).

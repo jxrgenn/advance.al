@@ -233,16 +233,21 @@ const PostJob = () => {
     }
 
     loadLocations();
-    // Set default expiry date (30 days from now)
-    const expiryDate = new Date();
-    expiryDate.setDate(expiryDate.getDate() + 30);
-    jobForm.setFieldValue('expiresAt', expiryDate.toISOString().split('T')[0]);
-    
-    // Auto-fill location from user profile if available
-    if (user?.profile?.location?.city) {
+    // Set default expiry date (30 days from now), only if still empty (don't trash a draft)
+    if (!jobForm.values.expiresAt) {
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 30);
+      jobForm.setFieldValue('expiresAt', expiryDate.toISOString().split('T')[0]);
+    }
+
+    // Auto-fill location from user profile if available — but only if the
+    // form is currently empty, so we don't overwrite a draft or a user edit.
+    // The user object hydrates async from AuthContext, so this effect re-runs
+    // when `user` resolves (it's in the deps array).
+    if (user?.profile?.location?.city && !jobForm.values.city) {
       jobForm.setFieldValue('city', user.profile.location.city);
     }
-    if (user?.profile?.location?.region) {
+    if (user?.profile?.location?.region && !jobForm.values.region) {
       jobForm.setFieldValue('region', user.profile.location.region);
     }
   }, [navigate, user]);
@@ -423,9 +428,8 @@ const PostJob = () => {
         clearDraft();
 
         // Backend may set status='pending_payment' for non-whitelisted employers.
-        // In that case we route to the paywall instead of the dashboard so the
-        // job isn't visible until Paysera (or admin override) clears it.
-        const createdJob: any = response.data;
+        // The response shape is { success, data: { job: {...} } } — unwrap accordingly.
+        const createdJob: any = (response.data as any)?.job ?? response.data;
         const requiresPayment = createdJob?.status === 'pending_payment' || createdJob?.paymentRequired === true;
 
         notifications.show({

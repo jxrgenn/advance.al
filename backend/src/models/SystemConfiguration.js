@@ -321,10 +321,10 @@ systemConfigurationSchema.statics.createDefaultSettings = async function(adminUs
     {
       category: 'payment',
       key: 'payment_enabled',
-      value: false,
+      value: true,
       dataType: 'boolean',
       description: 'Aktivizo sistemin e pagesave — kur është false, të gjithë punëdhënësit e verifikuar postojnë falas',
-      defaultValue: false,
+      defaultValue: true,
       validation: { required: true }
     },
     {

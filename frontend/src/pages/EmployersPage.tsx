@@ -1414,7 +1414,7 @@ const EmployersPage = () => {
                 <h3 className="text-2xl font-bold text-gray-900 mb-2">Postim standart</h3>
                 <p className="text-sm text-gray-600 mb-4">Për të filluar</p>
                 <div className="flex items-center gap-2 mb-6">
-                  <span className="text-base font-medium text-gray-900">28€ / 21 ditë</span>
+                  <span className="text-base font-medium text-gray-900">35€ / 21 ditë</span>
                 </div>
               </div>
 
@@ -1459,7 +1459,7 @@ const EmployersPage = () => {
                 <h3 className="text-2xl font-bold text-gray-900 mb-2">Postim i promovuar</h3>
                 <p className="text-sm text-gray-600 mb-4">Për rritje</p>
                 <div className="flex items-center gap-2 mb-6">
-                  <span className="text-base font-medium text-gray-900">45€ / 21 ditë</span>
+                  <span className="text-base font-medium text-gray-900">49€ / 21 ditë</span>
                 </div>
               </div>
 

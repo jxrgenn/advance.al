@@ -72,14 +72,23 @@ const EmployerRegister = () => {
   const [customIndustry, setCustomIndustry] = useState('');
   const [description, setDescription] = useState('');
   const emailAvailability = useEmailAvailability();
+  const [validatingStep1, setValidatingStep1] = useState(false);
 
-  const validateStep1 = (): string | null => {
+  // Async because we may need to round-trip to /auth/check-email when the user
+  // clicked Continue without ever blurring the email field. The onBlur hook is
+  // the primary path; this is the backstop so the form can never advance with
+  // a taken email even on impatient clickers.
+  const validateStep1 = async (): Promise<string | null> => {
     if (!companyName.trim()) return 'Emri i kompanisë është i detyrueshëm';
     if (!contactFirstName.trim()) return 'Emri i personit të kontaktit është i detyrueshëm';
     if (!contactLastName.trim()) return 'Mbiemri i personit të kontaktit është i detyrueshëm';
     if (!email.trim()) return 'Email-i është i detyrueshëm';
     if (!/\S+@\S+\.\S+/.test(email)) return 'Email-i nuk është i vlefshëm';
     if (emailAvailability.status === 'taken') return 'Ky email është tashmë i regjistruar. Provoni hyrjen.';
+    if (emailAvailability.status === 'idle') {
+      const r = await authApi.checkEmail(email);
+      if (!r.available) return 'Ky email është tashmë i regjistruar. Provoni hyrjen.';
+    }
     if (password.length < 8) return 'Fjalëkalimi duhet të ketë të paktën 8 karaktere';
     if (password !== confirmPassword) return 'Fjalëkalimet nuk përputhen';
     return null;
@@ -95,12 +104,17 @@ const EmployerRegister = () => {
     return null;
   };
 
-  const nextStep = () => {
+  const nextStep = async () => {
     if (step === 1) {
-      const error = validateStep1();
-      if (error) {
-        toast({ title: 'Gabim', description: error, variant: 'destructive' });
-        return;
+      setValidatingStep1(true);
+      try {
+        const error = await validateStep1();
+        if (error) {
+          toast({ title: 'Gabim', description: error, variant: 'destructive' });
+          return;
+        }
+      } finally {
+        setValidatingStep1(false);
       }
     }
     if (step === 2) {
@@ -310,8 +324,13 @@ const EmployerRegister = () => {
                       </div>
                     </div>
 
-                    <Button type="button" onClick={nextStep} className="w-full">
-                      Vazhdo
+                    <Button type="button" onClick={nextStep} className="w-full" disabled={validatingStep1 || emailAvailability.status === 'taken'}>
+                      {validatingStep1 ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Po kontrollohet...
+                        </>
+                      ) : 'Vazhdo'}
                     </Button>
                   </div>
                 )}
