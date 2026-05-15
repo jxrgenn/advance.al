@@ -16,6 +16,19 @@ Phase A/B/B.5/C all shipped tonight. What's left:
 - ⏳ **Google Indexing API for JobPostings** — separate from IndexNow. Requires Google Cloud project + service account + GSC ownership. Used to push JobPosting URLs to Google instantly. ~50 lines of code once the service account exists. User must do GCP/GSC setup first.
 - ⏳ **Backlinks bootstrap** — when LinkedIn / Facebook / Wikidata pages exist, link advance.al from every bio + every "About"/"Website" field. Quality backlinks > quantity. 3 trustworthy links beats 50 directory drops.
 
+### Tier 1.5 — Launch-day blog (SHIPPED 2026-05-16, commit 43271cd, PR-N)
+5 evergreen Albanian articles + /blog routes + Article/Breadcrumb/FAQPage JSON-LD + sitemap entries + IndexNow ping:
+- cv-guide-shqiperi-2026, pyetjet-ne-interviste-pune-2026, si-te-negocosh-pagen-2026, kerkim-pune-diaspora-shqiptare-2026, si-te-hulumtosh-pagen-shqiperi-2026
+
+Editorial doctrine in `frontend/api/_lib/articles/*.js` SAFETY AUDIT headers — apply same rules to all future articles:
+- 100% original prose, no scraping, no copying
+- Zero invented statistics; references to real public sources only (INSTAT, CEFR, Bank of Albania)
+- Fictional examples explicitly labeled "fiktiv"
+- No competitor mentions, no outcome guarantees
+- No YMYL topics (skipped per user direction — revisit only with lawyer review)
+- Single source-of-truth article module imported by BOTH React and bot-prerender — no cloaking
+- Author byline + Published/Updated dates + CTA to /jobs only
+
 ### Tier 2 — 3-month content blitz (HIGH VALUE FOR GEO)
 After ~3 months of operational data, write evergreen content tailored to AI-citable queries:
 - **Salary guides** — "Pagat në IT në Shqipëri 2026", per-city/per-role tables. AI assistants get asked this constantly; nobody else has authoritative Albanian-language data.
