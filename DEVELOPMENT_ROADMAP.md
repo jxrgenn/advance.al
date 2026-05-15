@@ -87,6 +87,18 @@ User decisions: Paysera standard checkout flow + dev auto-accept fallback; auto-
 
 10-job €280 package, Paysera Wallet/subscriptions/refunds, multi-currency still deferred.
 
+## 🧹 **POST-PHASE-3 QA CLEANUP — ROUND 7 — STARTED 2026-05-16**
+
+Round 6 (I) shipped but the user re-tested and found three remaining issues:
+
+- **QA-J1 — fake-success GET honors PAYSERA_ALLOW_FAKE_SUCCESS** (SHIPPED): I2 added the override to POST /paysera/initiate but missed the symmetric guard on GET /paysera/fake-success/:jobId. With NODE_ENV=production locally, the initiate endpoint returned the fake-success URL correctly but the GET endpoint then 404'd because its own `if (NODE_ENV === 'production')` had no override. Patched to `if (NODE_ENV === 'production' && !PAYSERA_ALLOW_FAKE_SUCCESS) → 404`. Test added (prod + override → 200 + job goes active). clearPayseraEnv() helper also delete-defaults the override so "503 in prod" + "404 in prod" assertions don't break when the user has the var set in .env.
+- **QA-J2 — handlePurchaseMatching matchesLastFetchedFor** (SHIPPED): I4 covered handleViewCandidates but missed handlePurchaseMatching, which is the second fetch path (after "Shiko Kandidatët provë falas" button). After setCandidateMatches we now also setMatchesLastFetchedFor(jobId) so the empty-state branch doesn't flash during the post-purchase render cycle.
+- **QA-J3 — base Dialog navbar-aware centering** (SHIPPED): The candidates modal hit the original "touches navbar" bug because it uses default shadcn DialogContent (no per-modal className override). Rather than fix every modal individually, patched the base at `frontend/src/components/ui/dialog.tsx:39` — `top-[50%]` → `top-[calc(50%+2rem)]`. One change, every Dialog in the app is now navbar-aware. Per-modal className overrides still work.
+
+Round 7 tests: 32/32 payments + 13/13 admin-payments + 6/6 reminder + 34/34 jobs + 25/25 payseraService = 111/111.
+
+User question answered: candidates list IS generated from embeddings. `backend/src/services/candidateMatching.js:253-380` — hybrid algorithm. Loads Job.embedding.vector + User.embedding.vector, computes cosine similarity (~50% weight) and blends with a 7-criteria rule-based score (title/skills/experience/location/education/salary/availability — ~50% weight). Gracefully falls back to heuristic-only if either embedding is missing. Top-N cached 24h.
+
 ## 🧹 **POST-PHASE-3 QA CLEANUP — ROUND 6 — STARTED 2026-05-15**
 
 After Rounds G+H shipped, user found 5 follow-ups: noisy 404 console error on RecentlyViewedJobs; Paysera 503 STILL fires (root cause: their local .env has `NODE_ENV=production` — H2's fix needed an explicit override); toast close-X invisible on mobile; "Show candidates" briefly flashes empty-state before list; explicit feature ask for follow-up emails to nudge unpaid employers.

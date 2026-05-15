@@ -379,9 +379,12 @@ async function handleCallback(req, res) {
 router.post('/paysera/callback', express.urlencoded({ extended: false }), handleCallback);
 router.get('/paysera/callback', handleCallback);
 
-// GET /api/payments/paysera/fake-success/:jobId — DEV ONLY
+// GET /api/payments/paysera/fake-success/:jobId — DEV ONLY (or production
+// with the explicit PAYSERA_ALLOW_FAKE_SUCCESS=true override for QA setups
+// that run with NODE_ENV=production locally).
 router.get('/paysera/fake-success/:jobId', authenticate, requireEmployer, async (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
+  const allowFake = process.env.PAYSERA_ALLOW_FAKE_SUCCESS === 'true';
+  if (process.env.NODE_ENV === 'production' && !allowFake) {
     return res.status(404).json({ success: false, message: 'Not available' });
   }
   if (isConfigured()) {

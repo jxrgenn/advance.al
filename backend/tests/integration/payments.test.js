@@ -52,6 +52,9 @@ function clearPayseraEnv() {
   delete process.env.PAYSERA_PROJECT_ID;
   delete process.env.PAYSERA_SIGN_PASSWORD;
   delete process.env.PAYSERA_TEST;
+  // Defensive: the dev-only override may be set in the project's .env;
+  // tests that assert "503 in prod" rely on it being absent.
+  delete process.env.PAYSERA_ALLOW_FAKE_SUCCESS;
 }
 
 // Replicate the service-side signing math so we can forge a "valid"
@@ -449,6 +452,37 @@ describe('Paysera payments — integration', () => {
         expect(res.status).toBe(404);
       } finally {
         process.env.NODE_ENV = originalEnv;
+      }
+    });
+
+    it('PAYSERA_ALLOW_FAKE_SUCCESS=true bypasses prod 404 (J1)', async () => {
+      clearPayseraEnv();
+      const originalEnv = process.env.NODE_ENV;
+      const originalAllow = process.env.PAYSERA_ALLOW_FAKE_SUCCESS;
+      process.env.NODE_ENV = 'production';
+      process.env.PAYSERA_ALLOW_FAKE_SUCCESS = 'true';
+
+      try {
+        const { user: emp } = await createVerifiedEmployer();
+        const job = await createJobPendingPayment(emp);
+
+        const res = await request(app)
+          .get(`/api/payments/paysera/fake-success/${job._id}`)
+          .set(createAuthHeaders(emp));
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+
+        const updated = await Job.findById(job._id);
+        expect(updated.status).toBe('active');
+        expect(updated.paymentMethod).toBe('dev-fake');
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+        if (originalAllow === undefined) {
+          delete process.env.PAYSERA_ALLOW_FAKE_SUCCESS;
+        } else {
+          process.env.PAYSERA_ALLOW_FAKE_SUCCESS = originalAllow;
+        }
       }
     });
 

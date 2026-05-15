@@ -906,6 +906,9 @@ const EmployerDashboard = () => {
 
         if (matchesResponse.success && matchesResponse.data) {
           setCandidateMatches(matchesResponse.data.matches);
+          // J2: mark this fetch complete for the current job so the empty-state
+          // branch doesn't flash while the new matches are settling into state.
+          setMatchesLastFetchedFor(jobId);
 
           toast({
             title: "Pagesa u krye me sukses!",
