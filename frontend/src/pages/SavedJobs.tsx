@@ -166,13 +166,14 @@ const SavedJobs = () => {
       <Navigation />
 
       <div className="container py-8">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
+        {/* Header — back button gets its own row above so the title isn't
+            pushed off-center on mobile. */}
+        <div className="mb-8">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => navigate(-1)}
-            className="flex items-center gap-2"
+            className="-ml-2 mb-3 flex items-center gap-2"
           >
             <ArrowLeft className="h-4 w-4" />
             Kthehu
