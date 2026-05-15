@@ -304,7 +304,7 @@ const CompanyProfile = () => {
                       {company.jobs.slice(0, 5).map((job) => (
                         <Link
                           key={job._id}
-                          to={`/jobs/${job._id}`}
+                          to={`/jobs/${(job as any).slug || job._id}`}
                           className="block p-4 border rounded-lg hover:border-primary/50 hover:bg-primary/5 transition-all"
                         >
                           <div className="flex justify-between items-start mb-2">

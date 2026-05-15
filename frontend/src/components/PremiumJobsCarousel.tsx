@@ -87,7 +87,7 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
                   <Card
                     className="group hover:shadow-lg cursor-pointer border-0 shadow-sm hover:shadow-xl bg-gradient-to-br from-blue-50/40 via-white to-blue-50/20 h-full transition-all duration-300 ease-out"
                     style={{ borderWidth: 2, borderStyle: 'solid', borderColor: '#bfdbfe' }}
-                    onClick={() => navigate(`/jobs/${job._id}`)}
+                    onClick={() => navigate(`/jobs/${(job as any).slug || job._id}`)}
                   >
                     <CardContent className={`transition-all duration-300 ease-out ${isStuck ? 'p-2 md:p-2.5' : 'p-3 md:p-4'}`}>
                       <div className={`flex items-start transition-all duration-300 ease-out ${isStuck ? 'gap-2' : 'gap-3'}`}>

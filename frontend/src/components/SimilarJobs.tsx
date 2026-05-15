@@ -121,7 +121,7 @@ const SimilarJobs = ({ currentJob, limit = 4 }: SimilarJobsProps) => {
             <div
               key={job._id}
               className="p-4 border border-border/50 rounded-lg hover:border-primary/50 hover:shadow-sm transition-all cursor-pointer group"
-              onClick={() => handleJobClick(job._id)}
+              onClick={() => handleJobClick((job as any).slug || job._id)}
             >
               {/* Job Title */}
               <h4 className="font-medium text-foreground group-hover:text-primary transition-colors text-sm mb-2 line-clamp-2">

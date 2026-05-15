@@ -149,7 +149,7 @@ const Navigation = () => {
 
     // For job-related notifications (no application), go to job page
     if (notification.relatedJob?._id) {
-      navigate(`/jobs/${notification.relatedJob._id}`);
+      navigate(`/jobs/${(notification.relatedJob as any).slug || notification.relatedJob._id}`);
     }
   };
 

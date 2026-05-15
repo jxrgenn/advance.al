@@ -251,7 +251,7 @@ const RecentlyViewedJobs = ({
                 <div
                   key={job._id}
                   className="border rounded-lg p-3 hover:bg-muted cursor-pointer transition-colors group relative"
-                  onClick={() => handleJobClick(job._id)}
+                  onClick={() => handleJobClick((job as any).slug || job._id)}
                 >
                   {/* Mini JobCard Layout */}
                   <div className="space-y-2">
@@ -347,7 +347,7 @@ const RecentlyViewedJobs = ({
                 <div
                   key={job._id}
                   className="group border rounded-lg p-4 hover:shadow-md transition-all cursor-pointer relative"
-                  onClick={() => handleJobClick(job._id)}
+                  onClick={() => handleJobClick((job as any).slug || job._id)}
                 >
                   {/* Mini JobCard Layout */}
                   <div className="space-y-2">

@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "react-router-dom";
+import SEO from "@/components/SEO";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import { Shield, Database, Cookie, UserCheck, Mail, Eye, Building2, Scale, Globe, Brain, Clock, Users } from "lucide-react";
@@ -7,6 +8,11 @@ import { Shield, Database, Cookie, UserCheck, Mail, Eye, Building2, Scale, Globe
 const Privacy = () => {
   return (
     <div className="relative bg-slate-50 selection:bg-blue-100 selection:text-blue-900 font-sans min-h-screen flex flex-col">
+      <SEO
+        title="Politika e Privatësisë"
+        description="Politika e privatësisë së Advance.al — si mblidhen, përdoren dhe mbrohen të dhënat tuaja personale në përputhje me GDPR dhe ligjet shqiptare."
+        path="/privacy"
+      />
       <Navigation />
 
       {/* Header */}

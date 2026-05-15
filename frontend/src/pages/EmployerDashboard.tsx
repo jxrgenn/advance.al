@@ -1412,7 +1412,7 @@ const EmployerDashboard = () => {
                           <div className="text-xs sm:text-sm text-muted-foreground truncate">
                             Për: {typeof application.jobId === 'string' ? 'Pozicion i fshirë' : (
                               <button
-                                onClick={(e) => { e.stopPropagation(); navigate(`/jobs/${application.jobId._id}`); }}
+                                onClick={(e) => { e.stopPropagation(); navigate(`/jobs/${(application.jobId as any).slug || application.jobId._id}`); }}
                                 className="text-primary hover:underline font-medium"
                               >
                                 {application.jobId?.title}
@@ -1863,7 +1863,7 @@ const EmployerDashboard = () => {
                   <p className="text-xs sm:text-sm text-muted-foreground">
                     Për: {typeof selectedApplication.jobId === 'string' ? 'Pozicion i fshirë' : (
                       <button
-                        onClick={() => navigate(`/jobs/${selectedApplication.jobId._id}`)}
+                        onClick={() => navigate(`/jobs/${(selectedApplication.jobId as any).slug || selectedApplication.jobId._id}`)}
                         className="text-primary hover:underline font-medium"
                       >
                         {selectedApplication.jobId?.title}

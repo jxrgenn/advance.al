@@ -280,7 +280,7 @@ const ApplicationStatusTimeline: React.FC<ApplicationStatusTimelineProps> = ({
 
   const handleViewJob = () => {
     if (application.jobId?._id) {
-      navigate(`/jobs/${application.jobId._id}`);
+      navigate(`/jobs/${(application.jobId as any).slug || application.jobId._id}`);
     }
   };
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import SEO from "@/components/SEO";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import RotatingContact from "@/components/RotatingContact";
@@ -1202,6 +1203,19 @@ const EmployersPage = () => {
 
   return (
     <Box style={{ minHeight: '100vh' }}>
+      <SEO
+        title="Për Punëdhënësit"
+        description="Punësoni talente në Shqipëri me Advance.al. Postoni vende të lira pune, gjeni kandidatë të verifikuar dhe menaxhoni aplikimet — të gjitha në një vend."
+        path="/employers"
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "Për Punëdhënësit — Advance.al",
+          "url": "https://advance.al/employers",
+          "inLanguage": "sq-AL",
+          "audience": { "@type": "BusinessAudience", "audienceType": "Employers in Albania" },
+        }}
+      />
       <Navigation />
 
       {/* Tutorial Overlay */}

@@ -437,6 +437,49 @@ describe('Jobs API - Integration Tests', () => {
       expect(response.status).toBe(404);
       expect(response.body.success).toBe(false);
     });
+
+    // PR-L Phase B: slug-based lookup for SEO-friendly URLs
+    it('should return same job when fetched by slug', async () => {
+      const { user: employer } = await createVerifiedEmployer();
+      const job = await createJob(employer);
+      expect(job.slug).toBeTruthy();
+      expect(job.slug).not.toBe(job._id.toString());
+
+      const responseById = await request(app)
+        .get(`/api/jobs/${job._id}`)
+        .set(createPublicHeaders());
+      const responseBySlug = await request(app)
+        .get(`/api/jobs/${job.slug}`)
+        .set(createPublicHeaders());
+
+      expect(responseBySlug.status).toBe(200);
+      expect(responseBySlug.body.data.job._id).toBe(job._id.toString());
+      expect(responseBySlug.body.data.job.title).toBe(job.title);
+      expect(responseBySlug.body.data.job.slug).toBe(job.slug);
+      // Both lookups return the same canonical job document
+      expect(responseBySlug.body.data.job._id).toBe(responseById.body.data.job._id);
+    });
+
+    it('should return 404 for non-existent slug', async () => {
+      const response = await request(app)
+        .get('/api/jobs/this-slug-does-not-exist-anywhere-xyz')
+        .set(createPublicHeaders());
+      expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should NOT match a slug query against soft-deleted jobs', async () => {
+      const { user: employer } = await createVerifiedEmployer();
+      const job = await createJob(employer);
+      const slug = job.slug;
+
+      await Job.updateOne({ _id: job._id }, { isDeleted: true });
+
+      const response = await request(app)
+        .get(`/api/jobs/${slug}`)
+        .set(createPublicHeaders());
+      expect(response.status).toBe(404);
+    });
   });
 
   // ========================================

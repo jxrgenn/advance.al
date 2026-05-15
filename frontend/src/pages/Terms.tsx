@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "react-router-dom";
+import SEO from "@/components/SEO";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import { FileText, BookOpen, UserCog, ShieldAlert, Briefcase, FileCheck, Copyright, Scale, Ban, Mail, CreditCard, Brain, Globe, AlertTriangle, Gavel } from "lucide-react";
@@ -7,6 +8,11 @@ import { FileText, BookOpen, UserCog, ShieldAlert, Briefcase, FileCheck, Copyrig
 const Terms = () => {
   return (
     <div className="relative bg-slate-50 selection:bg-blue-100 selection:text-blue-900 font-sans min-h-screen flex flex-col">
+      <SEO
+        title="Kushtet e Shërbimit"
+        description="Kushtet e përdorimit të Advance.al — të drejtat dhe detyrimet e përdoruesve, kompanive dhe platformës."
+        path="/terms"
+      />
       <Navigation />
 
       {/* Header */}

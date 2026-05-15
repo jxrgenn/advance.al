@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "react-router-dom";
+import SEO from "@/components/SEO";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import RotatingContact from "@/components/RotatingContact";
@@ -355,6 +356,18 @@ const AboutUs = () => {
 
   return (
     <div className="relative bg-slate-50 selection:bg-blue-100 selection:text-blue-900 font-sans">
+      <SEO
+        title="Rreth nesh"
+        description="Mësoni më shumë rreth Advance.al — portali kombëtar i punës në Shqipëri. Misioni ynë, ekipi dhe vizioni për tregun e punës shqiptar."
+        path="/about"
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "AboutPage",
+          "name": "Rreth Advance.al",
+          "url": "https://advance.al/about",
+          "inLanguage": "sq-AL",
+        }}
+      />
       <Navigation />
 
       {/* Landing Section */}

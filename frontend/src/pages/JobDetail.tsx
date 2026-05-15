@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import SEO from "@/components/SEO";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import ApplyModal from "@/components/ApplyModal";
@@ -690,8 +691,80 @@ const JobDetail = () => {
     );
   }
 
+  const jobTypeMap: Record<string, string> = {
+    "full-time": "FULL_TIME",
+    "part-time": "PART_TIME",
+    "contract": "CONTRACTOR",
+    "freelance": "CONTRACTOR",
+    "internship": "INTERN",
+    "temporary": "TEMPORARY",
+  };
+  const seoDescription = job.description
+    ? job.description.replace(/<[^>]*>/g, "").slice(0, 160).trim()
+    : `${job.title} — ${job.employerId?.profile?.employerProfile?.companyName || "Advance.al"} në ${job.location?.city || "Shqipëri"}.`;
+  const seoPath = `/jobs/${job.slug || job._id}`;
+  const employmentTypeNormalized = jobTypeMap[job.jobType?.toLowerCase?.()] || "OTHER";
+  const jobPostingJsonLd: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "JobPosting",
+    title: job.title,
+    description: job.description || job.title,
+    identifier: {
+      "@type": "PropertyValue",
+      name: "Advance.al",
+      value: job._id,
+    },
+    datePosted: job.postedAt,
+    validThrough: job.expiresAt,
+    employmentType: employmentTypeNormalized,
+    hiringOrganization: {
+      "@type": "Organization",
+      name: job.employerId?.profile?.employerProfile?.companyName || "Advance.al",
+      sameAs: job.employerId?.profile?.employerProfile?.website || "https://advance.al",
+      logo: job.employerId?.profile?.employerProfile?.logo || "https://advance.al/logo.jpeg",
+    },
+    jobLocation: {
+      "@type": "Place",
+      address: {
+        "@type": "PostalAddress",
+        addressLocality: job.location?.city || "Tirana",
+        addressRegion: job.location?.region || "Tirana",
+        addressCountry: "AL",
+      },
+    },
+    directApply: true,
+    url: `https://advance.al${seoPath}`,
+  };
+  if (job.location?.remote) {
+    jobPostingJsonLd.jobLocationType = "TELECOMMUTE";
+    jobPostingJsonLd.applicantLocationRequirements = {
+      "@type": "Country",
+      name: "Albania",
+    };
+  }
+  if (job.salary && (job.salary.min || job.salary.max) && job.salary.showPublic !== false) {
+    jobPostingJsonLd.baseSalary = {
+      "@type": "MonetaryAmount",
+      currency: job.salary.currency || "EUR",
+      value: {
+        "@type": "QuantitativeValue",
+        minValue: job.salary.min,
+        maxValue: job.salary.max || job.salary.min,
+        unitText: "MONTH",
+      },
+    };
+  }
+
   return (
     <div className="min-h-screen bg-background">
+      <SEO
+        title={`${job.title} — ${job.employerId?.profile?.employerProfile?.companyName || ""}`.trim()}
+        description={seoDescription}
+        path={seoPath}
+        type="article"
+        image={job.employerId?.profile?.employerProfile?.logo || "https://advance.al/logo.jpeg"}
+        jsonLd={jobPostingJsonLd}
+      />
       <Navigation />
 
       {/* Tutorial Overlay */}

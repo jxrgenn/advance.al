@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+import { HelmetProvider } from "react-helmet-async";
 import { Toaster } from "@/components/ui/toaster";
 // Sonner removed — all toasts use shadcn Toaster via use-toast hook
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -63,7 +64,8 @@ const PageLoader = () => (
 // white — overridden globally in src/index.css via `--mantine-color-dimmed`.
 const App = () => (
   <ErrorBoundary>
-    <MantineProvider>
+    <HelmetProvider>
+      <MantineProvider>
       <Notifications position="top-right" zIndex={10000} />
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
@@ -142,6 +144,7 @@ const App = () => (
         </AuthProvider>
       </QueryClientProvider>
     </MantineProvider>
+    </HelmetProvider>
   </ErrorBoundary>
 );
 

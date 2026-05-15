@@ -40,7 +40,7 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, init
   const isViewed = isJobRecentlyViewed(job._id);
 
   const handleCardClick = () => {
-    navigate(`/jobs/${job._id}`);
+    navigate(`/jobs/${(job as any).slug || job._id}`);
   };
 
   // Only check individually if initialSaved was not provided by parent
