@@ -457,11 +457,20 @@ const server = app.listen(PORT, () => {
   }).catch(() => {});
 
   // Payment-reminder worker: emails employers whose jobs are stuck in
-  // pending_payment for >PAYMENT_REMINDER_AFTER_HOURS. Sends ONCE per job.
+  // pending_payment. L1 escalates across 3 stages (24h/72h/7d). Idempotent.
   import('./src/services/paymentReminderWorker.js').then(({ sendDuePaymentReminders }) => {
     const interval = parseInt(process.env.PAYMENT_REMINDER_INTERVAL_MS || `${60 * 60 * 1000}`, 10);
     activeIntervals.push(setInterval(() => {
       sendDuePaymentReminders().catch(err => logger.error('Payment reminder worker error:', err.message));
+    }, interval));
+  }).catch(() => {});
+
+  // Payment-timeout worker: alerts admin about pending_payment jobs older
+  // than PAYMENT_TIMEOUT_AFTER_DAYS (default 14). Each job alerted once.
+  import('./src/services/paymentTimeoutWorker.js').then(({ alertDuePaymentTimeouts }) => {
+    const interval = parseInt(process.env.PAYMENT_TIMEOUT_INTERVAL_MS || `${24 * 60 * 60 * 1000}`, 10);
+    activeIntervals.push(setInterval(() => {
+      alertDuePaymentTimeouts().catch(err => logger.error('Payment timeout worker error:', err.message));
     }, interval));
   }).catch(() => {});
 

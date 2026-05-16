@@ -1473,6 +1473,90 @@ advance.al`;
       return { success: false, error: error.message };
     }
   }
+
+  // L2: alert admins/ops about pending_payment jobs that have been stuck
+  // for >threshold days. Fire-and-forget; only logs on failure.
+  //
+  // `jobs` is an array of plain objects with { jobId, title, employerEmail,
+  // ageDays, amountEur }. Sends ONE email per worker run with the full list,
+  // not one email per job (avoids alert spam).
+  async sendAdminPaymentTimeoutAlert(jobs, { thresholdDays = 14 } = {}) {
+    if (!this.enabled) {
+      return { success: false, message: 'Email service disabled' };
+    }
+    if (!Array.isArray(jobs) || jobs.length === 0) {
+      return { success: false, message: 'No jobs to alert about' };
+    }
+
+    try {
+      const to = process.env.ALERT_EMAIL_TO || 'ops@advance.al';
+      const subject = safeSubject(`⚠️ ${jobs.length} job(s) stuck in pending_payment > ${thresholdDays}d`);
+
+      const rowsHtml = jobs.map(j => `
+        <tr>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(j.title || '(no title)')}</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(j.employerEmail || '—')}</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e5e7eb; text-align: right;">€${Number(j.amountEur || 0).toFixed(2)}</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e5e7eb; text-align: right;">${Math.round(j.ageDays || 0)}d</td>
+          <td style="padding: 6px 8px; border-bottom: 1px solid #e5e7eb; font-family: monospace; font-size: 12px;">${escapeHtml(String(j.jobId || ''))}</td>
+        </tr>`).join('');
+
+      const rowsText = jobs.map(j =>
+        `- ${j.title || '(no title)'} | ${j.employerEmail || '—'} | €${Number(j.amountEur || 0).toFixed(2)} | ${Math.round(j.ageDays || 0)}d | ${j.jobId}`
+      ).join('\n');
+
+      const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: Arial, sans-serif;">
+  <div style="max-width: 700px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
+    <h2 style="color: #dc2626; margin: 0 0 12px 0;">⚠️ Payment timeout alert</h2>
+    <p style="color: #374151;">${jobs.length} job(s) have been in <code>pending_payment</code> for more than ${thresholdDays} days without a successful Paysera callback. Review the audit trail (PaymentEvent) and decide whether to manually mark-paid, contact the employer, or close out.</p>
+    <table style="width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px;">
+      <thead>
+        <tr style="text-align: left; background: #f3f4f6;">
+          <th style="padding: 8px;">Job title</th>
+          <th style="padding: 8px;">Employer</th>
+          <th style="padding: 8px; text-align: right;">Amount</th>
+          <th style="padding: 8px; text-align: right;">Age</th>
+          <th style="padding: 8px;">Job ID</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    <p style="color: #6b7280; font-size: 12px; margin-top: 16px;">Each job is alerted at most once (idempotency via Job.paymentTimeoutAlertedAt). To re-alert, clear that field.</p>
+  </div>
+</body>
+</html>`;
+
+      const textContent = `Payment timeout alert
+
+${jobs.length} job(s) have been in pending_payment for more than ${thresholdDays} days.
+
+${rowsText}
+
+Each job is alerted at most once. To re-alert, clear Job.paymentTimeoutAlertedAt.`;
+
+      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+        from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
+        to: this.getRecipientEmail(to),
+        subject,
+        html: htmlContent,
+        text: textContent,
+      }));
+
+      if (emailResult.error) {
+        logger.error('Resend admin payment-timeout alert error:', emailResult.error);
+        throw new Error('Failed to send admin payment-timeout alert');
+      }
+
+      return { success: true, emailId: emailResult.data?.id };
+    } catch (error) {
+      logger.error('Error sending admin payment-timeout alert:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 // Create singleton instance

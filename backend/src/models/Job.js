@@ -290,6 +290,11 @@ const jobSchema = new Schema({
     type: Number,
     default: 0
   },
+  // L2: set when paymentTimeoutWorker has alerted an admin about a
+  // long-stuck pending_payment job. Idempotent — alert fires once.
+  paymentTimeoutAlertedAt: {
+    type: Date
+  },
 
   // Stats
   viewCount: {
