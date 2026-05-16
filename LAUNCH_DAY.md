@@ -1,8 +1,22 @@
 # Launch day — advance.al
 
 Date: 2026-05-16
-Prepared by: tonight's session
+Prepared by: tonight's session + Round L (overnight) + Round M (this morning, pre-launch hardening)
 For: tomorrow's you (and anyone helping)
+
+---
+
+## 🟢 Shipped this morning (Round M — pre-launch hardening)
+
+These items came from the security + perf audit done before the deploy. They're already live (commits `53aecd3` + `656a70c` on `main`).
+
+- `healthz/embeddings` was leaking growth metrics publicly — now gated by `HEALTHZ_TOKEN` env. **Default-deny when env unset**, so even if you don't set it, the leak is closed.
+- 5 missing Mongoose indexes added for hot read paths (token lookups on signup verify + password reset, payment-worker scans, "have I applied?" filter, unread-notification poll).
+- `quickusers` admin GET `/:id` no longer 500s on malformed IDs; preferences-token compare is now timing-safe.
+
+See `SECURITY_AUDIT_ROUND_M.md` (root of repo) for the full audit + `INDEX_AUDIT_ROUND_M.md` for index reasoning.
+
+**One-time operator action remaining**: set `HEALTHZ_TOKEN` on Render if you want to poll the embedding-coverage endpoint from a monitor. Token value was provided in this morning's chat. Otherwise the endpoint stays 503 (safe but unusable).
 
 ---
 

@@ -1,8 +1,23 @@
 # NEXT_SESSION — pick up here tomorrow
 
-Last session: 2026-05-15 → 2026-05-16. Rounds D through L (overnight) shipped. **All payment-system tests green (107/107)**; frontend build clean.
+Last session: 2026-05-15 → 2026-05-16. Rounds D through L (overnight) shipped, **Round M (pre-launch hardening) shipped + deployed to prod**. All payment-system tests green (115/115 across touched suites); frontend build clean. 7 commits pushed to origin/main and live on advance.al.
 
 ---
+
+## 🛡️ This morning I shipped (Round M — pre-launch hardening, you awake)
+
+Audit-driven security + perf pass on the just-deployed code. 2 commits, all additive, fully tested, deployed to prod.
+
+- **M1 audit** — read every backend route file (20 files, ~13k LOC). Findings doc: `SECURITY_AUDIT_ROUND_M.md`. Headline: 0 critical, 6 high (all defence-in-depth), 11 low (mostly enum-allowlist + ObjectId-validation gaps). The backend is in genuinely strong shape; the high items are info-leak, not exploitable.
+- **M2 `53aecd3` — trivial-safe security fixes**:
+  - `healthz/embeddings` was publicly leaking growth metrics (active-job count, jobseeker count, quickuser count, worker stats). Now gated by `HEALTHZ_TOKEN` env + `X-Healthz-Token` header (constant-time compare). 503 default-deny. Raw `err.message` dropped from error path.
+  - `quickusers` preferences token compare now constant-time (`crypto.timingSafeEqual` + length pre-check) — closes a theoretical timing oracle.
+  - `quickusers` admin GET `/:id` validates ObjectId — was 500ing on CastError, now 400s cleanly.
+- **M3 `656a70c` — 5 missing Mongoose indexes** for hot read paths. Full audit at `INDEX_AUDIT_ROUND_M.md`. Indexes added: `User.{emailVerificationToken, passwordResetToken}` sparse, `Job.{paymentStatus, paymentInitiatedAt}`, `Application.{jobSeekerId, withdrawn, appliedAt:-1}`, `Notification.{userId, read, createdAt:-1}`. Mongo background-builds them on next startup.
+
+**Operator follow-up**: `HEALTHZ_TOKEN` env var must be set on Render if you want the embedding-coverage endpoint pollable by a monitor (otherwise it stays 503, leak closed). Generated value is in this morning's chat transcript.
+
+**Deferred to daytime discussion**: verification.js email-enumeration leaks on `/request` + `/status` (changes signup UX), resume `?token=` query auth (needs short-lived download tokens), enum allowlists across admin/applications/companies (marginal robustness wins).
 
 ## 🌙 Last night I shipped (Round L — overnight autonomous)
 
@@ -30,10 +45,14 @@ Last session: 2026-05-15 → 2026-05-16. Rounds D through L (overnight) shipped.
 
 ## First thing tomorrow
 
-You have ~7 unpushed local commits (Round 7 + the 4 Round-L commits). Publish them:
-```bash
-git push origin main
-```
+✅ Already pushed. All Round 7, L, and M commits are live on advance.al.
+
+Open follow-ups (web UI only — Claude can't do these):
+
+1. **Rotate ADMIN_PASSWORD** on Render (5 min) — leaked in transcripts (per LAUNCH_DAY.md)
+2. **Rotate RESEND_API_KEY** on Resend + update Render (5 min) — leaked in transcripts
+3. **HEALTHZ_TOKEN** — already set if you followed this morning's instructions, otherwise the endpoint stays 503 (still safe — leak closed; you just can't poll the embedding-coverage stats from a monitor)
+4. **Re-verify GSC sitemap** is "Success" status
 
 Then add ONE line to `backend/.env` to unblock the local payment flow (your env has `NODE_ENV=production`, so the dev fallback won't fire without this override):
 
