@@ -1,10 +1,14 @@
 /**
- * Health-check endpoints — public, no auth.
+ * Health-check endpoints — gated by a shared-secret header.
  *
  * GET /healthz/embeddings
  *   Live coverage stats for Jobs, jobseeker Users, and active+unconverted
  *   QuickUsers + retry-worker heartbeat. Used by external monitors to alert
  *   if coverage drops or the worker stops ticking.
+ *
+ *   Auth: requires `X-Healthz-Token` header matching `HEALTHZ_TOKEN` env var.
+ *   If `HEALTHZ_TOKEN` is unset, the endpoint is disabled (returns 503) —
+ *   prevents accidental exposure of growth metrics on a misconfigured deploy.
  *
  *   Response shape:
  *     {
@@ -20,11 +24,30 @@
  */
 
 import express from 'express';
+import crypto from 'crypto';
 import { Job, User, QuickUser } from '../models/index.js';
 import { getWorkerStats } from '../services/embeddingRetryWorker.js';
 import logger from '../config/logger.js';
 
 const router = express.Router();
+
+// Constant-time compare so a misconfigured monitor can't probe the token.
+function checkHealthzToken(req) {
+  const expected = process.env.HEALTHZ_TOKEN;
+  if (!expected) return { ok: false, reason: 'unconfigured' };
+  const supplied = req.headers['x-healthz-token'];
+  if (typeof supplied !== 'string' || supplied.length !== expected.length) {
+    return { ok: false, reason: 'forbidden' };
+  }
+  try {
+    const a = Buffer.from(supplied);
+    const b = Buffer.from(expected);
+    if (crypto.timingSafeEqual(a, b)) return { ok: true };
+  } catch {
+    // length mismatch (already guarded above) or buffer issue — treat as forbidden
+  }
+  return { ok: false, reason: 'forbidden' };
+}
 
 function pct(completed, total) {
   if (total === 0) return '100.0%';
@@ -32,6 +55,13 @@ function pct(completed, total) {
 }
 
 router.get('/embeddings', async (req, res) => {
+  const gate = checkHealthzToken(req);
+  if (!gate.ok) {
+    if (gate.reason === 'unconfigured') {
+      return res.status(503).json({ status: 'error', message: 'Healthz monitoring is not configured' });
+    }
+    return res.status(403).json({ status: 'error', message: 'Forbidden' });
+  }
   try {
     // Run all counts in parallel.
     const [
@@ -63,7 +93,7 @@ router.get('/embeddings', async (req, res) => {
     });
   } catch (err) {
     logger.error('healthz/embeddings error', { error: err.message });
-    res.status(500).json({ status: 'error', error: err.message });
+    res.status(500).json({ status: 'error', message: 'Internal error' });
   }
 });
 

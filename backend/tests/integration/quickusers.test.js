@@ -141,6 +141,31 @@ describe('QuickUsers API - Integration Tests', () => {
       const updated = await QuickUser.findById(qu._id);
       expect(updated.preferences.emailFrequency).toBe('weekly');
     });
+
+    it('rejects token with wrong length (M2b — timing-safe gate)', async () => {
+      const qu = await QuickUser.create({
+        firstName: 'P', lastName: 'Q',
+        email: 'pref-len@example.com', location: 'Tiranë', interests: ['Teknologji']
+      });
+      // Length-mismatched token must not reach timingSafeEqual (would throw)
+      const response = await request(app)
+        .put(`/api/quickusers/${qu._id}/preferences`)
+        .send({ token: 'too-short', preferences: { emailFrequency: 'weekly' } });
+      expect(response.status).toBe(404);
+    });
+
+    it('rejects token with correct length but wrong value (M2b — constant-time path)', async () => {
+      const qu = await QuickUser.create({
+        firstName: 'P', lastName: 'Q',
+        email: 'pref-ct@example.com', location: 'Tiranë', interests: ['Teknologji']
+      });
+      // Same length, different value — must traverse timingSafeEqual and fail
+      const wrong = 'x'.repeat(qu.unsubscribeToken.length);
+      const response = await request(app)
+        .put(`/api/quickusers/${qu._id}/preferences`)
+        .send({ token: wrong, preferences: { emailFrequency: 'weekly' } });
+      expect(response.status).toBe(404);
+    });
   });
 
   describe('Admin-only QuickUser routes', () => {
@@ -172,6 +197,14 @@ describe('QuickUsers API - Integration Tests', () => {
         .set(createAuthHeaders(admin));
 
       expect(response.status).toBe(200);
+    });
+
+    it('admin GET /:id returns 400 (not 500) on malformed ObjectId (M2c)', async () => {
+      const { user: admin } = await createAdmin();
+      const response = await request(app)
+        .get('/api/quickusers/not-a-valid-objectid')
+        .set(createAuthHeaders(admin));
+      expect(response.status).toBe(400);
     });
   });
 

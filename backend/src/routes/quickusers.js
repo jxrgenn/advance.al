@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'crypto';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -510,7 +511,7 @@ router.post('/find-matches', authenticate, requireAdmin, async (req, res) => {
 // @route   GET /api/quickusers/:id
 // @desc    Get quick user by ID
 // @access  Admin
-router.get('/:id', authenticate, requireAdmin, async (req, res) => {
+router.get('/:id', authenticate, requireAdmin, validateObjectId('id'), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -576,7 +577,22 @@ router.put('/:id/preferences', validateObjectId('id'), async (req, res) => {
 
     const quickUser = await QuickUser.findById(id);
 
-    if (!quickUser || quickUser.unsubscribeToken !== token) {
+    // Constant-time token comparison to close a theoretical timing oracle
+    // on the 32-byte unsubscribeToken. Length-pre-check guards
+    // timingSafeEqual's own length requirement.
+    let tokenOk = false;
+    if (quickUser && typeof quickUser.unsubscribeToken === 'string' &&
+        typeof token === 'string' &&
+        quickUser.unsubscribeToken.length === token.length) {
+      try {
+        tokenOk = crypto.timingSafeEqual(
+          Buffer.from(quickUser.unsubscribeToken),
+          Buffer.from(token)
+        );
+      } catch { /* length mismatch — already gated, treat as forbidden */ }
+    }
+
+    if (!quickUser || !tokenOk) {
       return res.status(404).json({
         success: false,
         message: 'Përdoruesi nuk u gjet ose token i pavlefshëm'
