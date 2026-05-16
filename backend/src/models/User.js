@@ -517,6 +517,9 @@ userSchema.index({ 'profile.location.city': 1 });
 userSchema.index({ isDeleted: 1 });
 userSchema.index({ isDeleted: 1, deletedAt: 1 }); // For account cleanup scheduler
 userSchema.index({ status: 1 });
+// M3: sparse indexes for the token-lookup paths (verify email + password reset)
+userSchema.index({ emailVerificationToken: 1 }, { sparse: true });
+userSchema.index({ passwordResetToken: 1 }, { sparse: true });
 
 // Virtual for full name
 userSchema.virtual('profile.fullName').get(function() {

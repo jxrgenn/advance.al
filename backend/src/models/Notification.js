@@ -84,6 +84,10 @@ const notificationSchema = new Schema({
 // Indexes for performance
 notificationSchema.index({ userId: 1, createdAt: -1 });
 notificationSchema.index({ userId: 1, read: 1 });
+// M3: covers the polled "unread for this user, most recent first" query that
+// fires on every authenticated page load. Supersedes {userId,read}; safe
+// to drop that later once we've confirmed the planner picks this one.
+notificationSchema.index({ userId: 1, read: 1, createdAt: -1 });
 notificationSchema.index({ type: 1 });
 notificationSchema.index({ createdAt: -1 });
 

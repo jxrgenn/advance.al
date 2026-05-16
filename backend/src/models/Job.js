@@ -392,6 +392,9 @@ jobSchema.index({ 'embedding.status': 1 }); // For worker queries
 jobSchema.index({ 'similarJobs.score': -1 }); // For sorting similar jobs
 jobSchema.index({ 'similarityMetadata.nextComputeAt': 1 }); // For recomputation scheduling
 
+// M3: payment worker scans (reminder + timeout crons) — pending jobs by age
+jobSchema.index({ paymentStatus: 1, paymentInitiatedAt: 1 });
+
 // Virtual for formatted salary
 jobSchema.virtual('formattedSalary').get(function() {
   if (!this.salary.min && !this.salary.max) return 'Pagë për t\'u negociuar';

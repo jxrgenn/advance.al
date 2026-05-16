@@ -112,6 +112,9 @@ applicationSchema.index({ jobSeekerId: 1, appliedAt: -1 });
 applicationSchema.index({ employerId: 1, status: 1 });
 applicationSchema.index({ appliedAt: -1 });
 applicationSchema.index({ status: 1 });
+// M3: superset of { jobSeekerId, appliedAt:-1 } that covers the
+// "have I applied?" + My Applications hot path which always filters withdrawn:false.
+applicationSchema.index({ jobSeekerId: 1, withdrawn: 1, appliedAt: -1 });
 
 // Partial unique index: prevents duplicate active applications while allowing re-application after withdrawal
 // Note: MongoDB partial indexes don't support $ne. Use { withdrawn: false } — apps must always have withdrawn: false (default)
