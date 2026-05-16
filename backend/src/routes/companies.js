@@ -294,7 +294,10 @@ router.get('/:id/jobs', validateObjectId('id'), optionalAuth, async (req, res) =
       isDeleted: false
     };
 
-    if (status !== 'all') {
+    // M-LOW: allowlist Job statuses (excluding 'all' which is the unfiltered branch).
+    // Garbage values previously flowed into Mongoose and 500'd with CastError.
+    const ALLOWED_JOB_STATUSES = ['active', 'paused', 'closed', 'draft', 'expired', 'pending_payment', 'rejected', 'pending_approval'];
+    if (status !== 'all' && ALLOWED_JOB_STATUSES.includes(status)) {
       jobQuery.status = status;
       if (status === 'active') {
         jobQuery.expiresAt = { $gt: new Date() };

@@ -453,11 +453,13 @@ router.get('/users', async (req, res) => {
     // Build query
     const query = {};
 
-    if (userType) {
+    // M-LOW: allowlist user enums — drop garbage instead of CastError 500
+    const ALLOWED_USER_TYPES = ['jobseeker', 'employer', 'admin'];
+    const ALLOWED_USER_STATUSES = ['active', 'suspended', 'banned', 'pending_verification', 'deleted'];
+    if (userType && ALLOWED_USER_TYPES.includes(userType)) {
       query.userType = userType;
     }
-
-    if (status) {
+    if (status && ALLOWED_USER_STATUSES.includes(status)) {
       query.status = status;
     }
 
@@ -522,11 +524,13 @@ router.get('/jobs', async (req, res) => {
     // Build query
     const query = {};
 
-    if (status) {
+    // M-LOW: allowlist Job statuses — drop garbage instead of CastError 500
+    const ALLOWED_JOB_STATUSES = ['active', 'paused', 'closed', 'draft', 'expired', 'pending_payment', 'rejected', 'pending_approval'];
+    if (status && ALLOWED_JOB_STATUSES.includes(status)) {
       query.status = status;
     }
 
-    if (employerId) {
+    if (employerId && mongoose.isValidObjectId(employerId)) {
       query.employerId = employerId;
     }
 

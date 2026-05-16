@@ -11,6 +11,11 @@ import logger from '../config/logger.js';
 
 const router = express.Router();
 
+// M-LOW: status enum allowlist for the 3 listing routes below.
+// Drop garbage values instead of letting them flow into Mongoose and
+// 500 with a CastError. Mirrors Application.schema status enum.
+const ALLOWED_APP_STATUSES = ['pending', 'viewed', 'shortlisted', 'rejected', 'hired'];
+
 // Per-user rate limit on /apply — blocks rapid mass applications.
 // Keyed on req.user.id so VPN/IP rotation can't bypass it.
 const applyLimiter = rateLimit({
@@ -303,7 +308,7 @@ router.get('/my-applications', authenticate, requireJobSeeker, async (req, res) 
     } = req.query;
 
     const filters = {};
-    if (status) filters.status = status;
+    if (status && ALLOWED_APP_STATUSES.includes(status)) filters.status = status;
 
     const safeLimit = sanitizeLimit(limit, 50, 10);
     const safePage = Math.max(1, parseInt(page) || 1);
@@ -378,7 +383,7 @@ router.get('/job/:jobId', validateObjectId('jobId'), authenticate, requireEmploy
       jobId,
       employerId: req.user._id,
       withdrawn: false,
-      ...(status && { status })
+      ...(status && ALLOWED_APP_STATUSES.includes(status) && { status })
     };
 
     // Run job verify + applications find + count in parallel
@@ -447,7 +452,7 @@ router.get('/employer/all', authenticate, requireEmployer, async (req, res) => {
     } = req.query;
 
     const filters = {};
-    if (status) filters.status = status;
+    if (status && ALLOWED_APP_STATUSES.includes(status)) filters.status = status;
     if (jobId && mongoose.isValidObjectId(jobId)) filters.jobId = jobId;
 
     const safeLimit3 = sanitizeLimit(limit, 200, 10);
