@@ -283,6 +283,13 @@ const jobSchema = new Schema({
   paymentReminderSentAt: {
     type: Date
   },
+  // L1: 0 = no reminder sent yet; 1 = gentle (24h); 2 = firmer (72h);
+  // 3 = final (7d). Worker never re-sends once level=3. Backwards
+  // compatible: legacy docs default to 0.
+  paymentReminderLevel: {
+    type: Number,
+    default: 0
+  },
 
   // Stats
   viewCount: {

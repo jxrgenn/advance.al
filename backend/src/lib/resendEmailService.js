@@ -1342,7 +1342,7 @@ advance.al`;
   // Send payment reminder — fired from paymentReminderWorker when a job has
   // been in pending_payment status for >threshold hours without paying.
   // Sent ONCE per job (worker gates on Job.paymentReminderSentAt).
-  async sendPaymentReminderEmail({ to, employerName, jobTitle, amountEur, jobId }) {
+  async sendPaymentReminderEmail({ to, employerName, jobTitle, amountEur, jobId, level = 1 }) {
     if (!this.enabled) {
       return { success: false, message: 'Email service disabled' };
     }
@@ -1354,7 +1354,34 @@ advance.al`;
       const frontendBase = process.env.FRONTEND_URL || 'https://advance.al';
       const paymentLink = `${frontendBase}/payment/job/${jobId}`;
 
-      const subject = safeSubject(`⏰ Po të kujtojmë: pagesa për postimin "${jobTitle || ''}"`);
+      // L1: tone escalation by reminder level
+      //   1 = gentle (24h),  2 = firmer (72h),  3 = final notice (7d)
+      const stages = {
+        1: {
+          subjectPrefix: '⏰',
+          subjectLabel: 'Po të kujtojmë',
+          heading: '⏰ Po të kujtojmë',
+          intro: `Vumë re që ke filluar të postosh punën <strong>"${safeJob}"</strong>, por pagesa nuk u kompletua. Puna nuk është e publikuar ende — për ta bërë të dukshme për kandidatët, plotëso pagesën.`,
+          textIntro: `Ke filluar të postosh punën "${jobTitle}", por pagesa nuk u kompletua. Puna nuk është e publikuar ende.`,
+        },
+        2: {
+          subjectPrefix: '🔔',
+          subjectLabel: 'Postimi yt po pret pagesë',
+          heading: '🔔 Postimi yt po pret pagesë',
+          intro: `Tre ditë më parë fillove postimin <strong>"${safeJob}"</strong>, por pagesa ende nuk është kompletuar. Përfundo pagesën që puna të jetë e dukshme për kandidatët.`,
+          textIntro: `Tre ditë më parë fillove postimin "${jobTitle}", por pagesa ende nuk është kompletuar.`,
+        },
+        3: {
+          subjectPrefix: '⚠️',
+          subjectLabel: 'Njoftim përfundimtar — postimi po pret pagesë',
+          heading: '⚠️ Njoftim përfundimtar',
+          intro: `Postimi <strong>"${safeJob}"</strong> ka shtatë ditë në pritje të pagesës. Ky është njoftimi i fundit — nëse nuk dëshiron ta publikosh, mund ta fshish nga paneli i punëdhënësit dhe ta krijosh më vonë.`,
+          textIntro: `Postimi "${jobTitle}" ka shtatë ditë në pritje të pagesës. Ky është njoftimi i fundit.`,
+        },
+      };
+      const stage = stages[level] || stages[1];
+
+      const subject = safeSubject(`${stage.subjectPrefix} ${stage.subjectLabel}: "${jobTitle || ''}"`);
 
       const htmlContent = `
 <!DOCTYPE html>
@@ -1371,12 +1398,12 @@ advance.al`;
     </div>
 
     <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 30px; margin: 20px 0;">
-      <h2 style="color: #78350f; margin-top: 0; font-size: 22px;">⏰ Po të kujtojmë</h2>
+      <h2 style="color: #78350f; margin-top: 0; font-size: 22px;">${stage.heading}</h2>
       <p style="color: #92400e; line-height: 1.6; font-size: 16px;">
         Përshëndetje <strong>${safeName}</strong>,
       </p>
       <p style="color: #92400e; line-height: 1.6; font-size: 16px;">
-        Vumë re që ke filluar të postosh punën <strong>"${safeJob}"</strong>, por pagesa nuk u kompletua. Puna nuk është e publikuar ende — për ta bërë të dukshme për kandidatët, plotëso pagesën.
+        ${stage.intro}
       </p>
     </div>
 
@@ -1412,11 +1439,11 @@ advance.al`;
 </body>
 </html>`;
 
-      const textContent = `Po të kujtojmë — advance.al
+      const textContent = `${stage.subjectLabel} — advance.al
 
 Përshëndetje ${employerName || 'Punëdhënës'},
 
-Ke filluar të postosh punën "${jobTitle}", por pagesa nuk u kompletua. Puna nuk është e publikuar ende.
+${stage.textIntro}
 
 Shuma: €${safeAmount}
 
