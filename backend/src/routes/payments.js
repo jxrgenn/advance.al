@@ -35,6 +35,7 @@ import logger from '../config/logger.js';
 import { fireEmbedding } from '../services/embeddingTrigger.js';
 import resendEmailService from '../lib/resendEmailService.js';
 import { pingJob } from '../lib/indexNow.js';
+import { generatePaymentReceiptDocx } from '../services/paymentReceiptDocument.js';
 
 const router = express.Router();
 
@@ -74,14 +75,36 @@ async function sendReceiptEmailSafe({ job, paymentTier }) {
       logger.warn('sendReceiptEmail: employer or email missing', { jobId: job._id });
       return;
     }
+    const employerName = employer.profile?.firstName || employer.profile?.employerProfile?.companyName;
+    const paymentDate = job.paidAt || new Date();
+
+    // Best-effort .docx receipt attachment. If it fails, still send the email.
+    let attachment;
+    try {
+      const buffer = await generatePaymentReceiptDocx({
+        employerName,
+        jobTitle: job.title,
+        amountEur: job.paymentRequired,
+        paymentDate,
+        paymentId: job.paymentId,
+        tier: paymentTier,
+      });
+      if (buffer?.length) {
+        attachment = { filename: 'fature-advance-al.docx', content: buffer };
+      }
+    } catch (err) {
+      logger.warn('sendReceiptEmail: docx generation failed (sending without attachment)', { error: err.message, jobId: job?._id });
+    }
+
     await resendEmailService.sendPaymentReceiptEmail({
       to: employer.email,
-      employerName: employer.profile?.firstName || employer.profile?.employerProfile?.companyName,
+      employerName,
       jobTitle: job.title,
       amountEur: job.paymentRequired,
       tier: paymentTier,                     // 'standard' | 'promoted'
-      paymentDate: job.paidAt || new Date(),
+      paymentDate,
       paymentId: job.paymentId,
+      attachment,
     });
   } catch (err) {
     logger.warn('sendReceiptEmail failed (non-fatal)', { error: err.message, jobId: job?._id });

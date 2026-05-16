@@ -1216,7 +1216,7 @@ advance.al`;
   // Paysera callback (status=1) AND on dev fake-success. Fire-and-forget
   // from the caller (any throw here just logs and is swallowed by the
   // route handler — we don't want a Resend hiccup to fail a paid callback).
-  async sendPaymentReceiptEmail({ to, employerName, jobTitle, amountEur, tier, paymentDate, paymentId }) {
+  async sendPaymentReceiptEmail({ to, employerName, jobTitle, amountEur, tier, paymentDate, paymentId, attachment }) {
     if (!this.enabled) {
       return { success: false, message: 'Email service disabled' };
     }
@@ -1319,13 +1319,22 @@ Ruajeni këtë email si dëshmi të pagesës.
 --
 advance.al`;
 
-      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+      // L3: optional .docx attachment. Buffer per Resend API spec.
+      const sendArgs = {
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(to),
         subject,
         html: htmlContent,
         text: textContent,
-      }));
+      };
+      if (attachment && attachment.content && attachment.filename) {
+        sendArgs.attachments = [{
+          filename: attachment.filename,
+          content: attachment.content,
+        }];
+      }
+
+      const emailResult = await this._sendWithRetry(() => this.resend.emails.send(sendArgs));
 
       if (emailResult.error) {
         logger.error('Resend payment receipt error:', emailResult.error);
