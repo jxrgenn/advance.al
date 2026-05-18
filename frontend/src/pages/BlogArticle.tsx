@@ -1,4 +1,5 @@
 import { Link, useParams, Navigate } from "react-router-dom";
+import DOMPurify from "dompurify";
 import SEO from "@/components/SEO";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
@@ -99,9 +100,30 @@ const BlogArticle = () => {
             </p>
           </header>
 
+          {/* Pre-deploy audit (O-C): article.bodyHtml is currently static
+              (committed in frontend/api/_lib/articles/*.js), but sanitizing
+              at render time is defence-in-depth — protects against any
+              future path that lets attackers control article content
+              (admin editor, user contributions, etc.). DOMPurify with an
+              allowlist is byte-safe for already-clean HTML, so output is
+              visually identical today. */}
           <div
             className="prose prose-slate max-w-none prose-headings:font-bold prose-h2:text-2xl prose-h2:mt-8 prose-h2:mb-4 prose-h3:text-xl prose-h3:mt-6 prose-h3:mb-3 prose-p:leading-relaxed prose-a:text-primary prose-a:underline hover:prose-a:opacity-80 prose-li:my-1 prose-ul:my-4"
-            dangerouslySetInnerHTML={{ __html: article.bodyHtml }}
+            dangerouslySetInnerHTML={{
+              __html: DOMPurify.sanitize(article.bodyHtml, {
+                ALLOWED_TAGS: [
+                  "p", "h1", "h2", "h3", "h4", "h5", "h6",
+                  "ul", "ol", "li",
+                  "a", "strong", "em", "code", "pre", "blockquote",
+                  "br", "hr", "img",
+                  "table", "thead", "tbody", "tr", "th", "td",
+                ],
+                ALLOWED_ATTR: ["href", "src", "alt", "title", "rel", "target"],
+                ADD_ATTR: ["target"],
+                // Force outbound link safety
+                FORBID_ATTR: ["style", "onclick", "onerror", "onload"],
+              }),
+            }}
           />
 
           <hr className="my-12 border-border" />

@@ -58,10 +58,28 @@ const ChartContainer = React.forwardRef<
 });
 ChartContainer.displayName = "Chart";
 
+// Pre-deploy audit (O-C): guard CSS color values written into the
+// dangerouslySetInnerHTML below. Today the palette is supplied by
+// component callers (developer code) so user input never flows here,
+// but adding a strict regex means a future feature that exposes
+// palette config to admins or users can't smuggle arbitrary CSS.
+// Accepts hex (#RGB / #RRGGBB / #RRGGBBAA), hsl/hsla/rgb/rgba functions
+// with safe characters only, CSS named colors (a-z), and CSS variables
+// (var(--name)). Anything else is dropped.
+const SAFE_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|(?:hsl|rgb|hsla|rgba)\(\s*[\d\s,%.\-/]+\s*\)|[a-zA-Z]+|var\(--[a-zA-Z0-9-_]+\))$/;
+const sanitizeColor = (raw: unknown): string | null => {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return SAFE_COLOR_RE.test(trimmed) ? trimmed : null;
+};
+// Same idea for chart id — only allow [A-Za-z0-9_-] to prevent CSS
+// selector injection via crafted id.
+const SAFE_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
   const colorConfig = Object.entries(config).filter(([_, config]) => config.theme || config.color);
 
-  if (!colorConfig.length) {
+  if (!colorConfig.length || !SAFE_ID_RE.test(id)) {
     return null;
   }
 
@@ -74,9 +92,12 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
 ${prefix} [data-chart=${id}] {
 ${colorConfig
   .map(([key, itemConfig]) => {
-    const color = itemConfig.theme?.[theme as keyof typeof itemConfig.theme] || itemConfig.color;
-    return color ? `  --color-${key}: ${color};` : null;
+    const rawColor = itemConfig.theme?.[theme as keyof typeof itemConfig.theme] || itemConfig.color;
+    const safeColor = sanitizeColor(rawColor);
+    const safeKey = SAFE_ID_RE.test(key) ? key : null;
+    return safeColor && safeKey ? `  --color-${safeKey}: ${safeColor};` : null;
   })
+  .filter(Boolean)
   .join("\n")}
 }
 `,
