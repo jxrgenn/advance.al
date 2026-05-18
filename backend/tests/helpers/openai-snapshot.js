@@ -93,6 +93,30 @@ async function snapshottedCall(kind, realFn, params) {
   }
 
   const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+
+  // Pre-deploy audit (O-G): validate that the snapshot's recorded params
+  // exactly match the current request. The hash key is the first 16 chars
+  // of SHA256 (~64 bits) — astronomically unlikely to collide, but if the
+  // recorded snapshot file is hand-edited, or two prompts hash to the same
+  // truncated key, we'd silently return a stale response. Compare the
+  // full stable-stringified params; on mismatch throw loudly so CI fails.
+  if (raw.params !== undefined) {
+    const recordedStable = JSON.stringify(raw.params, Object.keys(raw.params).sort());
+    const currentStable = JSON.stringify(params, Object.keys(params).sort());
+    if (recordedStable !== currentStable) {
+      throw new Error(
+        `OpenAI snapshot params mismatch (hash collision or stale snapshot):\n` +
+        `  file: ${path.relative(process.cwd(), file)}\n` +
+        `  kind: ${kind}\n` +
+        `  recorded params hash: ${hashParams(raw.params)}\n` +
+        `  current  params hash: ${hashParams(params)}\n` +
+        `Regenerate the snapshot with UPDATE_OPENAI_SNAPSHOTS=true.`
+      );
+    }
+  }
+  // Legacy snapshots written before this audit have no `.params` field
+  // (just `.response`); they're still trusted by the filename hash.
+
   return raw.response;
 }
 
