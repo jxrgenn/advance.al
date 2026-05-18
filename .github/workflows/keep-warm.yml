@@ -25,7 +25,7 @@ jobs:
         run: |
           set -e
           for i in 1 2 3; do
-            if curl -fsS --max-time 90 https://advance-al.onrender.com/health; then
+            if curl -fsS --max-time 90 https://api.advance.al/health; then
               echo "✅ backend awake"
               exit 0
             fi

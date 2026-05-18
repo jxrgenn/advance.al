@@ -54,7 +54,7 @@ SIMILARITY_TOP_N=15           # was 10
 ```
 
 **How:**
-1. Open Render dashboard → your backend service (`advance-al` / `advance-al.onrender.com`)
+1. Open Render dashboard → your backend service (`advance-al` / `api.advance.al`)
 2. Environment tab
 3. Find both vars (or add if missing)
 4. Update values → Save
@@ -129,11 +129,11 @@ Once Render shows "Live" and Vercel shows the new deployment promoted to product
 
 ```bash
 # Sanity health
-curl -s https://advance-al.onrender.com/health
+curl -s https://api.advance.al/health
 # Expected: {"success":true,"message":"OK","timestamp":"...","redis":"connected"}
 
 # /jobs (no auth) — confirms backend serving
-curl -s "https://advance-al.onrender.com/api/jobs?limit=3" | jq '.success, (.data.jobs | length)'
+curl -s "https://api.advance.al/api/jobs?limit=3" | jq '.success, (.data.jobs | length)'
 # Expected: true, 3 (or fewer if dataset smaller)
 
 # Recommendations endpoint shape (auth needed; use the local smoke script against prod)
@@ -141,7 +141,7 @@ cd ~/Documents/JXSOFT\ PROJECTS/albania-jobflow/backend
 node scripts/embeddings-smoke-recommendations.js \
   --user jurgenhalili1142 \
   --limit 6 \
-  --base https://advance-al.onrender.com
+  --base https://api.advance.al
 # Expected: scoringMode: embedding | personalized: true | top recs printed
 ```
 
@@ -256,7 +256,7 @@ This reverts both Vercel and Render (they auto-deploy from main HEAD). Render ta
 
 | Want to … | Run |
 |---|---|
-| Verify a single user's recommendations on prod | `node scripts/embeddings-smoke-recommendations.js --user <pattern> --base https://advance-al.onrender.com` |
+| Verify a single user's recommendations on prod | `node scripts/embeddings-smoke-recommendations.js --user <pattern> --base https://api.advance.al` |
 | Refresh similars cache for one job | `MONGODB_URI=… node scripts/refresh-similar-jobs-cache.js --jobId <id>` |
 | Refresh similars cache for jobs with stale-only filter | `MONGODB_URI=… node scripts/refresh-similar-jobs-cache.js --stale-only` |
 | Regenerate one user's embedding | `MONGODB_URI=… node scripts/regenerate-jobseeker-embeddings.js --user <pattern>` |

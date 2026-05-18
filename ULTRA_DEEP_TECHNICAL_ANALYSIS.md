@@ -614,7 +614,7 @@ router.post('/refresh', async (req, res) => {
 ```bash
 # Attacker tries to guess valid refresh tokens
 for i in {1..1000000}; do
-  curl -X POST https://advance-al.onrender.com/api/auth/refresh \
+  curl -X POST https://api.advance.al/api/auth/refresh \
     -H "Content-Type: application/json" \
     -d "{\"refreshToken\": \"$(generate_random_jwt)\"}"
 done
@@ -629,7 +629,7 @@ done
 ```bash
 # Send malformed tokens to exhaust server resources
 while true; do
-  curl -X POST https://advance-al.onrender.com/api/auth/refresh \
+  curl -X POST https://api.advance.al/api/auth/refresh \
     -d '{"refreshToken": "intentionally.malformed.token.that.takes.time.to.validate"}'
 done
 

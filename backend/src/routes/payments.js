@@ -113,7 +113,7 @@ async function sendReceiptEmailSafe({ job, paymentTier }) {
 }
 
 const FRONTEND_URL = () => process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? 'https://advance.al' : 'http://localhost:5173');
-const BACKEND_URL  = () => process.env.BACKEND_URL  || (process.env.NODE_ENV === 'production' ? 'https://advance-al.onrender.com' : 'http://localhost:3001');
+const BACKEND_URL  = () => process.env.BACKEND_URL  || (process.env.NODE_ENV === 'production' ? 'https://api.advance.al' : 'http://localhost:3001');
 
 // Pricing defaults that match SystemConfiguration.js seeds. Used when the
 // SystemConfiguration doc doesn't exist yet (fresh install) so the route

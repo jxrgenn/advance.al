@@ -12,8 +12,8 @@ import { Page, expect } from '@playwright/test';
 import crypto from 'crypto';
 
 export const FRONTEND = 'https://advance.al';
-export const API = 'https://advance-al.onrender.com/api';
-export const BACKEND = 'https://advance-al.onrender.com';
+export const API = 'https://api.advance.al/api';
+export const BACKEND = 'https://api.advance.al';
 
 // CSP allowed origins (frame-ancestors, connect-src, etc.)
 export const CORS_ALLOWED = ['https://advance.al', 'https://www.advance.al'];

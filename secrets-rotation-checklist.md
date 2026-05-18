@@ -48,7 +48,7 @@ attacker can connect _right now_.
    - `backend/.env` — replace `MONGODB_URI`
    - Root `.env` if any
 8. Wait for Render deploy to go green. Verify production is up:
-   `curl https://advance-al.onrender.com/health` → `{"redis":"connected"}`
+   `curl https://api.advance.al/health` → `{"redis":"connected"}`
 
 ### [ ] Step 2 — Lock down MongoDB Atlas IP whitelist
 
@@ -63,7 +63,7 @@ rotated, they can keep getting in.
    - Description: `Render production`
 4. Add YOUR IP for local dev (Atlas auto-detects: "Add Current IP")
 5. Verify production still works:
-   `curl https://advance-al.onrender.com/api/jobs?limit=1` → 200
+   `curl https://api.advance.al/api/jobs?limit=1` → 200
 
 ### [ ] Step 3 — Rotate Resend API key
 

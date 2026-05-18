@@ -50,7 +50,7 @@ import { PUBLISHED_ARTICLES, ARTICLES_BY_SLUG } from './_lib/articles/index.js';
 
 // Render API base. Configurable via env so this same function can run against
 // staging in the future. Default points at production Render service.
-const API_BASE = process.env.API_BASE_URL || 'https://advance-al.onrender.com/api';
+const API_BASE = process.env.API_BASE_URL || 'https://api.advance.al/api';
 const FETCH_TIMEOUT_MS = 8000;
 
 async function safeFetch(url) {

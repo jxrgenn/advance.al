@@ -36,7 +36,7 @@ After 30+ days of monitoring (no legitimate mail being quarantined), upgrade to 
 **Run date:** 2026-05-06
 **Live targets:**
 - Frontend: https://advance.al (Vercel)
-- Backend:  https://advance-al.onrender.com (Render hobby)
+- Backend:  https://api.advance.al (Render hobby)
 
 **Sweep:** `frontend/playwright.prod-smoke.config.ts` — read-only, no DB
 writes, no emails sent, no quota consumed. Hard-coded prod URLs (no env

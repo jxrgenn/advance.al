@@ -3,7 +3,7 @@
 **Date:** 2026-04-30
 **Targets:**
 - Frontend: `https://advance.al` (Vercel, behind Cloudflare/Vercel edge)
-- Backend: `https://advance-al.onrender.com` (Render, behind Cloudflare)
+- Backend: `https://api.advance.al` (Render, behind Cloudflare)
 
 ---
 
@@ -71,7 +71,7 @@ Informational. Tells attackers you're on Vercel. Vercel doesn't allow stripping 
 
 ---
 
-## 2. Backend findings (advance-al.onrender.com)
+## 2. Backend findings (api.advance.al)
 
 ### 2.1 🟢 P3 — `x-xss-protection: 0` header
 
@@ -263,10 +263,10 @@ dig +dnssec advance.al | grep RRSIG  # check DNSSEC
 
 # HTTP headers
 curl -I https://advance.al                          # frontend headers
-curl -I https://advance-al.onrender.com/health      # backend headers
+curl -I https://api.advance.al/health      # backend headers
 
 # CORS test (should be 403 after fix)
-curl -I -H "Origin: https://evil.example.com" https://advance-al.onrender.com/api/jobs
+curl -I -H "Origin: https://evil.example.com" https://api.advance.al/api/jobs
 
 # CSP enforcement (load https://advance.al, browser DevTools → Console — should see no CSP violations on legitimate use)
 ```

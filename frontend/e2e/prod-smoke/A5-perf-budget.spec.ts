@@ -75,10 +75,10 @@ test.describe('Phase A.5 — Performance budget (chromium-desktop only via confi
 
   test('A5.5 backend /health responds < 2s when warm', async () => {
     // Warm-up call (might cold-start)
-    await fetch('https://advance-al.onrender.com/health').catch(() => {});
+    await fetch('https://api.advance.al/health').catch(() => {});
     // Measured call (should be warm)
     const t0 = Date.now();
-    const r = await fetch('https://advance-al.onrender.com/health');
+    const r = await fetch('https://api.advance.al/health');
     const dt = Date.now() - t0;
     expect(r.status).toBe(200);
     expect(dt, 'warm /health < 2000ms').toBeLessThan(2000);

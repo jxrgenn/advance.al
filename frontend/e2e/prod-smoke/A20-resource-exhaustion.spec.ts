@@ -46,7 +46,7 @@ test.describe('Phase A.20 — Resource exhaustion (chromium-desktop only)', () =
     // Lightweight Slow Loris: 30 connections, 5s timeout each.
     // /health is on the BACKEND root, not /api/, so /api/health 404s. Use BACKEND/health.
     const promises = Array.from({ length: 30 }, () =>
-      fetch(`https://advance-al.onrender.com/health`, {
+      fetch(`https://api.advance.al/health`, {
         signal: AbortSignal.timeout(5000),
       }).then((r) => r.status).catch(() => 0)
     );

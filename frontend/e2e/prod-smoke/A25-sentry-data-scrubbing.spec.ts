@@ -99,7 +99,7 @@ test.describe('Phase A.25 — Sentry data scrubbing (chromium-desktop only)', ()
   test('A25.5 Sentry frontend DSN is not exposed via API endpoint', async () => {
     // Verify backend doesn't have an endpoint that returns the Sentry DSN
     // (which is fine to be public, but shouldn't be in API responses)
-    const r = await fetch('https://advance-al.onrender.com/api/configuration/public');
+    const r = await fetch('https://api.advance.al/api/configuration/public');
     if (!r.ok) return;
     const blob = await r.text();
     expect(blob, 'no Sentry DSN in /configuration/public').not.toMatch(/sentry\.io|ingest\.de\.sentry/i);

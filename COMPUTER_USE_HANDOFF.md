@@ -177,7 +177,7 @@ Services to verify:
    - Screenshot deployments tab
 
 6. Render (render.com) — backend
-   - advance-al.onrender.com backend service
+   - api.advance.al backend service
    - Memory + CPU usage graphs
    - Logs — any recent errors?
    - Screenshot resource usage

@@ -3,7 +3,7 @@
  *
  * Hits the LIVE deployment:
  *   Frontend: https://advance.al        (Vercel)
- *   Backend:  https://advance-al.onrender.com (Render hobby tier)
+ *   Backend:  https://api.advance.al (Render custom domain)
  *
  * No webServer launch, no globalSetup/teardown, no side-channel HTTP.
  * Tests are READ-ONLY: no DB writes, no emails sent, no quota consumed.

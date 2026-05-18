@@ -107,8 +107,8 @@ test.describe('Phase A.8 — TLS + DNS deep validation (chromium-desktop only vi
     expect(stdout.length, 'www has DNS').toBeGreaterThan(0);
   });
 
-  test('A8.11 advance-al.onrender.com responds via TLS', async () => {
-    const { stdout } = shell(`echo "" | openssl s_client -servername advance-al.onrender.com -connect advance-al.onrender.com:443 -showcerts 2>/dev/null | openssl x509 -noout -dates 2>/dev/null`);
+  test('A8.11 api.advance.al responds via TLS', async () => {
+    const { stdout } = shell(`echo "" | openssl s_client -servername api.advance.al -connect api.advance.al:443 -showcerts 2>/dev/null | openssl x509 -noout -dates 2>/dev/null`);
     const dateMatch = stdout.match(/notAfter=(.+)/);
     if (dateMatch) {
       const expiry = new Date(dateMatch[1]);
