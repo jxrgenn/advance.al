@@ -4,7 +4,7 @@ import rateLimit from 'express-rate-limit';
 import { Notification, Job, QuickUser } from '../models/index.js';
 import { authenticate, requireEmployer, requireAdmin } from '../middleware/auth.js';
 import notificationService from '../lib/notificationService.js';
-import { sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
+import { sanitizeLimit, validateObjectId, isObjectIdString } from '../utils/sanitize.js';
 import logger from '../config/logger.js';
 
 const router = express.Router();
@@ -211,6 +211,14 @@ router.post('/test-job-match', authenticate, requireAdmin, async (req, res) => {
         message: 'Job ID është i detyrueshëm'
       });
     }
+    // Pre-deploy audit (O-E): validate ObjectId shape before findById to
+    // avoid CastError → 500. Returns clean 400 instead.
+    if (!isObjectIdString(jobId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Job ID i pavlefshëm'
+      });
+    }
 
     // Find the job
     const job = await Job.findById(jobId);
@@ -294,6 +302,12 @@ router.post('/test-welcome-email', authenticate, requireAdmin, async (req, res) 
       return res.status(400).json({
         success: false,
         message: 'Quick User ID është i detyrueshëm'
+      });
+    }
+    if (!isObjectIdString(quickUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Quick User ID i pavlefshëm'
       });
     }
 
@@ -435,6 +449,15 @@ router.post('/manual-notify', authenticate, requireAdmin, [
 ], handleValidationErrors, async (req, res) => {
   try {
     const { quickUserId, jobId } = req.body;
+
+    // Pre-deploy audit (O-E): validate ObjectId shape before findById to
+    // avoid CastError → 500.
+    if (!isObjectIdString(quickUserId) || !isObjectIdString(jobId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID i pavlefshëm'
+      });
+    }
 
     // Find the quick user
     const quickUser = await QuickUser.findById(quickUserId);

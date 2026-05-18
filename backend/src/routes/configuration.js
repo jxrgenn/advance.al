@@ -5,6 +5,7 @@ import { SystemConfiguration, ConfigurationAudit, SystemHealth } from '../models
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
 import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
+import { errorDetail } from '../utils/errors.js';
 import logger from '../config/logger.js';
 
 const router = express.Router();
@@ -97,7 +98,7 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e konfigurimit',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -137,7 +138,7 @@ router.get('/public', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e rregullimeve publike',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -296,7 +297,7 @@ router.put('/:id', validateObjectId('id'), authenticate, requireAdmin, configura
     res.status(400).json({
       success: false,
       message: error.message || 'Gabim në përditësimin e rregullimit',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -356,7 +357,7 @@ router.post('/:id/reset', validateObjectId('id'), authenticate, requireAdmin, co
     res.status(400).json({
       success: false,
       message: error.message || 'Gabim në rikthimin e rregullimit',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -399,7 +400,7 @@ router.get('/audit/:id', validateObjectId('id'), authenticate, requireAdmin, asy
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e historisë së ndryshimeve',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -439,7 +440,7 @@ router.get('/audit', authenticate, requireAdmin, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e historisë së ndryshimeve',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -473,7 +474,7 @@ router.get('/system-health', authenticate, requireAdmin, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e statusit të sistemit',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -496,7 +497,7 @@ router.post('/initialize-defaults', authenticate, requireAdmin, async (req, res)
     res.status(500).json({
       success: false,
       message: 'Gabim në krijimin e rregullimeve të paracaktuara',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -549,7 +550,7 @@ router.post('/maintenance-mode', authenticate, requireAdmin, async (req, res) =>
     res.status(500).json({
       success: false,
       message: 'Gabim në ndryshimin e modalitetit të mirëmbajtjes',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });

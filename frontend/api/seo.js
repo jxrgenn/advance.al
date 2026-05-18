@@ -201,7 +201,12 @@ async function handleRoute(req) {
   // Prefer that when present; otherwise fall back to the request's own
   // pathname (used when vercel.json rewrites send us the request directly).
   const forwardedPath = reqUrl.searchParams.get('path');
-  const rawPath = forwardedPath && forwardedPath.startsWith('/') ? forwardedPath : reqUrl.pathname;
+  // Pre-deploy audit (O-E): tighten the accepted forwardedPath shape.
+  // Reject anything containing query strings, fragments, or non-URL-path
+  // characters. The route matchers below would silently ignore them, but
+  // an attacker-supplied weird path could end up in cache keys / logs.
+  const SAFE_PATH = /^\/[a-z0-9/\-_.]{0,200}$/i;
+  const rawPath = forwardedPath && SAFE_PATH.test(forwardedPath) ? forwardedPath : reqUrl.pathname;
   const pathname = rawPath.replace(/\/$/, '') || '/';
 
   // /jobs/<slug-or-id>

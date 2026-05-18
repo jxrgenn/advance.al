@@ -4,7 +4,9 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { Report, ReportAction, User, Job } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { escapeRegex, sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
+import { errorDetail } from '../utils/errors.js';
 import logger from '../config/logger.js';
+import { notifyDiscord, deriveRequestSignals } from '../services/discordNotifier.js';
 
 const router = express.Router();
 
@@ -232,6 +234,21 @@ router.post('/',
         { path: 'reportingUser', select: 'firstName lastName email userType' }
       ]);
 
+      notifyDiscord({
+        channel: 'reports',
+        title: '🚩 New user report',
+        fields: [
+          { name: 'Category', value: String(category), inline: true },
+          { name: 'Priority', value: String(report.priority || '—'), inline: true },
+          { name: 'Reporter', value: report.reportingUser?.email || String(reportingUserId), inline: true },
+          ...(reportedUserId ? [{ name: 'Reported user', value: report.reportedUser?.email || String(reportedUserId), inline: true }] : []),
+          ...(reportedJobId ? [{ name: 'Reported job', value: String(reportedJobId), inline: true }] : []),
+          { name: 'Note', value: (description || '').toString().slice(0, 500) || '—', inline: false },
+          ...deriveRequestSignals(req),
+        ],
+        dedupKey: `report:${report._id}`,
+      });
+
       res.status(201).json({
         success: true,
         message: 'Raportimi u dërgua me sukses. Ekipi ynë do ta shqyrtojë sa më shpejt.',
@@ -248,7 +265,7 @@ router.post('/',
       res.status(500).json({
         success: false,
         message: 'Gabim në server. Ju lutemi provoni më vonë.',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        error: errorDetail(error)
       });
     }
   }
@@ -302,7 +319,7 @@ router.get('/',
       res.status(500).json({
         success: false,
         message: 'Gabim në marrjen e raportimeve',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        error: errorDetail(error)
       });
     }
   }
@@ -409,7 +426,7 @@ router.get('/admin',
       res.status(500).json({
         success: false,
         message: 'Gabim në marrjen e raportimeve',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        error: errorDetail(error)
       });
     }
   }
@@ -511,7 +528,7 @@ router.get('/admin/stats',
       res.status(500).json({
         success: false,
         message: 'Gabim në marrjen e statistikave',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        error: errorDetail(error)
       });
     }
   }
@@ -573,7 +590,7 @@ router.get('/admin/:id',
       res.status(500).json({
         success: false,
         message: 'Gabim në marrjen e detajeve të raportimit',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        error: errorDetail(error)
       });
     }
   }
@@ -670,7 +687,7 @@ router.put('/admin/:id',
       res.status(500).json({
         success: false,
         message: 'Gabim në përditësimin e raportimit',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        error: errorDetail(error)
       });
     }
   }
@@ -764,7 +781,7 @@ router.post('/admin/:id/action',
       res.status(500).json({
         success: false,
         message: 'Gabim në marrjen e veprimit',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        error: errorDetail(error)
       });
     }
   }

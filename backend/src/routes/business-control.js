@@ -4,6 +4,7 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { BusinessCampaign, PricingRule, RevenueAnalytics, Job, User, SystemConfiguration, ConfigurationAudit } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { escapeRegex, sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
+import { errorDetail } from '../utils/errors.js';
 import logger from '../config/logger.js';
 
 const router = express.Router();
@@ -111,7 +112,7 @@ router.post('/campaigns', authenticate, requireAdmin, businessControlLimit, camp
     res.status(500).json({
       success: false,
       message: 'Gabim në krijimin e kampanjës',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -168,7 +169,7 @@ router.get('/campaigns', authenticate, requireAdmin, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e kampanjave',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -209,7 +210,7 @@ router.put('/campaigns/:id', validateObjectId('id'), authenticate, requireAdmin,
     res.status(500).json({
       success: false,
       message: 'Gabim në përditësimin e kampanjës',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -241,7 +242,7 @@ router.post('/campaigns/:id/activate', validateObjectId('id'), authenticate, req
     res.status(500).json({
       success: false,
       message: 'Gabim në aktivizimin e kampanjës',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -273,7 +274,7 @@ router.post('/campaigns/:id/pause', validateObjectId('id'), authenticate, requir
     res.status(500).json({
       success: false,
       message: 'Gabim në pezullimin e kampanjës',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -334,7 +335,7 @@ router.post('/pricing-rules', authenticate, requireAdmin, businessControlLimit, 
     res.status(500).json({
       success: false,
       message: 'Gabim në krijimin e rregullës së çmimit',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -389,7 +390,7 @@ router.get('/pricing-rules', authenticate, requireAdmin, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e rregullave të çmimit',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -430,7 +431,7 @@ router.put('/pricing-rules/:id', validateObjectId('id'), authenticate, requireAd
     res.status(500).json({
       success: false,
       message: 'Gabim në përditësimin e rregullës së çmimit',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -464,7 +465,7 @@ router.post('/pricing-rules/:id/toggle', validateObjectId('id'), authenticate, r
     res.status(500).json({
       success: false,
       message: 'Gabim në ndryshimin e statusit të rregullës',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -510,7 +511,7 @@ router.get('/analytics/dashboard', authenticate, requireAdmin, async (req, res) 
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e të dhënave të dashboard-it',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -555,7 +556,7 @@ router.get('/analytics/revenue', authenticate, requireAdmin, async (req, res) =>
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e analizave të të ardhurave',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -611,7 +612,7 @@ router.post('/analytics/update', authenticate, requireAdmin, async (req, res) =>
     res.status(500).json({
       success: false,
       message: 'Gabim në përditësimin e analizave',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -732,7 +733,7 @@ router.post('/platform/emergency', authenticate, requireAdmin, async (req, res) 
     res.status(500).json({
       success: false,
       message: 'Gabim në ekzekutimin e veprimit emergjence',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });

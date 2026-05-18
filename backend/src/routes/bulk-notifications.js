@@ -5,6 +5,7 @@ import { BulkNotification, Notification, User } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { sendBulkNotificationEmail } from '../lib/resendEmailService.js';
 import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
+import { errorDetail } from '../utils/errors.js';
 import logger from '../config/logger.js';
 
 const router = express.Router();
@@ -161,7 +162,7 @@ router.post('/', authenticate, requireAdmin, bulkNotificationLimit, bulkNotifica
     res.status(500).json({
       success: false,
       message: 'Gabim në krijimin e njoftimit masiv',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -219,7 +220,7 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e historisë së njoftimeve',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -249,7 +250,7 @@ router.get('/:id', validateObjectId('id'), authenticate, requireAdmin, async (re
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e njoftimit',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -271,7 +272,7 @@ router.get('/templates/list', authenticate, requireAdmin, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e template-ve',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -301,7 +302,7 @@ router.post('/templates/:id/create', validateObjectId('id'), authenticate, requi
     res.status(500).json({
       success: false,
       message: 'Gabim në krijimin e njoftimit nga template',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
@@ -340,7 +341,7 @@ router.delete('/:id', validateObjectId('id'), authenticate, requireAdmin, async 
     res.status(500).json({
       success: false,
       message: 'Gabim në fshirjen e njoftimit',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: errorDetail(error)
     });
   }
 });
