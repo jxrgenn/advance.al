@@ -174,9 +174,14 @@ describe('Payment routes — edge cases (L4)', () => {
   });
 
   // ============================================================
-  // Callback with malformed amount
+  // Callback with malformed amount — pre-deploy audit item #1 tightened
+  // this. Previously the route accepted a non-numeric amount and activated
+  // the job (the L4 test asserted that). With server-side amount
+  // validation in place, a non-numeric amount fails the check, so the
+  // route returns 200 OK (to stop Paysera retrying) but does NOT activate
+  // the job. Admin reconciles via the callback_failed PaymentEvent.
   // ============================================================
-  it('callback with non-numeric amount activates job cleanly (no 500)', async () => {
+  it('callback with non-numeric amount returns 200 OK but does NOT activate (amount validation)', async () => {
     const { user: emp } = await createVerifiedEmployer();
     const job = await createJobPendingPayment(emp);
     await request(app)
@@ -191,11 +196,16 @@ describe('Payment routes — edge cases (L4)', () => {
     });
     const res = await request(app).post('/api/payments/paysera/callback').type('form').send({ data, ss1 });
 
+    // Returns 200 OK so Paysera stops retrying — but no activation.
     expect(res.status).toBe(200);
     expect(res.text).toBe('OK');
     const final = await Job.findById(job._id);
-    expect(final.status).toBe('active');
-    expect(final.paymentStatus).toBe('paid');
+    expect(final.status).toBe('pending_payment');
+    expect(final.paymentStatus).toBe('pending');
+    expect(final.paymentId).toBeFalsy();
+
+    const events = await PaymentEvent.find({ jobId: job._id, event: 'callback_failed' }).lean();
+    expect(events.some(e => /amount mismatch/.test(e.notes || ''))).toBe(true);
   });
 
   // ============================================================

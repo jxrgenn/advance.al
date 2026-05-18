@@ -6,6 +6,26 @@
 **CURRENT STATUS:** 🟢 **DEPLOY-READY. Phase 23 overnight suite now 799/799 GREEN (chromium-desktop). 4 additional production bugs found and fixed during full-coverage Tier 3: (1) verification code in-memory fallback never hit when Redis disabled — codes silently dropped; (2) employer registration `companyName`/`industry`/`description` not sanitized — stored XSS; (3) `User.addRefreshToken` had no FIFO cap, concurrent logins exceeded 5-token limit; (4) `/stats/public` 5-min in-memory cache served stale data with no test-mode bypass. All four shipped clean. 8 prior bugs from Phase 24 still in. Frontend + backend builds clean.**
 **Phase:** Phases 0-25 complete. Phase 25 (Tier 3) brought Phase 23 overnight to 799/799. Remaining out-of-scope items require external infrastructure or manual judgment (see `MANUAL_QA_CHECKLIST.md`).
 
+## 🧪 **PRE-DEPLOY AUDIT — STARTED 2026-05-18**
+
+Full-scope security/correctness audit before going public. Findings doc: `AUDIT_PRELAUNCH_FINDINGS.md` at repo root. Three parallel `Explore` reconnaissance agents (backend security surface, third-party integrations, test honesty + frontend security) produced ~30 distinct findings; manual verification against the actual code demoted about a third of them as over-stated and confirmed the rest.
+
+Round N (small backend fixes, pending commit):
+- **N1 — Paysera callback amount validation** (`backend/src/routes/payments.js`). Previously the callback's `amountCents` was logged but never compared to the server-recorded `job.paymentRequired`. Now: on `status === '1'`, the route compares amountCents against `Math.round(job.paymentRequired * 100)` and refuses to activate the job on mismatch (also catches non-numeric/NaN amounts). Returns 200 OK so Paysera stops retrying; a `callback_failed` PaymentEvent with "amount mismatch" notes is written and a Discord alert fires. Test factory's `createJobPendingPayment` default `paymentRequired` flipped from 50→35 EUR so existing tests stay green with the default 3500-cent callback amount. Existing L4 test "non-numeric amount activates job cleanly" was asserting the bug — re-written to assert the new safe behavior. 1 new test (`payments.test.js`) covers the amount-tamper path explicitly. 44/44 in `payments.test.js` + `payments-edge-cases.test.js` green.
+- **N2 — PII log hygiene** (`backend/src/routes/auth.js:540`). Dropped `email: normalizedEmail` from the `QuickUser converted to full user` info log. `quickUserId` + `userId` is enough to correlate; the address was just noise to external log aggregators (Sentry, Render).
+- **N3 — per-user limiter on /change-password** (`backend/src/routes/auth.js`). New `changePasswordLimiter` (5 attempts/hr keyed by `req.user._id`, IP fallback) wired in after `authenticate`. Closes the bcrypt-brute-force-with-stolen-JWT vector flagged in `SECURITY_AUDIT_ROUND_M.md`. 1 new test in `rate-limit-attacker-patterns.test.js` confirms the limiter trips at attempt 6 and that rotating `X-Forwarded-For` does NOT bypass the per-user key. 26/26 in rate-limit suite + 83/83 across all touched test files green.
+- **N4 (audit-only, no code change) — /validate-token timing-safe compare**. Audit Round M flagged `verification.js:455` as using string equality on a 32-byte hex token. Reading the actual code: line 455 is `if (!tokenData)`, and the token is used as a Redis/Map *key* (hash-table lookup, not JS string compare). Demoted as a false positive from the audit.
+
+Still open from the audit (next rounds):
+- OpenAI/embedding daily $-cap (cost-abuse risk).
+- Cloudinary public-by-default + missing destroy-on-purge (`accountCleanup.js:117` returns early for any URL containing "cloudinary.com").
+- `/api/users/resume/:filename` JWT-in-query-string → short-lived download tokens.
+- JWT in `localStorage` (two `dangerouslySetInnerHTML` sites are safe today but the architecture is fragile).
+- Test honesty: 441 permissive matchers (~166 unjustified), CI coverage threshold not actually enforced (output piped through `tail` swallows the non-zero exit), missing refresh-token replay test, OpenAI snapshot replay doesn't validate input matches.
+- `/api/seo` SSRF audit (bot-prerender endpoint reachable by anyone sending a Google/Bing UA).
+- Admin error handlers `=== 'development'` → harden to `!== 'production'`.
+- Admin notification routes missing `validateObjectId` on body fields.
+
 ## 🚀 **SEO/GEO POST-LAUNCH PLAN (added 2026-05-15)**
 
 Phase A/B/B.5/C all shipped tonight. What's left:

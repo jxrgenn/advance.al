@@ -357,6 +357,46 @@ describe('Paysera payments — integration', () => {
       expect(updated.paymentId).toBe('pay-9999');
     });
 
+    // Pre-deploy audit, item #1 — amount validation. Forging a callback
+    // externally requires the sign_password, but the route still validates
+    // server-side as defence-in-depth (catches misconfigured Paysera
+    // project, downgrade-via-stale-callback, or future sign_password
+    // compromise).
+    it('does NOT activate the job when callback amount differs from job.paymentRequired', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      // Job is 35 EUR (3500 cents). Attacker forges a callback claiming 1 EUR.
+      const job = await createJobPendingPayment(emp);
+      const { data, ss1 } = buildSignedCallback({
+        orderId: `job-${job._id}`,
+        status: '1',
+        requestid: 'pay-tamper-1',
+        amount: 100, // 1 EUR — far below job.paymentRequired=35
+      });
+
+      const res = await request(app)
+        .post('/api/payments/paysera/callback')
+        .type('form')
+        .send({ data, ss1 });
+
+      // Returns 200 OK so Paysera stops retrying — admin reconciles via log.
+      expect(res.status).toBe(200);
+      expect(res.text).toBe('OK');
+
+      // CRITICAL: job must still be in pending_payment.
+      const updated = await Job.findById(job._id);
+      expect(updated.status).toBe('pending_payment');
+      expect(updated.paymentStatus).toBe('pending');
+      expect(updated.paymentId).toBeFalsy();
+      expect(updated.paidAt).toBeFalsy();
+
+      // A callback_failed PaymentEvent must have been written with the
+      // amount-mismatch annotation, so admins can reconcile.
+      const events = await PaymentEvent.find({ jobId: job._id }).lean();
+      const mismatch = events.find(e => e.event === 'callback_failed' && /amount mismatch/.test(e.notes || ''));
+      expect(mismatch).toBeTruthy();
+      expect(mismatch.amountCents).toBe(100);
+    });
+
     it('is idempotent — second callback with same requestid is a no-op', async () => {
       const { user: emp } = await createVerifiedEmployer();
       const job = await createJobPendingPayment(emp);

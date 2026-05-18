@@ -25,6 +25,7 @@ import userEmbeddingService from '../services/userEmbeddingService.js';
 import notificationService from '../lib/notificationService.js';
 import { redis, cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
 import logger from '../config/logger.js';
+import { notifyDiscord, deriveRequestSignals } from '../services/discordNotifier.js';
 
 const router = express.Router();
 
@@ -228,6 +229,28 @@ const forgotPasswordByEmailLimiter = rateLimit({
   message: {
     success: false,
     message: 'Shumë tentativa rivendosjeje fjalëkalimi. Provoni përsëri pas një ore.'
+  },
+  validate: { trustProxy: false, xForwardedForHeader: false },
+});
+
+// Pre-deploy audit, item #4 — per-user limiter on /change-password.
+// An attacker with a stolen short-lived JWT could brute-force currentPassword
+// against the bcrypt-slow comparePassword. Bcrypt cost slows it but does not
+// bound the attempt count. Capping at 5/hr per authenticated user (and per
+// IP for safety) is enough to break brute-force while never bothering a
+// real user.
+const changePasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?._id ? `change-pw-user:${req.user._id}` : `change-pw-ip:${ipKeyGenerator(req)}`,
+  skip: () =>
+    process.env.NODE_ENV !== 'production' &&
+    process.env.SKIP_RATE_LIMIT === 'true',
+  message: {
+    success: false,
+    message: 'Shumë tentativa për të ndryshuar fjalëkalimin. Provoni përsëri pas një ore.'
   },
   validate: { trustProxy: false, xForwardedForHeader: false },
 });
@@ -537,7 +560,10 @@ router.post('/register', authLimiter, async (req, res) => {
         const existingQuickUser = await QuickUser.findOne({ email: normalizedEmail, convertedToFullUser: false });
         if (existingQuickUser) {
           await existingQuickUser.convertToFullUser(user._id);
-          logger.info('QuickUser converted to full user', { quickUserId: existingQuickUser._id, userId: user._id, email: normalizedEmail });
+          // PII hygiene (pre-deploy audit, item #2): don't include the
+          // email address in this log line. quickUserId + userId is
+          // enough to correlate; the email is just noise to log aggregators.
+          logger.info('QuickUser converted to full user', { quickUserId: existingQuickUser._id, userId: user._id });
         }
       } catch (err) {
         logger.error('QuickUser conversion error:', err.message);
@@ -562,6 +588,25 @@ router.post('/register', authLimiter, async (req, res) => {
 
     // F-10 fix: invalidate admin:dashboard cache (user count changed)
     cacheDelete('admin:dashboard').catch(() => {});
+
+    notifyDiscord({
+      channel: 'signups',
+      title: data.userType === 'employer' ? '💼 New employer signup' : '👤 New jobseeker signup',
+      fields: [
+        { name: 'Email', value: user.email, inline: true },
+        { name: 'Name', value: `${user.profile.firstName} ${user.profile.lastName}`, inline: true },
+        ...(data.userType === 'employer' ? [
+          { name: 'Company', value: user.profile.employerProfile?.companyName || '—', inline: true },
+          { name: 'Industry', value: user.profile.employerProfile?.industry || '—', inline: true },
+          { name: 'Website', value: user.profile.employerProfile?.website || '—', inline: true },
+          { name: 'Verification', value: user.profile.employerProfile?.verificationStatus || 'pending', inline: true },
+        ] : [
+          { name: 'City', value: user.profile.location?.city || '—', inline: true },
+        ]),
+        ...deriveRequestSignals(req),
+      ],
+      dedupKey: `signup:${user._id}`,
+    });
 
     res.status(201).json({
       success: true,
@@ -803,7 +848,7 @@ router.get('/me', authenticate, async (req, res) => {
 // @route   PUT /api/auth/change-password
 // @desc    Change password (authenticated user)
 // @access  Private
-router.put('/change-password', authenticate, [
+router.put('/change-password', authenticate, changePasswordLimiter, [
   body('currentPassword')
     .notEmpty()
     .withMessage('Fjalëkalimi aktual është i detyrueshëm'),

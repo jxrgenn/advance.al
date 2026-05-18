@@ -119,4 +119,42 @@ describe('rate-limit — attacker patterns', () => {
     // Of 15 attempts, at least 5 must have been rate-limited (10 wrong + 5 blocked)
     expect(blockedCount).toBeGreaterThanOrEqual(4);
   }, 30000);
+
+  // Pre-deploy audit item #4 — per-user limiter on /change-password.
+  // With a stolen short-lived JWT an attacker could brute-force the user's
+  // currentPassword. bcrypt cost slows this but doesn't cap it. Limiter is
+  // 5 attempts/hr keyed by req.user._id (with IP fallback for safety) and
+  // sits AFTER authenticate, so unauthenticated requests don't increment.
+  it('5. change-password limiter: 5 attempts per user → 6th returns 429 (per-user, not per-IP)', async () => {
+    const { createAuthHeaders } = await import('../helpers/auth.helper.js');
+    const { user, plainPassword } = await createJobseeker({ email: 'rl-chgpw@example.com', password: 'CorrectPassword!1' });
+    const auth = createAuthHeaders(user);
+
+    // 5 wrong-currentPassword attempts — each bounces 400 but increments the counter.
+    for (let i = 0; i < 5; i++) {
+      const r = await request(app)
+        .put('/api/auth/change-password')
+        .set(auth)
+        .set('X-Forwarded-For', `198.51.100.${i + 1}`) // rotate IP — must not bypass per-user limit
+        .send({ currentPassword: 'WrongPass!1', newPassword: 'NewStrongPass1' });
+      // JUSTIFIED: 400 on the early attempts (wrong current pwd), 429 once limiter trips.
+      expect([400, 429]).toContain(r.status);
+    }
+
+    // 6th attempt — should be 429 from the per-user limiter (regardless of source IP)
+    const r6 = await request(app)
+      .put('/api/auth/change-password')
+      .set(auth)
+      .set('X-Forwarded-For', '203.0.113.123')
+      .send({ currentPassword: plainPassword, newPassword: 'NewStrongPass1' });
+    expect(r6.status).toBe(429);
+    expect(r6.body.success).toBe(false);
+    expect(r6.body.message).toMatch(/Shumë tentativa|provoni përsëri/i);
+
+    // Sanity: the password was NOT changed (the 6th request never reached the route)
+    const reLogin = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'rl-chgpw@example.com', password: plainPassword });
+    expect(reLogin.status).toBe(200);
+  }, 30000);
 });

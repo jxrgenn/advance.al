@@ -132,9 +132,13 @@ export async function createPremiumJob(employer, overrides = {}) {
  * Create a job pending payment
  */
 export async function createJobPendingPayment(employer, overrides = {}) {
+  // paymentRequired: 35 matches the default `amount: 3500` (cents) in
+  // buildSignedCallback test helpers, so signed callbacks pass the
+  // amount-validation check in payments.js by default. Override per test
+  // when you want to exercise the mismatch path.
   return createJob(employer, {
     status: 'pending_payment',
-    paymentRequired: 50,
+    paymentRequired: 35,
     paymentStatus: 'pending',
     ...overrides
   });

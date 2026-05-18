@@ -36,6 +36,7 @@ import { fireEmbedding } from '../services/embeddingTrigger.js';
 import resendEmailService from '../lib/resendEmailService.js';
 import { pingJob } from '../lib/indexNow.js';
 import { generatePaymentReceiptDocx } from '../services/paymentReceiptDocument.js';
+import { notifyDiscord, deriveRequestSignals } from '../services/discordNotifier.js';
 
 const router = express.Router();
 
@@ -214,6 +215,19 @@ router.post('/paysera/initiate', initiateLimiter, authenticate, requireEmployer,
       paytext:  `advance.al — postim pune (${tier === 'promoted' ? 'i promovuar' : 'standart'})`,
     });
 
+    notifyDiscord({
+      channel: 'payments',
+      title: '💳 Payment initiated',
+      fields: [
+        { name: 'Job', value: `${job.title} (${jobId})`, inline: false },
+        { name: 'Tier', value: tier, inline: true },
+        { name: 'Amount', value: `€${amountEur}`, inline: true },
+        { name: 'Employer', value: String(req.user.email || req.user._id), inline: true },
+        ...deriveRequestSignals(req),
+      ],
+      dedupKey: `pay-init:${jobId}:${Date.now() >> 10}`,
+    });
+
     res.json({ success: true, data: { redirectUrl, amountEur, tier } });
   } catch (err) {
     logger.error('paysera/initiate error', { error: err.message, stack: err.stack });
@@ -328,6 +342,52 @@ async function handleCallback(req, res) {
       return res.send('OK');
     }
 
+    // Amount validation — defence-in-depth. Paysera's signature already
+    // prevents external tampering (forging the callback needs the
+    // sign_password), but this catches: a misconfigured Paysera project
+    // returning a wrong amount, a downgrade-via-replay attempt using a
+    // stale callback for a cheaper tier, or any future scenario where
+    // the signing secret is exposed. Only enforced for status=1 (paid)
+    // callbacks since pending/info-needed statuses may carry a different
+    // running total. Returns 200 OK so Paysera stops retrying — admin
+    // reconciles via the PaymentEvent log if a real customer paid.
+    if (status === '1') {
+      const expectedCents = Math.round((job.paymentRequired || 0) * 100);
+      if (!Number.isFinite(amountCents) || expectedCents <= 0 || amountCents !== expectedCents) {
+        // Sanitize NaN/non-finite values before persisting — PaymentEvent's
+        // amountCents field is a plain Number and Mongoose will reject NaN,
+        // which would silently drop the audit-log row.
+        const safeAmountCents = Number.isFinite(amountCents) ? amountCents : null;
+        const receivedDisplay = Number.isFinite(amountCents) ? amountCents : 'NaN';
+        logger.error('paysera/callback amount mismatch — NOT activating job', {
+          jobId, requestid, expectedCents, amountCents: receivedDisplay,
+        });
+        await logPaymentEvent({
+          jobId: job._id,
+          employerId: job.employerId,
+          event: 'callback_failed',
+          orderId,
+          paymentId: requestid,
+          amountCents: safeAmountCents,
+          status,
+          payloadHash,
+          notes: `amount mismatch: expected ${expectedCents}, got ${receivedDisplay}`,
+        });
+        notifyDiscord({
+          channel: 'payments',
+          title: '⚠️ Paysera callback amount mismatch',
+          fields: [
+            { name: 'Job', value: `${jobId}`, inline: false },
+            { name: 'Expected', value: `${expectedCents} cents`, inline: true },
+            { name: 'Received', value: `${receivedDisplay} cents`, inline: true },
+            { name: 'requestid', value: requestid, inline: false },
+          ],
+          dedupKey: `pay-mismatch:${jobId}:${requestid}`,
+        });
+        return res.send('OK');
+      }
+    }
+
     if (status === '1') {
       // Paid. Promote the job.
       job.status = 'active';
@@ -352,6 +412,18 @@ async function handleCallback(req, res) {
       sendReceiptEmailSafe({
         job,
         paymentTier: job.tier === 'premium' ? 'promoted' : 'standard',
+      });
+      notifyDiscord({
+        channel: 'payments',
+        title: '✅ Payment received — job activated',
+        fields: [
+          { name: 'Job', value: `${job.title} (${jobId})`, inline: false },
+          { name: 'Amount', value: `€${(amountCents / 100).toFixed(2)}`, inline: true },
+          { name: 'Tier', value: job.tier === 'premium' ? 'promoted' : 'standard', inline: true },
+          { name: 'Order', value: orderId, inline: true },
+          { name: 'Paysera ID', value: String(requestid), inline: true },
+        ],
+        dedupKey: `pay-paid:${requestid}`,
       });
       // Fire embedding kick — the job content didn't change, but its
       // visibility just did, so make sure the vector is current for
@@ -388,6 +460,18 @@ async function handleCallback(req, res) {
         status,
         payloadHash,
         notes: `unhandled status: ${status}`,
+      });
+      notifyDiscord({
+        channel: 'payments',
+        title: '⚠️ Payment callback — unhandled status',
+        color: 0xe74c3c,
+        fields: [
+          { name: 'Job', value: `${job.title} (${jobId})`, inline: false },
+          { name: 'Status', value: String(status), inline: true },
+          { name: 'Order', value: orderId, inline: true },
+          { name: 'Paysera ID', value: String(requestid), inline: true },
+        ],
+        dedupKey: `pay-fail:${requestid}`,
       });
     }
 
