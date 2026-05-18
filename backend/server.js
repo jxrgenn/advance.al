@@ -17,6 +17,7 @@ if (process.env.SENTRY_DSN) {
 
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
@@ -180,6 +181,13 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// Round O-F: parse cookies on every request so auth middleware can read
+// `auth_token` / `refresh_token` from req.cookies. Mounted right after CORS
+// so cross-origin XHRs from advance.al → api.advance.al with
+// `credentials: 'include'` get their cookies attached. Header-based auth
+// continues to work in parallel (bidirectional rollback).
+app.use(cookieParser());
 
 // CORS error handler — turn the thrown "Not allowed by CORS" into a clean 403
 // JSON response instead of a generic 500. Must come right after the cors()

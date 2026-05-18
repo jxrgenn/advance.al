@@ -19,6 +19,7 @@ function emailRateLimitKey(req, prefix, fallbackPrefix) {
 }
 import { User, QuickUser } from '../models/index.js';
 import { generateToken, generateRefreshToken, verifyToken, authenticate } from '../middleware/auth.js';
+import { setAuthCookies, clearAuthCookies } from '../lib/authCookies.js';
 import { stripHtml } from '../utils/sanitize.js';
 import resendEmailService from '../lib/resendEmailService.js';
 import userEmbeddingService from '../services/userEmbeddingService.js';
@@ -608,6 +609,12 @@ router.post('/register', authLimiter, async (req, res) => {
       dedupKey: `signup:${user._id}`,
     });
 
+    // Round O-F: set httpOnly cookies on top of the existing JSON token
+    // response. Existing clients keep working (they read from the JSON body
+    // into localStorage); browsers also get the cookies and the next
+    // request automatically attaches them.
+    setAuthCookies(res, { token, refreshToken });
+
     res.status(201).json({
       success: true,
       message: data.userType === 'employer'
@@ -721,6 +728,9 @@ router.post('/login', authLimiter, loginByEmailLimiter, loginValidation, handleV
     // Use toJSON() which strips password, tokens, and other sensitive fields
     const userResponse = user.toJSON();
 
+    // Round O-F: set httpOnly cookies in parallel with the JSON body.
+    setAuthCookies(res, { token, refreshToken });
+
     res.json({
       success: true,
       message: 'Kyçja u krye me sukses',
@@ -745,7 +755,10 @@ router.post('/login', authLimiter, loginByEmailLimiter, loginValidation, handleV
 // @access  Public
 router.post('/refresh', authLimiter, async (req, res) => {
   try {
-    const { refreshToken } = req.body;
+    // Round O-F: accept refresh token from EITHER the httpOnly
+    // `refresh_token` cookie OR the request body. Cookie wins when both
+    // are present.
+    const refreshToken = req.cookies?.refresh_token || req.body?.refreshToken;
 
     if (!refreshToken) {
       return res.status(401).json({
@@ -790,6 +803,9 @@ router.post('/refresh', authLimiter, async (req, res) => {
     // Rotate: remove old, add new
     await user.removeRefreshToken(refreshToken);
     await user.addRefreshToken(newRefreshToken);
+
+    // Round O-F: update cookies with the rotated pair.
+    setAuthCookies(res, { token: newToken, refreshToken: newRefreshToken });
 
     res.json({
       success: true,
@@ -1096,7 +1112,8 @@ router.post('/verify-email', authenticate, [
 // @access  Private
 router.post('/logout', authenticate, async (req, res) => {
   try {
-    const { refreshToken } = req.body;
+    // Round O-F: accept refresh token from cookie OR body, matching /refresh.
+    const refreshToken = req.cookies?.refresh_token || req.body?.refreshToken;
     const user = await User.findById(req.user._id);
 
     if (user && refreshToken) {
@@ -1106,12 +1123,17 @@ router.post('/logout', authenticate, async (req, res) => {
       await user.removeAllRefreshTokens();
     }
 
+    // Round O-F: clear the auth cookies even if DB revocation failed
+    // partial — the browser session is over either way.
+    clearAuthCookies(res);
+
     res.json({
       success: true,
       message: 'Daljet u krye me sukses'
     });
   } catch (error) {
     // Even if revocation fails, acknowledge logout to avoid blocking the user
+    clearAuthCookies(res);
     res.json({
       success: true,
       message: 'Daljet u krye me sukses'

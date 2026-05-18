@@ -286,9 +286,16 @@ const apiRequest = async <T>(
   }
 
   try {
+    // Round O-F: send cross-origin cookies on every API call so the
+    // backend can read the httpOnly `auth_token` / `refresh_token` set on
+    // login. We continue to attach the Authorization header from
+    // localStorage in parallel — backend prefers cookie when both arrive,
+    // so a rollback (stop setting cookies in backend) lands us back on
+    // header-only auth with zero frontend changes.
     const response = await fetch(url, {
       ...options,
       headers,
+      credentials: 'include',
     });
 
     let data;

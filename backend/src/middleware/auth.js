@@ -22,24 +22,29 @@ export const verifyToken = (token, secret = process.env.JWT_SECRET) => {
   return jwt.verify(token, secret, { algorithms: ['HS256'] });
 };
 
-// Authentication Middleware
+// Authentication Middleware.
+//
+// Round O-F: reads the JWT from EITHER the httpOnly `auth_token` cookie OR
+// the `Authorization: Bearer ...` header. Cookie takes precedence when both
+// are present (newer auth model wins). Header support is retained
+// indefinitely so:
+//   - existing tests keep working without churn
+//   - a mobile app can continue using bearer tokens
+//   - rollback = stop setting cookies in backend → frontend automatically
+//     falls back to localStorage + Authorization header. Zero data loss.
 export const authenticate = async (req, res, next) => {
   try {
+    const cookieToken = req.cookies?.auth_token;
     const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
-        success: false,
-        message: 'Ju lutemi kyçuni për të vazhduar'
-      });
-    }
+    const headerToken = (authHeader && authHeader.startsWith('Bearer '))
+      ? authHeader.substring(7)
+      : null;
+    const token = cookieToken || headerToken;
 
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-    
     if (!token) {
       return res.status(401).json({
         success: false,
-        message: 'Token i pavlefshëm'
+        message: 'Ju lutemi kyçuni për të vazhduar'
       });
     }
 
@@ -144,24 +149,26 @@ export const requireAdmin = authorize('admin');
 // Check if user is employer or admin
 export const requireEmployerOrAdmin = authorize('employer', 'admin');
 
-// Optional authentication - doesn't fail if no token
+// Optional authentication - doesn't fail if no token.
+// Round O-F: also reads from `auth_token` cookie (cookie takes precedence).
 export const optionalAuth = async (req, res, next) => {
   try {
+    const cookieToken = req.cookies?.auth_token;
     const authHeader = req.headers.authorization;
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
-      
-      if (token) {
-        const decoded = verifyToken(token);
-        const user = await User.findById(decoded.id).select('-password');
-        
-        if (user && !user.isDeleted && user.status !== 'deleted' && user.status !== 'suspended' && user.status !== 'banned') {
-          req.user = user;
-        }
+    const headerToken = (authHeader && authHeader.startsWith('Bearer '))
+      ? authHeader.substring(7)
+      : null;
+    const token = cookieToken || headerToken;
+
+    if (token) {
+      const decoded = verifyToken(token);
+      const user = await User.findById(decoded.id).select('-password');
+
+      if (user && !user.isDeleted && user.status !== 'deleted' && user.status !== 'suspended' && user.status !== 'banned') {
+        req.user = user;
       }
     }
-    
+
     next();
   } catch (error) {
     // Continue without user if token is invalid
