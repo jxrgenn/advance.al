@@ -9,6 +9,13 @@ import User from '../models/User.js';
 import File from '../models/File.js';
 import logger from '../config/logger.js';
 import { fireEmbedding } from '../services/embeddingTrigger.js';
+import { incrementAndCheck } from '../lib/dailyQuota.js';
+
+// Pre-deploy audit (O-D): daily cap on CV generation per user. The
+// existing hourly limiter (5/hr) bounds burst spend but not 24h total.
+// 10/day default = ~$0.01/user/day worst case at gpt-4o-mini pricing.
+// Admins bypass; env override via OPENAI_CV_DAILY_CAP.
+const CV_DAILY_CAP = parseInt(process.env.OPENAI_CV_DAILY_CAP, 10) || 10;
 
 const router = express.Router();
 
@@ -66,6 +73,19 @@ router.post('/generate', authenticate, requireJobSeeker, cvGenerateLimiter, asyn
         success: false,
         message: 'Inputi nuk mund të kalojë 10,000 karaktere'
       });
+    }
+
+    // Pre-deploy audit (O-D): daily quota check. Admins bypass.
+    if (req.user.userType !== 'admin') {
+      const { allowed, count, remaining } = await incrementAndCheck(`cv:${req.user._id}`, CV_DAILY_CAP);
+      if (!allowed) {
+        logger.info('cv/generate daily cap hit', { userId: String(req.user._id), count, cap: CV_DAILY_CAP });
+        return res.status(429).json({
+          success: false,
+          message: `Limit ditor i gjenerimeve të CV-së është arritur (${CV_DAILY_CAP}/ditë). Provoni nesër.`,
+          data: { remaining, cap: CV_DAILY_CAP },
+        });
+      }
     }
 
     // Extract structured data using OpenAI with target language

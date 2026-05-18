@@ -22,6 +22,14 @@
  */
 
 import logger from '../config/logger.js';
+import { incrementAndCheck } from '../lib/dailyQuota.js';
+
+// Pre-deploy audit (O-D): daily cap on embedding regeneration per
+// entity. Stops "spam profile-update → force OpenAI call" cost abuse.
+// 50/day default = ~$0.001/user/day worst case at embedding pricing.
+// Env override: OPENAI_EMBED_DAILY_CAP. Disabled with cap=0.
+const EMBED_DAILY_CAP = parseInt(process.env.OPENAI_EMBED_DAILY_CAP, 10);
+const EMBED_CAP = Number.isFinite(EMBED_DAILY_CAP) ? EMBED_DAILY_CAP : 50;
 
 export function fireEmbedding({ kind, id, reason, extraMetadata = {} }) {
   if (!id) {
@@ -30,6 +38,23 @@ export function fireEmbedding({ kind, id, reason, extraMetadata = {} }) {
   }
   setImmediate(async () => {
     const idStr = String(id);
+    // Pre-deploy audit (O-D): daily quota gate. If over, silently drop —
+    // the existing embedding remains valid, which is safer than thrashing.
+    // 'reason: cv-generate' is exempt: CV gen is already rate-limited and
+    // quota'd at the cv.js route, and CV regen is a legitimate one-shot
+    // signal we don't want to drop.
+    if (EMBED_CAP > 0 && reason !== 'cv-generate' && reason !== 'paysera-paid') {
+      try {
+        const { allowed, count } = await incrementAndCheck(`embed:${kind}:${idStr}`, EMBED_CAP);
+        if (!allowed) {
+          logger.info('fireEmbedding daily cap hit — dropping kick', { kind, id: idStr, reason, count, cap: EMBED_CAP });
+          return;
+        }
+      } catch (err) {
+        // Quota lookup failed → fail-open (better to do extra work than drop signal)
+        logger.warn('fireEmbedding quota check failed; proceeding', { error: err.message });
+      }
+    }
     try {
       if (kind === 'job') {
         const { default: svc } = await import('./jobEmbeddingService.js');
