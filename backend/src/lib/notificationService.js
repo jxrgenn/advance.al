@@ -10,9 +10,11 @@ class NotificationService {
     this.isProcessing = false;
   }
 
-  // Send email via Resend (consolidated — no longer uses Nodemailer for job alerts)
-  async sendEmail(to, subject, htmlContent, textContent) {
-    return await resendEmailService.sendTransactionalEmail(to, subject, htmlContent, textContent);
+  // Send email via Resend (consolidated — no longer uses Nodemailer for job alerts).
+  // `meta` ({tags, userId, userType, jobId}) is threaded into the EmailOutbox row on
+  // transient failure so the drain cron can re-check user preferences before the retry.
+  async sendEmail(to, subject, htmlContent, textContent, meta = {}) {
+    return await resendEmailService.sendTransactionalEmail(to, subject, htmlContent, textContent, meta);
   }
 
   // Send SMS using SMS service (Twilio placeholder)
@@ -326,18 +328,37 @@ advance.al - Platforma #1 e Punës në Shqipëri
     }
   }
 
-  // Send job notification to a specific user
+  // Send job notification to a specific user.
+  // Round P guards:
+  //   - isActive: if the user unsubscribed (or QuickUser.isActive=false), skip silently.
+  //     This is the SECOND check (the matchers' queries already filter), defending the
+  //     race where a user unsubscribes between match-scan and send.
+  //   - cooldown: QuickUser.canReceiveNotification virtual enforces the per-frequency
+  //     window (1h immediate, 24h daily, 7d weekly). Without this check the semantic
+  //     match path would re-email users on every new matching job.
   async sendJobNotificationToUser(user, job) {
     try {
+      // Guard: user has been deactivated since match-time → no send.
+      if (user.isActive === false) {
+        return { success: false, reason: 'inactive', userId: user._id };
+      }
+      // Guard: user is within cooldown window (per emailFrequency preference).
+      // Virtual exists on QuickUser. Full Users use a different gate (digest cron),
+      // so we only enforce when the virtual is defined.
+      if (user.canReceiveNotification === false) {
+        return { success: false, reason: 'cooldown', userId: user._id };
+      }
+
       const notifications = [];
 
-      // Send email notification
+      // Send email notification (with provenance for outbox retry race-check)
       const emailContent = this.generateJobNotificationEmail(user, job);
       const emailResult = await this.sendEmail(
         user.email,
         emailContent.subject,
         emailContent.htmlContent,
-        emailContent.textContent
+        emailContent.textContent,
+        { tags: ['job_match'], userId: user._id, userType: 'quickuser', jobId: job._id }
       );
 
       notifications.push({

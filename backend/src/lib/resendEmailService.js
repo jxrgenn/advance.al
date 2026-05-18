@@ -1,5 +1,5 @@
 import { Resend } from 'resend';
-import { escapeHtml, safeSubject } from '../utils/sanitize.js';
+import { escapeHtml, safeSubject, safePlain } from '../utils/sanitize.js';
 import logger from '../config/logger.js';
 
 class ResendEmailService {
@@ -46,7 +46,10 @@ class ResendEmailService {
     }
   }
 
-  // Retry wrapper: retries once after 2s delay on failure
+  // Inline retry-on-thrown helper. Used as the inner call by _dispatchSend.
+  // Only catches synchronously-thrown exceptions (network / SDK errors). Resend's
+  // own error responses come back as { error, data } — those are handled by the
+  // dispatcher's classifier, NOT here.
   async _sendWithRetry(sendFn) {
     try {
       return await sendFn();
@@ -55,6 +58,122 @@ class ResendEmailService {
       await new Promise(resolve => setTimeout(resolve, 2000));
       return await sendFn();
     }
+  }
+
+  // Classify a Resend result + any thrown error into one of three buckets:
+  //   { success: true, messageId }                       — delivered
+  //   { transient: true, error, statusCode? }            — should retry (429/5xx/network)
+  //   { transient: false, error, statusCode }            — should NOT retry (4xx bad payload)
+  // Transient bucket means the outbox should hold + retry; non-transient means
+  // the caller sees failure and we don't waste outbox space on permanent rejects.
+  _classifyResendResult(emailResult, thrownError) {
+    if (thrownError) {
+      return { transient: true, error: thrownError.message };
+    }
+    if (emailResult?.error) {
+      const err = emailResult.error;
+      const code = err.statusCode || err.status || null;
+      const message = err.message || String(err);
+      if (code === 429 || (code >= 500 && code < 600)) {
+        return { transient: true, error: message, statusCode: code };
+      }
+      if (!code) {
+        return { transient: true, error: message }; // network-layer ambiguity → retry
+      }
+      return { transient: false, error: message, statusCode: code };
+    }
+    return { success: true, messageId: emailResult?.data?.id };
+  }
+
+  // Central dispatch: try Resend once (with _sendWithRetry's inline single retry for
+  // thrown exceptions), classify the outcome, and on transient failure queue to the
+  // EmailOutbox so the drain cron can retry with exponential backoff. Returns:
+  //   { success: true, messageId }                        — delivered immediately
+  //   { success: true, queued: true, outboxId }           — held for retry
+  //   { success: false, error, statusCode? }              — non-transient reject
+  //
+  // meta enables the outbox drain to:
+  //   - re-check user.isActive / notification preferences before retrying (userId+userType)
+  //   - filter ops queries (tags)
+  //   - link rows to their triggering job (jobId)
+  async _dispatchSend(sendArgs, meta = {}) {
+    if (!this.enabled) {
+      return { success: false, error: 'email service disabled' };
+    }
+    let emailResult = null;
+    let thrownError = null;
+    try {
+      emailResult = await this._sendWithRetry(() => this.resend.emails.send(sendArgs));
+    } catch (err) {
+      thrownError = err;
+    }
+    const classification = this._classifyResendResult(emailResult, thrownError);
+    if (classification.success) {
+      return { success: true, messageId: classification.messageId };
+    }
+    if (classification.transient) {
+      try {
+        const { default: EmailOutbox } = await import('../models/EmailOutbox.js');
+        const row = await EmailOutbox.create({
+          to: Array.isArray(sendArgs.to) ? sendArgs.to[0] : sendArgs.to,
+          subject: sendArgs.subject,
+          html: sendArgs.html || '',
+          text: sendArgs.text || '',
+          userId: meta.userId || null,
+          userType: meta.userType || null,
+          jobId: meta.jobId || null,
+          tags: meta.tags || [],
+          attempts: 1,
+          lastAttemptAt: new Date(),
+          lastError: classification.error,
+          nextAttemptAt: new Date(Date.now() + 60 * 1000), // first retry in 1 minute
+          status: 'pending',
+        });
+        logger.warn('Email send transient-failed → queued to outbox', {
+          outboxId: String(row._id),
+          tags: row.tags,
+          statusCode: classification.statusCode || null,
+          error: classification.error,
+        });
+        return { success: true, queued: true, outboxId: String(row._id) };
+      } catch (outboxErr) {
+        logger.error('Outbox queue failed after transient send failure', {
+          sendError: classification.error,
+          outboxError: outboxErr.message,
+        });
+        return { success: false, error: `send failed (${classification.error}); outbox queue also failed (${outboxErr.message})` };
+      }
+    }
+    logger.error('Email send non-transient-failed (not queued)', {
+      statusCode: classification.statusCode,
+      error: classification.error,
+      tags: meta.tags || [],
+    });
+    return { success: false, error: classification.error, statusCode: classification.statusCode };
+  }
+
+  // Pure single-attempt retry of a queued outbox row. The drain cron in server.js
+  // owns the bookkeeping (attempts++, nextAttemptAt scheduling, dead-lettering);
+  // this helper just performs one send and returns the classification.
+  async _outboxRetrySend(row) {
+    if (!this.enabled) {
+      return { transient: true, error: 'email service disabled' };
+    }
+    const sendArgs = {
+      from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
+      to: this.getRecipientEmail(row.to),
+      subject: row.subject,
+      html: row.html,
+      text: row.text,
+    };
+    let emailResult = null;
+    let thrownError = null;
+    try {
+      emailResult = await this.resend.emails.send(sendArgs);
+    } catch (err) {
+      thrownError = err;
+    }
+    return this._classifyResendResult(emailResult, thrownError);
   }
 
   // Helper to get recipient email (redirects to test email in test mode)
@@ -156,14 +275,14 @@ class ResendEmailService {
       const textContent = `
 Mirë se vini në advance.al! 🎉
 
-Përshëndetje ${user.profile.firstName},
+Përshëndetje ${safePlain(user.profile.firstName)},
 
 Llogaria juaj në advance.al u krijua me sukses!
 
 Detajet e Llogarisë:
-- Emri: ${user.profile.firstName} ${user.profile.lastName}
-- Email: ${user.email}
-- Qyteti: ${user.profile.location.city}
+- Emri: ${safePlain(user.profile.firstName)} ${safePlain(user.profile.lastName)}
+- Email: ${safePlain(user.email, 320)}
+- Qyteti: ${safePlain(user.profile.location.city)}
 - Lloji: Kërkues Pune
 
 Çfarë mund të bëni tani?
@@ -681,31 +800,21 @@ Ky email u dërgua në ${toEmail}
     }
   }
 
-  // Generic transactional email — used by notificationService for job alerts
-  async sendTransactionalEmail(to, subject, htmlContent, textContent) {
-    if (!this.enabled) {
-      return { success: false, message: 'Email service disabled' };
-    }
-
-    try {
-      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+  // Generic transactional email — used by notificationService for job alerts + digest.
+  // Optional `meta` ({ tags, userId, userType, jobId }) is threaded into the outbox
+  // row on transient failure so the drain cron can re-check user preferences
+  // (unsubscribe, cooldown) before the eventual retry.
+  async sendTransactionalEmail(to, subject, htmlContent, textContent, meta = {}) {
+    return this._dispatchSend(
+      {
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(to),
         subject,
         html: htmlContent,
         text: textContent,
-      }));
-
-      if (emailResult.error) {
-        logger.error('Resend transactional error:', emailResult.error);
-        throw new Error('Failed to send transactional email via Resend');
-      }
-
-      return { success: true, messageId: emailResult.data?.id };
-    } catch (error) {
-      logger.error('Error sending transactional email:', error.message);
-      return { success: false, error: error.message };
-    }
+      },
+      { tags: ['transactional'], ...meta }
+    );
   }
 
   // Send application message notification email
@@ -1103,10 +1212,10 @@ advance.al - Platforma e Punës në Shqipëri`;
 
       const textContent = `Përditësim i Aplikimit — advance.al
 
-Përshëndetje ${applicant.profile?.firstName || 'Përdorues'},
+Përshëndetje ${safePlain(applicant.profile?.firstName) || 'Përdorues'},
 
-Aplikimi juaj për pozicionin "${job.title}" tek ${job.companyName || ''} ${statusInfo.label}.
-${notes ? `\nShënim: ${notes}` : ''}
+Aplikimi juaj për pozicionin "${safePlain(job.title)}" tek ${safePlain(job.companyName) || ''} ${statusInfo.label}.
+${notes ? `\nShënim: ${safePlain(notes, 500)}` : ''}
 
 Shiko aplikimet tuaja: https://advance.al/profile
 
@@ -1183,9 +1292,9 @@ advance.al`;
 
       const textContent = `Aplikim i Ri — advance.al
 
-Përshëndetje ${employer.profile?.firstName || 'Punëdhënës'},
+Përshëndetje ${safePlain(employer.profile?.firstName) || 'Punëdhënës'},
 
-${`${applicant.profile?.firstName || ''} ${applicant.profile?.lastName || ''}`.trim()} ka aplikuar për pozicionin "${job.title}".
+${safePlain(`${applicant.profile?.firstName || ''} ${applicant.profile?.lastName || ''}`.trim())} ka aplikuar për pozicionin "${safePlain(job.title)}".
 
 Shiko aplikimin: https://advance.al/employer-dashboard
 

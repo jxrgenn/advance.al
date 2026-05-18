@@ -391,6 +391,10 @@ app.use((err, req, res, next) => {
 
 // Track intervals for graceful shutdown cleanup
 const activeIntervals = [];
+// Round P: track in-flight async cron work so SIGTERM can await it before exit.
+// Each cron pushes its promise on tick-start, removes on settle. Shutdown's
+// Promise.allSettled prevents losing the email being sent right at shutdown.
+const inflightCronWork = [];
 
 // Start Server (skipped in test mode — tests use supertest against the imported app)
 if (process.env.NODE_ENV !== 'test') {
@@ -438,11 +442,34 @@ const server = app.listen(PORT, () => {
 
   // Job-alerts digest flush — runs every 15 min by default. Sends one consolidated
   // email per jobseeker whose oldest queued match crossed the digest window.
+  // Round P: track each tick's promise in inflightCronWork so shutdown can await it
+  // (previously SIGTERM during a flush could lose the email being sent right then).
   import('./src/services/jobAlertsDigest.js').then(({ flushPendingJobAlerts }) => {
     const flushIntervalMs = parseInt(process.env.JOB_ALERT_DIGEST_FLUSH_INTERVAL_MS || `${15 * 60 * 1000}`, 10);
     activeIntervals.push(setInterval(() => {
-      flushPendingJobAlerts().catch(err => logger.error('Job-alert digest flush error:', err.message));
+      const p = flushPendingJobAlerts().catch(err => logger.error('Job-alert digest flush error:', err.message));
+      inflightCronWork.push(p);
+      p.finally(() => {
+        const i = inflightCronWork.indexOf(p);
+        if (i !== -1) inflightCronWork.splice(i, 1);
+      });
     }, flushIntervalMs));
+  }).catch(() => {});
+
+  // EmailOutbox drain — Round P. Picks up rows queued by resendEmailService on
+  // transient send failure (Resend 429/5xx/network). Default 30s tick, max 4 sends
+  // per tick (under Resend's 5 req/sec limit). Exponential backoff to 24h, then
+  // dead-letters with Discord alert. Same inflight-tracking pattern as digest so
+  // shutdown awaits the in-flight tick.
+  import('./src/services/emailOutboxDrain.js').then(({ drainOnce, _internal }) => {
+    activeIntervals.push(setInterval(() => {
+      const p = drainOnce().catch(err => logger.error('EmailOutbox drain error:', err.message));
+      inflightCronWork.push(p);
+      p.finally(() => {
+        const i = inflightCronWork.indexOf(p);
+        if (i !== -1) inflightCronWork.splice(i, 1);
+      });
+    }, _internal.DRAIN_INTERVAL_MS));
   }).catch(() => {});
 
   // Embedding-retry worker — guarantees every Job/jobseeker/QuickUser
@@ -472,6 +499,18 @@ const server = app.listen(PORT, () => {
     activeIntervals.push(setInterval(() => {
       alertDuePaymentTimeouts().catch(err => logger.error('Payment timeout worker error:', err.message));
     }, interval));
+  }).catch(() => {});
+
+  // Discord daily digest — first run at the next 07:00 UTC (09:00 Albania),
+  // then every 24h. No-op if DISCORD_WEBHOOK_DIGEST isn't set.
+  import('./src/workers/discordDigestWorker.js').then(({ runDailyDigest, msUntilNextRun }) => {
+    if (!process.env.DISCORD_WEBHOOK_DIGEST) return;
+    setTimeout(() => {
+      runDailyDigest().catch(err => logger.error('Discord digest error:', err.message));
+      activeIntervals.push(setInterval(() => {
+        runDailyDigest().catch(err => logger.error('Discord digest error:', err.message));
+      }, 24 * 60 * 60 * 1000));
+    }, msUntilNextRun());
   }).catch(() => {});
 
   // Account cleanup: permanently delete soft-deleted accounts after 30-day retention (privacy policy)
@@ -508,8 +547,16 @@ const server = app.listen(PORT, () => {
 // Graceful Shutdown — must be AFTER server is defined
 const shutdown = async (signal) => {
   logger.info(`${signal} received, shutting down gracefully`);
-  // Clear all periodic intervals
+  // Clear periodic intervals so no NEW work starts.
   activeIntervals.forEach(id => clearInterval(id));
+  // Round P: await any in-flight cron work (digest flush, outbox drain) up to 8s
+  // so we don't drop the email being sent right at shutdown. After 8s we proceed
+  // anyway; the 10s force-exit below is the final backstop.
+  try {
+    const settled = Promise.allSettled([...inflightCronWork]);
+    const timeout = new Promise(resolve => setTimeout(resolve, 8000));
+    await Promise.race([settled, timeout]);
+  } catch (_) { /* never block shutdown on errors here */ }
   server.close(async () => {
     await mongoose.connection.close();
     logger.info('Process terminated');

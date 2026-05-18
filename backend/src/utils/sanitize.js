@@ -114,6 +114,24 @@ export function safeSubject(str, max = 255) {
 }
 
 /**
+ * Defense-in-depth helper for any user-supplied string that will be interpolated
+ * into the plaintext (`text`) body of an outbound email. Strips CR/LF and other
+ * control characters (no SMTP header injection via "name: foo\r\nBcc: attacker"),
+ * collapses runs of whitespace, and clamps length. HTML bodies should use
+ * escapeHtml() instead; this is specifically for the alongside text/plain part.
+ */
+export function safePlain(str, max = 200) {
+  if (!str) return '';
+  return String(str)
+    .replace(/[\r\n]+/g, ' ')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x1F\x7F]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
+/**
  * Sanitize and clamp pagination limit parameter.
  * Prevents ?limit=1000000 from dumping the entire database.
  */

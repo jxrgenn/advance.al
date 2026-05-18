@@ -5,6 +5,7 @@ import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { escapeRegex, sanitizeLimit } from '../utils/sanitize.js';
 import notificationService from '../lib/notificationService.js';
 import jobEmbeddingService from '../services/jobEmbeddingService.js';
+import { fireEmbedding } from '../services/embeddingTrigger.js';
 import userEmbeddingService from '../services/userEmbeddingService.js';
 import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
 import logger from '../config/logger.js';
@@ -773,18 +774,11 @@ router.patch('/jobs/:jobId/manage', async (req, res) => {
 
     await job.save();
 
-    // Notify matching users when job is approved (async, non-blocking)
+    // Notify matching users when job is approved. Round P: route through fireEmbedding
+    // so the trigger's inline pipeline handles generate→similarity→notify in order
+    // (was previously a 2s sleep+race between queue and notify).
     if (action === 'approve') {
-      setImmediate(async () => {
-        try {
-          await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10);
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          const populatedJob = await Job.findById(job._id).populate('employerId', 'profile.employerProfile.companyName');
-          await notificationService.notifyMatchingUsers(populatedJob);
-        } catch (err) {
-          logger.error('Error in post-approval notification:', err.message);
-        }
-      });
+      fireEmbedding({ kind: 'job', id: job._id, reason: 'admin-approve', extraMetadata: { notifyUsers: true } });
       setImmediate(() => { pingJob(job); });
     }
 
@@ -1009,18 +1003,10 @@ router.patch('/jobs/:id/approve', async (req, res) => {
     job.status = action === 'approve' ? 'active' : 'rejected';
     await job.save();
 
-    // Notify matching users when job is approved (async, non-blocking)
+    // Notify matching users when job is approved. Round P: route through fireEmbedding
+    // so generate→similarity→notify run in order without the previous 2s-sleep race.
     if (action === 'approve') {
-      setImmediate(async () => {
-        try {
-          await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10);
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          const populatedJob = await Job.findById(job._id).populate('employerId', 'profile.employerProfile.companyName');
-          await notificationService.notifyMatchingUsers(populatedJob);
-        } catch (err) {
-          logger.error('Error in post-approval notification:', err.message);
-        }
-      });
+      fireEmbedding({ kind: 'job', id: job._id, reason: 'admin-approve', extraMetadata: { notifyUsers: true } });
       setImmediate(() => { pingJob(job); });
     }
 
@@ -1140,19 +1126,20 @@ router.post('/backfill-job-embeddings', async (req, res) => {
       ]
     }).select('_id title');
 
+    // Round P: switch from queue-based to inline trigger via fireEmbedding.
+    // The trigger has a daily-cap + inflight-cap; counts here reflect kicks issued,
+    // not completions (the retry worker will catch any that get capped/dropped).
     let queued = 0;
     for (const job of jobs) {
       try {
-        await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10);
+        fireEmbedding({ kind: 'job', id: job._id, reason: 'admin-backfill' });
         queued++;
-      } catch (err) {
-        // Already queued or other issue — continue
-      }
+      } catch (_) { /* fireEmbedding never throws synchronously, defense-in-depth */ }
     }
 
     res.json({
       success: true,
-      message: `Queued ${queued}/${jobs.length} jobs for embedding generation`,
+      message: `Triggered ${queued}/${jobs.length} jobs for embedding generation`,
       data: { total: jobs.length, queued }
     });
   } catch (error) {

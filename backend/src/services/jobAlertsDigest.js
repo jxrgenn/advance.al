@@ -103,6 +103,18 @@ export async function flushPendingJobAlerts() {
 }
 
 async function processOneUser(user) {
+  // Round P: re-check user preferences at SEND time. The queue may have entries
+  // from up to 2h ago; the user could have unsubscribed / been suspended in the
+  // interim. Bail and clear queue silently if so.
+  const fresh = await User.findById(user._id).select('isDeleted status profile.jobSeekerProfile.notifications.jobAlerts');
+  if (!fresh
+      || fresh.isDeleted
+      || ['deleted', 'suspended', 'banned'].includes(fresh.status)
+      || fresh.profile?.jobSeekerProfile?.notifications?.jobAlerts === false) {
+    await User.findByIdAndUpdate(user._id, { $set: { pendingJobAlerts: [] } });
+    return { sent: false, reason: 'user-unsubscribed-or-inactive' };
+  }
+
   // Resolve the queued jobs to current state — they may have been closed/deleted
   // in the time between queue and flush. Skip stale entries.
   const jobIds = (user.pendingJobAlerts || []).map(p => p.jobId).filter(Boolean);
@@ -113,37 +125,40 @@ async function processOneUser(user) {
   }).populate('employerId', 'profile.employerProfile.companyName');
 
   // Defense-in-depth against orphan jobs (employer was deleted, job remained).
-  // The User.pre('deleteOne') cascade in models/User.js prevents this for
-  // programmatic deletes, but Atlas UI / direct Mongo intervention bypass
-  // Mongoose hooks. Filter at read time so an orphan never reaches an inbox.
   const jobs = rawJobs.filter(j => j.employerId != null);
 
-  // Always clear the queue, even if no live jobs remain — they're stale either way.
   if (jobs.length === 0) {
     await User.findByIdAndUpdate(user._id, { $set: { pendingJobAlerts: [] } });
     return { sent: false, reason: 'all-stale' };
   }
 
-  // Sort jobs by the matchScore stored at queue time, descending.
   const scoreByJobId = new Map(
     (user.pendingJobAlerts || []).map(p => [p.jobId?.toString(), p.matchScore || 0])
   );
   jobs.sort((a, b) => (scoreByJobId.get(b._id.toString()) || 0) - (scoreByJobId.get(a._id.toString()) || 0));
 
   const email = notificationService.generateJobAlertsDigestEmail(user, jobs);
+  // Round P: send via outbox-aware path (transient failures auto-queue for retry).
+  // Provenance enables drain to re-check user prefs before each retry.
   const result = await notificationService.sendEmail(
     user.email,
     email.subject,
     email.htmlContent,
-    email.textContent
+    email.textContent,
+    { tags: ['job_alerts_digest'], userId: user._id, userType: 'user' }
   );
 
-  // Clear queue regardless of send result — a failed Resend call shouldn't
-  // cause us to keep retrying the same digest indefinitely; better to drop
-  // it and have the user wait for the next batch. Logger captures the failure.
+  // Clear the queue: either we sent successfully, or the outbox now owns the retry.
+  // result.success is true in both cases (inline-sent OR queued); only non-transient
+  // failures (4xx bad-payload) keep success=false, and those are NOT recoverable so
+  // clearing is correct.
   await User.findByIdAndUpdate(user._id, { $set: { pendingJobAlerts: [] } });
 
-  return { sent: result.success === true, reason: result.success ? 'ok' : `send-failed: ${result.error || ''}` };
+  return {
+    sent: result.success === true,
+    queued: result.queued === true,
+    reason: result.success ? (result.queued ? 'queued' : 'ok') : `send-failed: ${result.error || ''}`,
+  };
 }
 
 export const _internal = {

@@ -358,6 +358,22 @@ const jobSchema = new Schema({
     lastComputed: Date,
     nextComputeAt: Date, // lastComputed + 7 days
     jobCountWhenComputed: Number
+  },
+
+  // Match-notification fan-out state. Decoupled from embedding so a crash mid-fanout
+  // can be recovered by embeddingRetryWorker.retryStuckNotifications without re-running
+  // the OpenAI call. Sweep query: status:'active' + embedding.status:'completed' +
+  // notification.status IN ['idle','pending','failed'] + lastAttemptAt old enough.
+  notification: {
+    status: {
+      type: String,
+      enum: ['idle', 'pending', 'sent', 'failed'],
+      default: 'idle',
+    },
+    attempts: { type: Number, default: 0 },
+    lastAttemptAt: Date,
+    lastError: String,
+    matchedCount: Number, // # users notified on last successful fan-out (audit)
   }
 }, {
   timestamps: true,
@@ -373,6 +389,8 @@ jobSchema.index({ employerId: 1, status: 1 });
 jobSchema.index({ postedAt: -1 });
 jobSchema.index({ tier: 1, status: 1 });
 jobSchema.index({ isDeleted: 1 });
+// Notification retry-sweep: find active jobs whose embedding is done but notification stalled.
+jobSchema.index({ status: 1, 'embedding.status': 1, 'notification.status': 1, 'notification.lastAttemptAt': 1 });
 // jobSchema.index({ slug: 1 }); // Removed: slug already has unique: true
 // jobSchema.index({ expiresAt: 1 }); // Covered by compound index below
 

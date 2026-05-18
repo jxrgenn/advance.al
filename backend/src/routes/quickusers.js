@@ -15,6 +15,7 @@ import { parseQuickUserCV } from '../services/cvParsingService.js';
 import { stripHtml, validateObjectId } from '../utils/sanitize.js';
 import logger from '../config/logger.js';
 import { JOB_CATEGORIES } from '../constants/jobCategories.js';
+import { notifyDiscord, deriveRequestSignals } from '../services/discordNotifier.js';
 
 // Check if Cloudinary is configured
 const isCloudinaryConfigured = () =>
@@ -320,6 +321,20 @@ router.post('/', quickUserLimiter, handleMultipart, quickUserValidation, handleV
       } catch (error) {
         logger.error('Error generating QuickUser embedding or matching jobs:', error.message);
       }
+    });
+
+    notifyDiscord({
+      channel: 'signups',
+      title: '⚡ New quickuser (anonymous interest)',
+      fields: [
+        { name: 'Email', value: quickUser.email, inline: true },
+        { name: 'Name', value: `${quickUser.firstName} ${quickUser.lastName || ''}`.trim() || '—', inline: true },
+        { name: 'City', value: quickUser.location?.city || '—', inline: true },
+        { name: 'Interests', value: (quickUser.allInterests || []).slice(0, 5).join(', ') || '—', inline: false },
+        { name: 'Resume', value: pdfBuffer ? 'attached' : 'none', inline: true },
+        ...deriveRequestSignals(req),
+      ],
+      dedupKey: `quickuser:${quickUser._id}`,
     });
 
     res.status(201).json({

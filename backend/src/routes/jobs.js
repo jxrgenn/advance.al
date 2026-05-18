@@ -16,6 +16,7 @@ import { logEvent } from '../services/eventLogger.js';
 import { fireEmbedding } from '../services/embeddingTrigger.js';
 import { pingJob } from '../lib/indexNow.js';
 import { JOB_CATEGORIES } from '../constants/jobCategories.js';
+import { notifyDiscord, deriveRequestSignals } from '../services/discordNotifier.js';
 
 const router = express.Router();
 
@@ -1260,6 +1261,21 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
     // F-10 fix: invalidate admin:dashboard cache on create
     cacheDelete('admin:dashboard').catch(() => {});
 
+    notifyDiscord({
+      channel: 'jobs',
+      title: job.status === 'active' ? '📢 Job posted (live)' : '⏳ Job posted (awaiting payment)',
+      fields: [
+        { name: 'Title', value: job.title || '—', inline: false },
+        { name: 'Company', value: job.employerId?.profile?.employerProfile?.companyName || '—', inline: true },
+        { name: 'Location', value: [job.location?.city, job.location?.region].filter(Boolean).join(', ') || '—', inline: true },
+        { name: 'Status', value: job.status, inline: true },
+        { name: 'Tier', value: job.tier || 'basic', inline: true },
+        { name: 'Job ID', value: String(job._id), inline: true },
+        ...deriveRequestSignals(req),
+      ],
+      dedupKey: `job-posted:${job._id}`,
+    });
+
     res.status(201).json({
       success: true,
       message: 'Puna u postua me sukses',
@@ -1361,21 +1377,21 @@ router.put('/:id', validateObjectId('id'), authenticate, requireEmployer, requir
 
     await job.save();
 
-    // Re-queue embedding generation after update (async, non-blocking).
-    // Reset + queue happen in the SAME setImmediate so the worker always sees
-    // a fresh 'pending' state before it picks up the task. Bypasses
-    // fireEmbedding here because we need deterministic ordering with the
-    // reset; fireEmbedding's own setImmediate could interleave.
+    // Round P: regenerate embedding inline after update via fireEmbedding (which
+    // also resets the embedding state internally before regenerating). No more
+    // queue → no more "embedding stays stale because worker isn't running" bug.
+    // We deliberately do NOT pass notifyUsers here: an EDIT shouldn't re-notify
+    // users who already received the original post.
     setImmediate(async () => {
       try {
         await Job.findByIdAndUpdate(job._id, {
           $set: { similarJobs: [], 'embedding.status': 'pending' },
         });
-        await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10, { reason: 'update' });
       } catch (error) {
-        logger.error('Error re-queueing embedding for job:', error.message);
+        logger.error('Error resetting embedding state for job:', error.message);
       }
     });
+    fireEmbedding({ kind: 'job', id: job._id, reason: 'update' });
 
     // F-10 fix: invalidate admin:dashboard cache on update
     cacheDelete('admin:dashboard').catch(() => {});

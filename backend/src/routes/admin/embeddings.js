@@ -3,6 +3,7 @@ import Job from '../../models/Job.js';
 import JobQueue from '../../models/JobQueue.js';
 import WorkerStatus from '../../models/WorkerStatus.js';
 import jobEmbeddingService from '../../services/jobEmbeddingService.js';
+import { fireEmbedding } from '../../services/embeddingTrigger.js';
 import debugLogger from '../../services/debugLogger.js';
 import { authenticate, requireAdmin } from '../../middleware/auth.js';
 import { sanitizeLimit, validateObjectId } from '../../utils/sanitize.js';
@@ -256,7 +257,8 @@ router.post('/recompute-all', async (req, res) => {
 
     for (const job of jobs) {
       try {
-        await jobEmbeddingService.queueEmbeddingGeneration(job._id, 5); // Priority 5
+        // Round P: switched to inline trigger; daily/inflight caps in trigger guard cost.
+        fireEmbedding({ kind: 'job', id: job._id, reason: 'admin-recompute' });
         queuedCount++;
       } catch (error) {
         logger.error(`Error queuing job ${job._id}:`, error.message);
@@ -307,7 +309,7 @@ router.post('/retry-failed', async (req, res) => {
           }
         });
 
-        await jobEmbeddingService.queueEmbeddingGeneration(job._id, 5);
+        fireEmbedding({ kind: 'job', id: job._id, reason: 'admin-retry-failed' });
         queuedCount++;
       } catch (error) {
         logger.error(`Error retrying job ${job._id}:`, error.message);
@@ -418,12 +420,12 @@ router.post('/queue-job/:jobId', validateObjectId('jobId'), async (req, res) => 
       });
     }
 
-    await jobEmbeddingService.queueEmbeddingGeneration(jobId, priority);
+    fireEmbedding({ kind: 'job', id: jobId, reason: 'admin-queue' });
 
     res.json({
       success: true,
-      message: `Job ${jobId} queued for embedding generation`,
-      data: { jobId, priority }
+      message: `Job ${jobId} triggered for inline embedding generation`,
+      data: { jobId }
     });
   } catch (error) {
     logger.error('Queue job error:', error.message);

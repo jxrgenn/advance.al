@@ -18,6 +18,7 @@
 import { Job, PaymentEvent } from '../models/index.js';
 import resendEmailService from '../lib/resendEmailService.js';
 import logger from '../config/logger.js';
+import { notifyDiscord } from './discordNotifier.js';
 
 const BATCH_LIMIT = 500;
 
@@ -86,6 +87,20 @@ export async function alertDuePaymentTimeouts() {
   ));
 
   logger.info(`paymentTimeout: alerted ${due.length} stuck job(s) to ${process.env.ALERT_EMAIL_TO || 'ops@advance.al'}`);
+
+  notifyDiscord({
+    channel: 'payments',
+    title: `⏱️ Payment timeout — ${due.length} stuck job(s)`,
+    color: 0xe67e22,
+    description: `Pending payment > ${thresholdDays}d. Admin should manually mark-paid or close out.`,
+    fields: payload.slice(0, 10).map(p => ({
+      name: p.title.slice(0, 100),
+      value: `€${p.amountEur} · ${p.ageDays.toFixed(1)}d · ${p.employerEmail || '—'}`,
+      inline: false,
+    })),
+    dedupKey: `pay-timeout:${new Date().toISOString().slice(0, 10)}`,
+  });
+
   return due.length;
 }
 

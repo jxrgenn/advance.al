@@ -26,7 +26,9 @@
 import express from 'express';
 import crypto from 'crypto';
 import { Job, User, QuickUser } from '../models/index.js';
+import EmailOutbox from '../models/EmailOutbox.js';
 import { getWorkerStats } from '../services/embeddingRetryWorker.js';
+import { getOutboxStats } from '../services/emailOutboxDrain.js';
 import logger from '../config/logger.js';
 
 const router = express.Router();
@@ -93,6 +95,59 @@ router.get('/embeddings', async (req, res) => {
     });
   } catch (err) {
     logger.error('healthz/embeddings error', { error: err.message });
+    res.status(500).json({ status: 'error', message: 'Internal error' });
+  }
+});
+
+/**
+ * GET /healthz/notifications — Round P
+ * Same auth pattern as /embeddings. Reports:
+ *   - EmailOutbox queue depth (pending, dead, oldestPendingAgeMs)
+ *   - Job.notification fan-out status counts (pending, failed)
+ *   - drain worker heartbeat (lastTickAt / lastTickStats)
+ *
+ * status === 'degraded' if outbox has dead-letters, oldest pending > 30 min,
+ * or any job notification is in 'failed' state — the three conditions the
+ * user needs to see at a glance to know if silent failures are accumulating.
+ */
+router.get('/notifications', async (req, res) => {
+  const gate = checkHealthzToken(req);
+  if (!gate.ok) {
+    if (gate.reason === 'unconfigured') {
+      return res.status(503).json({ status: 'error', message: 'Healthz monitoring is not configured' });
+    }
+    return res.status(403).json({ status: 'error', message: 'Forbidden' });
+  }
+  try {
+    const [pendingCount, deadCount, oldestPending, jobNotifyPending, jobNotifyFailed] = await Promise.all([
+      EmailOutbox.countDocuments({ status: 'pending' }),
+      EmailOutbox.countDocuments({ status: 'dead' }),
+      EmailOutbox.findOne({ status: 'pending' }).sort({ nextAttemptAt: 1 }).select('nextAttemptAt'),
+      Job.countDocuments({ status: 'active', isDeleted: { $ne: true }, 'notification.status': 'pending' }),
+      Job.countDocuments({ status: 'active', isDeleted: { $ne: true }, 'notification.status': 'failed' }),
+    ]);
+
+    const oldestPendingAgeMs = oldestPending?.nextAttemptAt
+      ? Math.max(0, Date.now() - oldestPending.nextAttemptAt.getTime())
+      : 0;
+
+    const outbox = { pending: pendingCount, dead: deadCount, oldestPendingAgeMs };
+    const jobs = { notifyPending: jobNotifyPending, notifyFailed: jobNotifyFailed };
+
+    const degraded = deadCount > 0
+      || oldestPendingAgeMs > 30 * 60 * 1000
+      || jobNotifyFailed > 0;
+
+    res.json({
+      status: degraded ? 'degraded' : 'healthy',
+      checkedAt: new Date().toISOString(),
+      outbox,
+      jobs,
+      drainWorker: getOutboxStats(),
+      retryWorker: getWorkerStats(),
+    });
+  } catch (err) {
+    logger.error('healthz/notifications error', { error: err.message });
     res.status(500).json({ status: 'error', message: 'Internal error' });
   }
 });

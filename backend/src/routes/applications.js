@@ -8,6 +8,7 @@ import { cacheDelete } from '../config/redis.js';
 import mongoose from 'mongoose';
 import { sanitizeLimit, validateObjectId, stripHtml, isObjectIdString } from '../utils/sanitize.js';
 import logger from '../config/logger.js';
+import { notifyDiscord, deriveRequestSignals } from '../services/discordNotifier.js';
 
 const router = express.Router();
 
@@ -244,6 +245,18 @@ router.post('/apply', authenticate, requireJobSeeker, applyLimiter, applyValidat
 
     // F-10 fix: invalidate admin:dashboard cache on apply
     cacheDelete('admin:dashboard').catch(() => {});
+
+    notifyDiscord({
+      channel: 'applications',
+      title: '📨 Application submitted',
+      fields: [
+        { name: 'Job', value: application.jobId?.title || String(application.jobId?._id || application.jobId), inline: false },
+        { name: 'Applicant', value: `${req.user.profile?.firstName || ''} ${req.user.profile?.lastName || ''}`.trim() || req.user.email, inline: true },
+        { name: 'Email', value: req.user.email || '—', inline: true },
+        ...deriveRequestSignals(req),
+      ],
+      dedupKey: `app:${application._id}`,
+    });
 
     res.status(201).json({
       success: true,

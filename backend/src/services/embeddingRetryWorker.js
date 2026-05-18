@@ -145,12 +145,10 @@ export async function retryStuckQuickUserEmbeddings(opts = {}) {
 }
 
 /**
- * Retry stuck active Job embeddings via the existing JobQueue worker.
- * Jobs already have a dedicated queue-based generator; this just re-enqueues
- * anything that's somehow active but missing a completed vector.
- *
- * No cooldown here because the JobQueue model already has its own retry
- * semantics + max-attempts; we just need to make sure it's been queued.
+ * Retry stuck active Job embeddings. Round P: switched from queue-re-enqueue
+ * (the queue had no consumer on Render) to direct inline generateEmbedding().
+ * This is the recovery path for jobs that missed the inline trigger (server
+ * crash mid-create, daily-cap drop, inflight-cap drop, etc).
  */
 export async function retryStuckJobEmbeddings(opts = {}) {
   const batchSize = opts.batchSize ?? BATCH_SIZE;
@@ -167,30 +165,118 @@ export async function retryStuckJobEmbeddings(opts = {}) {
     .select('_id title')
     .limit(batchSize);
 
-  const stats = { processed: 0, queued: 0, failed: 0 };
+  const stats = { processed: 0, succeeded: 0, failed: 0 };
   for (const j of stuck) {
     stats.processed++;
     try {
-      await jobEmbeddingService.queueEmbeddingGeneration(j._id, 10);
-      stats.queued++;
+      await jobEmbeddingService.generateEmbedding(j._id);
+      // Best-effort: warm similarity cache too so /jobs/:id/similar can serve scored matches.
+      // Non-fatal on failure — the route has a cold-cache fallback.
+      try { await jobEmbeddingService.computeSimilarities(j._id); } catch (_) { /* noop */ }
+      stats.succeeded++;
     } catch (err) {
       stats.failed++;
-      logger.warn('embeddingRetryWorker: job re-queue failed', { jobId: String(j._id), error: err.message });
+      logger.warn('embeddingRetryWorker: job generate failed', { jobId: String(j._id), error: err.message });
     }
   }
   return stats;
 }
 
 /**
- * Top-level: retry all three populations. Wired into server.js setInterval.
+ * Retry stuck notification fan-outs. Round P: catches jobs that have an
+ * embedding but whose notifyMatchingUsers crashed / was never run (e.g. server
+ * killed mid-fanout, drain script regenerated embedding but didn't notify).
+ * Cap at 5 attempts before leaving as 'failed' for ops to investigate.
+ */
+export async function retryStuckNotifications(opts = {}) {
+  const batchSize = opts.batchSize ?? BATCH_SIZE;
+  const cooldown = opts.cooldownMs ?? COOLDOWN_MS;
+  const cutoff = new Date(Date.now() - cooldown);
+
+  const stuck = await Job.find({
+    status: 'active',
+    isDeleted: { $ne: true },
+    'embedding.status': 'completed',
+    $and: [
+      {
+        $or: [
+          { notification: { $exists: false } },
+          { 'notification.status': { $exists: false } },
+          { 'notification.status': { $in: ['idle', 'pending', 'failed'] } },
+        ],
+      },
+      {
+        $or: [
+          { 'notification.lastAttemptAt': { $exists: false } },
+          { 'notification.lastAttemptAt': null },
+          { 'notification.lastAttemptAt': { $lt: cutoff } },
+        ],
+      },
+      {
+        $or: [
+          { 'notification.attempts': { $exists: false } },
+          { 'notification.attempts': { $lt: 5 } },
+        ],
+      },
+    ],
+  })
+    .select('_id title')
+    .limit(batchSize);
+
+  const stats = { processed: 0, succeeded: 0, failed: 0 };
+  if (stuck.length === 0) return stats;
+
+  const { default: notificationService } = await import('../lib/notificationService.js');
+  for (const j of stuck) {
+    stats.processed++;
+    try {
+      await Job.updateOne(
+        { _id: j._id },
+        {
+          $set: { 'notification.status': 'pending', 'notification.lastAttemptAt': new Date() },
+          $inc: { 'notification.attempts': 1 },
+        }
+      );
+      const populated = await Job.findById(j._id)
+        .select('+embedding.vector')
+        .populate('employerId', 'profile.employerProfile.companyName profile.firstName profile.lastName profile.location');
+      if (!populated) {
+        stats.failed++;
+        continue;
+      }
+      const result = await notificationService.notifyMatchingUsers(populated);
+      const matchedCount = (result?.stats?.notificationsSent || 0)
+        + (result?.stats?.jobseekersQueuedForDigest || 0);
+      await Job.updateOne(
+        { _id: j._id },
+        { $set: { 'notification.status': 'sent', 'notification.matchedCount': matchedCount, 'notification.lastError': null } }
+      );
+      stats.succeeded++;
+    } catch (err) {
+      stats.failed++;
+      logger.warn('embeddingRetryWorker: notification retry failed', { jobId: String(j._id), error: err.message });
+      try {
+        await Job.updateOne(
+          { _id: j._id },
+          { $set: { 'notification.status': 'failed', 'notification.lastError': err.message?.slice(0, 500) } }
+        );
+      } catch (_) { /* best effort */ }
+    }
+  }
+  return stats;
+}
+
+/**
+ * Top-level: retry all four populations. Wired into server.js setInterval.
  */
 export async function retryAll(opts = {}) {
   const all = {
     jobseekers: await retryStuckJobseekerEmbeddings(opts),
     quickusers: await retryStuckQuickUserEmbeddings(opts),
     jobs: await retryStuckJobEmbeddings(opts),
+    notifications: await retryStuckNotifications(opts),
   };
-  const totalProcessed = all.jobseekers.processed + all.quickusers.processed + all.jobs.processed;
+  const totalProcessed = all.jobseekers.processed + all.quickusers.processed + all.jobs.processed + all.notifications.processed;
   if (totalProcessed > 0) {
     logger.info('embeddingRetryWorker: tick complete', all);
   }
