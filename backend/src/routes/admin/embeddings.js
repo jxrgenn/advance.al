@@ -257,7 +257,10 @@ router.post('/recompute-all', async (req, res) => {
 
     for (const job of jobs) {
       try {
-        // Round P: switched to inline trigger; daily/inflight caps in trigger guard cost.
+        // Round P: keep the JobQueue write for admin-UI/audit purposes, AND fire
+        // the inline trigger that does the actual generation. The queue is now
+        // a passive audit record; fireEmbedding has cost caps + retry guarantees.
+        await jobEmbeddingService.queueEmbeddingGeneration(job._id, 5);
         fireEmbedding({ kind: 'job', id: job._id, reason: 'admin-recompute' });
         queuedCount++;
       } catch (error) {
@@ -309,6 +312,7 @@ router.post('/retry-failed', async (req, res) => {
           }
         });
 
+        await jobEmbeddingService.queueEmbeddingGeneration(job._id, 5);
         fireEmbedding({ kind: 'job', id: job._id, reason: 'admin-retry-failed' });
         queuedCount++;
       } catch (error) {
@@ -420,12 +424,16 @@ router.post('/queue-job/:jobId', validateObjectId('jobId'), async (req, res) => 
       });
     }
 
+    // Round P: keep JobQueue write for backwards-compat with admin UI, AND fire
+    // the inline trigger. fireEmbedding has cost caps + retry guarantees;
+    // the queue row is now a passive audit record.
+    await jobEmbeddingService.queueEmbeddingGeneration(jobId, priority);
     fireEmbedding({ kind: 'job', id: jobId, reason: 'admin-queue' });
 
     res.json({
       success: true,
-      message: `Job ${jobId} triggered for inline embedding generation`,
-      data: { jobId }
+      message: `Job ${jobId} queued + triggered for embedding generation`,
+      data: { jobId, priority }
     });
   } catch (error) {
     logger.error('Queue job error:', error.message);

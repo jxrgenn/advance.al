@@ -6,6 +6,7 @@ import Application from '../models/Application.js';
 import Job from '../models/Job.js';
 import Notification from '../models/Notification.js';
 import logger from '../config/logger.js';
+import { extractCloudinaryPublicId, deleteFromCloudinary } from '../config/cloudinary.js';
 
 // How many days after soft-delete before permanent purge (privacy policy: 30 days)
 const PURGE_AFTER_DAYS = 30;
@@ -88,10 +89,14 @@ async function purgeDeletedAccounts() {
 
       purgedCount++;
 
-      // Delete local files AFTER successful transaction (filesystem ops can't be rolled back)
-      deleteLocalFile(user.profile?.jobSeekerProfile?.resume);
-      deleteLocalFile(user.profile?.jobSeekerProfile?.profilePhoto);
-      deleteLocalFile(user.profile?.employerProfile?.logo);
+      // Delete user assets AFTER successful transaction (external service
+      // calls can't be rolled back). Round O-B: previously this skipped
+      // Cloudinary URLs entirely, leaving deleted users' resumes on the CDN
+      // forever (GDPR violation). Now it routes Cloudinary URLs through
+      // cloudinary.uploader.destroy and local paths through fs.unlink.
+      await deleteUserAsset(user.profile?.jobSeekerProfile?.resume, 'raw');
+      await deleteUserAsset(user.profile?.jobSeekerProfile?.profilePhoto, 'image');
+      await deleteUserAsset(user.profile?.employerProfile?.logo, 'image');
 
     } catch (error) {
       logger.error('Account cleanup: failed to purge user', {
@@ -108,24 +113,56 @@ async function purgeDeletedAccounts() {
 }
 
 /**
- * Safely delete a local file given a URL path like /uploads/resumes/resume-xxx.pdf
- * Ignores Cloudinary URLs and missing files.
+ * Delete a user asset given its stored URL/path. Handles Cloudinary URLs
+ * (calls cloudinary.uploader.destroy via deleteFromCloudinary) and local
+ * /uploads/ paths (filesystem unlink with path-traversal guard).
+ *
+ * Round O-B: previously the Cloudinary branch was a no-op (early return),
+ * leaving deleted users' assets on Cloudinary forever. GDPR fix.
+ *
+ * @param {string} filePath - the stored URL or path
+ * @param {'image'|'raw'} defaultResourceType - hint for Cloudinary; auto-
+ *   detected from extension if the URL has one.
  */
-function deleteLocalFile(filePath) {
+async function deleteUserAsset(filePath, defaultResourceType = 'image') {
   if (!filePath || typeof filePath !== 'string') return;
-  // Skip Cloudinary URLs and ObjectId references
-  if (filePath.includes('cloudinary.com') || filePath.includes('http')) return;
-  // Only handle local paths starting with /uploads/
+
+  // Cloudinary URL → destroy via SDK
+  if (filePath.includes('cloudinary.com')) {
+    const publicId = extractCloudinaryPublicId(filePath);
+    if (!publicId) {
+      logger.warn('Account cleanup: could not extract publicId from Cloudinary URL', { filePath });
+      return;
+    }
+    // Auto-detect resource_type from extension; fall back to caller's hint.
+    const resourceType = /\.(pdf|docx?|doc)$/i.test(filePath) ? 'raw' : defaultResourceType;
+    // Authenticated-type assets (post-O-B resumes) need type:'authenticated'
+    // or destroy() silently returns "not found" and leaves bytes on Cloudinary.
+    const type = /\/authenticated\//.test(filePath) ? 'authenticated' : 'upload';
+    try {
+      await deleteFromCloudinary(publicId, resourceType, type);
+      logger.info('Account cleanup: deleted Cloudinary asset', { publicId, resourceType, type });
+    } catch (error) {
+      logger.warn('Account cleanup: Cloudinary delete failed (non-fatal)', {
+        publicId,
+        resourceType,
+        type,
+        error: error.message,
+      });
+    }
+    return;
+  }
+
+  // Non-Cloudinary remote URL → ignore. We only own Cloudinary + local-disk assets.
+  if (filePath.includes('http')) return;
+
+  // Local /uploads/ path (dev only) → filesystem unlink with traversal guard.
   if (!filePath.startsWith('/uploads/')) return;
 
   try {
     const uploadsDir = path.resolve(process.cwd(), 'uploads');
-    // filePath is a URL-style path (e.g. /uploads/resumes/foo.pdf). path.resolve
-    // would treat the leading slash as filesystem-absolute and ignore cwd, so
-    // strip the /uploads/ prefix and resolve under uploadsDir explicitly.
     const relativePath = filePath.replace(/^\/uploads\//, '');
     const absolutePath = path.resolve(uploadsDir, relativePath);
-    // Prevent path traversal — resolved path must be under uploads/
     if (!absolutePath.startsWith(uploadsDir + path.sep)) {
       logger.warn('Account cleanup: path traversal attempt blocked', { path: filePath });
       return;
@@ -137,9 +174,9 @@ function deleteLocalFile(filePath) {
   } catch (error) {
     logger.warn('Account cleanup: failed to delete local file (non-fatal)', {
       path: filePath,
-      error: error.message
+      error: error.message,
     });
   }
 }
 
-export { purgeDeletedAccounts };
+export { purgeDeletedAccounts, deleteUserAsset };

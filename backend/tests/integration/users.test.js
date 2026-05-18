@@ -271,103 +271,18 @@ describe('Users API - Integration Tests', () => {
     });
   });
 
-  describe('GET /api/users/resume/:filename — F-1 ownership enforcement', () => {
-    const RESUME_DIR = path.join(process.cwd(), 'uploads', 'resumes');
-
-    afterEach(() => {
-      // Clean up any test resume files we created
-      try {
-        const files = fs.readdirSync(RESUME_DIR);
-        for (const f of files) {
-          if (f.startsWith('resume-test-')) {
-            fs.unlinkSync(path.join(RESUME_DIR, f));
-          }
-        }
-      } catch {}
-    });
-
-    function writeFakeResume(userIdHex) {
-      fs.mkdirSync(RESUME_DIR, { recursive: true });
-      const filename = `resume-${userIdHex}-test-${Date.now()}.pdf`;
-      fs.writeFileSync(path.join(RESUME_DIR, filename), 'PDF-CONTENT-FAKE');
-      return filename;
-    }
-
-    it('rejects unauthenticated request with 401', async () => {
-      const { user } = await createJobseeker();
-      const filename = writeFakeResume(user._id.toString());
-      // Make filename match the resume- pattern even though it has -test- in it
-      const realFilename = `resume-${user._id.toString()}-1234567890.pdf`;
-      fs.copyFileSync(path.join(RESUME_DIR, filename), path.join(RESUME_DIR, realFilename));
-
-      try {
-        const response = await request(app).get(`/api/users/resume/${realFilename}`);
-        expect(response.status).toBe(401);
-      } finally {
-        fs.unlinkSync(path.join(RESUME_DIR, realFilename));
-      }
-    });
-
-    it('owner can download own resume', async () => {
-      const { user } = await createJobseeker();
-      const userIdHex = user._id.toString();
-      const filename = `resume-${userIdHex}-9999999999.pdf`;
-      fs.mkdirSync(RESUME_DIR, { recursive: true });
-      fs.writeFileSync(path.join(RESUME_DIR, filename), 'OWNER-PDF');
-
-      try {
-        const response = await request(app)
-          .get(`/api/users/resume/${filename}`)
-          .set(createAuthHeaders(user));
-        expect(response.status).toBe(200);
-      } finally {
-        fs.unlinkSync(path.join(RESUME_DIR, filename));
-      }
-    });
-
-    it('different jobseeker is REJECTED with 403 (cross-user PII leak prevention)', async () => {
-      const { user: owner } = await createJobseeker();
-      const { user: other } = await createJobseeker();
-      const ownerIdHex = owner._id.toString();
-      const filename = `resume-${ownerIdHex}-9999999998.pdf`;
-      fs.mkdirSync(RESUME_DIR, { recursive: true });
-      fs.writeFileSync(path.join(RESUME_DIR, filename), 'OWNER-PDF-PRIVATE');
-
-      try {
-        const response = await request(app)
-          .get(`/api/users/resume/${filename}`)
-          .set(createAuthHeaders(other));
-        expect(response.status).toBe(403);
-      } finally {
-        fs.unlinkSync(path.join(RESUME_DIR, filename));
-      }
-    });
-
-    it('admin can download any resume', async () => {
-      const { user: owner } = await createJobseeker();
-      const { user: admin } = await createAdmin();
-      const ownerIdHex = owner._id.toString();
-      const filename = `resume-${ownerIdHex}-9999999997.pdf`;
-      fs.mkdirSync(RESUME_DIR, { recursive: true });
-      fs.writeFileSync(path.join(RESUME_DIR, filename), 'OWNER-PDF');
-
-      try {
-        const response = await request(app)
-          .get(`/api/users/resume/${filename}`)
-          .set(createAuthHeaders(admin));
-        expect(response.status).toBe(200);
-      } finally {
-        fs.unlinkSync(path.join(RESUME_DIR, filename));
-      }
-    });
-
-    it('rejects path traversal in filename', async () => {
+  // Round O-B retired this route. It served local-disk files (gone since
+  // Cloudinary went live) and accepted JWT via `?token=` query string (leak-
+  // prone). Replaced by POST /api/users/resume/sign which returns signed
+  // Cloudinary URLs; ownership enforcement now lives in
+  // tests/integration/resume-sign.test.js.
+  describe('GET /api/users/resume/:filename — retired in Round O-B', () => {
+    it('returns 410 Gone regardless of caller', async () => {
       const { user } = await createJobseeker();
       const response = await request(app)
-        .get('/api/users/resume/..%2F..%2Fetc%2Fpasswd')
+        .get(`/api/users/resume/resume-${user._id.toString()}-1234567890.pdf`)
         .set(createAuthHeaders(user));
-      // JUSTIFIED: Token/resource lookup — 400 (validator) or 404 (not found in store).
-      expect([400, 404]).toContain(response.status);
+      expect(response.status).toBe(410);
     });
   });
 

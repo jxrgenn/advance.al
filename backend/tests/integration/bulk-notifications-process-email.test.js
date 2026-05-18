@@ -87,14 +87,20 @@ describe('bulk-notifications.js — processNotifications email branches', () => 
     expect(bn.deliveryStats.emailsSent).toBeGreaterThanOrEqual(2);
   }, 15000);
 
-  it('error path: when sendBulkNotificationEmail throws, logError is called + emailsFailed increments (L399-404)', async () => {
+  it('error path: when send returns a NON-transient 4xx (bad payload), emailsFailed increments (L399-404)', async () => {
     const { user: admin } = await createAdmin();
     await createJobseeker({ email: 'js-fail@example.com' });
 
-    // Stub send to throw a Resend-shaped error
+    // Round P: thrown errors and 5xx/429 responses are now caught by
+    // _dispatchSend and queued to EmailOutbox for retry — they count as
+    // successful "queued" sends, not failures. To assert the
+    // permanent-failure code path, stub a non-transient 4xx response
+    // (invalid recipient, bad payload). That's the only path that should
+    // surface immediate failure to callers, since outbox retry can't fix
+    // permanent rejects.
     resendEmailService.resend = {
       emails: {
-        send: async () => { throw new Error('Resend email send failed'); },
+        send: async () => ({ data: null, error: { message: 'invalid recipient', statusCode: 400 } }),
       },
     };
 
@@ -115,5 +121,38 @@ describe('bulk-notifications.js — processNotifications email branches', () => 
     expect(['sent', 'failed']).toContain(bn.status);
     expect(bn.deliveryStats.emailsFailed).toBeGreaterThanOrEqual(1);
     expect(bn.errorLog.length).toBeGreaterThanOrEqual(1);
+  }, 15000);
+
+  it('round-P: transient 429 send is queued to outbox (not counted as failure)', async () => {
+    const { user: admin } = await createAdmin();
+    await createJobseeker({ email: 'js-queue@example.com' });
+
+    // Stub send to return Resend-shaped transient 429 (rate limit)
+    resendEmailService.resend = {
+      emails: {
+        send: async () => ({ data: null, error: { message: 'rate limit', statusCode: 429 } }),
+      },
+    };
+
+    const r = await request(app)
+      .post('/api/bulk-notifications')
+      .set(createAuthHeaders(admin))
+      .send({
+        title: 'Test queued',
+        message: 'Test',
+        type: 'announcement',
+        targetAudience: 'jobseekers',
+        deliveryChannels: { inApp: true, email: true },
+      });
+    expect(r.status).toBe(201);
+
+    const bn = await pollUntilDone(r.body.data.bulkNotification._id);
+    expect(['sent', 'failed']).toContain(bn.status);
+    // Transient failures are auto-queued — they should NOT show as immediate failures.
+    expect(bn.deliveryStats.emailsFailed || 0).toBe(0);
+    // And an outbox row should exist for the retry.
+    const { default: EmailOutbox } = await import('../../src/models/EmailOutbox.js');
+    const queued = await EmailOutbox.countDocuments({ tags: 'bulk_notification', status: 'pending' });
+    expect(queued).toBeGreaterThanOrEqual(1);
   }, 15000);
 });

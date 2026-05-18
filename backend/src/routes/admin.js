@@ -1126,20 +1126,23 @@ router.post('/backfill-job-embeddings', async (req, res) => {
       ]
     }).select('_id title');
 
-    // Round P: switch from queue-based to inline trigger via fireEmbedding.
-    // The trigger has a daily-cap + inflight-cap; counts here reflect kicks issued,
-    // not completions (the retry worker will catch any that get capped/dropped).
+    // Round P: keep JobQueue write for admin UI/audit, AND fire the inline trigger.
+    // The trigger does the actual generation with cost caps + retry guarantees;
+    // the queue row becomes a passive audit record.
     let queued = 0;
     for (const job of jobs) {
       try {
+        await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10);
         fireEmbedding({ kind: 'job', id: job._id, reason: 'admin-backfill' });
         queued++;
-      } catch (_) { /* fireEmbedding never throws synchronously, defense-in-depth */ }
+      } catch (err) {
+        // Already queued or other issue — continue
+      }
     }
 
     res.json({
       success: true,
-      message: `Triggered ${queued}/${jobs.length} jobs for embedding generation`,
+      message: `Queued ${queued}/${jobs.length} jobs for embedding generation`,
       data: { total: jobs.length, queued }
     });
   } catch (error) {

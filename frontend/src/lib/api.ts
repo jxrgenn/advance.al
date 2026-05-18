@@ -806,6 +806,17 @@ export const usersApi = {
     });
   },
 
+  // Round O-B: get a short-lived (~5min) signed Cloudinary download URL for
+  // a resume. The stored URL is no longer publicly accessible — backend
+  // verifies caller is owner / admin / employer-with-application, then mints
+  // a signed URL. Open with window.open(data.url) or fetch+blob for download.
+  signResumeUrl: async (resumeUrl: string): Promise<ApiResponse<{ url: string; expiresAt: number }>> => {
+    return apiRequest<{ url: string; expiresAt: number }>('/users/resume/sign', {
+      method: 'POST',
+      body: JSON.stringify({ resumeUrl }),
+    });
+  },
+
   // GDPR Article 20: Right to Data Portability — fetch full user data as JSON
   exportData: async (): Promise<ApiResponse<any>> => {
     return apiRequest('/users/export');

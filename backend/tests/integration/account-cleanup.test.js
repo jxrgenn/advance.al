@@ -252,4 +252,44 @@ describe('accountCleanup.purgeDeletedAccounts (replSet — supports transactions
     const purged = await purgeDeletedAccounts();
     expect(purged).toBe(1);
   });
+
+  // Round O-B — Cloudinary destroy-on-purge. Previously deleteLocalFile
+  // skipped any URL containing cloudinary.com entirely, leaving deleted
+  // users' assets on Cloudinary forever (GDPR violation). The new
+  // deleteUserAsset routes Cloudinary URLs through deleteFromCloudinary.
+  it('deletes Cloudinary resume + image assets on purge (no longer skipped)', async () => {
+    const { jest } = await import('@jest/globals');
+    // ESM exports are frozen, so spying on the named export of cloudinary.js
+    // fails with "Cannot assign to read only property". Instead, spy on the
+    // SDK call beneath it (`cloudinary.uploader.destroy`) which is a regular
+    // mutable property on the Cloudinary client object.
+    const cloudinaryModule = await import('../../src/config/cloudinary.js');
+    const cloudinary = cloudinaryModule.default;
+    const spy = jest.spyOn(cloudinary.uploader, 'destroy').mockResolvedValue({ result: 'ok' });
+
+    try {
+      const { user } = await createJobseeker();
+      user.profile.jobSeekerProfile.resume = 'https://res.cloudinary.com/dk6jrzkts/raw/authenticated/v123/advance-al/cvs/resume-67890abcdef67890abcdef67-1747000000.pdf';
+      user.profile.jobSeekerProfile.profilePhoto = 'https://res.cloudinary.com/dk6jrzkts/image/upload/v123/advance-al/photos/photo-67890abcdef67890abcdef67.jpg';
+      user.markModified('profile');
+      await softDelete(user, daysAgo(PURGE_DAYS + 1));
+
+      const purged = await purgeDeletedAccounts();
+      expect(purged).toBe(1);
+
+      // Resume: 'raw' resource_type (detected from .pdf), type:'authenticated'
+      // (detected from URL path). publicId is the folder + filename without ext.
+      expect(spy).toHaveBeenCalledWith(
+        'advance-al/cvs/resume-67890abcdef67890abcdef67-1747000000',
+        { resource_type: 'raw', type: 'authenticated' }
+      );
+      // Photo: 'image' resource_type, type:'upload' (photos stay public).
+      expect(spy).toHaveBeenCalledWith(
+        'advance-al/photos/photo-67890abcdef67890abcdef67',
+        { resource_type: 'image', type: 'upload' }
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });

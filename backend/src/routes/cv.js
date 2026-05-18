@@ -11,11 +11,16 @@ import logger from '../config/logger.js';
 import { fireEmbedding } from '../services/embeddingTrigger.js';
 import { incrementAndCheck } from '../lib/dailyQuota.js';
 
-// Pre-deploy audit (O-D): daily cap on CV generation per user. The
-// existing hourly limiter (5/hr) bounds burst spend but not 24h total.
-// 10/day default = ~$0.01/user/day worst case at gpt-4o-mini pricing.
-// Admins bypass; env override via OPENAI_CV_DAILY_CAP.
-const CV_DAILY_CAP = parseInt(process.env.OPENAI_CV_DAILY_CAP, 10) || 10;
+// Cost-cap for CV generation. CV gen uses gpt-4o (~$0.018/CV at typical token usage).
+// Two layers:
+//   - Hourly limit (express-rate-limit): bounds burst spend per user per window
+//   - Daily cap (dailyQuota): bounds 24h spend per user
+// Round P tighten: 2/hr + 5/day. Legit users iterate a few times then settle;
+// abusers can't compound. Admins bypass daily cap. Both env-overridable.
+//   OPENAI_CV_HOURLY_CAP  default 2  (overridable via env if you need to loosen)
+//   OPENAI_CV_DAILY_CAP   default 5
+const CV_HOURLY_CAP = parseInt(process.env.OPENAI_CV_HOURLY_CAP, 10) || 2;
+const CV_DAILY_CAP = parseInt(process.env.OPENAI_CV_DAILY_CAP, 10) || 5;
 
 const router = express.Router();
 
@@ -24,14 +29,14 @@ const router = express.Router();
 // the cost ceiling. Falls back to IP only if (somehow) called pre-auth.
 const cvGenerateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5,
+  max: CV_HOURLY_CAP,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.user?.id || ipKeyGenerator(req),
   skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
   message: {
     success: false,
-    message: 'Keni arritur limitin e gjenerimit të CV. Provoni përsëri pas 1 ore.'
+    message: `Keni arritur limitin e gjenerimit të CV (${CV_HOURLY_CAP}/orë). Provoni përsëri pas 1 ore.`
   }
 });
 

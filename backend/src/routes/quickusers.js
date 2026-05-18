@@ -274,6 +274,10 @@ router.post('/', quickUserLimiter, handleMultipart, quickUserValidation, handleV
           const cloudResult = await uploadToCloudinary(req.file.buffer, {
             folder: 'advance-al/quickuser-cvs',
             resource_type: 'raw',
+            // Round O-B: QuickUser CVs are private too. Admin-only access
+            // via the sign endpoint (QuickUsers aren't full accounts that
+            // can log in, so only admins ever view these resumes).
+            type: 'authenticated',
             public_id: `quickuser-resume-${quickUser._id}-${Date.now()}`,
           });
           resumeUrl = cloudResult.secure_url;

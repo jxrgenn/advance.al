@@ -8,7 +8,7 @@ import { body, validationResult } from 'express-validator';
 import { User, SystemConfiguration } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer, requireAdmin } from '../middleware/auth.js';
 import resendEmailService from '../lib/resendEmailService.js';
-import { uploadToCloudinary, deleteFromCloudinary } from '../config/cloudinary.js';
+import { uploadToCloudinary, deleteFromCloudinary, extractCloudinaryPublicId, signedAuthenticatedDownloadUrl } from '../config/cloudinary.js';
 import logger from '../config/logger.js';
 import { sanitizeLimit, validateObjectId, stripHtml, normalizeOneLine, isObjectIdString } from '../utils/sanitize.js';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
@@ -28,27 +28,20 @@ if (isProduction && !isCloudinaryConfigured()) {
   logger.error('Cloudinary not configured in production — file uploads will be rejected');
 }
 
-// Extract Cloudinary public_id from a Cloudinary URL for deletion
-const extractCloudinaryPublicId = (url) => {
-  if (!url || !url.includes('cloudinary.com')) return null;
-  try {
-    // URL format: https://res.cloudinary.com/<cloud>/image/upload/v123/advance-al/logos/logo-xxx.jpg
-    const parts = url.split('/upload/');
-    if (parts.length < 2) return null;
-    const afterUpload = parts[1].replace(/^v\d+\//, ''); // strip version
-    return afterUpload.replace(/\.[^.]+$/, ''); // strip extension
-  } catch {
-    return null;
-  }
-};
+// Round O-B: extractCloudinaryPublicId moved to config/cloudinary.js so
+// accountCleanup.js and the resume-migration script can reuse it without
+// cross-route imports. Updated version handles `/authenticated/` URLs.
 
-// Safely delete old Cloudinary file (best-effort, don't block upload)
+// Safely delete old Cloudinary file (best-effort, don't block upload).
+// Auto-detects access mode from URL so post-O-B authenticated resumes still
+// get destroyed when the user re-uploads.
 const cleanupOldCloudinaryFile = async (url, resourceType = 'image') => {
   const publicId = extractCloudinaryPublicId(url);
   if (!publicId) return;
+  const type = /\/authenticated\//.test(url) ? 'authenticated' : 'upload';
   try {
-    await deleteFromCloudinary(publicId, resourceType);
-    logger.info('Old file deleted from Cloudinary', { publicId });
+    await deleteFromCloudinary(publicId, resourceType, type);
+    logger.info('Old file deleted from Cloudinary', { publicId, type });
   } catch (err) {
     logger.warn('Failed to delete old Cloudinary file (non-fatal)', { publicId, error: err.message });
   }
@@ -676,6 +669,9 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
         const cloudResult = await uploadToCloudinary(req.file.buffer, {
           folder: 'advance-al/cvs',
           resource_type: 'raw',
+          // Round O-B: resumes are private. Bare URL returns 401; backend
+          // mints short-lived signed URLs via POST /api/users/resume/sign.
+          type: 'authenticated',
           public_id: `resume-${req.user._id}-${Date.now()}`,
         });
         resumeUrl = cloudResult.secure_url;
@@ -787,6 +783,92 @@ router.delete('/resume', authenticate, requireJobSeeker, async (req, res) => {
       success: false,
       message: 'Gabim në fshirjen e CV-së'
     });
+  }
+});
+
+// Round O-B: Rate limiter for the resume-sign endpoint. 30/hr per authenticated
+// user. Caps two abuse modes: (a) a malicious employer enumerating resume URLs
+// after holding a single applicant relationship; (b) a runaway client loop
+// hammering the signing call. Key on user-id (rotated IPs/Tor can't bypass).
+const resumeSignLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: process.env.NODE_ENV === 'development' ? 1000 : 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?._id?.toString() || ipKeyGenerator(req),
+  skip: () =>
+    process.env.NODE_ENV !== 'production' &&
+    process.env.SKIP_RATE_LIMIT === 'true',
+  message: {
+    success: false,
+    message: 'Shumë kërkesa për nënshkrim URL-je. Provoni përsëri pas një ore.',
+  },
+  validate: { trustProxy: false, xForwardedForHeader: false },
+});
+
+// Validates the shape of a stored Cloudinary resume URL and returns the owner
+// userId encoded in the filename. Pattern: `resume-<24hex>-<unix-ms>`.
+function ownerIdFromResumeUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  const publicId = extractCloudinaryPublicId(url);
+  if (!publicId) return null;
+  // Last path segment is the filename without extension; verify it matches.
+  const filename = publicId.split('/').pop() || '';
+  const m = filename.match(/^resume-([a-f0-9]{24})-\d+$/i);
+  return m ? m[1] : null;
+}
+
+// @route   POST /api/users/resume/sign
+// @desc    Mint a short-lived signed Cloudinary download URL for a resume.
+//          Replaces the public-by-default upload model — `type: 'authenticated'`
+//          resumes return 401 on a bare GET. Backend does the authz check then
+//          gives back a 5-min URL only authorized callers can use.
+// @access  Private (resume owner, admin, or employer with an active application
+//          from the owner). Rate-limited per user (30/hr).
+router.post('/resume/sign', authenticate, resumeSignLimiter, async (req, res) => {
+  try {
+    const { resumeUrl } = req.body || {};
+    if (!resumeUrl || typeof resumeUrl !== 'string' || !resumeUrl.includes('cloudinary.com')) {
+      return res.status(400).json({ success: false, message: 'URL-ja e CV nuk është e vlefshme' });
+    }
+    const ownerId = ownerIdFromResumeUrl(resumeUrl);
+    if (!ownerId) {
+      return res.status(400).json({ success: false, message: 'URL-ja e CV nuk është e vlefshme' });
+    }
+
+    const callerId = req.user._id.toString();
+    let authorized = false;
+    if (callerId === ownerId) {
+      authorized = true;
+    } else if (req.user.userType === 'admin') {
+      authorized = true;
+    } else if (req.user.userType === 'employer') {
+      const { Application } = await import('../models/index.js');
+      const hasApplication = await Application.exists({
+        jobSeekerId: ownerId,
+        employerId: req.user._id,
+        withdrawn: false,
+      });
+      if (hasApplication) authorized = true;
+    }
+
+    if (!authorized) {
+      return res.status(403).json({ success: false, message: 'Nuk keni të drejtë ta shikoni këtë CV' });
+    }
+
+    const publicId = extractCloudinaryPublicId(resumeUrl);
+    // Cloudinary's private_download_url infers extension from the format
+    // argument; pass the actual extension we stored (pdf | docx | doc).
+    const extMatch = resumeUrl.match(/\.([a-z0-9]+)(?:\?|$)/i);
+    const format = extMatch ? extMatch[1].toLowerCase() : 'pdf';
+    const ttlSeconds = 300; // 5 minutes
+    const url = signedAuthenticatedDownloadUrl(publicId, { format, resourceType: 'raw', ttlSeconds });
+    const expiresAt = Math.floor(Date.now() / 1000) + ttlSeconds;
+
+    return res.json({ success: true, data: { url, expiresAt } });
+  } catch (err) {
+    logger.error('resume/sign error:', err.message);
+    return res.status(500).json({ success: false, message: 'Gabim në nënshkrimin e URL-së' });
   }
 });
 
@@ -1920,104 +2002,19 @@ router.get('/saved-jobs/check/:jobId', authenticate, requireJobSeeker, async (re
 });
 
 // @route   GET /api/users/resume/:filename
-// @desc    Serve uploaded resume files (authenticated, supports ?token= for new-tab viewing)
-// @access  Private
-router.get('/resume/:filename', (req, res, next) => {
-  // Support token in query param for new-tab opens (can't set headers in window.open)
-  if (!req.headers.authorization && req.query.token) {
-    req.headers.authorization = `Bearer ${req.query.token}`;
-  }
-  next();
-}, authenticate, async (req, res) => {
-  const { filename } = req.params;
-
-  // Sanitize filename — reject path traversal attempts
-  if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-    return res.status(400).json({
-      success: false,
-      message: 'Emri i skedarit nuk është i vlefshëm'
-    });
-  }
-
-  // Filename pattern: resume-<userId>-<timestamp>.<ext>
-  // Authorize: owner, admin, or an employer who has at least one application from this jobseeker.
-  const ownerIdMatch = filename.match(/^resume-([a-f0-9]{24})-/i);
-  if (!ownerIdMatch) {
-    return res.status(400).json({
-      success: false,
-      message: 'Emri i skedarit nuk është i vlefshëm'
-    });
-  }
-  const ownerId = ownerIdMatch[1];
-  const callerId = req.user._id.toString();
-
-  let authorized = false;
-  if (callerId === ownerId) {
-    authorized = true;
-  } else if (req.user.userType === 'admin') {
-    authorized = true;
-  } else if (req.user.userType === 'employer') {
-    const { Application } = await import('../models/index.js');
-    const hasApplication = await Application.exists({
-      jobSeekerId: ownerId,
-      employerId: req.user._id,
-      withdrawn: false
-    });
-    if (hasApplication) authorized = true;
-  }
-
-  if (!authorized) {
-    return res.status(403).json({
-      success: false,
-      message: 'Nuk keni të drejtë ta shikoni këtë skedar'
-    });
-  }
-
-  const filePath = path.join(process.cwd(), 'uploads', 'resumes', filename);
-
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({
-      success: false,
-      message: 'Skedari nuk u gjet'
-    });
-  }
-
-  // Detect content type from extension
-  const ext = path.extname(filename).toLowerCase();
-
-  if (ext === '.docx') {
-    // Convert DOCX to HTML so browsers can display it in a new tab
-    try {
-      const buffer = fs.readFileSync(filePath);
-      const result = await mammoth.convertToHtml({ buffer });
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>CV</title><style>body{font-family:Arial,sans-serif;max-width:800px;margin:40px auto;padding:0 20px;line-height:1.6;color:#333}h1,h2,h3{color:#1a1a1a}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px}</style></head><body>${result.value}</body></html>`;
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      res.send(html);
-    } catch (err) {
-      logger.error('DOCX conversion error:', err.message);
-      res.status(500).json({ success: false, message: 'Gabim në leximin e skedarit' });
-    }
-  } else {
-    const mimeMap = {
-      '.pdf': 'application/pdf',
-      '.doc': 'application/msword'
-    };
-    res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-
-    const stream = fs.createReadStream(filePath);
-    /* istanbul ignore next — stream error handler; fs.existsSync above guarantees the file is readable in tests */
-    stream.on('error', (err) => {
-      logger.error('Resume file stream error:', err.message);
-      if (!res.headersSent) {
-        res.status(500).json({
-          success: false,
-          message: 'Gabim në leximin e skedarit'
-        });
-      }
-    });
-    stream.pipe(res);
-  }
+// @desc    DEPRECATED (Round O-B). Always returns 410 Gone.
+//          The old behavior served local-disk files (which haven't existed in
+//          production since Cloudinary went live) and accepted the JWT in a
+//          ?token= query string (audit item #8 — JWT in URL is leak-prone).
+//          Use POST /api/users/resume/sign instead — gets a short-lived
+//          signed Cloudinary URL via authenticated request body.
+// @access  Public (returns 410 unconditionally to clients on stale code paths)
+router.get('/resume/:filename', (req, res) => {
+  return res.status(410).json({
+    success: false,
+    message: 'Ky endpoint nuk është më në përdorim. Përdorni POST /api/users/resume/sign.',
+    code: 'RESUME_ENDPOINT_DEPRECATED',
+  });
 });
 
 // ─── Cookie Consent (GDPR compliance) ────────────────────────────────────

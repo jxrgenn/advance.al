@@ -772,22 +772,36 @@ const EmployerDashboard = () => {
     }
   };
 
-  const getResumeUrl = (cvUrl: string): string => {
-    if (cvUrl.startsWith('http')) return cvUrl;
-    const filename = cvUrl.split('/').pop();
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-    return `${apiUrl}/users/resume/${filename}`;
+  // Round O-B: stored resume URLs are now Cloudinary `type: 'authenticated'`
+  // — bare GET returns 401. Backend mints short-lived signed URLs via
+  // /api/users/resume/sign after authz check (owner / admin / employer with
+  // an application from the jobseeker).
+  const resolveResumeUrl = async (cvUrl: string): Promise<string> => {
+    if (!cvUrl) throw new Error('CV URL not found');
+    // Cloudinary authenticated URL → sign via backend
+    if (cvUrl.includes('cloudinary.com')) {
+      const r = await usersApi.signResumeUrl(cvUrl);
+      if (!r.success || !r.data?.url) {
+        const msg = r.message || 'Nuk keni qasje në këtë CV';
+        throw new Error(msg);
+      }
+      return r.data.url;
+    }
+    // Legacy local-disk path (dev only) — should never happen in prod
+    if (cvUrl.startsWith('/')) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+      return `${apiUrl}/users/resume/${cvUrl.split('/').pop()}`;
+    }
+    return cvUrl;
   };
 
   const handleDownloadCV = async (cvUrl: string, applicantName: string) => {
     try {
       setDownloadingCV(true);
-      if (!cvUrl) throw new Error('CV URL not found');
-
-      const fullUrl = getResumeUrl(cvUrl);
-      const response = await fetch(fullUrl, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
-      });
+      const signedUrl = await resolveResumeUrl(cvUrl);
+      // Cloudinary signed URLs work without our Authorization header — the
+      // sign verb already happened server-side.
+      const response = await fetch(signedUrl);
       if (!response.ok) throw new Error(`CV nuk u gjet (${response.status})`);
 
       const blob = await response.blob();
@@ -821,11 +835,8 @@ const EmployerDashboard = () => {
 
   const handleViewCV = async (cvUrl: string) => {
     try {
-      if (!cvUrl) throw new Error('CV URL not found');
-      const fullUrl = getResumeUrl(cvUrl);
-      const response = await fetch(fullUrl, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
-      });
+      const signedUrl = await resolveResumeUrl(cvUrl);
+      const response = await fetch(signedUrl);
       if (!response.ok) throw new Error(`CV nuk u gjet (${response.status})`);
       const blob = await response.blob();
       const blobUrl = URL.createObjectURL(blob);

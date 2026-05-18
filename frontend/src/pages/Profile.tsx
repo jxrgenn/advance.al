@@ -1908,15 +1908,22 @@ const Profile = () => {
                             onClick={async () => {
                               if (!currentCV) return;
                               try {
-                                let url: string;
-                                if (currentCV.startsWith('http')) {
-                                  url = currentCV;
-                                } else {
-                                  const filename = currentCV.split('/').pop();
+                                // Round O-B: Cloudinary resumes are `type: 'authenticated'`
+                                // — bare URL returns 401. Get a 5-min signed URL via backend
+                                // (which verifies caller is the owner).
+                                let downloadUrl: string;
+                                if (currentCV.includes('cloudinary.com')) {
+                                  const r = await usersApi.signResumeUrl(currentCV);
+                                  if (!r.success || !r.data?.url) throw new Error(r.message || 'Nuk keni qasje në këtë CV');
+                                  downloadUrl = r.data.url;
+                                } else if (currentCV.startsWith('/')) {
+                                  // Legacy dev-only local-disk path
                                   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-                                  url = `${apiUrl}/users/resume/${filename}`;
+                                  downloadUrl = `${apiUrl}/users/resume/${currentCV.split('/').pop()}`;
+                                } else {
+                                  downloadUrl = currentCV;
                                 }
-                                const res = await fetch(url, { headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` } });
+                                const res = await fetch(downloadUrl);
                                 if (!res.ok) throw new Error('CV nuk u gjet');
                                 const blob = await res.blob();
                                 const blobUrl = URL.createObjectURL(blob);
@@ -1924,7 +1931,7 @@ const Profile = () => {
                                 if (win) {
                                   setTimeout(() => { URL.revokeObjectURL(blobUrl); }, 10000);
                                 }
-                              } catch { toast({ title: "Gabim", description: "CV nuk mund të hapet", variant: "destructive" }); }
+                              } catch (err: any) { toast({ title: "Gabim", description: err?.message || "CV nuk mund të hapet", variant: "destructive" }); }
                             }}
                             className="mr-2"
                           >

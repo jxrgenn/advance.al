@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { adminApi, reportsApi, isAuthenticated, getUserType, User } from "@/lib/api";
+import { adminApi, reportsApi, isAuthenticated, getUserType, User, usersApi } from "@/lib/api";
 import {
   CheckCircle, XCircle, Clock, Building, MapPin, Mail, Phone,
   Users, Briefcase, TrendingUp, TrendingDown, DollarSign,
@@ -385,6 +385,24 @@ const ConfigurationSetting = ({ setting, onUpdate, onReset }: any) => {
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Round O-B: resumes are Cloudinary `type: 'authenticated'`. Bare URL = 401.
+  // Get a signed URL via the backend (which verifies the caller is admin)
+  // then open in a new tab.
+  const handleViewResume = async (resumeUrl: string) => {
+    try {
+      if (!resumeUrl) return;
+      const r = await usersApi.signResumeUrl(resumeUrl);
+      if (!r.success || !r.data?.url) {
+        toast({ title: 'Gabim', description: r.message || 'CV-ja nuk mund të hapet', variant: 'destructive' });
+        return;
+      }
+      window.open(r.data.url, '_blank', 'noopener,noreferrer');
+    } catch (err: any) {
+      toast({ title: 'Gabim', description: err?.message || 'CV-ja nuk mund të hapet', variant: 'destructive' });
+    }
+  };
+
   const [pendingEmployers, setPendingEmployers] = useState<User[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -2352,15 +2370,14 @@ const AdminDashboard = () => {
                             {user.profile.jobSeekerProfile.resume && (
                               <>
                                 <span>•</span>
-                                <a
-                                  href={user.profile.jobSeekerProfile.resume}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleViewResume(user.profile.jobSeekerProfile!.resume!); }}
                                   className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline"
                                 >
                                   <Download className="h-3 w-3" />
                                   Shkarko CV
-                                </a>
+                                </button>
                               </>
                             )}
                           </div>
@@ -2591,15 +2608,14 @@ const AdminDashboard = () => {
                           {user.profile.jobSeekerProfile.resume && (
                             <>
                               <span>•</span>
-                              <a
-                                href={user.profile.jobSeekerProfile.resume}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleViewResume(user.profile.jobSeekerProfile!.resume!); }}
                                 className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline"
                               >
                                 <Download className="h-3 w-3" />
                                 CV
-                              </a>
+                              </button>
                             </>
                           )}
                         </div>
@@ -3322,15 +3338,14 @@ const AdminDashboard = () => {
                       {selectedUserForDetails.profile.jobSeekerProfile.resume ? (
                         <>
                           <span className="text-green-600">Ngarkuar</span>
-                          <a
-                            href={selectedUserForDetails.profile.jobSeekerProfile.resume}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => handleViewResume(selectedUserForDetails.profile.jobSeekerProfile!.resume!)}
                             className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline text-sm"
                           >
                             <Download className="h-3 w-3" />
                             Shkarko CV
-                          </a>
+                          </button>
                         </>
                       ) : (
                         <span>Nuk është ngarkuar</span>

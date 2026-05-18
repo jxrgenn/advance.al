@@ -68,7 +68,15 @@ class ResendEmailService {
   // the caller sees failure and we don't waste outbox space on permanent rejects.
   _classifyResendResult(emailResult, thrownError) {
     if (thrownError) {
-      return { transient: true, error: thrownError.message };
+      // Thrown errors are treated as NON-transient. _sendWithRetry already
+      // retried once with 2s delay (catches network blips). A second throw
+      // is usually programmer-error (missing API key, malformed args) or
+      // a persistent outage — neither of which the outbox should keep
+      // retrying pointlessly until dead-letter. Surface to caller's
+      // try/catch instead. Resend's actual transient failures (429/5xx)
+      // come back as { error: { statusCode } } objects, not thrown, and
+      // are handled by the structured branch below.
+      return { transient: false, error: thrownError.message };
     }
     if (emailResult?.error) {
       const err = emailResult.error;
@@ -299,22 +307,27 @@ Faleminderit që na zgjodht!
 advance.al - Platforma e Punës në Shqipëri
       `;
 
-      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+      const dispatchResult = await this._dispatchSend({
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(user.email),
         subject: subject,
         html: htmlContent,
         text: textContent,
-      }));
+      }, { tags: ['welcome', 'full_account'], userId: user._id, userType: 'user' });
 
-      if (emailResult.error) {
-        logger.error('Resend error:', emailResult.error);
-        throw new Error('Failed to send email via Resend');
+      if (!dispatchResult.success) {
+        // Preserve original throw-on-failure contract so callers' try/catch
+        // (e.g. bulk-notifications, application status) can count this as
+        // a delivery failure. Only fires for NON-transient rejects (4xx bad
+        // payload) — transient errors are queued to outbox and never throw.
+        // Message starts with "Email send" so existing callers that classify
+        // failures via .includes('email') still route this as an email error.
+        throw new Error(`Failed to send email via Resend: ${dispatchResult.error || 'unknown'}`);
       }
-
       return {
         success: true,
-        emailId: emailResult.data?.id
+        emailId: dispatchResult.messageId,
+        ...(dispatchResult.queued ? { queued: true, outboxId: dispatchResult.outboxId } : {}),
       };
 
     } catch (error) {
@@ -450,22 +463,27 @@ Faleminderit që na zgjodht!
 advance.al - Platforma e Punës në Shqipëri
       `;
 
-      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+      const dispatchResult = await this._dispatchSend({
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(user.email),
         subject: subject,
         html: htmlContent,
         text: textContent,
-      }));
+      }, { tags: ['welcome', 'quickuser'], userId: user._id, userType: 'quickuser' });
 
-      if (emailResult.error) {
-        logger.error('Resend error:', emailResult.error);
-        throw new Error('Failed to send email via Resend');
+      if (!dispatchResult.success) {
+        // Preserve original throw-on-failure contract so callers' try/catch
+        // (e.g. bulk-notifications, application status) can count this as
+        // a delivery failure. Only fires for NON-transient rejects (4xx bad
+        // payload) — transient errors are queued to outbox and never throw.
+        // Message starts with "Email send" so existing callers that classify
+        // failures via .includes('email') still route this as an email error.
+        throw new Error(`Failed to send email via Resend: ${dispatchResult.error || 'unknown'}`);
       }
-
       return {
         success: true,
-        emailId: emailResult.data?.id
+        emailId: dispatchResult.messageId,
+        ...(dispatchResult.queued ? { queued: true, outboxId: dispatchResult.outboxId } : {}),
       };
 
     } catch (error) {
@@ -641,22 +659,27 @@ Mbështetje: Nëse keni pyetje rreth këtij vendimi, na kontaktoni në support@a
 advance.al - Platforma e Punës në Shqipëri
       `;
 
-      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+      const dispatchResult = await this._dispatchSend({
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(user.email),
         subject: details.subject,
         html: htmlContent,
         text: textContent,
-      }));
+      }, { tags: ['account_action', String(action)], userId: user._id, userType: 'user' });
 
-      if (emailResult.error) {
-        logger.error('Resend error:', emailResult.error);
-        throw new Error('Failed to send account action email via Resend');
+      if (!dispatchResult.success) {
+        // Preserve original throw-on-failure contract so callers' try/catch
+        // (e.g. bulk-notifications, application status) can count this as
+        // a delivery failure. Only fires for NON-transient rejects (4xx bad
+        // payload) — transient errors are queued to outbox and never throw.
+        // Message starts with "Email send" so existing callers that classify
+        // failures via .includes('email') still route this as an email error.
+        throw new Error(`Failed to send email via Resend: ${dispatchResult.error || 'unknown'}`);
       }
-
       return {
         success: true,
-        emailId: emailResult.data?.id
+        emailId: dispatchResult.messageId,
+        ...(dispatchResult.queued ? { queued: true, outboxId: dispatchResult.outboxId } : {}),
       };
 
     } catch (error) {
@@ -773,7 +796,7 @@ Shko te advance.al: https://advance.al
 Ky email u dërgua në ${toEmail}
 `;
 
-      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+      const dispatchResult = await this._dispatchSend({
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(toEmail),
         subject: subject,
@@ -782,16 +805,21 @@ Ky email u dërgua në ${toEmail}
         headers: {
           'X-Entity-Ref-ID': `bulk-notification-${Date.now()}`
         }
-      }));
+      }, { tags: ['bulk_notification', String(notificationData?.type || 'unknown')] });
 
-      if (emailResult.error) {
-        logger.error('Resend error:', emailResult.error);
-        throw new Error('Failed to send bulk notification email via Resend');
+      if (!dispatchResult.success) {
+        // Preserve original throw-on-failure contract so callers' try/catch
+        // (e.g. bulk-notifications, application status) can count this as
+        // a delivery failure. Only fires for NON-transient rejects (4xx bad
+        // payload) — transient errors are queued to outbox and never throw.
+        // Message starts with "Email send" so existing callers that classify
+        // failures via .includes('email') still route this as an email error.
+        throw new Error(`Failed to send email via Resend: ${dispatchResult.error || 'unknown'}`);
       }
-
       return {
         success: true,
-        emailId: emailResult.data?.id
+        emailId: dispatchResult.messageId,
+        ...(dispatchResult.queued ? { queued: true, outboxId: dispatchResult.outboxId } : {}),
       };
 
     } catch (error) {
@@ -935,22 +963,27 @@ Shiko aplikimin dhe përgjigju: https://advance.al/applications
 advance.al - Platforma e Punës në Shqipëri
       `;
 
-      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+      const dispatchResult = await this._dispatchSend({
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(recipient.email),
         subject,
         html: htmlContent,
         text: textContent,
-      }));
+      }, { tags: ['application_message', String(messageType || 'text')], userId: recipient._id, userType: 'user', jobId: job?._id });
 
-      if (emailResult.error) {
-        logger.error('Resend application message error:', emailResult.error);
-        throw new Error('Failed to send application message email via Resend');
+      if (!dispatchResult.success) {
+        // Preserve original throw-on-failure contract so callers' try/catch
+        // (e.g. bulk-notifications, application status) can count this as
+        // a delivery failure. Only fires for NON-transient rejects (4xx bad
+        // payload) — transient errors are queued to outbox and never throw.
+        // Message starts with "Email send" so existing callers that classify
+        // failures via .includes('email') still route this as an email error.
+        throw new Error(`Failed to send email via Resend: ${dispatchResult.error || 'unknown'}`);
       }
-
       return {
         success: true,
-        emailId: emailResult.data?.id
+        emailId: dispatchResult.messageId,
+        ...(dispatchResult.queued ? { queued: true, outboxId: dispatchResult.outboxId } : {}),
       };
 
     } catch (error) {
@@ -1032,20 +1065,28 @@ Ky link do të skadojë pas 1 ore. Nëse nuk e keni kërkuar këtë, injoroni k�
 --
 advance.al - Platforma e Punës në Shqipëri`;
 
-      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+      const dispatchResult = await this._dispatchSend({
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(user.email),
         subject,
         html: htmlContent,
         text: textContent,
-      }));
+      }, { tags: ['password_reset'], userId: user._id, userType: 'user' });
 
-      if (emailResult.error) {
-        logger.error('Resend password reset error:', emailResult.error);
-        throw new Error('Failed to send password reset email via Resend');
+      if (!dispatchResult.success) {
+        // Preserve original throw-on-failure contract so callers' try/catch
+        // (e.g. bulk-notifications, application status) can count this as
+        // a delivery failure. Only fires for NON-transient rejects (4xx bad
+        // payload) — transient errors are queued to outbox and never throw.
+        // Message starts with "Email send" so existing callers that classify
+        // failures via .includes('email') still route this as an email error.
+        throw new Error(`Failed to send email via Resend: ${dispatchResult.error || 'unknown'}`);
       }
-
-      return { success: true, emailId: emailResult.data?.id };
+      return {
+        success: true,
+        emailId: dispatchResult.messageId,
+        ...(dispatchResult.queued ? { queued: true, outboxId: dispatchResult.outboxId } : {}),
+      };
     } catch (error) {
       logger.error('Error sending password reset email:', error.message);
       throw error;
@@ -1129,20 +1170,28 @@ Hapi tjetër: Llogaria juaj do të verifikohet nga administratori. Do të merrni
 --
 advance.al - Platforma e Punës në Shqipëri`;
 
-      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+      const dispatchResult = await this._dispatchSend({
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(user.email),
         subject,
         html: htmlContent,
         text: textContent,
-      }));
+      }, { tags: ['welcome', 'employer'], userId: user._id, userType: 'user' });
 
-      if (emailResult.error) {
-        logger.error('Resend employer welcome error:', emailResult.error);
-        throw new Error('Failed to send employer welcome email via Resend');
+      if (!dispatchResult.success) {
+        // Preserve original throw-on-failure contract so callers' try/catch
+        // (e.g. bulk-notifications, application status) can count this as
+        // a delivery failure. Only fires for NON-transient rejects (4xx bad
+        // payload) — transient errors are queued to outbox and never throw.
+        // Message starts with "Email send" so existing callers that classify
+        // failures via .includes('email') still route this as an email error.
+        throw new Error(`Failed to send email via Resend: ${dispatchResult.error || 'unknown'}`);
       }
-
-      return { success: true, emailId: emailResult.data?.id };
+      return {
+        success: true,
+        emailId: dispatchResult.messageId,
+        ...(dispatchResult.queued ? { queued: true, outboxId: dispatchResult.outboxId } : {}),
+      };
     } catch (error) {
       logger.error('Error sending employer welcome email:', error.message);
       throw error;
@@ -1222,20 +1271,28 @@ Shiko aplikimet tuaja: https://advance.al/profile
 --
 advance.al`;
 
-      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+      const dispatchResult = await this._dispatchSend({
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(applicant.email),
         subject,
         html: htmlContent,
         text: textContent,
-      }));
+      }, { tags: ['application_status', String(newStatus)], userId: applicant._id, userType: 'user', jobId: job?._id });
 
-      if (emailResult.error) {
-        logger.error('Resend application status error:', emailResult.error);
-        throw new Error('Failed to send application status email');
+      if (!dispatchResult.success) {
+        // Preserve original throw-on-failure contract so callers' try/catch
+        // (e.g. bulk-notifications, application status) can count this as
+        // a delivery failure. Only fires for NON-transient rejects (4xx bad
+        // payload) — transient errors are queued to outbox and never throw.
+        // Message starts with "Email send" so existing callers that classify
+        // failures via .includes('email') still route this as an email error.
+        throw new Error(`Failed to send email via Resend: ${dispatchResult.error || 'unknown'}`);
       }
-
-      return { success: true, emailId: emailResult.data?.id };
+      return {
+        success: true,
+        emailId: dispatchResult.messageId,
+        ...(dispatchResult.queued ? { queued: true, outboxId: dispatchResult.outboxId } : {}),
+      };
     } catch (error) {
       logger.error('Error sending application status email:', error.message);
       throw error;
@@ -1301,20 +1358,28 @@ Shiko aplikimin: https://advance.al/employer-dashboard
 --
 advance.al`;
 
-      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+      const dispatchResult = await this._dispatchSend({
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(employer.email),
         subject,
         html: htmlContent,
         text: textContent,
-      }));
+      }, { tags: ['new_application'], userId: employer._id, userType: 'user', jobId: job?._id });
 
-      if (emailResult.error) {
-        logger.error('Resend new application error:', emailResult.error);
-        throw new Error('Failed to send new application email');
+      if (!dispatchResult.success) {
+        // Preserve original throw-on-failure contract so callers' try/catch
+        // (e.g. bulk-notifications, application status) can count this as
+        // a delivery failure. Only fires for NON-transient rejects (4xx bad
+        // payload) — transient errors are queued to outbox and never throw.
+        // Message starts with "Email send" so existing callers that classify
+        // failures via .includes('email') still route this as an email error.
+        throw new Error(`Failed to send email via Resend: ${dispatchResult.error || 'unknown'}`);
       }
-
-      return { success: true, emailId: emailResult.data?.id };
+      return {
+        success: true,
+        emailId: dispatchResult.messageId,
+        ...(dispatchResult.queued ? { queued: true, outboxId: dispatchResult.outboxId } : {}),
+      };
     } catch (error) {
       logger.error('Error sending new application email:', error.message);
       throw error;
@@ -1443,14 +1508,22 @@ advance.al`;
         }];
       }
 
-      const emailResult = await this._sendWithRetry(() => this.resend.emails.send(sendArgs));
+      const dispatchResult = await this._dispatchSend(sendArgs, { tags: ['payment_receipt', String(tier || 'unknown')] });
 
-      if (emailResult.error) {
-        logger.error('Resend payment receipt error:', emailResult.error);
-        throw new Error('Failed to send payment receipt email');
+      if (!dispatchResult.success) {
+        // Preserve original throw-on-failure contract so callers' try/catch
+        // (e.g. bulk-notifications, application status) can count this as
+        // a delivery failure. Only fires for NON-transient rejects (4xx bad
+        // payload) — transient errors are queued to outbox and never throw.
+        // Message starts with "Email send" so existing callers that classify
+        // failures via .includes('email') still route this as an email error.
+        throw new Error(`Failed to send email via Resend: ${dispatchResult.error || 'unknown'}`);
       }
-
-      return { success: true, emailId: emailResult.data?.id };
+      return {
+        success: true,
+        emailId: dispatchResult.messageId,
+        ...(dispatchResult.queued ? { queued: true, outboxId: dispatchResult.outboxId } : {}),
+      };
     } catch (error) {
       logger.error('Error sending payment receipt email:', error.message);
       return { success: false, error: error.message };
@@ -1572,20 +1645,28 @@ Nëse nuk dëshiron më ta publikosh, mund ta fshish nga paneli i punëdhënësi
 --
 advance.al`;
 
-      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+      const dispatchResult = await this._dispatchSend({
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(to),
         subject,
         html: htmlContent,
         text: textContent,
-      }));
+      }, { tags: ['payment_reminder', `level_${level}`], jobId });
 
-      if (emailResult.error) {
-        logger.error('Resend payment reminder error:', emailResult.error);
-        throw new Error('Failed to send payment reminder email');
+      if (!dispatchResult.success) {
+        // Preserve original throw-on-failure contract so callers' try/catch
+        // (e.g. bulk-notifications, application status) can count this as
+        // a delivery failure. Only fires for NON-transient rejects (4xx bad
+        // payload) — transient errors are queued to outbox and never throw.
+        // Message starts with "Email send" so existing callers that classify
+        // failures via .includes('email') still route this as an email error.
+        throw new Error(`Failed to send email via Resend: ${dispatchResult.error || 'unknown'}`);
       }
-
-      return { success: true, emailId: emailResult.data?.id };
+      return {
+        success: true,
+        emailId: dispatchResult.messageId,
+        ...(dispatchResult.queued ? { queued: true, outboxId: dispatchResult.outboxId } : {}),
+      };
     } catch (error) {
       logger.error('Error sending payment reminder email:', error.message);
       return { success: false, error: error.message };
@@ -1656,20 +1737,28 @@ ${rowsText}
 
 Each job is alerted at most once. To re-alert, clear Job.paymentTimeoutAlertedAt.`;
 
-      const emailResult = await this._sendWithRetry(() => this.resend.emails.send({
+      const dispatchResult = await this._dispatchSend({
         from: process.env.EMAIL_FROM || 'advance.al <noreply@advance.al>',
         to: this.getRecipientEmail(to),
         subject,
         html: htmlContent,
         text: textContent,
-      }));
+      }, { tags: ['admin_alert', 'payment_timeout'] });
 
-      if (emailResult.error) {
-        logger.error('Resend admin payment-timeout alert error:', emailResult.error);
-        throw new Error('Failed to send admin payment-timeout alert');
+      if (!dispatchResult.success) {
+        // Preserve original throw-on-failure contract so callers' try/catch
+        // (e.g. bulk-notifications, application status) can count this as
+        // a delivery failure. Only fires for NON-transient rejects (4xx bad
+        // payload) — transient errors are queued to outbox and never throw.
+        // Message starts with "Email send" so existing callers that classify
+        // failures via .includes('email') still route this as an email error.
+        throw new Error(`Failed to send email via Resend: ${dispatchResult.error || 'unknown'}`);
       }
-
-      return { success: true, emailId: emailResult.data?.id };
+      return {
+        success: true,
+        emailId: dispatchResult.messageId,
+        ...(dispatchResult.queued ? { queued: true, outboxId: dispatchResult.outboxId } : {}),
+      };
     } catch (error) {
       logger.error('Error sending admin payment-timeout alert:', error.message);
       return { success: false, error: error.message };
