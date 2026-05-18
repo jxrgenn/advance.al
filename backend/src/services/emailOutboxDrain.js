@@ -25,7 +25,7 @@ import EmailOutbox from '../models/EmailOutbox.js';
 import User from '../models/User.js';
 import QuickUser from '../models/QuickUser.js';
 import resendEmailService from '../lib/resendEmailService.js';
-import discord from '../lib/discordNotifier.js';
+import discord from './discordNotifier.js';
 import logger from '../config/logger.js';
 
 const DRAIN_INTERVAL_MS = parseInt(process.env.EMAIL_OUTBOX_DRAIN_INTERVAL_MS || '30000', 10);
@@ -135,12 +135,14 @@ export async function drainOnce() {
           outboxId: String(row._id), error: row.lastError, tags: row.tags,
         });
         try {
-          await discord.notifyDiscord('alerts', {
+          discord.notifyDiscord({
+            channel: 'alerts',
             title: '💀 Email dead-lettered (permanent reject)',
             description: `Outbox ${String(row._id)} — ${row.lastError}`,
             fields: [{ name: 'tags', value: (row.tags || []).join(', ') || '—' }],
             color: 0xb91c1c,
-          }, `dead:${String(row._id)}`);
+            dedupKey: `dead:${String(row._id)}`,
+          });
         } catch (_) { /* alert best-effort */ }
         continue;
       }
@@ -154,12 +156,14 @@ export async function drainOnce() {
           outboxId: String(row._id), attempts: row.attempts, error: row.lastError, tags: row.tags,
         });
         try {
-          await discord.notifyDiscord('alerts', {
+          discord.notifyDiscord({
+            channel: 'alerts',
             title: '💀 Email dead-lettered (max retries)',
             description: `Outbox ${String(row._id)} failed ${row.attempts} times. Last: ${row.lastError}`,
             fields: [{ name: 'tags', value: (row.tags || []).join(', ') || '—' }],
             color: 0xb91c1c,
-          }, `dead:${String(row._id)}`);
+            dedupKey: `dead:${String(row._id)}`,
+          });
         } catch (_) { /* alert best-effort */ }
         continue;
       }

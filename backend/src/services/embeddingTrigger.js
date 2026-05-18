@@ -68,12 +68,14 @@ export function fireEmbedding({ kind, id, reason, extraMetadata = {} }) {
       logger.warn('fireEmbedding inflight cap hit — dropping kick', { kind, id: idStr, reason, inflightCount, cap: INFLIGHT_CAP });
       // One-line Discord alert (deduped by recent inflight signal so we don't spam)
       try {
-        const { default: discord } = await import('../lib/discordNotifier.js');
-        await discord.notifyDiscord('alerts', {
+        const { notifyDiscord } = await import('./discordNotifier.js');
+        notifyDiscord({
+          channel: 'alerts',
           title: '⚠️ Embedding inflight cap',
           description: `Cap=${INFLIGHT_CAP}. Reason=${reason}. Kind=${kind}.`,
           color: 0xf59e0b,
-        }, 'embed-inflight-cap');
+          dedupKey: 'embed-inflight-cap',
+        });
       } catch (_) { /* alert is best-effort */ }
       return;
     }

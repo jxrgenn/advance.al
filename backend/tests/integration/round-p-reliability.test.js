@@ -22,7 +22,7 @@ import resendEmailService from '../../src/lib/resendEmailService.js';
 import notificationService from '../../src/lib/notificationService.js';
 import { drainOnce } from '../../src/services/emailOutboxDrain.js';
 import { retryStuckNotifications } from '../../src/services/embeddingRetryWorker.js';
-import discord from '../../src/lib/discordNotifier.js';
+import discord from '../../src/services/discordNotifier.js';
 import { createVerifiedEmployer } from '../factories/user.factory.js';
 import { createJob } from '../factories/job.factory.js';
 
@@ -95,8 +95,9 @@ describe('Round P — EmailOutbox reliability', () => {
     const qu = await QuickUser.create({
       email: 'q@x.com',
       firstName: 'Q',
+      lastName: 'U',
       location: 'Tirane',
-      interests: ['marketing'],
+      interests: ['Marketing'],
       isActive: false, // simulate unsubscribed
     });
     await EmailOutbox.create({
@@ -138,9 +139,11 @@ describe('Round P — EmailOutbox reliability', () => {
     expect(after.status).toBe('dead');
     expect(after.attempts).toBe(8);
     expect(discordSpy).toHaveBeenCalledWith(
-      'alerts',
-      expect.objectContaining({ title: expect.stringMatching(/dead-lettered/i) }),
-      expect.stringMatching(/^dead:/),
+      expect.objectContaining({
+        channel: 'alerts',
+        title: expect.stringMatching(/dead-lettered/i),
+        dedupKey: expect.stringMatching(/^dead:/),
+      })
     );
   });
 });
@@ -215,7 +218,7 @@ describe('Round P — send-time guards in sendJobNotificationToUser', () => {
 
   it('skips and returns {reason:inactive} when user.isActive===false', async () => {
     const qu = await QuickUser.create({
-      email: 'q@x.com', firstName: 'Q', location: 'Tirane', interests: ['marketing'], isActive: false,
+      email: 'q@x.com', firstName: 'Q', lastName: 'U', location: 'Tirane', interests: ['Marketing'], isActive: false,
     });
     const { user: emp } = await createVerifiedEmployer();
     const job = await createJob(emp);
@@ -229,7 +232,7 @@ describe('Round P — send-time guards in sendJobNotificationToUser', () => {
 
   it('skips and returns {reason:cooldown} when virtual canReceiveNotification===false', async () => {
     const qu = await QuickUser.create({
-      email: 'q@x.com', firstName: 'Q', location: 'Tirane', interests: ['marketing'],
+      email: 'q@x.com', firstName: 'Q', lastName: 'U', location: 'Tirane', interests: ['Marketing'],
       isActive: true,
       preferences: { emailFrequency: 'immediate' },
       lastNotifiedAt: new Date(), // just notified → cooldown active
