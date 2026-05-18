@@ -34,8 +34,14 @@ Full plan: `~/.claude/plans/resilient-kindling-fog.md`. Two problems addressed: 
 - CV rate-limit tightened (user request): `OPENAI_CV_HOURLY_CAP` 5→2, `OPENAI_CV_DAILY_CAP` 10→5 (defaults; both env-overridable). At ~$0.018/CV (gpt-4o), max abuse per user per day is now $0.09. Legit iterate-twice usage well within the cap. Admins still bypass daily cap; hourly limit applies to all jobseekers.
 - Verified: 264/264 across 22 affected suites (bulk-notifications, round-p, notify-matching-users, job-alerts-digest, applications, auth-success+error, payments + edge-cases, payment-reminder-worker, embedding orchestration, admin embeddings with-data + error-paths + status-workers-list, jobs, recommendations, cv generate-success + generation + extra-branches + error-paths, healthz-embeddings, notification-service-error-paths + template-branches). Frontend build clean (4.30s).
 
-**Deferred to follow-up PRs (not blocking deploy):**
-- Stage 2 (post-deploy, free): location pre-filter on cosine scan, event-loop yields, QuickUser fan-out via outbox-only.
+**Round P Stage 2 (SHIPPED LOCALLY 2026-05-18, same session):**
+- `userEmbeddingService.findSemanticMatchesForJob` — added Mongo-level location pre-filter on both populations. For a city-bound job: candidates limited to users whose city matches OR (QuickUser only) who accept remote work OR who have no city info. For a remote job: everyone is eligible. Reduces candidate pool 3-10x for typical jobs, proportionally reducing both Mongo fetch and JS cosine math.
+- `userEmbeddingService.findMatchingJobsForUser` — when caller passes `city`, query now matches that city OR `location.remote === true`. Tirana user looking for jobs no longer misses remote postings.
+- Both scan loops yield the event loop every 200 candidates via `await new Promise(setImmediate)`. Same total wall-clock but other concurrent HTTP requests get a slot — eliminates the ~600ms event-loop block forecast at 5k users.
+- Test updates: `notify-matching-users.test.js` + `job-alerts-digest.test.js` — jobseekers seeded in `'Tiranë'` (matching the test jobs) since the pre-filter now expects city match. Pre-Stage-2 random-city seeding implicitly relied on no city filtering. 273/273 across 20 affected suites.
+
+**Still deferred to follow-up PRs (not blocking deploy):**
+- Stage 2-extra (deferred until concurrent job posts > 1/min): QuickUser fan-out fully via outbox-only path; eliminates inline 4-batch send loop.
 - Stage 3 (real scale, $$): MongoDB Atlas Vector Search.
 - Hard OpenAI per-day cost cap (current is soft per-entity cap; user-level budget tracking is the followup).
 

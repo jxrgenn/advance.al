@@ -550,15 +550,43 @@ class UserEmbeddingService {
     const jobVector = job.embedding.vector;
     const threshold = this.threshold;
     const BATCH_SIZE = 500;
+    // Stage 2 (Round P): yield the event loop every N cosine sims so a 5k-user
+    // scan doesn't stall every other request for ~600ms. Pure JS math runs
+    // synchronously inside the for-await; adding a setImmediate at intervals
+    // lets concurrent HTTP requests get a slot. Same total wall-clock.
+    const YIELD_EVERY = 200;
+
+    // Stage 2 (Round P): location pre-filter. A Tirana user is not going to
+    // commute to Vlore for a banking job they didn't apply for — exclude them
+    // at query time. Remote-OK users + users with no city info still pass.
+    // For a remote job, everyone is a candidate. Reduces the candidate pool
+    // 3-10x for typical city-bound jobs, proportionally reducing both the
+    // Mongo fetch and the cosine math.
+    const jobCity = job.location?.city;
+    const jobRemote = job.location?.remote === true;
+    const cityRegex = jobCity ? new RegExp(`^${escapeRegex(jobCity)}$`, 'i') : null;
 
     // --- QuickUsers (batch processing via cursor to prevent OOM) ---
-    const matchedQuickUsers = [];
-    let quickUserCandidates = 0;
-    const quickUserCursor = QuickUser.find({
+    const quickUserQuery = {
       isActive: true,
       convertedToFullUser: false,
-      'embedding.status': 'completed'
-    }).select('+embedding.vector').batchSize(BATCH_SIZE).cursor();
+      'embedding.status': 'completed',
+    };
+    if (!jobRemote && cityRegex) {
+      quickUserQuery.$or = [
+        { location: cityRegex },
+        { 'preferences.remoteWork': true },
+        { location: { $in: [null, ''] } },
+        { location: { $exists: false } },
+      ];
+    }
+
+    const matchedQuickUsers = [];
+    let quickUserCandidates = 0;
+    const quickUserCursor = QuickUser.find(quickUserQuery)
+      .select('+embedding.vector')
+      .batchSize(BATCH_SIZE)
+      .cursor();
 
     for await (const qu of quickUserCursor) {
       quickUserCandidates++;
@@ -570,20 +598,39 @@ class UserEmbeddingService {
           matchedQuickUsers.push({ user: qu, score });
         }
       } catch (_) { /* skip malformed vectors */ }
+      if (quickUserCandidates % YIELD_EVERY === 0) {
+        await new Promise(resolve => setImmediate(resolve));
+      }
     }
     matchedQuickUsers.sort((a, b) => b.score - a.score);
     const cappedQuickUsers = this.applySmartMatchCap(matchedQuickUsers, quickUserCandidates, 'quickUsers');
 
     // --- Jobseeker Users (opt-in only, batch processing via cursor) ---
-    const matchedJobSeekers = [];
-    let jobSeekerCandidates = 0;
-    const jobSeekerCursor = User.find({
+    // For full jobseekers we don't have a per-user "remote-OK" flag, so the
+    // pre-filter is more permissive: city match OR missing city (give them
+    // a chance to surface). Cross-city semantic matches are sacrificed for
+    // event-loop / cost wins.
+    const jobSeekerQuery = {
       userType: 'jobseeker',
       isDeleted: false,
       status: 'active',
       'profile.jobSeekerProfile.notifications.jobAlerts': true,
-      'profile.jobSeekerProfile.embedding.status': 'completed'
-    }).select('+profile.jobSeekerProfile.embedding.vector').batchSize(BATCH_SIZE).cursor();
+      'profile.jobSeekerProfile.embedding.status': 'completed',
+    };
+    if (!jobRemote && cityRegex) {
+      jobSeekerQuery.$or = [
+        { 'profile.location.city': cityRegex },
+        { 'profile.location.city': { $in: [null, ''] } },
+        { 'profile.location.city': { $exists: false } },
+      ];
+    }
+
+    const matchedJobSeekers = [];
+    let jobSeekerCandidates = 0;
+    const jobSeekerCursor = User.find(jobSeekerQuery)
+      .select('+profile.jobSeekerProfile.embedding.vector')
+      .batchSize(BATCH_SIZE)
+      .cursor();
 
     for await (const u of jobSeekerCursor) {
       jobSeekerCandidates++;
@@ -595,6 +642,9 @@ class UserEmbeddingService {
           matchedJobSeekers.push({ user: u, score });
         }
       } catch (_) { /* skip malformed vectors */ }
+      if (jobSeekerCandidates % YIELD_EVERY === 0) {
+        await new Promise(resolve => setImmediate(resolve));
+      }
     }
     matchedJobSeekers.sort((a, b) => b.score - a.score);
     const cappedJobSeekers = this.applySmartMatchCap(matchedJobSeekers, jobSeekerCandidates, 'jobSeekers');
@@ -625,6 +675,7 @@ class UserEmbeddingService {
     const { limit = 10, city } = options;
     const minScore = options.minScore !== undefined ? options.minScore : this.threshold;
     const BATCH_SIZE = 500;
+    const YIELD_EVERY = 200;
 
     const query = {
       status: 'active',
@@ -632,11 +683,19 @@ class UserEmbeddingService {
       expiresAt: { $gte: new Date() }
     };
 
+    // Stage 2 (Round P): when a city filter is supplied, include remote jobs
+    // too — a Tirana user shouldn't miss a remote opening just because the
+    // job's location.city is "Remote" or some other city. Pre-filter still
+    // reduces scan size for the common case where most jobs are city-bound.
     if (city) {
-      query['location.city'] = { $regex: new RegExp(escapeRegex(city), 'i') };
+      query.$or = [
+        { 'location.city': { $regex: new RegExp(escapeRegex(city), 'i') } },
+        { 'location.remote': true },
+      ];
     }
 
     const matchedJobs = [];
+    let processedCount = 0;
     const jobCursor = Job.find(query)
       .select('+embedding.vector')
       .populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo')
@@ -644,6 +703,7 @@ class UserEmbeddingService {
       .cursor();
 
     for await (const job of jobCursor) {
+      processedCount++;
       const vec = job.embedding?.vector;
       if (!vec || !isValidEmbeddingVector(vec)) continue;
       try {
@@ -652,6 +712,9 @@ class UserEmbeddingService {
           matchedJobs.push({ job, score });
         }
       } catch (_) { /* skip malformed vectors */ }
+      if (processedCount % YIELD_EVERY === 0) {
+        await new Promise(resolve => setImmediate(resolve));
+      }
     }
 
     matchedJobs.sort((a, b) => b.score - a.score);

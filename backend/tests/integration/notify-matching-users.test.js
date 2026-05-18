@@ -128,8 +128,10 @@ describe('notificationService.notifyMatchingUsers', () => {
     };
     await job.save();
 
-    // Create a jobseeker WITH a matching embedding + jobAlerts enabled
-    const { user: js } = await createJobseeker();
+    // Create a jobseeker WITH a matching embedding + jobAlerts enabled.
+    // Round P Stage 2: city pinned to match the job (Tiranë) since
+    // notifyMatchingUsers now pre-filters candidates by city at the query level.
+    const { user: js } = await createJobseeker({ city: 'Tiranë' });
     js.profile.jobSeekerProfile = js.profile.jobSeekerProfile || {};
     js.profile.jobSeekerProfile.notifications = { jobAlerts: true };
     js.profile.jobSeekerProfile.embedding = {

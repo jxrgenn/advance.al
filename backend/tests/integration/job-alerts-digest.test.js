@@ -33,7 +33,12 @@ function vectorAt(phase = 0) {
 }
 
 async function makeJobseekerOptedIn(emailSuffix) {
-  const { user } = await createJobseeker({ email: `digest-${emailSuffix}@example.com` });
+  // Round P Stage 2: pre-filter on notifyMatchingUsers requires city to match
+  // the job's city (or remote-OK / no-city) at the query level. The test job
+  // (makeActiveJobWithEmbedding below) is seeded in 'Tiranë' so the user is
+  // pinned to the same city. Pre-Stage-2 random-city seeding worked because
+  // the query had no city filter; that's the bug Stage 2 fixed.
+  const { user } = await createJobseeker({ email: `digest-${emailSuffix}@example.com`, city: 'Tiranë' });
   user.profile.jobSeekerProfile = user.profile.jobSeekerProfile || {};
   user.profile.jobSeekerProfile.notifications = { jobAlerts: true };
   user.profile.jobSeekerProfile.embedding = {
