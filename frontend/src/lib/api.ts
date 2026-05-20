@@ -387,6 +387,7 @@ export const authApi = {
     companySize?: string;
     description?: string;
     website?: string;
+    verificationMethod?: 'email' | 'sms';
   }): Promise<ApiResponse<null>> => {
     return apiRequest<null>('/auth/initiate-registration', {
       method: 'POST',

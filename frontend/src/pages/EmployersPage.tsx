@@ -26,6 +26,7 @@ import {
   Textarea,
   PinInput,
   Modal,
+  SegmentedControl,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -50,6 +51,8 @@ const EmployersPage = () => {
   const [verificationEmail, setVerificationEmail] = useState('');
   const [verificationLoading, setVerificationLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+  // QA Round 2 (D3): how the signup code is delivered — email or SMS.
+  const [verificationMethod, setVerificationMethod] = useState<'email' | 'sms'>('email');
 
   // Resend cooldown timer
   useEffect(() => {
@@ -779,6 +782,9 @@ const EmployersPage = () => {
       // Normalize phone number
       const formattedPhone = normalizeAlbanianPhone(values.phone);
 
+      // SMS delivery is only possible when a phone number was provided.
+      const method = verificationMethod === 'sms' && formattedPhone ? 'sms' : 'email';
+
       // Step 1: Send verification code (account not created yet)
       const response = await authApi.initiateRegistration({
         email: values.email.trim().toLowerCase(),
@@ -793,6 +799,7 @@ const EmployersPage = () => {
         companySize: values.companySize || '1-10',
         description: values.description?.trim() || undefined,
         website: values.website?.trim() || undefined,
+        verificationMethod: method,
       });
 
       if (response.success) {
@@ -801,8 +808,10 @@ const EmployersPage = () => {
         setVerificationOpen(true);
         setResendCooldown(60);
         notifications.show({
-          title: "Kontrolloni email-in",
-          message: `Kemi dërguar një kod verifikimi në ${values.email}`,
+          title: method === 'sms' ? "Kontrolloni telefonin" : "Kontrolloni email-in",
+          message: method === 'sms'
+            ? `Kemi dërguar një kod verifikimi me SMS në ${formattedPhone}`
+            : `Kemi dërguar një kod verifikimi në ${values.email}`,
           color: "blue",
           autoClose: 5000,
         });
@@ -855,6 +864,7 @@ const EmployersPage = () => {
     try {
       const values = employerForm.values;
       const formattedPhone = normalizeAlbanianPhone(values.phone);
+      const method = verificationMethod === 'sms' && formattedPhone ? 'sms' : 'email';
       await authApi.initiateRegistration({
         email: values.email.trim().toLowerCase(),
         password: values.password,
@@ -868,10 +878,15 @@ const EmployersPage = () => {
         companySize: values.companySize || '1-10',
         description: values.description?.trim() || undefined,
         website: values.website?.trim() || undefined,
+        verificationMethod: method,
       });
       setResendCooldown(60);
       setVerificationCode('');
-      notifications.show({ title: "Kodi u ridërgua", message: "Kontrolloni email-in tuaj", color: "blue" });
+      notifications.show({
+        title: "Kodi u ridërgua",
+        message: method === 'sms' ? "Kontrolloni telefonin tuaj" : "Kontrolloni email-in tuaj",
+        color: "blue"
+      });
     } catch (error: any) {
       notifications.show({ title: "Gabim", message: error.message || "Nuk mund të ridërgohet kodi", color: "red" });
     }
@@ -1181,6 +1196,23 @@ const EmployersPage = () => {
                 )}
               </Stack>
             </Paper>
+
+            {/* QA Round 2 (D3): choose how to receive the code */}
+            <Box>
+              <Text size="sm" fw={500} mb={6}>Merr kodin e verifikimit me:</Text>
+              <SegmentedControl
+                fullWidth
+                value={verificationMethod}
+                onChange={(v) => setVerificationMethod(v as 'email' | 'sms')}
+                data={[
+                  { label: 'Email', value: 'email' },
+                  { label: 'SMS', value: 'sms', disabled: !employerForm.values.phone?.trim() },
+                ]}
+              />
+              {!employerForm.values.phone?.trim() && (
+                <Text size="xs" c="dimmed" mt={4}>Shtoni numrin e telefonit për të marrë kodin me SMS.</Text>
+              )}
+            </Box>
 
             <Text size="xs" c="dimmed">
               Duke klikuar "Krijo Llogarinë", ju pranoni Kushtet e Shërbimit dhe Politikën e Privatësisë së advance.al
@@ -1506,10 +1538,10 @@ const EmployersPage = () => {
           <ThemeIcon size={56} radius="xl" color="blue" variant="light">
             <Mail className="w-6 h-6" />
           </ThemeIcon>
-          <Title order={3} ta="center">Verifikoni Email-in</Title>
+          <Title order={3} ta="center">{verificationMethod === 'sms' ? 'Verifikoni Numrin' : 'Verifikoni Email-in'}</Title>
           <Text size="sm" c="dimmed" ta="center">
-            Kemi dërguar një kod 6-shifror në{' '}
-            <Text span fw={600} c="blue">{verificationEmail}</Text>
+            Kemi dërguar një kod 6-shifror {verificationMethod === 'sms' ? 'me SMS' : 'në'}{' '}
+            <Text span fw={600} c="blue">{verificationMethod === 'sms' ? normalizeAlbanianPhone(employerForm.values.phone) : verificationEmail}</Text>
           </Text>
           <PinInput
             length={6}

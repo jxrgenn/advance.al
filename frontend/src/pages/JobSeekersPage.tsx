@@ -64,6 +64,8 @@ const JobSeekersPage = () => {
   const [verificationEmail, setVerificationEmail] = useState('');
   const [verificationLoading, setVerificationLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+  // QA Round 2 (D3): how the signup code is delivered — email or SMS.
+  const [verificationMethod, setVerificationMethod] = useState<'email' | 'sms'>('email');
 
   // Reset scroll lock on unmount
   useEffect(() => {
@@ -181,75 +183,49 @@ const JobSeekersPage = () => {
 
   const jobCategories = JOB_CATEGORIES;
 
-  // CV Template Text
+  // CV Template Text (QA Round 2: clean labelled template — no underscore
+  // blanks, no numbered bullet lists; just type after each label).
   const cvTemplateText = `INFORMACIONI PERSONAL
-Emri i plotë: _______________
-Email: _______________
-Telefoni: _______________
-Adresa: _______________
-Data e lindjes: _______________
-Nacionaliteti: _______________
-LinkedIn (opsionale): _______________
+Emri i plotë:
+Email:
+Telefoni:
+Qyteti:
+LinkedIn (opsionale):
 
 PËRMBLEDHJE PROFESIONALE
-Shkruani një përmbledhje të shkurtër rreth jush dhe qëllimeve tuaja profesionale (2-3 fjali):
-_______________________________________________________________________________
-_______________________________________________________________________________
+(2-3 fjali rreth jush dhe qëllimeve tuaja profesionale)
+
 
 EKSPERIENCA E PUNËS
-Kompania 1: _______________
-Pozicioni: _______________
-Periudha: _______________ deri _______________
-Lokacioni: _______________
-Përgjegjësitë dhe arritjet:
-- _______________
-- _______________
-- _______________
+Pozicioni:
+Kompania:
+Periudha (nga - deri):
+Përshkrim i shkurtër:
 
-Kompania 2: _______________
-Pozicioni: _______________
-Periudha: _______________ deri _______________
-Lokacioni: _______________
-Përgjegjësitë dhe arritjet:
-- _______________
-- _______________
+(Kopjoni bllokun e mësipërm për çdo punë tjetër)
+
 
 EDUKIMI
-Universiteti/Shkolla: _______________
-Diploma: _______________
-Fusha e studimit: _______________
-Periudha: _______________ deri _______________
-Nota mesatare (GPA): _______________
-Nderime (opsionale): _______________
+Diploma / Kualifikimi:
+Institucioni:
+Periudha (nga - deri):
+
 
 AFTËSITË
-Aftësi teknike: _______________, _______________, _______________
-Aftësi të buta: _______________, _______________, _______________
-Mjete/Programe: _______________, _______________, _______________
+(listoni aftësitë tuaja, të ndara me presje)
+
 
 GJUHËT
-Gjuha 1: _______________ - Niveli: _______________
-Gjuha 2: _______________ - Niveli: _______________
-Gjuha 3: _______________ - Niveli: _______________
+(p.sh. Shqip - amtare, Anglisht - mesatare)
 
-CERTIFIKATAT (Opsionale)
-Certifikata 1: _______________
-Lëshuar nga: _______________
-Data: _______________
 
-REFERENCA (Opsionale)
-Emri: _______________
-Pozicioni: _______________
-Kompania: _______________
-Email: _______________
-Telefoni: _______________`;
+CERTIFIKATA (opsionale)
+`;
 
   // Toggle template handler
   const handleToggleTemplate = () => {
     if (!useTemplate) {
-      // Switching to template mode - populate with template (with blank spaces, no underscores)
-      const templateWithSpaces = cvTemplateText.replace(/_+/g, (match) => ' '.repeat(match.length));
-      setCvInput(templateWithSpaces);
+      setCvInput(cvTemplateText);
       setUseTemplate(true);
     } else {
       // Switching off template mode - clear input
@@ -381,6 +357,9 @@ Telefoni: _______________`;
       // Normalize phone number
       const formattedPhone = normalizeAlbanianPhone(values.phone);
 
+      // SMS delivery is only possible when a phone number was provided.
+      const method = verificationMethod === 'sms' && formattedPhone ? 'sms' : 'email';
+
       // Step 1: Send verification code (account not created yet)
       const response = await authApi.initiateRegistration({
         email: values.email,
@@ -389,7 +368,8 @@ Telefoni: _______________`;
         firstName: values.firstName,
         lastName: values.lastName,
         ...(formattedPhone && { phone: formattedPhone }),
-        city: values.city
+        city: values.city,
+        verificationMethod: method
       });
 
       if (response.success) {
@@ -399,8 +379,10 @@ Telefoni: _______________`;
         setVerificationOpen(true);
         setResendCooldown(60);
         notifications.show({
-          title: "Kontrolloni email-in",
-          message: `Kemi dërguar një kod verifikimi në ${values.email}`,
+          title: method === 'sms' ? "Kontrolloni telefonin" : "Kontrolloni email-in",
+          message: method === 'sms'
+            ? `Kemi dërguar një kod verifikimi me SMS në ${formattedPhone}`
+            : `Kemi dërguar një kod verifikimi në ${values.email}`,
           color: "blue",
           autoClose: 5000,
         });
@@ -450,6 +432,7 @@ Telefoni: _______________`;
     try {
       const values = fullForm.values;
       const formattedPhone = normalizeAlbanianPhone(values.phone);
+      const method = verificationMethod === 'sms' && formattedPhone ? 'sms' : 'email';
       await authApi.initiateRegistration({
         email: values.email,
         password: values.password,
@@ -457,11 +440,16 @@ Telefoni: _______________`;
         firstName: values.firstName,
         lastName: values.lastName,
         ...(formattedPhone && { phone: formattedPhone }),
-        city: values.city
+        city: values.city,
+        verificationMethod: method
       });
       setResendCooldown(60);
       setVerificationCode('');
-      notifications.show({ title: "Kodi u ridërgua", message: "Kontrolloni email-in tuaj", color: "blue" });
+      notifications.show({
+        title: "Kodi u ridërgua",
+        message: method === 'sms' ? "Kontrolloni telefonin tuaj" : "Kontrolloni email-in tuaj",
+        color: "blue"
+      });
     } catch (error: any) {
       notifications.show({ title: "Gabim", message: error.message || "Nuk mund të ridërgohet kodi", color: "red" });
     }
@@ -1128,8 +1116,9 @@ Telefoni: _______________`;
             {/* Form Selector */}
             {!showQuickForm ? (
               <Paper shadow="sm" p="xl" radius="md" withBorder data-signup-form style={{ borderColor: '#bfdbfe', borderWidth: 2 }}>
-                {/* Header - Fixed Alignment */}
-                <Group mb="xl" wrap="nowrap" align="start">
+                {/* Header — identical structure to the quick-form header so
+                    switching forms reconciles instead of remounting (QA R2-D1) */}
+                <Group mb="lg" wrap="nowrap" align="start">
                   <ThemeIcon size={40} radius="md" color="blue" variant="light" style={{ flexShrink: 0 }}>
                     <Users size={20} />
                   </ThemeIcon>
@@ -1224,6 +1213,23 @@ Telefoni: _______________`;
                       />
                     </Box>
 
+                    {/* QA Round 2 (D3): choose how to receive the code */}
+                    <Box>
+                      <Text size="sm" fw={500} mb={6}>Merr kodin e verifikimit me:</Text>
+                      <SegmentedControl
+                        fullWidth
+                        value={verificationMethod}
+                        onChange={(v) => setVerificationMethod(v as 'email' | 'sms')}
+                        data={[
+                          { label: 'Email', value: 'email' },
+                          { label: 'SMS', value: 'sms', disabled: !fullForm.values.phone?.trim() },
+                        ]}
+                      />
+                      {!fullForm.values.phone?.trim() && (
+                        <Text size="xs" c="dimmed" mt={4}>Shtoni numrin e telefonit për të marrë kodin me SMS.</Text>
+                      )}
+                    </Box>
+
                     <Button
                       type="submit"
                       size="md"
@@ -1260,14 +1266,15 @@ Telefoni: _______________`;
                 data-quick-form
                 style={{ borderColor: '#bfdbfe', borderWidth: 2 }}
               >
-                {/* Header - Fixed Alignment */}
-                <Group mb="md" wrap="nowrap" align="start">
-                  <ThemeIcon size={36} radius="md" color="blue" variant="filled" style={{ flexShrink: 0 }}>
-                    <Bell size={18} />
+                {/* Header — identical structure to the full-form header so
+                    switching forms reconciles instead of remounting (QA R2-D1) */}
+                <Group mb="lg" wrap="nowrap" align="start">
+                  <ThemeIcon size={40} radius="md" color="blue" variant="light" style={{ flexShrink: 0 }}>
+                    <Bell size={20} />
                   </ThemeIcon>
                   <Box>
-                    <Title order={4} fw={600} lh={1.2}>Njoftime Email për Punë të Reja</Title>
-                    <Text size="xs" c="dimmed" mt={2}>
+                    <Title order={3} fw={600} lh={1.2}>Njoftime Email për Punë të Reja</Title>
+                    <Text size="sm" c="dimmed" mt={4}>
                       Merrni njoftime direkt në email për punë që përputhen me interesat tuaja pa u regjistruar.
                     </Text>
                   </Box>
@@ -1526,14 +1533,14 @@ Telefoni: _______________`;
               />
               <Group mt="xs">
                 <Checkbox
-                  label="Përdor shabllonin me hapësira"
+                  label="Plotëso një shabllon CV-je"
                   checked={useTemplate}
                   onChange={handleToggleTemplate}
                   size="sm"
                   disabled={generating}
                 />
                 <Text size="xs" c="dimmed">
-                  {useTemplate ? '✓ Shablloni aktivizuar - plotësoni hapësirat' : 'Shkruani në mënyrë të lirë ose aktivizoni shabllonin'}
+                  {useTemplate ? '✓ Shablloni u shtua — plotësoni të dhënat pas çdo etikete' : 'Shkruani lirshëm ose aktivizoni shabllonin'}
                 </Text>
               </Group>
             </Grid.Col>
@@ -1683,10 +1690,10 @@ Telefoni: _______________`;
           <ThemeIcon size={56} radius="xl" color="blue" variant="light">
             <Mail className="w-6 h-6" />
           </ThemeIcon>
-          <Title order={3} ta="center">Verifikoni Email-in</Title>
+          <Title order={3} ta="center">{verificationMethod === 'sms' ? 'Verifikoni Numrin' : 'Verifikoni Email-in'}</Title>
           <Text size="sm" c="dimmed" ta="center">
-            Kemi dërguar një kod 6-shifror në{' '}
-            <Text span fw={600} c="blue">{verificationEmail}</Text>
+            Kemi dërguar një kod 6-shifror {verificationMethod === 'sms' ? 'me SMS' : 'në'}{' '}
+            <Text span fw={600} c="blue">{verificationMethod === 'sms' ? normalizeAlbanianPhone(fullForm.values.phone) : verificationEmail}</Text>
           </Text>
           <PinInput
             length={6}

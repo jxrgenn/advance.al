@@ -84,6 +84,47 @@ describe('auth.js — success paths', () => {
     expect(dbUser.lastLoginAt).toBeInstanceOf(Date);
   });
 
+  it('initiate-registration with verificationMethod=sms sends via SMS (mock)', async () => {
+    pinVerificationCode();
+    const initRes = await request(app)
+      .post('/api/auth/initiate-registration')
+      .send({
+        email: 'smsmethod@example.com',
+        password: 'StrongPass1',
+        userType: 'jobseeker',
+        firstName: 'Sms',
+        lastName: 'User',
+        city: 'Tiranë',
+        phone: '+355691234567',
+        verificationMethod: 'sms',
+      });
+    expect(initRes.status).toBe(200);
+    expect(initRes.body.message).toMatch(/SMS/i);
+
+    // The cached code still works for register regardless of delivery channel.
+    const regRes = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'smsmethod@example.com', verificationCode: KNOWN_CODE });
+    expect(regRes.status).toBe(201);
+  });
+
+  it('initiate-registration rejects verificationMethod=sms without a phone', async () => {
+    pinVerificationCode();
+    const initRes = await request(app)
+      .post('/api/auth/initiate-registration')
+      .send({
+        email: 'smsnophone@example.com',
+        password: 'StrongPass1',
+        userType: 'jobseeker',
+        firstName: 'Sms',
+        lastName: 'User',
+        city: 'Tiranë',
+        verificationMethod: 'sms',
+      });
+    expect(initRes.status).toBe(400);
+    expect(initRes.body.message).toMatch(/telefon/i);
+  });
+
   it('register flow creates an employer with employerProfile populated', async () => {
     pinVerificationCode();
 

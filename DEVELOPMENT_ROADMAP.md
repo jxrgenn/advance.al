@@ -4267,9 +4267,9 @@ Second pre-deploy QA pass. Plan: `~/.claude/plans/resilient-kindling-fog.md`.
 - ✅ C3 — "password changed" confirmation email
 
 **D. Signup forms**
-- ⏳ D1 — unified quick/full form headers (no remount)
-- ⏳ D2 — redesigned CV template (no underscore blanks / numbered lists)
-- ⏳ D3 — email-or-SMS verification choice
+- ✅ D1 — unified quick/full form headers (no remount)
+- ✅ D2 — redesigned CV template (no underscore blanks / numbered lists)
+- ✅ D3 — email-or-SMS verification choice
 
 **E. Pricing & cards**
 - ⏳ E1 — reconcile pricing to 35€/49€ everywhere

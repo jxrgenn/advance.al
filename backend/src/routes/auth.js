@@ -358,10 +358,20 @@ router.get('/check-email', authLimiter, async (req, res) => {
 // @access  Public
 router.post('/initiate-registration', authLimiter, initiateRegistrationByEmailLimiter, registerValidation, handleValidationErrors, async (req, res) => {
   try {
-    const { email: rawEmail, password, userType, firstName, lastName, city, phone, companyName, industry, companySize, description, website } = req.body;
+    const { email: rawEmail, password, userType, firstName, lastName, city, phone, companyName, industry, companySize, description, website, verificationMethod } = req.body;
 
     // Normalize email for consistent duplicate checking
     const email = rawEmail?.trim().toLowerCase();
+
+    // QA Round 2 (D3): the user picks how to receive the code — email or SMS.
+    // SMS requires a phone number to have been entered.
+    const method = verificationMethod === 'sms' ? 'sms' : 'email';
+    if (method === 'sms' && !phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Numri i telefonit nevojitet për të marrë kodin me SMS'
+      });
+    }
 
     // Check if user already exists (use normalized email for accurate matching)
     const existingUser = await User.findOne({ email });
@@ -413,12 +423,19 @@ router.post('/initiate-registration', authLimiter, initiateRegistrationByEmailLi
       attempts: 0
     });
 
-    // Send verification code (don't fail registration if email fails)
+    // Send verification code via the chosen channel (don't fail registration
+    // if delivery fails — the code is cached and can be resent).
     try {
-      await sendVerificationCodeEmail(email, firstName, code);
-    } catch (emailErr) {
-      logger.error('Failed to send verification email:', emailErr.message);
-      // In dev, log the code so testing still works
+      if (method === 'sms') {
+        await notificationService.sendSMS(
+          phone,
+          `advance.al: kodi juaj i verifikimit është ${code}. Vlen për 10 minuta.`
+        );
+      } else {
+        await sendVerificationCodeEmail(email, firstName, code);
+      }
+    } catch (sendErr) {
+      logger.error(`Failed to send verification ${method}:`, sendErr.message);
       if (process.env.NODE_ENV === 'development') {
         console.log(`[DEV] Verification code for ${email}: ${code}`);
       }
@@ -426,7 +443,9 @@ router.post('/initiate-registration', authLimiter, initiateRegistrationByEmailLi
 
     res.json({
       success: true,
-      message: 'Kodi i verifikimit u dërgua në email-in tuaj'
+      message: method === 'sms'
+        ? 'Kodi i verifikimit u dërgua me SMS në numrin tuaj'
+        : 'Kodi i verifikimit u dërgua në email-in tuaj'
     });
   } catch (error) {
     logger.error('Initiate registration error:', error.message);
