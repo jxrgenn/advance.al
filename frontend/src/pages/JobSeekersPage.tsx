@@ -1539,22 +1539,9 @@ Telefoni: _______________`;
             </Grid.Col>
 
             <Grid.Col span={12}>
-              {/* Logged-out users get a clear, always-visible notice + a
-                  clickable login button (a tooltip on a disabled button is
-                  invisible until hover, which users missed entirely). */}
-              {!isAuthenticated && (
-                <Alert
-                  icon={<Lightbulb size={18} />}
-                  color="yellow"
-                  variant="light"
-                  mb="sm"
-                >
-                  <Text size="sm" fw={600}>Duhet të kyçeni për të gjeneruar CV</Text>
-                  <Text size="xs" c="dimmed" mt={2}>
-                    Krijoni një llogari ose kyçuni si kërkues pune për të përdorur gjeneruesin e CV-së me AI.
-                  </Text>
-                </Alert>
-              )}
+              {/* Logged-out users see an on-brand button that says it needs
+                  login and links straight to it — clearer than a hover tooltip
+                  on a disabled button, without a loud banner. */}
               <Group justify="space-between" align="center" wrap="wrap">
                 <Text size="xs" c="dimmed">
                   {isAuthenticated && user?.userType === 'jobseeker' && cvInput.trim().length < 50
@@ -1563,12 +1550,12 @@ Telefoni: _______________`;
                       ? 'Të dhënat tuaja janë gati — shtypni butonin për të gjeneruar.'
                       : isAuthenticated && user?.userType !== 'jobseeker'
                         ? 'Vetëm kërkuesit e punës mund të gjenerojnë CV.'
-                        : ''}
+                        : 'Kyçuni si kërkues pune për të përdorur gjeneruesin e CV-së.'}
                 </Text>
                 {!isAuthenticated ? (
                   <Button
-                    variant="filled"
-                    color="yellow"
+                    variant="light"
+                    color="blue"
                     rightSection={<ArrowRight size={18} />}
                     onClick={() => navigate('/login')}
                   >
