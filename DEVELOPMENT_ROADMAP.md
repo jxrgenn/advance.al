@@ -4262,9 +4262,9 @@ Second pre-deploy QA pass. Plan: `~/.claude/plans/resilient-kindling-fog.md`.
 - ✅ B5 — monthly/yearly salary view preference + shared salary formatter
 
 **C. Password flows**
-- ⏳ C1 — visibility toggles on change-password
-- ⏳ C2 — visibility toggles + full rule enforcement on reset-password
-- ⏳ C3 — "password changed" confirmation email
+- ✅ C1 — visibility toggles on change-password
+- ✅ C2 — visibility toggles + full rule enforcement on reset-password
+- ✅ C3 — "password changed" confirmation email
 
 **D. Signup forms**
 - ⏳ D1 — unified quick/full form headers (no remount)

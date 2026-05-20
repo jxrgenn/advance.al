@@ -863,6 +863,39 @@ router.get('/me', authenticate, async (req, res) => {
 });
 
 // @route   PUT /api/auth/change-password
+// QA Round 2 (C3): security notice e-mail sent after a password is
+// changed or reset, so the account owner is alerted if it wasn't them.
+// TODO(prod): emails currently route to the shared test inbox via
+// resendEmailService.getRecipientEmail — switch to real recipients at launch.
+function sendPasswordChangedNotice(user) {
+  setImmediate(async () => {
+    try {
+      const name = user.profile?.firstName || '';
+      const when = new Date().toLocaleString('sq-AL', { timeZone: 'Europe/Tirane' });
+      const html = `
+        <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#1f2937">
+          <h2 style="color:#2563eb">Fjalëkalimi juaj u ndryshua</h2>
+          <p>Përshëndetje ${name},</p>
+          <p>Fjalëkalimi i llogarisë suaj në advance.al u ndryshua më <strong>${when}</strong>.</p>
+          <p>Nëse këtë ndryshim e bëtë ju, nuk nevojitet asnjë veprim.</p>
+          <p style="color:#b91c1c"><strong>Nëse nuk ishit ju</strong>, kontaktoni menjëherë në
+          <a href="mailto:info@advance.al">info@advance.al</a> — llogaria juaj mund të jetë komprometuar.</p>
+        </div>`;
+      const text = `Fjalëkalimi i llogarisë suaj në advance.al u ndryshua më ${when}. `
+        + `Nëse nuk ishit ju, kontaktoni info@advance.al menjëherë.`;
+      await resendEmailService.sendTransactionalEmail(
+        user.email,
+        'Fjalëkalimi juaj u ndryshua — advance.al',
+        html,
+        text,
+        { tags: ['password-changed'] }
+      );
+    } catch (error) {
+      logger.error('Error sending password-changed notice:', error.message);
+    }
+  });
+}
+
 // @desc    Change password (authenticated user)
 // @access  Private
 router.put('/change-password', authenticate, changePasswordLimiter, [
@@ -907,6 +940,8 @@ router.put('/change-password', authenticate, changePasswordLimiter, [
     // F-21 fix: invalidate all refresh tokens after password change.
     // Forces re-login on every device — defense against stolen tokens.
     await user.removeAllRefreshTokens();
+
+    sendPasswordChangedNotice(user);
 
     res.json({
       success: true,
@@ -1026,6 +1061,8 @@ router.post('/reset-password', authLimiter, [
     // Invalidate all refresh tokens for security
     await user.removeAllRefreshTokens();
     await user.save();
+
+    sendPasswordChangedNotice(user);
 
     res.json({
       success: true,

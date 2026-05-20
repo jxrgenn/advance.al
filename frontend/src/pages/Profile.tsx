@@ -11,12 +11,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { User, Mail, Phone, MapPin, Upload, FileText, Briefcase, Award, Loader2, RefreshCw, Lightbulb, X, Play, Trash2, Lock, Sparkles, Check, AlertTriangle, Globe, Download } from "lucide-react";
+import { User, Mail, Phone, MapPin, Upload, FileText, Briefcase, Award, Loader2, RefreshCw, Lightbulb, X, Play, Trash2, Lock, Sparkles, Check, AlertTriangle, Globe, Download, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { usersApi, applicationsApi, authApi } from "@/lib/api";
 import { viewResume, downloadResume, isInlineViewable, DOCX_VIEW_TOOLTIP } from "@/lib/resumeView";
-import { validateForm, profileValidationRules, formatValidationErrors } from "@/lib/formValidation";
+import { validateForm, profileValidationRules, formatValidationErrors, validatePassword } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { InputWithCounter, TextAreaWithCounter } from "@/components/CharacterCounter";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -136,6 +136,9 @@ const Profile = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
+  const [showCurrentPwd, setShowCurrentPwd] = useState(false);
+  const [showNewPwd, setShowNewPwd] = useState(false);
+  const [showConfirmPwd, setShowConfirmPwd] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -459,20 +462,10 @@ const Profile = () => {
       toast({ title: 'Fjalëkalimet e reja nuk përputhen', variant: 'destructive' });
       return;
     }
-    if (newPassword.length < 8) {
-      toast({ title: 'Fjalëkalimi i ri duhet të ketë të paktën 8 karaktere', variant: 'destructive' });
-      return;
-    }
-    if (!/[A-Z]/.test(newPassword)) {
-      toast({ title: 'Fjalëkalimi i ri duhet të përmbajë të paktën një shkronjë të madhe', variant: 'destructive' });
-      return;
-    }
-    if (!/[0-9]/.test(newPassword)) {
-      toast({ title: 'Fjalëkalimi i ri duhet të përmbajë të paktën një numër', variant: 'destructive' });
-      return;
-    }
-    if (!/[!@#$%^&*(),.?":{}|<>]/.test(newPassword)) {
-      toast({ title: 'Fjalëkalimi i ri duhet të përmbajë të paktën një karakter special (!@#$%...)', variant: 'destructive' });
+    // QA Round 2 (A2): shared password rule — same as signup & backend.
+    const pwdErrors = validatePassword(newPassword);
+    if (pwdErrors.length > 0) {
+      toast({ title: `Fjalëkalimi i ri duhet të ketë ${pwdErrors.join(', ')}`, variant: 'destructive' });
       return;
     }
     setChangingPassword(true);
@@ -2389,30 +2382,64 @@ const Profile = () => {
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
                       <Label>Fjalëkalimi Aktual</Label>
-                      <Input
-                        type="password"
-                        placeholder="Shkruani fjalëkalimin aktual"
-                        value={currentPassword}
-                        onChange={(e) => setCurrentPassword(e.target.value)}
-                      />
+                      <div className="relative">
+                        <Input
+                          type={showCurrentPwd ? 'text' : 'password'}
+                          placeholder="Shkruani fjalëkalimin aktual"
+                          value={currentPassword}
+                          onChange={(e) => setCurrentPassword(e.target.value)}
+                          className="pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowCurrentPwd((v) => !v)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          aria-label={showCurrentPwd ? 'Fshih fjalëkalimin' : 'Shfaq fjalëkalimin'}
+                        >
+                          {showCurrentPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <Label>Fjalëkalimi i Ri</Label>
-                      <Input
-                        type="password"
-                        placeholder="Shkruani fjalëkalimin e ri"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                      />
+                      <div className="relative">
+                        <Input
+                          type={showNewPwd ? 'text' : 'password'}
+                          placeholder="Shkruani fjalëkalimin e ri"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          className="pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPwd((v) => !v)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          aria-label={showNewPwd ? 'Fshih fjalëkalimin' : 'Shfaq fjalëkalimin'}
+                        >
+                          {showNewPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">8+ karaktere, 1 shkronjë e madhe, 1 e vogël, 1 numër</p>
                     </div>
                     <div className="space-y-2">
                       <Label>Konfirmo Fjalëkalimin e Ri</Label>
-                      <Input
-                        type="password"
-                        placeholder="Konfirmoni fjalëkalimin e ri"
-                        value={confirmNewPassword}
-                        onChange={(e) => setConfirmNewPassword(e.target.value)}
-                      />
+                      <div className="relative">
+                        <Input
+                          type={showConfirmPwd ? 'text' : 'password'}
+                          placeholder="Konfirmoni fjalëkalimin e ri"
+                          value={confirmNewPassword}
+                          onChange={(e) => setConfirmNewPassword(e.target.value)}
+                          className="pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPwd((v) => !v)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          aria-label={showConfirmPwd ? 'Fshih fjalëkalimin' : 'Shfaq fjalëkalimin'}
+                        >
+                          {showConfirmPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
                     </div>
                     <Button onClick={handleChangePassword} disabled={changingPassword || !currentPassword || !newPassword || !confirmNewPassword}>
                       {changingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />}

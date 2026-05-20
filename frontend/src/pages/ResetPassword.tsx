@@ -6,12 +6,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Lock } from "lucide-react";
+import { Lock, Eye, EyeOff } from "lucide-react";
 import { authApi } from "@/lib/api";
+import { validatePassword } from "@/lib/formValidation";
 
 const ResetPassword = () => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -31,10 +34,12 @@ const ResetPassword = () => {
       return;
     }
 
-    if (password.length < 8) {
+    // QA Round 2 (C2): enforce the same rule as signup / change-password.
+    const pwdErrors = validatePassword(password);
+    if (pwdErrors.length > 0) {
       toast({
         title: "Gabim",
-        description: "Fjalëkalimi duhet të ketë të paktën 8 karaktere.",
+        description: `Fjalëkalimi duhet të ketë ${pwdErrors.join(", ")}.`,
         variant: "destructive",
       });
       return;
@@ -122,16 +127,25 @@ const ResetPassword = () => {
                     <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="password"
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       placeholder="Minimum 8 karaktere"
-                      className="pl-10"
+                      className="pl-10 pr-10"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
                       minLength={8}
                       autoComplete="new-password"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      aria-label={showPassword ? "Fshih fjalëkalimin" : "Shfaq fjalëkalimin"}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
+                  <p className="text-xs text-muted-foreground">8+ karaktere, 1 shkronjë e madhe, 1 e vogël, 1 numër</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="confirmPassword">Konfirmo Fjalëkalimin</Label>
@@ -139,15 +153,23 @@ const ResetPassword = () => {
                     <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="confirmPassword"
-                      type="password"
+                      type={showConfirm ? "text" : "password"}
                       placeholder="Shkruaj fjalëkalimin përsëri"
-                      className="pl-10"
+                      className="pl-10 pr-10"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       required
                       minLength={8}
                       autoComplete="new-password"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirm((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      aria-label={showConfirm ? "Fshih fjalëkalimin" : "Shfaq fjalëkalimin"}
+                    >
+                      {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>
