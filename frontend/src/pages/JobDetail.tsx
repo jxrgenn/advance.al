@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import SEO from "@/components/SEO";
 import Navigation from "@/components/Navigation";
@@ -309,54 +309,65 @@ const JobDetail = () => {
     });
   };
 
-  // Tutorial steps - explaining apply flow components
-  const tutorialSteps = [
-    {
-      selector: '[data-tutorial="job-header"]',
-      title: "Informacioni i Punës",
-      content: "Këtu shfaqet titulli i punës, kompania, vendndodhja, dhe detaje të tjera bazike. Kontrolloni këtë seksion për të kuptuar pozicionin.",
-      position: "bottom" as const
-    },
-    {
-      selector: '[data-tutorial="job-description"]',
-      title: "Përshkrimi i Punës",
-      content: "Lexoni me kujdes përshkrimin e detajuar të punës për të kuptuar përgjegjësitë dhe mjedisin e punës.",
-      position: "bottom" as const
-    },
-    {
-      selector: '[data-tutorial="job-requirements"]',
-      title: "Kërkesat e Punës",
-      content: "Këtu gjenden kërkesat dhe kualifikimet e nevojshme për pozicionin. Sigurohuni që i plotësoni këto përpara se të aplikoni.",
-      position: "bottom" as const,
-      highlightPadding: 16
-    },
-    {
-      selector: '[data-tutorial="job-benefits"]',
-      title: "Përfitimet e Punës",
-      content: "Shikoni përfitimet që ofron kompania, si sigurimi shëndetësor, pushimet, ose benefite të tjera.",
-      position: "bottom" as const,
-      highlightPadding: 16
-    },
-    {
-      selector: '[data-tutorial="apply-buttons"]',
-      title: "Butonat e Aplikimit",
-      content: "Këtu mund të aplikoni për punë. 'Apliko' hap formularin e aplikimit ku mund të ngarkoni CV dhe të plotësoni pyetje. '1-klik' aplikon menjëherë pa hapa shtesë.",
-      position: "right" as const
-    },
-    {
-      selector: '[data-tutorial="contact-options"]',
-      title: "Kontakti me Punëdhënësin",
-      content: "Mund të kontaktoni punëdhënësin direkt përmes 3 mënyrave: Email (hap email tuaj me mesazh të paracaktuar), WhatsApp (dërgon mesazh direkt), ose Telefon (shfaq numrin për të telefonuar). Çdo metodë përfshin një template mesazhi profesional.",
-      position: "right" as const,
-      highlightPadding: 16
-    },
-    {
-      selector: '[data-tutorial="company-info"]',
-      title: "Informacioni i Kompanisë",
-      content: "Shihni më shumë rreth kompanisë këtu, duke përfshirë politikat, përfitimet, dhe informacionin e kontaktit të tyre.",
-      position: "right" as const
-    }
-  ];
+  // Tutorial steps - explaining apply flow components. Filtered by what the
+  // job actually has: a job with no requirements/benefits arrays shouldn't show
+  // a highlight for an empty section that wasn't rendered.
+  const tutorialSteps = useMemo(() => {
+    const allSteps = [
+      {
+        selector: '[data-tutorial="job-header"]',
+        title: "Informacioni i Punës",
+        content: "Këtu shfaqet titulli i punës, kompania, vendndodhja, dhe detaje të tjera bazike. Kontrolloni këtë seksion për të kuptuar pozicionin.",
+        position: "bottom" as const
+      },
+      {
+        selector: '[data-tutorial="job-description"]',
+        title: "Përshkrimi i Punës",
+        content: "Lexoni me kujdes përshkrimin e detajuar të punës për të kuptuar përgjegjësitë dhe mjedisin e punës.",
+        position: "bottom" as const
+      },
+      {
+        selector: '[data-tutorial="job-requirements"]',
+        title: "Kërkesat e Punës",
+        content: "Këtu gjenden kërkesat dhe kualifikimet e nevojshme për pozicionin. Sigurohuni që i plotësoni këto përpara se të aplikoni.",
+        position: "bottom" as const,
+        highlightPadding: 16,
+        requires: 'requirements' as const,
+      },
+      {
+        selector: '[data-tutorial="job-benefits"]',
+        title: "Përfitimet e Punës",
+        content: "Shikoni përfitimet që ofron kompania, si sigurimi shëndetësor, pushimet, ose benefite të tjera.",
+        position: "bottom" as const,
+        highlightPadding: 16,
+        requires: 'benefits' as const,
+      },
+      {
+        selector: '[data-tutorial="apply-buttons"]',
+        title: "Butonat e Aplikimit",
+        content: "Këtu mund të aplikoni për punë. 'Apliko' hap formularin e aplikimit ku mund të ngarkoni CV dhe të plotësoni pyetje. '1-klik' aplikon menjëherë pa hapa shtesë.",
+        position: "right" as const
+      },
+      {
+        selector: '[data-tutorial="contact-options"]',
+        title: "Kontakti me Punëdhënësin",
+        content: "Mund të kontaktoni punëdhënësin direkt përmes 3 mënyrave: Email (hap email tuaj me mesazh të paracaktuar), WhatsApp (dërgon mesazh direkt), ose Telefon (shfaq numrin për të telefonuar). Çdo metodë përfshin një template mesazhi profesional.",
+        position: "right" as const,
+        highlightPadding: 16
+      },
+      {
+        selector: '[data-tutorial="company-info"]',
+        title: "Informacioni i Kompanisë",
+        content: "Shihni më shumë rreth kompanisë këtu, duke përfshirë politikat, përfitimet, dhe informacionin e kontaktit të tyre.",
+        position: "right" as const
+      }
+    ];
+    return allSteps.filter(step => {
+      if (step.requires === 'requirements') return Array.isArray(job?.requirements) && job.requirements.length > 0;
+      if (step.requires === 'benefits') return Array.isArray(job?.benefits) && job.benefits.length > 0;
+      return true;
+    });
+  }, [job?.requirements, job?.benefits]);
 
   // Proper scroll lock with event prevention (both desktop and mobile)
   useEffect(() => {

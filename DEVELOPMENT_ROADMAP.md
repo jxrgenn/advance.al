@@ -6,6 +6,83 @@
 **CURRENT STATUS:** 🟢 **DEPLOY-READY. Phase 23 overnight suite now 799/799 GREEN (chromium-desktop). 4 additional production bugs found and fixed during full-coverage Tier 3: (1) verification code in-memory fallback never hit when Redis disabled — codes silently dropped; (2) employer registration `companyName`/`industry`/`description` not sanitized — stored XSS; (3) `User.addRefreshToken` had no FIFO cap, concurrent logins exceeded 5-token limit; (4) `/stats/public` 5-min in-memory cache served stale data with no test-mode bypass. All four shipped clean. 8 prior bugs from Phase 24 still in. Frontend + backend builds clean.**
 **Phase:** Phases 0-25 complete. Phase 25 (Tier 3) brought Phase 23 overnight to 799/799. Remaining out-of-scope items require external infrastructure or manual judgment (see `MANUAL_QA_CHECKLIST.md`).
 
+## 🩹 **PRE-DEPLOY QA SWEEP — ROUND Q PART 5 (SHIPPED LOCALLY 2026-05-19, awaiting commit + push)**
+
+- **JobSeekers tutorial overlay restyled** to match the employer signup-form tutorial — `JobSeekersPage.tsx` `TutorialOverlay` swapped from the Profile-style adaptive overlay back to the fixed bottom-right yellow "Tutorial Guide" card (amber spotlight, progress bar, ‹ Prapa / Tjetër › ). The part-4 `highlightElement` scroll logic (smooth scroll + `waitForScrollSettle`) is kept — only the card look changed.
+- **Company filter fixed.** Full filter audit found 12/13 filters wired correctly; the company filter was broken: the homepage company input is free text (a company NAME), but `routes/jobs.js` only accepted an employer ObjectId and returned empty results for anything else — every name search silently returned zero jobs. Now: a non-ObjectId `company` value is treated as a name → `User.find` by `companyName` (escaped case-insensitive regex, limit 50) → `filters.employerId = { $in: ids }`; no match → empty results. 2 integration tests added (name match + no-match).
+- All 13 filters verified: 38/38 filter-suite tests green (jobs-search-extra-filters, jobs-filter-branches, jobs-jobtype-filter, jobs-single-category-filter, companies-jobs-filters).
+
+**Verification:** frontend Vite build clean; backend filter suites 38/38. remote / experience / category filters confirmed working via integration tests (`experience=lead→seniority=lead`, `remote=true`, multi-category CSV, single-category — all green).
+
+**Update:** company filter UI commented out FOR NOW per user request — the free-text "Kompania" input is hidden in both `Index.tsx` and `Jobs.tsx` advanced-filter panels (wrapped in JSX comments, easy to re-enable). The backend company-name resolution + tests stay in place. The `?company=<id>` URL deep-link path (used by company-profile "see all jobs" links) is untouched.
+
+## 🩹 **PRE-DEPLOY QA SWEEP — ROUND Q PART 4 (SHIPPED LOCALLY 2026-05-19, awaiting commit + push)**
+
+- **Sorting — the REAL bug (frontend merge layer).** `Index.tsx` (and `Jobs.tsx`) `mergedJobs` prepends cosine-ranked recommendations whenever no filter is "active" — and the `hasActiveFilters` check **omitted `sortBy`**. So picking a non-default sort fetched correctly-sorted jobs from the backend, then the merge buried them under un-sorted recommendations → sort looked broken. Added `advancedFilters.sortBy !== 'newest'` to `hasActiveFilters` on both pages — a non-default sort now preserves backend order with no recommendations prepended. (Backend personalization-guard + explicit-sort fixes from part 3 stay.)
+- **Filter panel buttons** — dropped the "Anulo" button (closing the panel is the implicit cancel); only "Apliko Filtrat" + "Rivendos të gjitha" remain, stacked, with bottom padding so nothing is clipped.
+- **JobSeekers page tutorial rebuilt to the Profile pattern.** `JobSeekersPage.tsx` `highlightElement` used a desktop "scroll once at the first step, never again" strategy — steps 2-5 of the full signup form highlighted off-screen fields. Replaced with the Profile `highlightStep` (smooth scroll every off-screen step + `waitForScrollSettle` + skip-missing-element guard); replaced the fixed bottom-right card with Profile's smart adaptive spotlight + card overlay; removed the now-dead `calculateOptimalPosition`. (Employer signup + Employer Dashboard tutorials confirmed good by the user and left as-is.)
+
+**Verification:** frontend Vite build clean. Backend untouched this round.
+
+## 🩹 **PRE-DEPLOY QA SWEEP — ROUND Q PART 3 (SHIPPED LOCALLY 2026-05-19, awaiting commit + push)**
+
+Third-round fixes — filters + employer tutorials. Plan: `~/.claude/plans/resilient-kindling-fog.md`.
+
+- **Sort "Më të vjetrat" (oldest) was hijacked by personalization.** `backend/src/routes/jobs.js:343` — the PR-E semantic re-rank early-returns for logged-in jobseekers on page 1 whenever `sortBy==='postedAt'`. "Newest" AND "oldest" both map to `postedAt`, so an explicit oldest request was silently replaced by cosine-ranked order. Guard tightened to `sortBy==='postedAt' && sortOrder!=='asc'` — explicit oldest now falls through to true chronological sort. (Title sort always worked because it maps to `sortBy:'title'` and skips personalization.)
+- **`Job.searchJobs` no longer pre-applies `.sort({postedAt:-1})`** — it fought the route's later `query.sort(sortOptions)`. Each caller now owns its sort: the personalization pool sorts `postedAt:-1` explicitly, the main listing applies `sortOptions` + a deterministic `_id:-1` tiebreaker (stable order for salary sort where many jobs share/lack `salary.max`).
+- **Filter panel 3-button overflow** — `Index.tsx` action row stacked vertically (`flex-col`, full-width buttons: Apliko / Anulo / Rivendos) — the narrow `lg:col-span-2` sidebar no longer scrolls horizontally.
+- **Punedhenes tutorial first-step offset** — `EmployersPage.tsx` highlight callback adds one extra `requestAnimationFrame` re-measure after the overlay + scroll-lock paint, fixing the slight first-step spotlight misalignment.
+- **Employer Dashboard tutorial rebuilt to match the Profile tutorial.** `EmployerDashboard.tsx` — merged the 3 per-tab step arrays into one `allTutorialSteps` (each step tagged `requiresTab`); ported the Profile `goToStep`/`highlightStep`/`TutorialOverlay` (smooth scroll + `waitForScrollSettle`, in-tutorial tab switching with `isTransitioning`, smart spotlight + adaptive card positioning); removed the close-on-tab-switch effect. Profile + EmployersPage tutorials left untouched.
+
+**Verification:** frontend Vite build clean. Backend jobs/filter/sort suites pass (`jobs-filter-branches` salary asc/desc + whitelisted-field sort all green). Note: 2 tests in `jobs-listing-personalized.test.js` fail — confirmed **pre-existing** (fail identically on untouched `main` commit 347f239), unrelated to this round; personalization path not firing in the test env. Flagged for separate triage.
+
+CSP (item 3) verified: `vercel.json` valid JSON, `vercel.live` present in script/connect/frame-src. JobDetail empty-step skip (item 5) verified by code trace — `useMemo` filters requirements/benefits steps; counter uses filtered length.
+
+## 🩹 **PRE-DEPLOY QA SWEEP — ROUND Q PART 2 (SHIPPED LOCALLY 2026-05-19, awaiting commit + push)**
+
+Second-round fixes after user manually tested Round Q part 1. Plan: `~/.claude/plans/resilient-kindling-fog.md`.
+
+- **Homepage filters were genuinely broken** (part 1 wrongly assumed perceptual). `Index.tsx` advanced-filter panel writes to `pendingAdvancedFilters` but the committing function `handleApplyFilters` had no button wired to it — the action row only had Reset + Cancel. Added an "Apliko Filtrat" button → fixes sort ("Rendit sipas"), remote-work filter, and every advanced filter at once.
+- **Filter sticky stacking** — wrapped `CoreFilters` + the expanded "Filtra të tjerë" panel in one sticky container (`max-h-[calc(100vh-11rem)] overflow-y-auto`) so they stick together; the expanded panel's top now stays flush with the quick filters' bottom instead of scrolling behind them.
+- **New util `frontend/src/lib/scrollSettle.ts`** — `waitForScrollSettle(el, cb)` rAF-polls `getBoundingClientRect().top` until stable, replacing fixed `setTimeout`s after smooth scrolls.
+- **Profile tutorial spotlight misalignment** (regression from part-1 B5) — `highlightStep` used a fixed 350ms wait after `behavior:'smooth'`; long scrolls weren't done → spotlight placed at stale offset. Now waits for actual scroll settle.
+- **Punedhenes tutorial over-scroll** — `EmployersPage.tsx` tutorial scrolled the whole form container with `block:'start'` (shoved form under the nav, mis-measured the field). Now centers the highlighted *element* with `block:'center'` + `waitForScrollSettle`, matching the JobSeekersPage tutorial.
+- **Experience/Education modal mobile width** — base shadcn `DialogContent` is `w-full` (edge-to-edge on mobile). Added `w-[calc(100%-2rem)] sm:w-full` → 1rem margin each side on mobile, desktop unchanged.
+- **Auto-grow description textareas** — added opt-in `autoResize` prop to `components/ui/textarea.tsx` (non-breaking, default off; merges refs, sizes on mount + input). Applied to work-description, achievements, edu-description Textareas — they grow with content, usable on touch where drag-resize isn't.
+
+**Verification:** frontend Vite build clean (4.07s). Backend untouched. Manual smoke deferred to user.
+
+## 🩹 **PRE-DEPLOY QA SWEEP — ROUND Q (SHIPPED LOCALLY 2026-05-19, awaiting commit + push)**
+
+Plan: `~/.claude/plans/resilient-kindling-fog.md`. User did a manual QA pass and surfaced 16 issues across critical bugs, UX polish, and config gaps. All shipped in one combined PR.
+
+**Critical bugs fixed (Stage A):**
+- `backend/src/routes/users.js:358` — `notifications` was missing from the `safeFields` allowlist in `PUT /api/users/profile`, so the job-alerts toggle silently no-op'd (frontend optimistic update → `refreshUser()` re-read unchanged DB → UI snapped back). Added per-key merge for `notifications.jobAlerts` + `alertCategories` so partial updates don't wipe sibling keys.
+- `frontend/src/pages/EmployersPage.tsx:339` — punedhenes signup tutorial validated step 0 (personal info) against `employerSignupRules.step1` (company info), so users got "city not added" / "companyName 2-100" errors at step 1. Fixed enum + removed redundant duplicated password block.
+- `frontend/vercel.json` — added `https://vercel.live` to `script-src`, `connect-src`, `frame-src`, `style-src`, `font-src`, `img-src` so the Vercel preview feedback widget loads without CSP violations. Also added `wss://ws-us3.pusher.com` for the widget's live channel.
+- `backend/scripts/backfill-similarities.js` (NEW one-shot) — for jobs with completed embedding but empty `similarJobs[]` cache, calls `jobEmbeddingService.computeSimilarities()` to populate. Fixes the `score: null` similar-jobs response for pre-deploy jobs. Idempotent, zero OpenAI cost (uses cached embeddings).
+- `backend/src/services/cvParsingService.js` — root cause of "diploma/grade/title not filled" complaint: AI returned free-text `degree="Bachelor"` but frontend dropdown expects enum `bachelors`, leaving Select empty on edit. Added `normalizeDegreeToEnum()` mapping common degree strings to the dropdown enum + strengthened OpenAI prompt to extract `gpa` with examples.
+
+**Visual / UX wins (Stage B):**
+- `frontend/src/components/PremiumJobsCarousel.tsx` + `EmployerDashboard.tsx` — removed all `shikime` / "Shikime Gjithsej" view-count surfaces (user explicitly asked to hide everywhere). EmployerDashboard stats grid switched from md:grid-cols-4 to md:grid-cols-3.
+- `frontend/src/pages/Index.tsx` — `Filtra të tjerë` expandable panel got `relative z-20` so it no longer scrolls behind the sticky `Filtra të shpejtë` (z-10) on the homepage.
+- `frontend/src/pages/JobDetail.tsx` — tutorial steps array converted to `useMemo` filtered by `job.requirements?.length` + `job.benefits?.length`. Jobs without those fields skip those tutorial steps; step counter recomputes.
+- `frontend/src/pages/Profile.tsx` (tutorial) — `highlightStep` scroll changed from `behavior:'auto'` (jarring) to `behavior:'smooth'` with a 350ms settle gate before spotlight placement.
+- `frontend/src/pages/JobSeekersPage.tsx` — new `useEffect(location.hash)` polls for and smooth-scrolls to the anchor (e.g. `/jobseekers#ai-cv-section`), fixing the "Gjenero CV" / "Krijo CV me IA" buttons from About-Us and Punedhenes that previously navigated but didn't scroll.
+- `JobSeekersPage.tsx` "Gjenero CV-në" button — wrapped in Mantine `Tooltip` with contextual hint when disabled-for-auth/role/length reason. Helper text below the textarea shows remaining-character count or login requirement.
+
+**Modal / mobile polish (Stage C):**
+- `Profile.tsx` work-experience + education modals — DialogContent got `px-4 sm:px-6` (was unpadded on mobile). Description Textareas changed from `resize-none` → `resize-y min-h-[100px]` so users can drag-resize.
+- `EmployersPage.tsx` Container — trimmed `py={40} pt={80}` → `py={24} pt={24}`. `CompaniesComponent.tsx` second section reduced bottom padding from `!pb-12 md:!pb-16` → `!pb-4 md:!pb-6`. Cumulative: ~120px less dead space between hero and signup form.
+- `Profile.tsx` main TabsContent column — wrapped in `min-w-0 overflow-x-hidden` to prevent inner content from forcing horizontal page scroll between tab switches on mobile.
+- `JobSeekersPage.tsx` Quick-Profile form — added native HTML5 drag-drop wrapper around the existing FileInput (no new dependency; visual ring on dragover). Compressed Stack `gap="md"` → `gap="sm"`, ThemeIcon size 40 → 36, Title order 3 → 4, Divider `my="xl"` → `my="sm"`, and trimmed Alert padding. Form is now ~25% shorter vertically.
+
+**Verification:** 115/115 backend tests green across 9 suites touching users/profile/CV-parser/notifications/embeddings. Frontend Vite build clean (4.57s). Manual smoke deferred to user.
+
+**Out of scope / investigated only:** Sort dropdown ("Rendit sipas") and remote-work filter are correctly wired end-to-end (frontend state → URL params → backend Mongo query). User's "doesn't work" complaint is most likely a perception issue with only 5 dev-DB jobs (no salary variance, no remote postings). Will revisit if user confirms the issue persists with realistic data.
+
+**Backfill (post-deploy, manual):** run `node backend/scripts/backfill-similarities.js` once locally against prod URI to populate `similarJobs[]` for pre-existing jobs (zero cost — uses cached embeddings).
+
 ## 🛡️ **PRE-DEPLOY HARDENING — ROUND P (SHIPPED LOCALLY 2026-05-18, awaiting commit + push)**
 
 Full plan: `~/.claude/plans/resilient-kindling-fog.md`. Two problems addressed: (1) embedding queue worker never deployed on Render → 6 jobs + 8 queue items stuck → similar-jobs returning `score:null`; (2) email sends silently dropped on Resend 429/5xx with no retry or audit trail. Plus 7 medium findings surfaced during deep research (unsubscribe-during-drain race, cooldown-not-enforced-at-send, plaintext header-injection vector, admin-approval-notifies-before-embed race, in-flight cron loss on SIGTERM, no OpenAI cost cap, JobQueue secondary task type `compute_similarity` also dead).

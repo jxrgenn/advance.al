@@ -111,4 +111,27 @@ describe('jobs.js — GET / extra filter branches', () => {
     expect(r.status).toBe(200);
     expect(r.body.data.jobs.length).toBeGreaterThanOrEqual(1);
   });
+
+  it('company NAME (free text) resolves to that employer\'s jobs', async () => {
+    const { user: emp } = await createVerifiedEmployer({ companyName: 'Zenith Robotics SHPK' });
+    await createJob(emp, { title: 'Robotics Engineer' });
+    const { user: other } = await createVerifiedEmployer({ companyName: 'Unrelated Corp' });
+    await createJob(other, { title: 'Unrelated Job' });
+
+    // Partial, case-insensitive name match.
+    const r = await request(app).get('/api/jobs?company=zenith');
+    expect(r.status).toBe(200);
+    const titles = r.body.data.jobs.map(j => j.title);
+    expect(titles).toContain('Robotics Engineer');
+    expect(titles).not.toContain('Unrelated Job');
+  });
+
+  it('company NAME with no matching employer returns empty results', async () => {
+    const { user: emp } = await createVerifiedEmployer({ companyName: 'Alpha Co' });
+    await createJob(emp, { title: 'Alpha Job' });
+    const r = await request(app).get('/api/jobs?company=NoSuchCompanyXYZ');
+    expect(r.status).toBe(200);
+    expect(r.body.data.jobs).toEqual([]);
+    expect(r.body.data.pagination.totalJobs).toBe(0);
+  });
 });

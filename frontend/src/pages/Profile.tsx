@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { usersApi, applicationsApi, authApi } from "@/lib/api";
 import { validateForm, profileValidationRules, formatValidationErrors } from "@/lib/formValidation";
+import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { InputWithCounter, TextAreaWithCounter } from "@/components/CharacterCounter";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
@@ -1312,14 +1313,16 @@ const Profile = () => {
       setHighlightedElement(null);
       setElementPosition(null);
 
-      // Unlock scroll, instant scroll to element center, re-lock
+      // Unlock scroll, smooth-scroll to element center, re-lock after scroll
+      // completes. Previously used behavior:'auto' (instant) which felt jarring.
       isScrollLockedRef.current = false;
       document.body.style.overflow = '';
 
-      element.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'nearest' });
+      element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
 
-      // Use rAF to let the browser finish layout after scroll
-      requestAnimationFrame(() => {
+      // Wait for the smooth scroll to ACTUALLY settle before measuring — a fixed
+      // timeout measured mid-scroll and placed the spotlight at a stale offset.
+      waitForScrollSettle(element, () => {
         const freshRect = element.getBoundingClientRect();
         document.body.style.overflow = 'hidden';
         isScrollLockedRef.current = true;
@@ -1662,7 +1665,10 @@ const Profile = () => {
           </div>
 
           {/* Main Content */}
-          <div className="lg:col-span-2">
+          {/* min-w-0 + overflow-x-hidden: prevents inner tab content with long
+              strings or wide grids from forcing horizontal page scroll between
+              tab switches on mobile. */}
+          <div className="lg:col-span-2 min-w-0 overflow-x-hidden">
             <Tabs defaultValue="personal" className="space-y-6" value={currentTab} onValueChange={setCurrentTab}>
               <TabsList data-tutorial="tabs" className="w-full overflow-x-auto flex-wrap h-auto">
                 <TabsTrigger value="personal">Informacion Personal</TabsTrigger>
@@ -2459,7 +2465,7 @@ const Profile = () => {
 
       {/* Modals for Profile page buttons */}
       <Dialog open={workExperienceModal} onOpenChange={setWorkExperienceModal}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100%-2rem)] sm:w-full max-w-3xl max-h-[85vh] overflow-y-auto px-4 sm:px-6">
           <DialogHeader>
             <DialogTitle>{editingWorkId ? 'Ndrysho Përvojën e Punës' : 'Shto Përvojë të Re Pune'}</DialogTitle>
             <DialogDescription>
@@ -2567,11 +2573,12 @@ const Profile = () => {
               <Label htmlFor="work-description">Përshkrimi i punës</Label>
               <Textarea
                 id="work-description"
+                autoResize
                 value={workExperienceForm.description}
                 onChange={(e) => setWorkExperienceForm(prev => ({ ...prev, description: e.target.value }))}
                 placeholder="Përshkruani përgjegjësitë dhe detyrat kryesore në këtë pozicion..."
                 rows={4}
-                className="w-full resize-none"
+                className="w-full min-h-[100px]"
               />
             </div>
 
@@ -2579,11 +2586,12 @@ const Profile = () => {
               <Label htmlFor="achievements">Arritjet dhe kontributet</Label>
               <Textarea
                 id="achievements"
+                autoResize
                 value={workExperienceForm.achievements}
                 onChange={(e) => setWorkExperienceForm(prev => ({ ...prev, achievements: e.target.value }))}
                 placeholder="Listoni arritjet kryesore, projekte të suksesshme, ose kontribute të rëndësishme..."
                 rows={3}
-                className="w-full resize-none"
+                className="w-full min-h-[80px]"
               />
             </div>
 
@@ -2661,7 +2669,7 @@ const Profile = () => {
       </Dialog>
 
       <Dialog open={educationModal} onOpenChange={setEducationModal}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100%-2rem)] sm:w-full max-w-3xl max-h-[85vh] overflow-y-auto px-4 sm:px-6">
           <DialogHeader>
             <DialogTitle>{editingEducationId ? 'Ndrysho Arsimimin' : 'Shto Arsimim të Ri'}</DialogTitle>
             <DialogDescription>
@@ -2801,11 +2809,12 @@ const Profile = () => {
               <Label htmlFor="edu-description">Përshkrimi dhe arritjet</Label>
               <Textarea
                 id="edu-description"
+                autoResize
                 value={educationForm.description}
                 onChange={(e) => setEducationForm(prev => ({ ...prev, description: e.target.value }))}
                 placeholder="Përshkruani aktivitete të rëndësishme, projekte, nderimet, ose arritje të veçanta gjatë studimeve..."
                 rows={4}
-                className="w-full resize-none"
+                className="w-full min-h-[100px]"
               />
             </div>
 

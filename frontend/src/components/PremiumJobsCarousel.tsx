@@ -150,10 +150,9 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
                           </div>
                         </div>
                       </div>
-                      {(job.viewCount > 0 || job.applicationCount > 0) && (
+                      {job.applicationCount > 0 && (
                         <div className={`hidden md:flex border-t border-blue-100/50 items-center gap-3 text-xs text-muted-foreground transition-all duration-300 ease-out overflow-hidden ${isStuck ? 'max-h-0 opacity-0 mt-0 pt-0 border-0' : 'max-h-12 opacity-100 mt-3 pt-3'}`}>
-                          {job.viewCount > 0 && <span>{job.viewCount} shikime</span>}
-                          {job.applicationCount > 0 && <span>{job.applicationCount} aplikime</span>}
+                          <span>{job.applicationCount} aplikime</span>
                         </div>
                       )}
                     </CardContent>

@@ -559,6 +559,9 @@ const Index = () => {
   // (the array reference change otherwise breaks React.memo for JobCard).
   const mergedJobs = useMemo(() => {
     const recommendationIds = new Set(recommendations.map(job => job._id));
+    // A non-default sort counts as an active filter: when the user explicitly
+    // sorts, the backend order MUST be preserved — prepending recommendations
+    // (which are cosine-ranked, not re-sorted) would hide the chosen sort.
     const hasActiveFilters = searchQuery || selectedLocations.length > 0 || selectedType ||
       Object.values(coreFilters).some(Boolean) ||
       advancedFilters.company ||
@@ -566,6 +569,7 @@ const Index = () => {
       advancedFilters.remote ||
       advancedFilters.categories.length > 0 ||
       advancedFilters.postedWithin ||
+      (advancedFilters.sortBy && advancedFilters.sortBy !== 'newest') ||
       (advancedFilters.salaryRange[0] > 0 || advancedFilters.salaryRange[1] < 2000);
 
     if (hasActiveFilters) {
@@ -703,17 +707,22 @@ const Index = () => {
         <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 mb-8">
           {/* Left Sidebar - Core Filters (20%) */}
           <div className="lg:col-span-2">
-            <CoreFilters
-              filters={coreFilters}
-              onFilterChange={handleCoreFilterChange}
-              onShowAllFilters={handleShowFilters}
-              showAllFilters={showAllFilters}
-              className={premiumJobs.length > 0 ? "hidden lg:block sticky top-[9.5rem] z-10" : "hidden lg:block sticky top-20 z-10"}
-            />
+            {/* Sticky wrapper holds BOTH the quick filters and the expanded
+                advanced panel so they stick together — the expanded panel's
+                top stays flush against the bottom of the quick filters
+                instead of scrolling away behind them. overflow-y-auto lets a
+                tall expanded panel scroll within the viewport. */}
+            <div className={`hidden lg:block sticky z-10 max-h-[calc(100vh-11rem)] overflow-y-auto ${premiumJobs.length > 0 ? 'top-[9.5rem]' : 'top-20'}`}>
+              <CoreFilters
+                filters={coreFilters}
+                onFilterChange={handleCoreFilterChange}
+                onShowAllFilters={handleShowFilters}
+                showAllFilters={showAllFilters}
+              />
 
-            {/* Expandable Filter Section - Below CoreFilters */}
-            {showAllFilters && (
-              <div className="border-t border-b py-4 bg-background mt-4">
+              {/* Expandable Filter Section - Below CoreFilters */}
+              {showAllFilters && (
+                <div className="border-t border-b py-4 bg-background mt-4 shadow-sm">
                 <div className="w-full">
                   {/* Active Filters Display */}
                   {(pendingAdvancedFilters.categories.length > 0 || pendingAdvancedFilters.experience || pendingAdvancedFilters.company || pendingAdvancedFilters.remote || pendingAdvancedFilters.postedWithin || (pendingAdvancedFilters.salaryRange[0] > 0 || pendingAdvancedFilters.salaryRange[1] < 5000)) && (
@@ -879,7 +888,9 @@ const Index = () => {
                       )}
                     </div>
 
-                    {/* Company Search Category */}
+                    {/* Company Search Category — hidden FOR NOW (re-enable later;
+                        backend name-resolution support already in place). */}
+                    {/*
                     <div className="border rounded-lg">
                       <button
                         onClick={() => setExpandedCategory(expandedCategory === 'company' ? null : 'company')}
@@ -902,6 +913,7 @@ const Index = () => {
                         </div>
                       )}
                     </div>
+                    */}
 
                     {/* Job Categories Category */}
                     <div className="border rounded-lg">
@@ -1027,24 +1039,21 @@ const Index = () => {
                       )}
                     </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex justify-between gap-2 pt-4 border-t">
-                      <Button variant="outline" onClick={handleResetFilters}>
-                        Rivendos të gjitha
+                    {/* Action Buttons — stacked vertically (narrow sidebar).
+                        Two buttons only; closing the panel is the implicit cancel. */}
+                    <div className="flex flex-col gap-2 pt-4 pb-2 border-t">
+                      <Button className="w-full" onClick={handleApplyFilters}>
+                        Apliko Filtrat
                       </Button>
-                      <Button variant="outline" onClick={() => {
-                        setPendingAdvancedFilters(advancedFilters);
-                        setPendingCoreFilters(coreFilters);
-                        setShowAllFilters(false);
-                        setExpandedCategory(null);
-                      }}>
-                        Anulo
+                      <Button variant="outline" className="w-full" onClick={handleResetFilters}>
+                        Rivendos të gjitha
                       </Button>
                     </div>
                   </div>
                 </div>
               </div>
-            )}
+              )}
+            </div>
           </div>
 
           {/* Main Content - Job Listings (80% - expanded since right sidebar is disabled) */}

@@ -33,6 +33,7 @@ import { Play, Building, ArrowRight, ArrowLeft, User, FileText, CheckCircle, Hel
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi } from "@/lib/api";
 import { validateForm, employerSignupRules, formatValidationErrors, normalizeAlbanianPhone } from "@/lib/formValidation";
+import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { TextAreaWithCounter, InputWithCounter } from "@/components/CharacterCounter";
 
 const EmployersPage = () => {
@@ -335,29 +336,13 @@ const EmployersPage = () => {
         
         // Validation logic for each step using validation system
         if (formStepToValidate === 0) {
-          // Step 0: Personal Info - Use validation system
-          const validationResult = validateForm(values, employerSignupRules.step1);
+          // Step 0: Personal Info (firstName, lastName, email, password, phone)
+          const validationResult = validateForm(values, employerSignupRules.step0);
 
           if (!validationResult.isValid) {
             notifications.show({
               title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
               message: formatValidationErrors(validationResult.errors),
-              color: 'red',
-              autoClose: 6000,
-            });
-            return;
-          }
-
-          // Additional password validation
-          const passwordValidation = validateForm(
-            { email: values.email, password: values.password },
-            employerSignupRules.step0
-          );
-
-          if (!passwordValidation.isValid) {
-            notifications.show({
-              title: 'Gabim në fjalëkalim ose email',
-              message: formatValidationErrors(passwordValidation.errors),
               color: 'red',
               autoClose: 6000,
             });
@@ -599,28 +584,33 @@ const EmployersPage = () => {
     // DESKTOP STRATEGY: Scroll on form step changes, but not within same step
     if (!isMobile) {
       if (isNewFormStep) {
-        // New form step on desktop: scroll to show ENTIRE FORM, then mark this step as scrolled
+        // New form step on desktop: center the HIGHLIGHTED ELEMENT (not the whole
+        // form container) in the viewport. Scrolling the form container with
+        // block:'start' over-scrolled and left the field mis-measured; centering
+        // the element matches the JobSeekersPage tutorial that works well.
         isScrollLockedRef.current = false; // Unlock for tutorial scroll
         document.body.style.overflow = '';
 
-        // Find the form container (the Paper/Card containing the form)
-        const formContainer = element.closest('form') || element.closest('[class*="mantine-Paper"]') || element.closest('[class*="mantine-Card"]');
-        const scrollTarget = formContainer || element;
-
-        scrollTarget.scrollIntoView({
+        element.scrollIntoView({
           behavior: 'smooth',
-          block: 'start', // Scroll to top of form to show entire form
-          inline: 'center'
+          block: 'center',
+          inline: 'nearest'
         });
 
         setLastScrolledFormStep(currentFormStep);
 
-        setTimeout(() => {
-          const newRect = element.getBoundingClientRect();
+        // Wait for the smooth scroll to actually settle before measuring.
+        waitForScrollSettle(element, () => {
           setHighlightedElement(element);
-          setElementPosition(newRect);
+          setElementPosition(element.getBoundingClientRect());
           document.body.style.overflow = 'hidden';
           isScrollLockedRef.current = true; // Re-lock after scroll
+
+          // One more re-measure after the overlay + scroll-lock have painted —
+          // fixes the slight first-step offset when starting off-screen.
+          requestAnimationFrame(() => {
+            setElementPosition(element.getBoundingClientRect());
+          });
 
           setIsAnimating(true);
           setIsSpotlightAnimating(true);
@@ -628,7 +618,7 @@ const EmployersPage = () => {
             setIsAnimating(false);
             setIsSpotlightAnimating(false);
           }, 400);
-        }, 400);
+        });
         return;
       } else {
         // Desktop: Within same form step, NEVER scroll - just highlight (no jitter!)
@@ -657,30 +647,31 @@ const EmployersPage = () => {
     const elementMiddleY = rect.top + (rect.height / 2);
     const isCoveredByCard = elementMiddleY > tutorialCardTop;
     
-    // On mobile, ALWAYS scroll when form step changes
+    // On mobile, ALWAYS scroll when form step changes — center the highlighted
+    // element (not the form container) so it lands clear of the nav + tutorial card.
     if (isNewFormStep) {
       isScrollLockedRef.current = false; // Unlock for tutorial scroll
       document.body.style.overflow = '';
 
-      // Find the form container (the Paper/Card containing the form)
-      const formContainer = element.closest('form') || element.closest('[class*="mantine-Paper"]') || element.closest('[class*="mantine-Card"]');
-      const scrollTarget = formContainer || element;
-
-      scrollTarget.scrollIntoView({
+      element.scrollIntoView({
         behavior: 'smooth',
-        block: 'start', // Scroll to top of form to show entire form
-        inline: 'center'
+        block: 'center',
+        inline: 'nearest'
       });
 
       // Mark this form step as scrolled
       setLastScrolledFormStep(currentFormStep);
 
-      setTimeout(() => {
-        const newRect = element.getBoundingClientRect();
+      waitForScrollSettle(element, () => {
         setHighlightedElement(element);
-        setElementPosition(newRect);
+        setElementPosition(element.getBoundingClientRect());
         document.body.style.overflow = 'hidden';
         isScrollLockedRef.current = true; // Re-lock after scroll
+
+        // Re-measure after overlay + scroll-lock paint — fixes first-step offset.
+        requestAnimationFrame(() => {
+          setElementPosition(element.getBoundingClientRect());
+        });
 
         setIsAnimating(true);
         setIsSpotlightAnimating(true);
@@ -688,7 +679,7 @@ const EmployersPage = () => {
           setIsAnimating(false);
           setIsSpotlightAnimating(false);
         }, 400);
-      }, 400);
+      });
       return;
     }
     
@@ -1225,7 +1216,7 @@ const EmployersPage = () => {
       <Companies />
 
       <div className="px-4 sm:px-6 lg:px-8">
-        <Container size="lg" px={0} py={40} pt={80} data-employer-form>
+        <Container size="lg" px={0} py={24} pt={24} data-employer-form>
           {/* Hero Section with 3D Asset */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center mb-8">
           <div className="text-center md:text-left">

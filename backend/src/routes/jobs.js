@@ -272,32 +272,43 @@ router.get('/', optionalAuth, async (req, res) => {
     if (minSalary) filters.minSalary = parseInt(minSalary);
     if (maxSalary) filters.maxSalary = parseInt(maxSalary);
     if (currency && ['EUR', 'ALL'].includes(currency)) filters.currency = currency;
-    // Only add company filter if it's a valid ObjectId
+    // Company filter: the UI sends a free-text company NAME (not an ObjectId).
+    // An ObjectId is used directly; a name is resolved to matching employer IDs.
     if (company && mongoose.Types.ObjectId.isValid(company)) {
       filters.employerId = company;
-    } else if (company) {
-      // Invalid ObjectId - return early with empty results
-      return res.json({
-        success: true,
-        data: {
-          jobs: [],
-          pagination: {
-            currentPage: safePage,
-            totalPages: 0,
-            totalJobs: 0,
-            hasNextPage: false,
-            hasPrevPage: false
-          },
-          filters: {
-            search: stripHtml(safeSearch || ''),
-            city,
-            category,
-            jobType,
-            minSalary: minSalary ? parseInt(minSalary) : null,
-            maxSalary: maxSalary ? parseInt(maxSalary) : null
+    } else if (company && typeof company === 'string' && company.trim()) {
+      const escaped = company.trim().replace(/\0/g, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const matchingEmployers = await User.find(
+        { userType: 'employer', 'profile.employerProfile.companyName': { $regex: escaped, $options: 'i' } },
+        '_id'
+      ).limit(50).lean();
+
+      if (matchingEmployers.length === 0) {
+        // No company matches that name — return empty results.
+        return res.json({
+          success: true,
+          data: {
+            jobs: [],
+            pagination: {
+              currentPage: safePage,
+              totalPages: 0,
+              totalJobs: 0,
+              hasNextPage: false,
+              hasPrevPage: false
+            },
+            filters: {
+              search: stripHtml(safeSearch || ''),
+              city,
+              category,
+              jobType,
+              minSalary: minSalary ? parseInt(minSalary) : null,
+              maxSalary: maxSalary ? parseInt(maxSalary) : null
+            }
           }
-        }
-      });
+        });
+      }
+
+      filters.employerId = { $in: matchingEmployers.map(e => e._id) };
     }
 
     // Experience/Seniority filter - map experience to seniority
@@ -337,9 +348,10 @@ router.get('/', optionalAuth, async (req, res) => {
     }
 
     // PR-E: Personalize the default listing for logged-in jobseekers on page 1.
-    // Conditions: jobseeker role, completed embedding, page 1, default time sort.
-    // Falls through immediately if any condition is false (no overhead for guests).
-    if (req.user?.userType === 'jobseeker' && safePage === 1 && sortBy === 'postedAt') {
+    // Conditions: jobseeker role, completed embedding, page 1, DEFAULT sort only
+    // (newest = postedAt desc). An explicit "oldest" request (postedAt asc) must
+    // NOT be hijacked by the cosine re-rank — it ignores chronological order.
+    if (req.user?.userType === 'jobseeker' && safePage === 1 && sortBy === 'postedAt' && sortOrder !== 'asc') {
       const userWithEmb = await User.findById(req.user._id)
         .select('+profile.jobSeekerProfile.embedding.vector')
         .lean();
@@ -348,6 +360,7 @@ router.get('/', optionalAuth, async (req, res) => {
         const poolSize = Math.max(safeLimit * 4, 40);
         const pool = await Job.searchJobs(safeSearch, filters)
           .select('+embedding.vector')
+          .sort({ postedAt: -1 })  // pool = most recent jobs, then cosine re-rank
           .limit(poolSize)
           .lean()
           .exec();
@@ -401,18 +414,24 @@ router.get('/', optionalAuth, async (req, res) => {
     // Execute search
     let query = Job.searchJobs(safeSearch, filters);
 
-    // Apply sorting — premium jobs are highlighted in PremiumJobsCarousel, not in main listing sort
+    // Apply sorting — premium jobs are highlighted in PremiumJobsCarousel, not in main listing sort.
+    // searchJobs no longer pre-sorts, so this is the only sort on the query.
     const sortOptions = {};
+    const dir = sortOrder === 'desc' ? -1 : 1;
     if (sortBy === 'postedAt') {
-      sortOptions.postedAt = sortOrder === 'desc' ? -1 : 1;
+      sortOptions.postedAt = dir;
     } else if (sortBy === 'salary') {
-      sortOptions['salary.max'] = sortOrder === 'desc' ? -1 : 1;
+      sortOptions['salary.max'] = dir;
     } else {
       // Whitelist allowed sort fields to prevent injection
       const allowedSorts = ['createdAt', 'postedAt', 'salary.min', 'salary.max', 'viewCount', 'applicationCount', 'title'];
       const safeSortBy = allowedSorts.includes(sortBy) ? sortBy : 'postedAt';
-      sortOptions[safeSortBy] = sortOrder === 'desc' ? -1 : 1;
+      sortOptions[safeSortBy] = dir;
     }
+    // Deterministic tiebreaker — keeps order stable when the primary key ties
+    // (e.g. salary sort where many jobs share / lack salary.max) and prevents
+    // pagination flicker.
+    sortOptions._id = -1;
 
     // Pagination
     const skip = (safePage - 1) * safeLimit;

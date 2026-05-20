@@ -225,15 +225,15 @@ async function parseProfileWithAI(cvText) {
   ],
   "education": [
     {
-      "degree": "string (REQUIRED) — e.g. Bachelor, Master, PhD, Diploma",
+      "degree": "MUST be one of: diploma_shkollore | certificate | bachelors | masters | phd | other — map: 'High school'/'Maturë'/'Diplomë' → diploma_shkollore; 'Certificate'/'Certifikatë' → certificate; 'Bachelor'/'BA'/'BS'/'BSc'/'Licencë' → bachelors; 'Master'/'MA'/'MS'/'MSc'/'MBA' → masters; 'PhD'/'Doctorate'/'Doktoraturë' → phd; anything else → other",
       "institution": "string (REQUIRED)",
-      "fieldOfStudy": "string or empty",
+      "fieldOfStudy": "string or empty — e.g. 'Software Engineering', 'Business Administration', 'Inxhinieri Mekanike'",
       "location": "string or empty",
       "startDate": "YYYY-MM format string",
       "endDate": "YYYY-MM format string, or empty string if current",
       "isCurrentStudy": true/false,
-      "gpa": "string or empty",
-      "description": "string or empty"
+      "gpa": "string or empty — extract grade if present (e.g. '9.2/10', '3.8/4.0', 'Magna Cum Laude', '8.5')",
+      "description": "string or empty — relevant projects, honors, thesis topic"
     }
   ],
   "languages": [
@@ -267,6 +267,22 @@ IMPORTANT RULES:
 const EXPERIENCE_ENUMS = ['0-1 vjet', '1-2 vjet', '2-5 vjet', '5-10 vjet', '10+ vjet'];
 const PROFICIENCY_ENUMS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'Native'];
 const DATE_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+// Frontend education dropdown uses these enum values. AI may return free-text
+// labels ("Bachelor", "BsC", "Master") which would leave the dropdown unselected
+// in the edit modal — normalize at parse time so saved value matches the form.
+const DEGREE_ENUMS = ['diploma_shkollore', 'certificate', 'bachelors', 'masters', 'phd', 'other'];
+function normalizeDegreeToEnum(raw) {
+  if (!raw || typeof raw !== 'string') return 'other';
+  const v = raw.trim().toLowerCase();
+  if (DEGREE_ENUMS.includes(v)) return v;
+  if (/(^|\s|\.)(phd|doctorate|doctoral|doktoratur|doktor)/i.test(v)) return 'phd';
+  if (/(^|\s|\.)(master|m\.?a\.?|m\.?sc?\.?|m\.?b\.?a\.?|mph)/i.test(v)) return 'masters';
+  if (/(^|\s|\.)(bachelor|b\.?a\.?|b\.?sc?\.?|bs|licenc|licencë)/i.test(v)) return 'bachelors';
+  if (/(certificat|certifik)/i.test(v)) return 'certificate';
+  if (/(diplom[eë]?|matur|high\s*school|shkoll[eë]?\s*(e\s*)?mes[ae]m)/i.test(v)) return 'diploma_shkollore';
+  return 'other';
+}
 
 /**
  * Calculate experience enum from work history entries.
@@ -343,7 +359,7 @@ function sanitizeParsedProfile(parsed) {
     result.education = parsed.education
       .filter(e => e && typeof e.degree === 'string' && e.degree.trim() && typeof e.institution === 'string' && e.institution.trim())
       .map(e => ({
-        degree: e.degree.trim().slice(0, 100),
+        degree: normalizeDegreeToEnum(e.degree),
         institution: e.institution.trim().slice(0, 100),
         fieldOfStudy: typeof e.fieldOfStudy === 'string' ? e.fieldOfStudy.trim().slice(0, 100) : '',
         location: typeof e.location === 'string' ? e.location.trim().slice(0, 100) : '',

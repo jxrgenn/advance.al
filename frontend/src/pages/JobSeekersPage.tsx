@@ -37,6 +37,7 @@ import {
   Loader,
   FileInput,
   Alert,
+  Tooltip,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -44,6 +45,7 @@ import { Play, Users, Bell, HelpCircle, X, Lightbulb, CheckCircle, ArrowRight, B
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi, quickUsersApi, cvApi } from "@/lib/api";
 import { validateForm, jobSeekerSignupRules, formatValidationErrors, normalizeAlbanianPhone } from "@/lib/formValidation";
+import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { InputWithCounter } from "@/components/CharacterCounter";
 import { JOB_CATEGORIES } from "@/constants/jobCategories";
 import { useEmailAvailability } from "@/hooks/useEmailAvailability";
@@ -97,6 +99,25 @@ const JobSeekersPage = () => {
       setTimeout(() => tryScroll('data-signup-form'), 100);
     }
   }, [location.search]);
+
+  // Hash-based deep-link scroll (e.g. /jobseekers#ai-cv-section). React Router
+  // <Link to="...#hash"> does not auto-scroll to the anchor, so we poll for the
+  // element (some sections mount after data fetches) and smooth-scroll once.
+  useEffect(() => {
+    if (!location.hash) return;
+    const id = location.hash.slice(1);
+    if (!id) return;
+    const tryScroll = (attempts = 0) => {
+      const el = document.getElementById(id);
+      if (el) {
+        const y = el.getBoundingClientRect().top + window.scrollY - 120;
+        window.scrollTo({ top: y, behavior: 'smooth' });
+      } else if (attempts < 15) {
+        setTimeout(() => tryScroll(attempts + 1), 200);
+      }
+    };
+    setTimeout(() => tryScroll(), 100);
+  }, [location.hash]);
 
   // CV Generation State
   const [cvInput, setCvInput] = useState('');
@@ -598,7 +619,8 @@ Telefoni: _______________`;
     isScrollLockedRef.current = true; // Lock scrolling using ref
     // Lock scroll on body - essential to prevent user scrolling during tutorial
     document.body.style.overflow = 'hidden';
-    highlightElement(0);
+    // Let the DOM settle before measuring the first step.
+    setTimeout(() => highlightElement(0), 100);
   };
 
   const nextTutorialStep = () => {
@@ -711,231 +733,72 @@ Telefoni: _______________`;
     };
   }, []);
 
-  const highlightElement = (stepIndex: number) => {
+  // Find the step's element, smooth-scroll it into view if off-screen, place
+  // the spotlight only after the scroll settles (Profile-tutorial pattern).
+  const highlightElement = (stepIndex: number, skipCount = 0) => {
     const step = currentTutorialSteps[stepIndex];
-    if (!step) return;
+    if (!step) { closeTutorial(); return; }
 
-    const element = document.querySelector(step.selector);
-    if (!element) {
-      // Tutorial element not found, skip
-      return;
-    }
-
-    // Store previous position for smooth transition
-    if (elementPosition) {
-      setPreviousElementPosition(elementPosition);
-    }
-
-    // Check if element is visible in viewport
-    const rect = element.getBoundingClientRect();
-    const viewportHeight = window.innerHeight;
-    const viewportWidth = window.innerWidth;
-    
-    const isMobile = viewportWidth < 768;
-    const isFirstStep = stepIndex === 0;
-    
-    // DESKTOP STRATEGY: Scroll once at start, then never again
-    if (!isMobile) {
-      if (isFirstStep && !hasScrolledOnDesktop) {
-        // First step on desktop: scroll to center form, then mark as done
-        // Temporarily allow scrolling by unlocking the ref
-        isScrollLockedRef.current = false;
-        document.body.style.overflow = '';
-
-        element.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-          inline: 'center'
-        });
-
-        setHasScrolledOnDesktop(true);
-
-        setTimeout(() => {
-          const newRect = element.getBoundingClientRect();
-          setHighlightedElement(element);
-          setElementPosition(newRect);
-          document.body.style.overflow = 'hidden';
-          isScrollLockedRef.current = true; // Re-lock scrolling
-
-          setIsAnimating(true);
-          setIsSpotlightAnimating(true);
-          setTimeout(() => {
-            setIsAnimating(false);
-            setIsSpotlightAnimating(false);
-          }, 400);
-        }, 400);
-        return;
+    const element = document.querySelector(step.selector) as HTMLElement | null;
+    if (!element || element.offsetParent === null) {
+      // Element missing — skip forward (max 5 to avoid an infinite loop).
+      if (skipCount < 5 && stepIndex < currentTutorialSteps.length - 1) {
+        setTutorialStep(stepIndex + 1);
+        highlightElement(stepIndex + 1, skipCount + 1);
       } else {
-        // Desktop: After first scroll, NEVER scroll again - just highlight
-        setHighlightedElement(element);
-        setElementPosition(rect);
-
-        setIsAnimating(true);
-        setIsSpotlightAnimating(true);
-        setTimeout(() => {
-          setIsAnimating(false);
-          setIsSpotlightAnimating(false);
-        }, 400);
-        return;
+        closeTutorial();
       }
-    }
-    
-    // MOBILE STRATEGY: Check for card coverage and scroll as needed
-    const tutorialCardWidth = Math.min(320, viewportWidth - 40);
-    const tutorialCardHeight = Math.min(400, viewportHeight * 0.6);
-    const tutorialCardRight = 24;
-    const tutorialCardBottom = 24;
-    const tutorialCardLeft = viewportWidth - tutorialCardWidth - tutorialCardRight;
-    const tutorialCardTop = viewportHeight - tutorialCardHeight - tutorialCardBottom;
-    
-    // Check if element's MIDDLE is covered by tutorial card
-    const elementMiddleY = rect.top + (rect.height / 2);
-    const isCoveredByCard = elementMiddleY > tutorialCardTop;
-    
-    // On mobile, ALWAYS scroll on first step to ensure name/lastname are visible
-    if (isFirstStep) {
-      isScrollLockedRef.current = false; // Unlock for tutorial scroll
-      document.body.style.overflow = '';
-
-      element.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-        inline: 'center'
-      });
-
-      setTimeout(() => {
-        const newRect = element.getBoundingClientRect();
-        setHighlightedElement(element);
-        setElementPosition(newRect);
-        document.body.style.overflow = 'hidden';
-        isScrollLockedRef.current = true; // Re-lock after scroll
-
-        setIsAnimating(true);
-        setIsSpotlightAnimating(true);
-        setTimeout(() => {
-          setIsAnimating(false);
-          setIsSpotlightAnimating(false);
-        }, 400);
-      }, 400);
       return;
     }
-    
-    const checkMargin = 60;
-    const bottomMargin = 180;
-    const checkBottom = bottomMargin;
-    
-    const isVisible = !isCoveredByCard && 
-                     rect.top >= checkMargin && 
-                     rect.bottom <= viewportHeight - checkBottom;
 
-    // Mobile: Scroll if not visible or covered
-    if (!isVisible) {
-      isScrollLockedRef.current = false; // Unlock for tutorial scroll
+    if (elementPosition) setPreviousElementPosition(elementPosition);
+
+    const rect = element.getBoundingClientRect();
+    const vh = window.innerHeight;
+    const inView = rect.top >= 60 && rect.bottom <= vh - 120;
+
+    if (!inView) {
+      // Hide the spotlight so it doesn't flash at the old position.
+      setHighlightedElement(null);
+      setElementPosition(null);
+
+      isScrollLockedRef.current = false;
       document.body.style.overflow = '';
+      element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
 
-      element.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-        inline: 'center'
-      });
-
-      setTimeout(() => {
-        const newRect = element.getBoundingClientRect();
-        setHighlightedElement(element);
-        setElementPosition(newRect);
+      // Wait for the smooth scroll to actually settle before measuring.
+      waitForScrollSettle(element, () => {
         document.body.style.overflow = 'hidden';
-        isScrollLockedRef.current = true; // Re-lock after scroll
-
+        isScrollLockedRef.current = true;
+        setHighlightedElement(element);
+        setElementPosition(element.getBoundingClientRect());
+        requestAnimationFrame(() => setElementPosition(element.getBoundingClientRect()));
         setIsAnimating(true);
         setIsSpotlightAnimating(true);
-        setTimeout(() => {
-          setIsAnimating(false);
-          setIsSpotlightAnimating(false);
-        }, 400);
-      }, 400);
+        setTimeout(() => { setIsAnimating(false); setIsSpotlightAnimating(false); }, 300);
+      });
     } else {
-      // Mobile: Element visible, highlight immediately
       setHighlightedElement(element);
       setElementPosition(rect);
-
       setIsAnimating(true);
       setIsSpotlightAnimating(true);
-      setTimeout(() => {
-        setIsAnimating(false);
-        setIsSpotlightAnimating(false);
-      }, 400);
+      setTimeout(() => { setIsAnimating(false); setIsSpotlightAnimating(false); }, 300);
     }
   };
 
-  // Calculate optimal position for instruction panel
-  const calculateOptimalPosition = (elementRect: DOMRect, preferredPosition: string) => {
-    const viewport = {
-      width: window.innerWidth,
-      height: window.innerHeight
-    };
-
-    const isMobile = viewport.width < 768;
-    const panelWidth = isMobile ? Math.min(280, viewport.width - 40) : 320;
-    const panelHeight = isMobile ? 160 : 180;
-    const padding = isMobile ? 12 : 16;
-    const margin = isMobile ? 10 : 20;
-
-    let position = { top: 0, left: 0, transform: 'none' };
-    let actualPosition = preferredPosition;
-
-    const positions = {
-      bottom: {
-        top: elementRect.bottom + padding,
-        left: Math.max(margin, Math.min(
-          elementRect.left + (elementRect.width - panelWidth) / 2,
-          viewport.width - panelWidth - margin
-        )),
-        transform: 'none'
-      },
-      top: {
-        top: elementRect.top - padding,
-        left: Math.max(margin, Math.min(
-          elementRect.left + (elementRect.width - panelWidth) / 2,
-          viewport.width - panelWidth - margin
-        )),
-        transform: 'translateY(-100%)'
-      },
-      right: {
-        top: Math.max(margin, Math.min(
-          elementRect.top + (elementRect.height - panelHeight) / 2,
-          viewport.height - panelHeight - margin
-        )),
-        left: elementRect.right + padding,
-        transform: 'none'
-      },
-      left: {
-        top: Math.max(margin, Math.min(
-          elementRect.top + (elementRect.height - panelHeight) / 2,
-          viewport.height - panelHeight - margin
-        )),
-        left: elementRect.left - padding,
-        transform: 'translateX(-100%)'
-      }
-    };
-
-    const preferred = positions[preferredPosition as keyof typeof positions];
-    position = preferred;
-
-    return { position, actualPosition };
-  };
-
-  // Fixed Tutorial overlay component - no more moving panel!
+  // Tutorial overlay — fixed bottom-right card, matching the employer signup
+  // form tutorial's look (amber spotlight + yellow "Tutorial Guide" card).
   const TutorialOverlay = () => {
     if (!showTutorial || tutorialStep >= currentTutorialSteps.length) return null;
 
     const currentStepData = currentTutorialSteps[tutorialStep];
 
-    // Use current position if available, fallback to previous position during transitions
+    // Use current position if available, fall back to previous during transitions.
     const position = elementPosition || previousElementPosition;
     if (!position) return null;
 
     return (
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none">
+      <div className="fixed inset-0 z-[9999] pointer-events-none">
         {/* Dark Overlay */}
         <div
           className="absolute inset-0 bg-black opacity-40 pointer-events-auto"
@@ -1001,7 +864,7 @@ Telefoni: _______________`;
             {/* Progress indicator */}
             <div className="mb-4">
               <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
-                <span>Progress</span>
+                <span>Progresi</span>
                 <span>{tutorialStep + 1} / {currentTutorialSteps.length}</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
@@ -1025,7 +888,7 @@ Telefoni: _______________`;
               size="sm"
               className="flex items-center gap-1"
             >
-              ‹ Back
+              ‹ Prapa
             </Button>
 
             <Button
@@ -1033,15 +896,7 @@ Telefoni: _______________`;
               size="sm"
               className="flex items-center gap-1 bg-yellow-600 hover:bg-yellow-700"
             >
-              {tutorialStep === currentTutorialSteps.length - 1 ? (
-                <>
-                  Finish ✓
-                </>
-              ) : (
-                <>
-                  Next ›
-                </>
-              )}
+              {tutorialStep === currentTutorialSteps.length - 1 ? 'Përfundo ✓' : 'Tjetër ›'}
             </Button>
           </div>
         </div>
@@ -1407,19 +1262,19 @@ Telefoni: _______________`;
                 style={{ borderColor: '#bfdbfe', borderWidth: 2 }}
               >
                 {/* Header - Fixed Alignment */}
-                <Group mb="xl" wrap="nowrap" align="start">
-                  <ThemeIcon size={40} radius="md" color="blue" variant="filled" style={{ flexShrink: 0 }}>
-                    <Bell size={20} />
+                <Group mb="md" wrap="nowrap" align="start">
+                  <ThemeIcon size={36} radius="md" color="blue" variant="filled" style={{ flexShrink: 0 }}>
+                    <Bell size={18} />
                   </ThemeIcon>
                   <Box>
-                    <Title order={3} fw={600} lh={1.2}>Njoftime Email për Punë të Reja</Title>
-                    <Text size="sm" c="dimmed" mt={4}>
-                      Merrni njoftime direkt në email për punë që përputhen me interesat tuaja pa u regjistruar në platformë.
+                    <Title order={4} fw={600} lh={1.2}>Njoftime Email për Punë të Reja</Title>
+                    <Text size="xs" c="dimmed" mt={2}>
+                      Merrni njoftime direkt në email për punë që përputhen me interesat tuaja pa u regjistruar.
                     </Text>
                   </Box>
                 </Group>
                 <form onSubmit={quickForm.onSubmit(handleQuickSubmit)}>
-                  <Stack gap="md">
+                  <Stack gap="sm">
                     <SimpleGrid cols={2} spacing="md" data-tutorial="quick-name">
                       <InputWithCounter
                         placeholder="Emri *"
@@ -1510,32 +1365,53 @@ Telefoni: _______________`;
 
                     <Box>
                       <Alert
-                        icon={<Sparkles size={18} />}
+                        icon={<Sparkles size={16} />}
                         color={resumeFile ? 'green' : 'blue'}
                         variant="light"
-                        mb="xs"
+                        mb={6}
+                        p="xs"
                       >
-                        <Text size="sm" fw={500}>
+                        <Text size="xs" fw={500}>
                           {resumeFile
-                            ? '✓ CV e ngarkuar — do të marrësh përputhje të personalizuara'
-                            : 'Ngarko CV-në për përputhje të personalizuara'}
+                            ? '✓ CV e ngarkuar — përputhje të personalizuara'
+                            : 'Ngarko CV-në për përputhje të personalizuara (PDF/DOCX, max 5MB)'}
                         </Text>
-                        {!resumeFile && (
-                          <Text size="xs" c="dimmed" mt={4}>
-                            Pa CV do të marrësh vetëm njoftime bazë sipas interesave. Me CV, AI analizon
-                            përvojën dhe aftësitë e tua dhe të dërgon vetëm punët më të mira për ty.
-                          </Text>
-                        )}
                       </Alert>
-                      <FileInput
-                        placeholder="Zgjidh skedarin (PDF ose DOCX)"
-                        accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
-                        leftSection={<Upload size={16} />}
-                        value={resumeFile}
-                        onChange={setResumeFile}
-                        clearable
-                        size="md"
-                      />
+                      {/* Drag-and-drop wrapper around the FileInput. Native HTML5
+                          DnD avoids adding @mantine/dropzone as a dependency.
+                          Visual cue shifts when user drags over. */}
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.add('ring-2', 'ring-blue-400', 'bg-blue-50');
+                        }}
+                        onDragLeave={(e) => {
+                          e.currentTarget.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50');
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50');
+                          const file = e.dataTransfer.files?.[0];
+                          if (!file) return;
+                          const ok = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword'].includes(file.type);
+                          if (!ok) {
+                            notifications.show({ title: 'Format i pavlefshëm', message: 'Vetëm PDF ose DOCX lejohen.', color: 'red' });
+                            return;
+                          }
+                          setResumeFile(file);
+                        }}
+                        className="rounded-md transition-all"
+                      >
+                        <FileInput
+                          placeholder="Zgjidh skedarin ose tërhiqe këtu (PDF/DOCX)"
+                          accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
+                          leftSection={<Upload size={16} />}
+                          value={resumeFile}
+                          onChange={setResumeFile}
+                          clearable
+                          size="sm"
+                        />
+                      </div>
                       {resumeFile && resumeFile.size > 5 * 1024 * 1024 && (
                         <Text size="xs" c="red" mt="xs">
                           Skedari duhet të jetë më i vogël se 5MB
@@ -1548,19 +1424,19 @@ Telefoni: _______________`;
                       size="md"
                       loading={loading}
                       fullWidth
-                      mt="md"
+                      mt="xs"
                       color="blue"
                     >
                       {loading ? 'Duke regjistruar...' : 'Aktivizo Njoftimet Email'}
                     </Button>
 
-                    <Divider my="xl" />
+                    <Divider my="sm" />
 
                     <Center>
                       <Button
                         variant="subtle"
                         onClick={() => setShowQuickForm(false)}
-                        size="sm"
+                        size="xs"
                       >
                         ← Kthehu te llogaria e plotë
                       </Button>
@@ -1664,17 +1540,41 @@ Telefoni: _______________`;
             </Grid.Col>
 
             <Grid.Col span={12}>
-              <Group justify="flex-end" align="center">
-                <Button
-                  variant="filled"
-                  color="blue"
-                  rightSection={<FileText size={18} />}
-                  onClick={handleGenerateCV}
-                  loading={generating}
-                  disabled={!isAuthenticated || user?.userType !== 'jobseeker' || cvInput.trim().length < 50}
+              <Group justify="space-between" align="center" wrap="wrap">
+                <Text size="xs" c="dimmed">
+                  {!isAuthenticated
+                    ? 'Kyçuni si kërkues pune për të gjeneruar CV.'
+                    : user?.userType !== 'jobseeker'
+                      ? 'Vetëm kërkuesit e punës mund të gjenerojnë CV.'
+                      : cvInput.trim().length < 50
+                        ? `Shkruani të paktën ${50 - cvInput.trim().length} karaktere më shumë.`
+                        : 'Të dhënat tuaja janë gati — shtypni butonin për të gjeneruar.'}
+                </Text>
+                <Tooltip
+                  label={
+                    !isAuthenticated
+                      ? 'Kyçuni për të gjeneruar CV'
+                      : user?.userType !== 'jobseeker'
+                        ? 'Vetëm kërkuesit e punës mund të gjenerojnë CV'
+                        : 'Shkruani të paktën 50 karaktere në CV'
+                  }
+                  disabled={isAuthenticated && user?.userType === 'jobseeker' && cvInput.trim().length >= 50}
+                  withArrow
+                  position="top"
                 >
-                  {generating ? 'Duke gjeneruar...' : 'Gjenero CV-në'}
-                </Button>
+                  <span>
+                    <Button
+                      variant="filled"
+                      color="blue"
+                      rightSection={<FileText size={18} />}
+                      onClick={handleGenerateCV}
+                      loading={generating}
+                      disabled={!isAuthenticated || user?.userType !== 'jobseeker' || cvInput.trim().length < 50}
+                    >
+                      {generating ? 'Duke gjeneruar...' : 'Gjenero CV-në'}
+                    </Button>
+                  </span>
+                </Tooltip>
               </Group>
             </Grid.Col>
 

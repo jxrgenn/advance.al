@@ -638,12 +638,11 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
     query['salary.currency'] = filters.currency;
   }
 
-  // Sort by posted date (newest first) — premium highlighting is done via PremiumJobsCarousel
-  const sort = { postedAt: -1 };
-
+  // NOTE: no default .sort() here — each caller applies its own sort. A
+  // pre-applied sort merges (not replaces) with the route's later .sort(),
+  // which silently demoted explicit sorts (oldest/salary/title) to tiebreakers.
   return this.find(query)
-    .populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.location')
-    .sort(sort);
+    .populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.location');
 };
 
 // Post-save hook to update Location.jobCount via atomic $inc (fixes F-5 race).

@@ -361,6 +361,19 @@ router.put('/profile', authenticate, async (req, res) => {
           user.profile.jobSeekerProfile[key] = jobSeekerProfile[key];
         }
       }
+      // notifications is a nested subdoc — merge per-key so a partial update
+      // (e.g. {jobAlerts:true}) doesn't wipe alertCategories.
+      if (jobSeekerProfile.notifications && typeof jobSeekerProfile.notifications === 'object') {
+        user.profile.jobSeekerProfile.notifications = user.profile.jobSeekerProfile.notifications || {};
+        if (typeof jobSeekerProfile.notifications.jobAlerts === 'boolean') {
+          user.profile.jobSeekerProfile.notifications.jobAlerts = jobSeekerProfile.notifications.jobAlerts;
+        }
+        if (Array.isArray(jobSeekerProfile.notifications.alertCategories)) {
+          user.profile.jobSeekerProfile.notifications.alertCategories = jobSeekerProfile.notifications.alertCategories
+            .filter(c => typeof c === 'string')
+            .slice(0, 50);
+        }
+      }
       // Arrays (education, workHistory) managed via dedicated CRUD endpoints
     }
 

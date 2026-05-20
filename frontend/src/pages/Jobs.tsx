@@ -268,7 +268,8 @@ const Jobs = () => {
   const getMergedJobs = () => {
     const recommendationIds = new Set(recommendations.map(job => job._id));
 
-    // If user is searching/filtering, don't show recommendations mixed in
+    // If user is searching/filtering, don't show recommendations mixed in.
+    // A non-default sort also counts — recommendations would override the order.
     const hasActiveFilters = searchQuery || selectedLocation || selectedType ||
       Object.values(coreFilters).some(Boolean) ||
       advancedFilters.company ||
@@ -276,6 +277,7 @@ const Jobs = () => {
       advancedFilters.remote ||
       advancedFilters.categories.length > 0 ||
       advancedFilters.postedWithin ||
+      (advancedFilters.sortBy && advancedFilters.sortBy !== 'newest') ||
       (advancedFilters.salaryRange[0] > 0 || advancedFilters.salaryRange[1] < 2000);
 
     if (hasActiveFilters) {
@@ -863,7 +865,8 @@ const Jobs = () => {
               </Select>
             </div>
 
-            {/* Company Search */}
+            {/* Company Search — hidden FOR NOW (re-enable later). */}
+            {/*
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Building className="h-4 w-4" />
@@ -876,6 +879,7 @@ const Jobs = () => {
                 className="w-full"
               />
             </div>
+            */}
 
             {/* Job Categories */}
             <div className="space-y-4">

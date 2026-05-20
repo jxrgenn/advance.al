@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { jobsApi, applicationsApi, usersApi, locationsApi, matchingApi, Job, Application, Location, CandidateMatch, User } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { validateForm, employerDashboardSettingsRules, formatValidationErrors } from "@/lib/formValidation";
+import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { TextAreaWithCounter } from "@/components/CharacterCounter";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
@@ -91,6 +92,8 @@ const EmployerDashboard = () => {
   const [isAnimating, setIsAnimating] = useState(false);
   const [isSpotlightAnimating, setIsSpotlightAnimating] = useState(false);
   const [lastClickTime, setLastClickTime] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const transitionTimer = useRef<number | null>(null);
   // Use ref to track scroll lock state - refs can be read synchronously by event listeners
   const isScrollLockedRef = useRef(false);
   const [searchParams] = useSearchParams();
@@ -269,14 +272,21 @@ const EmployerDashboard = () => {
     }
   ];
 
-  // Get current tutorial steps based on active tab
-  const getCurrentTutorialSteps = () => {
-    if (currentTab === 'jobs') return jobsTutorialSteps;
-    if (currentTab === 'applicants') return applicantsTutorialSteps;
-    return settingsTutorialSteps;
+  // Unified tutorial step list (Profile-tutorial pattern): each step tagged
+  // with the tab it belongs to so the tutorial can switch tabs mid-flow
+  // instead of closing when the user moves between tabs.
+  type TutorialStep = {
+    selector: string;
+    title: string;
+    content: string;
+    position: 'right' | 'left' | 'bottom' | 'top';
+    requiresTab: 'jobs' | 'applicants' | 'settings';
   };
-
-  const currentTutorialSteps = getCurrentTutorialSteps();
+  const allTutorialSteps: TutorialStep[] = [
+    ...jobsTutorialSteps.map(s => ({ selector: s.selector, title: s.title, content: s.content, position: s.position as TutorialStep['position'], requiresTab: 'jobs' as const })),
+    ...applicantsTutorialSteps.map(s => ({ selector: s.selector, title: s.title, content: s.content, position: s.position as TutorialStep['position'], requiresTab: 'applicants' as const })),
+    ...settingsTutorialSteps.map(s => ({ selector: s.selector, title: s.title, content: s.content, position: s.position as TutorialStep['position'], requiresTab: 'settings' as const })),
+  ];
 
   // Client-side filtered jobs based on status filter
   const filteredJobs = jobStatusFilter === 'all'
@@ -393,9 +403,11 @@ const EmployerDashboard = () => {
     }
   };
 
-  // Tutorial system — direct step management, no useEffect chains
+  // Tutorial system — Profile-tutorial pattern: smooth scroll with scroll-settle
+  // detection, tab-aware step navigation (switches tabs mid-flow instead of closing).
   const closeTutorial = () => {
     isScrollLockedRef.current = false;
+    if (transitionTimer.current) clearTimeout(transitionTimer.current);
     setShowTutorial(false);
     setTutorialStep(0);
     setHighlightedElement(null);
@@ -403,29 +415,51 @@ const EmployerDashboard = () => {
     setPreviousElementPosition(null);
     setIsAnimating(false);
     setIsSpotlightAnimating(false);
+    setIsTransitioning(false);
     setLastClickTime(0);
     document.body.style.overflow = '';
   };
 
   const startTutorial = () => {
+    const startIndex = allTutorialSteps.findIndex(s => s.requiresTab === currentTab);
+    const startStep = startIndex >= 0 ? startIndex : 0;
     setShowTutorial(true);
-    setTutorialStep(0);
     isScrollLockedRef.current = true;
     document.body.style.overflow = 'hidden';
-    // Let DOM settle, then highlight first step
-    setTimeout(() => highlightStep(0), 50);
+    setTimeout(() => goToStep(startStep), 100);
   };
 
-  // Core highlight function — finds element, scrolls if needed, sets position
+  // Go to a specific step — switches tab first if the step lives on another tab.
+  const goToStep = (stepIndex: number) => {
+    if (stepIndex < 0 || stepIndex >= allTutorialSteps.length) {
+      closeTutorial();
+      return;
+    }
+    const step = allTutorialSteps[stepIndex];
+    setTutorialStep(stepIndex);
+
+    if (step.requiresTab !== currentTab) {
+      setIsTransitioning(true);
+      setHighlightedElement(null);
+      setElementPosition(null);
+      setCurrentTab(step.requiresTab);
+      transitionTimer.current = window.setTimeout(() => {
+        highlightStep(stepIndex);
+        setIsTransitioning(false);
+      }, 300);
+      return;
+    }
+    highlightStep(stepIndex);
+  };
+
+  // Find the step's element, smooth-scroll it into view, place the spotlight.
   const highlightStep = (stepIndex: number, skipCount = 0) => {
-    const steps = getCurrentTutorialSteps();
-    const step = steps[stepIndex];
+    const step = allTutorialSteps[stepIndex];
     if (!step) { closeTutorial(); return; }
 
     const element = document.querySelector(step.selector) as HTMLElement | null;
-    if (!element) {
-      // Skip missing element (max 5 to prevent infinite loop)
-      if (skipCount < 5 && stepIndex < steps.length - 1) {
+    if (!element || element.offsetParent === null) {
+      if (skipCount < 5 && stepIndex < allTutorialSteps.length - 1) {
         setTutorialStep(stepIndex + 1);
         highlightStep(stepIndex + 1, skipCount + 1);
       } else {
@@ -439,59 +473,227 @@ const EmployerDashboard = () => {
     const inView = rect.top >= 60 && rect.bottom <= vh - 120;
 
     if (!inView) {
-      // Hide old spotlight/card so they don't flash at wrong position
       setHighlightedElement(null);
       setElementPosition(null);
 
-      // Instant scroll to center element
       isScrollLockedRef.current = false;
       document.body.style.overflow = '';
-      element.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'nearest' });
+      element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
 
-      // After layout, capture correct position
-      requestAnimationFrame(() => {
-        const freshRect = element.getBoundingClientRect();
+      // Wait for the smooth scroll to actually settle before measuring.
+      waitForScrollSettle(element, () => {
         document.body.style.overflow = 'hidden';
         isScrollLockedRef.current = true;
-
-        setTutorialStep(stepIndex);
         setHighlightedElement(element);
-        setElementPosition(freshRect);
+        setElementPosition(element.getBoundingClientRect());
+        requestAnimationFrame(() => setElementPosition(element.getBoundingClientRect()));
         setIsAnimating(true);
         setIsSpotlightAnimating(true);
-        setTimeout(() => { setIsAnimating(false); setIsSpotlightAnimating(false); }, 400);
+        setTimeout(() => { setIsAnimating(false); setIsSpotlightAnimating(false); }, 300);
       });
     } else {
-      // Already visible — set immediately
       if (elementPosition) setPreviousElementPosition(elementPosition);
-      setTutorialStep(stepIndex);
       setHighlightedElement(element);
       setElementPosition(rect);
       setIsAnimating(true);
       setIsSpotlightAnimating(true);
-      setTimeout(() => { setIsAnimating(false); setIsSpotlightAnimating(false); }, 400);
+      setTimeout(() => { setIsAnimating(false); setIsSpotlightAnimating(false); }, 300);
     }
   };
 
   const nextTutorialStep = () => {
-    const steps = getCurrentTutorialSteps();
-    if (tutorialStep < steps.length - 1) {
-      highlightStep(tutorialStep + 1);
+    if (isTransitioning) return;
+    if (tutorialStep < allTutorialSteps.length - 1) {
+      goToStep(tutorialStep + 1);
     } else {
       closeTutorial();
     }
   };
 
   const previousTutorialStep = () => {
-    if (tutorialStep > 0) {
-      highlightStep(tutorialStep - 1);
-    }
+    if (isTransitioning || tutorialStep === 0) return;
+    goToStep(tutorialStep - 1);
   };
 
-  // Close tutorial when switching tabs
+  // When user manually switches tabs during the tutorial, jump to that tab's
+  // first step instead of closing the tutorial.
   useEffect(() => {
-    if (showTutorial) closeTutorial();
+    if (!showTutorial || isTransitioning) return;
+    const cur = allTutorialSteps[tutorialStep];
+    if (cur && cur.requiresTab === currentTab) {
+      goToStep(tutorialStep);
+    } else {
+      const idx = allTutorialSteps.findIndex(s => s.requiresTab === currentTab);
+      if (idx !== -1) goToStep(idx);
+    }
   }, [currentTab]);
+
+  // Tutorial overlay — spotlight + smart-positioned instruction card (ported
+  // from the Profile tutorial the user approved).
+  const TutorialOverlay = () => {
+    if (!showTutorial || !elementPosition) return null;
+
+    const step = allTutorialSteps[tutorialStep];
+    if (!step) return null;
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const isMobile = viewportWidth < 768;
+
+    const spotlightHeight = elementPosition.height;
+
+    const spotlightStyle: React.CSSProperties = {
+      position: 'fixed',
+      top: `${elementPosition.top}px`,
+      left: `${elementPosition.left}px`,
+      width: `${elementPosition.width}px`,
+      height: `${spotlightHeight}px`,
+      borderRadius: '8px',
+      boxShadow: `0 0 0 99999px rgba(0, 0, 0, 0.5)`,
+      pointerEvents: 'none',
+      zIndex: 9999,
+      transition: isSpotlightAnimating
+        ? 'all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1)'
+        : 'none'
+    };
+
+    const cardWidth = isMobile ? Math.min(340, viewportWidth - 32) : 340;
+    const baseCardHeight = Math.min(450, viewportHeight * 0.65);
+    const margin = 20;
+
+    let calculatedCardTop = elementPosition.top;
+    let calculatedCardLeft = elementPosition.left;
+    let calculatedCardHeight = baseCardHeight;
+
+    if (isMobile) {
+      const elementBottom = elementPosition.bottom;
+      const elementTop = elementPosition.top;
+      const spaceAbove = elementTop;
+      const spaceBelow = viewportHeight - elementBottom;
+      const minCardHeight = 240;
+      calculatedCardHeight = Math.min(baseCardHeight, Math.max(minCardHeight, viewportHeight * 0.45));
+      const gap = 8;
+      const fitsBelow = spaceBelow >= calculatedCardHeight + gap + 16;
+      const fitsAbove = spaceAbove >= calculatedCardHeight + gap + 16;
+
+      if (fitsBelow) {
+        calculatedCardTop = elementBottom + gap;
+      } else if (fitsAbove) {
+        calculatedCardTop = elementTop - calculatedCardHeight - gap;
+      } else {
+        if (spaceBelow > spaceAbove) {
+          const availableHeight = spaceBelow - gap - 16;
+          calculatedCardHeight = Math.max(minCardHeight, Math.min(calculatedCardHeight, availableHeight));
+          calculatedCardTop = elementBottom + gap;
+        } else {
+          const availableHeight = spaceAbove - gap - 16;
+          calculatedCardHeight = Math.max(minCardHeight, Math.min(calculatedCardHeight, availableHeight));
+          calculatedCardTop = elementTop - calculatedCardHeight - gap;
+        }
+      }
+
+      if (calculatedCardTop < 12) {
+        calculatedCardTop = 12;
+        calculatedCardHeight = Math.min(calculatedCardHeight, viewportHeight - 24);
+      }
+      if (calculatedCardTop + calculatedCardHeight > viewportHeight - 12) {
+        const overflow = (calculatedCardTop + calculatedCardHeight) - (viewportHeight - 12);
+        calculatedCardTop = Math.max(12, calculatedCardTop - overflow);
+        calculatedCardHeight = Math.max(minCardHeight, calculatedCardHeight - overflow);
+      }
+
+      calculatedCardLeft = (viewportWidth - cardWidth) / 2;
+    } else {
+      if (step.position === 'right' || step.position === 'bottom' || step.position === 'top') {
+        calculatedCardTop = elementPosition.top + (spotlightHeight / 2) - (calculatedCardHeight / 2);
+        calculatedCardLeft = elementPosition.left + elementPosition.width + margin;
+        if (calculatedCardLeft + cardWidth > viewportWidth - margin) {
+          calculatedCardLeft = elementPosition.left - cardWidth - margin;
+        }
+      } else if (step.position === 'left') {
+        calculatedCardTop = elementPosition.top + (spotlightHeight / 2) - (calculatedCardHeight / 2);
+        calculatedCardLeft = elementPosition.left - cardWidth - margin;
+      }
+
+      if (calculatedCardTop < margin) {
+        calculatedCardTop = margin;
+      } else if (calculatedCardTop + calculatedCardHeight > viewportHeight - margin) {
+        calculatedCardTop = viewportHeight - calculatedCardHeight - margin;
+      }
+      if (calculatedCardLeft < margin) {
+        calculatedCardLeft = margin;
+      } else if (calculatedCardLeft + cardWidth > viewportWidth - margin) {
+        calculatedCardLeft = viewportWidth - cardWidth - margin;
+      }
+    }
+
+    return (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }}>
+        <div
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.01)', zIndex: 9998 }}
+          onClick={closeTutorial}
+        />
+        <div style={spotlightStyle} />
+        <div
+          className="bg-white rounded-lg shadow-2xl border border-gray-200 p-6"
+          style={{
+            position: 'fixed',
+            top: `${calculatedCardTop}px`,
+            left: `${calculatedCardLeft}px`,
+            width: `${cardWidth}px`,
+            maxHeight: `${calculatedCardHeight}px`,
+            height: 'auto',
+            zIndex: 10000,
+            transition: isAnimating ? 'all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1)' : 'none',
+            overflow: 'auto',
+            pointerEvents: 'auto'
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-start justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 pr-4">{step.title}</h3>
+            <button
+              onClick={closeTutorial}
+              className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <p className="text-sm text-gray-600 leading-relaxed mb-6">{step.content}</p>
+
+          <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+            <span className="text-xs text-gray-500">
+              {tutorialStep + 1} / {allTutorialSteps.length}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                onClick={previousTutorialStep}
+                variant="outline"
+                size="sm"
+                disabled={tutorialStep === 0 || isTransitioning}
+              >
+                ‹ Prapa
+              </Button>
+              <Button
+                onClick={() => {
+                  if (tutorialStep === allTutorialSteps.length - 1) {
+                    closeTutorial();
+                  } else {
+                    nextTutorialStep();
+                  }
+                }}
+                size="sm"
+                disabled={isTransitioning}
+              >
+                {tutorialStep === allTutorialSteps.length - 1 ? 'Mbyll' : 'Tjetër ›'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // Scroll lock
   useEffect(() => {
@@ -1035,7 +1237,7 @@ const EmployerDashboard = () => {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid md:grid-cols-4 gap-6 mb-8">
+        <div className="grid md:grid-cols-3 gap-6 mb-8">
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -1064,22 +1266,6 @@ const EmployerDashboard = () => {
                   )}
                 </div>
                 <Users className="h-8 w-8 text-primary" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Shikime Gjithsej</p>
-                  {loading ? (
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mt-2" />
-                  ) : (
-                    <p className="text-2xl font-bold text-foreground">{stats.monthlyViews}</p>
-                  )}
-                </div>
-                <Eye className="h-8 w-8 text-primary" />
               </div>
             </CardContent>
           </Card>
@@ -2598,165 +2784,7 @@ const EmployerDashboard = () => {
       </Dialog>
 
       {/* Tutorial Overlay */}
-      {showTutorial && (
-        <div 
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 9999,
-            pointerEvents: showTutorial ? 'auto' : 'none'
-          }}
-        >
-          {/* Dark Overlay with Spotlight */}
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.4)',
-              transition: 'opacity 0.3s ease'
-            }}
-            onClick={closeTutorial}
-          />
-
-          {/* Highlighted Element Cutout */}
-          {elementPosition && (
-            <div
-              style={{
-                position: 'absolute',
-                top: Math.max(0, elementPosition.top - 8),
-                left: elementPosition.left - 8,
-                width: elementPosition.width + 16,
-                height: (() => {
-                  const steps = getCurrentTutorialSteps();
-                  const step = steps[tutorialStep];
-                  const maxHeight = step?.maxHeight || 99999;
-                  const viewportBottom = window.innerHeight;
-                  const elementBottom = elementPosition.top + elementPosition.height + 8;
-                  const availableHeight = viewportBottom - Math.max(0, elementPosition.top - 8);
-                  
-                  return Math.min(
-                    elementPosition.height + 16,
-                    maxHeight,
-                    availableHeight - 50 // Leave space for tutorial card
-                  );
-                })(),
-                boxShadow: '0 0 0 99999px rgba(0, 0, 0, 0.4)',
-                borderRadius: '8px',
-                pointerEvents: 'auto',
-                transition: isSpotlightAnimating ? 'all 450ms cubic-bezier(0.175, 0.885, 0.32, 1.2)' : 'all 450ms cubic-bezier(0.175, 0.885, 0.32, 1.2)',
-                border: '2px solid rgb(59, 130, 246)',
-                overflow: 'hidden'
-              }}
-            />
-          )}
-
-          {/* Tutorial Content Card */}
-          {elementPosition && (
-            <div
-              style={{
-                position: 'absolute',
-                top: (() => {
-                  const steps = getCurrentTutorialSteps();
-                  const step = steps[tutorialStep];
-                  const cardHeight = 220; // Approximate card height
-                  
-                  if (step.position === 'bottom') {
-                    // Position below the highlighted element
-                    const preferredTop = elementPosition.bottom + 20;
-                    const maxTop = window.innerHeight - cardHeight - 20;
-                    return Math.min(preferredTop, maxTop);
-                  } else if (step.position === 'top') {
-                    // Position above the highlighted element
-                    const preferredTop = elementPosition.top - cardHeight - 20;
-                    // If there's not enough space above, position below instead
-                    if (preferredTop < 20) {
-                      const belowTop = elementPosition.bottom + 20;
-                      return Math.min(belowTop, window.innerHeight - cardHeight - 20);
-                    }
-                    return Math.max(20, preferredTop);
-                  } else {
-                    // Position to the left
-                    return Math.max(20, Math.min(elementPosition.top, window.innerHeight - cardHeight - 20));
-                  }
-                })(),
-                left: (() => {
-                  const steps = getCurrentTutorialSteps();
-                  const step = steps[tutorialStep];
-                  const cardWidth = 300;
-                  
-                  if (step.position === 'left') {
-                    const preferredLeft = elementPosition.left - cardWidth - 20;
-                    // If not enough space on left, position on right
-                    if (preferredLeft < 20) {
-                      return Math.min(elementPosition.right + 20, window.innerWidth - cardWidth - 20);
-                    }
-                    return Math.max(20, preferredLeft);
-                  } else {
-                    // Center the card horizontally relative to element
-                    const preferredLeft = elementPosition.left + (elementPosition.width / 2) - (cardWidth / 2);
-                    return Math.max(20, Math.min(preferredLeft, window.innerWidth - cardWidth - 20));
-                  }
-                })(),
-                backgroundColor: 'white',
-                borderRadius: '12px',
-                padding: '20px',
-                width: '300px',
-                maxWidth: 'calc(100vw - 40px)',
-                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2)',
-                zIndex: 10001,
-                transition: 'all 350ms cubic-bezier(0.34, 1.56, 0.64, 1)'
-              }}
-            >
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-lg text-foreground">
-                    {getCurrentTutorialSteps()[tutorialStep]?.title || ''}
-                  </h3>
-                  <button
-                    onClick={closeTutorial}
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                    type="button"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {getCurrentTutorialSteps()[tutorialStep]?.content || ''}
-                </p>
-                <div className="flex items-center justify-between pt-3 border-t">
-                  <span className="text-xs text-muted-foreground font-medium">
-                    {tutorialStep + 1} / {getCurrentTutorialSteps().length}
-                  </span>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={previousTutorialStep}
-                      disabled={tutorialStep === 0}
-                      type="button"
-                    >
-                      ‹ Prapa
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={nextTutorialStep}
-                      type="button"
-                    >
-                      {tutorialStep === getCurrentTutorialSteps().length - 1 ? 'Përfundo ✓' : 'Tjetër ›'}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      <TutorialOverlay />
 
       <AlertDialog open={confirmDialog.open} onOpenChange={(open) => !open && setConfirmDialog(prev => ({ ...prev, open: false }))}>
         <AlertDialogContent>
