@@ -2278,19 +2278,25 @@ const EmployerDashboard = () => {
                               const resumeType = jobSeeker.profile.jobSeekerProfile?.resumeType;
                               const viewable = isInlineViewable(resumeType);
                               return (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  disabled={!viewable}
+                                // title on the wrapper span — a disabled
+                                // button swallows hover events.
+                                <span
+                                  className="inline-block"
                                   title={!viewable ? DOCX_VIEW_TOOLTIP : undefined}
-                                  onClick={() => {
-                                    handleViewCV(jobSeeker.profile.jobSeekerProfile?.resume || '');
-                                  }}
-                                  className="text-xs"
                                 >
-                                  <Eye className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                                  Shiko
-                                </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={!viewable}
+                                    onClick={() => {
+                                      handleViewCV(jobSeeker.profile.jobSeekerProfile?.resume || '');
+                                    }}
+                                    className="text-xs"
+                                  >
+                                    <Eye className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                                    Shiko
+                                  </Button>
+                                </span>
                               );
                             })()}
                             <Button

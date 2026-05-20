@@ -1913,33 +1913,39 @@ const Profile = () => {
                           <p className="text-sm text-muted-foreground mb-2">
                             {currentCV.split('/').pop() || 'CV.pdf'}
                           </p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={!isInlineViewable(currentCVType)}
+                          {/* title on the wrapper span — a disabled button
+                              swallows hover events, so the tooltip must live
+                              on an enabled parent. */}
+                          <span
+                            className="inline-block mr-2"
                             title={!isInlineViewable(currentCVType) ? DOCX_VIEW_TOOLTIP : undefined}
-                            onClick={async () => {
-                              if (!currentCV) return;
-                              try {
-                                // Shared helper: signs the Cloudinary URL,
-                                // sniffs magic bytes, opens PDFs inline (DOCX
-                                // falls back to download — see resumeView.ts).
-                                const r = await viewResume(currentCV);
-                                if (r.opened === 'downloaded' && r.format !== 'pdf') {
-                                  toast({
-                                    title: 'CV u shkarkua',
-                                    description: 'Skedarët .docx/.doc nuk mund të hapen direkt në shfletues — u shkarkua në vend të kësaj.',
-                                  });
-                                }
-                              } catch (err: any) {
-                                toast({ title: "Gabim", description: err?.message || "CV nuk mund të hapet", variant: "destructive" });
-                              }
-                            }}
-                            className="mr-2"
                           >
-                            <FileText className="mr-2 h-4 w-4" />
-                            Shiko CV
-                          </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={!isInlineViewable(currentCVType)}
+                              onClick={async () => {
+                                if (!currentCV) return;
+                                try {
+                                  // Shared helper: signs the Cloudinary URL,
+                                  // sniffs magic bytes, opens PDFs inline (DOCX
+                                  // falls back to download — see resumeView.ts).
+                                  const r = await viewResume(currentCV);
+                                  if (r.opened === 'downloaded' && r.format !== 'pdf') {
+                                    toast({
+                                      title: 'CV u shkarkua',
+                                      description: 'Skedarët .docx/.doc nuk mund të hapen direkt në shfletues — u shkarkua në vend të kësaj.',
+                                    });
+                                  }
+                                } catch (err: any) {
+                                  toast({ title: "Gabim", description: err?.message || "CV nuk mund të hapet", variant: "destructive" });
+                                }
+                              }}
+                            >
+                              <FileText className="mr-2 h-4 w-4" />
+                              Shiko CV
+                            </Button>
+                          </span>
                           <Button
                             variant="outline"
                             size="sm"

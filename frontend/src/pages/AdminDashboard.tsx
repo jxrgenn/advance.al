@@ -2382,16 +2382,20 @@ const AdminDashboard = () => {
                             {user.profile.jobSeekerProfile.resume && (
                               <>
                                 <span>•</span>
-                                <button
-                                  type="button"
-                                  disabled={!isInlineViewable(user.profile.jobSeekerProfile!.resumeType)}
+                                <span
+                                  className="inline-flex"
                                   title={!isInlineViewable(user.profile.jobSeekerProfile!.resumeType) ? DOCX_VIEW_TOOLTIP : undefined}
-                                  onClick={(e) => { e.stopPropagation(); handleViewResume(user.profile.jobSeekerProfile!.resume!); }}
-                                  className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
                                 >
-                                  <Eye className="h-3 w-3" />
-                                  Shiko CV
-                                </button>
+                                  <button
+                                    type="button"
+                                    disabled={!isInlineViewable(user.profile.jobSeekerProfile!.resumeType)}
+                                    onClick={(e) => { e.stopPropagation(); handleViewResume(user.profile.jobSeekerProfile!.resume!); }}
+                                    className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
+                                  >
+                                    <Eye className="h-3 w-3" />
+                                    Shiko CV
+                                  </button>
+                                </span>
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); handleDownloadResume(user.profile.jobSeekerProfile!.resume!, `${user.profile.firstName}_${user.profile.lastName}`); }}
@@ -2630,16 +2634,20 @@ const AdminDashboard = () => {
                           {user.profile.jobSeekerProfile.resume && (
                             <>
                               <span>•</span>
-                              <button
-                                type="button"
-                                disabled={!isInlineViewable(user.profile.jobSeekerProfile!.resumeType)}
+                              <span
+                                className="inline-flex"
                                 title={!isInlineViewable(user.profile.jobSeekerProfile!.resumeType) ? DOCX_VIEW_TOOLTIP : undefined}
-                                onClick={(e) => { e.stopPropagation(); handleViewResume(user.profile.jobSeekerProfile!.resume!); }}
-                                className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
                               >
-                                <Eye className="h-3 w-3" />
-                                Shiko CV
-                              </button>
+                                <button
+                                  type="button"
+                                  disabled={!isInlineViewable(user.profile.jobSeekerProfile!.resumeType)}
+                                  onClick={(e) => { e.stopPropagation(); handleViewResume(user.profile.jobSeekerProfile!.resume!); }}
+                                  className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
+                                >
+                                  <Eye className="h-3 w-3" />
+                                  Shiko CV
+                                </button>
+                              </span>
                               <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); handleDownloadResume(user.profile.jobSeekerProfile!.resume!, `${user.profile.firstName}_${user.profile.lastName}`); }}
@@ -3370,16 +3378,20 @@ const AdminDashboard = () => {
                       {selectedUserForDetails.profile.jobSeekerProfile.resume ? (
                         <>
                           <span className="text-green-600">Ngarkuar</span>
-                          <button
-                            type="button"
-                            disabled={!isInlineViewable(selectedUserForDetails.profile.jobSeekerProfile!.resumeType)}
+                          <span
+                            className="inline-flex"
                             title={!isInlineViewable(selectedUserForDetails.profile.jobSeekerProfile!.resumeType) ? DOCX_VIEW_TOOLTIP : undefined}
-                            onClick={() => handleViewResume(selectedUserForDetails.profile.jobSeekerProfile!.resume!)}
-                            className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
                           >
-                            <Eye className="h-3 w-3" />
-                            Shiko CV
-                          </button>
+                            <button
+                              type="button"
+                              disabled={!isInlineViewable(selectedUserForDetails.profile.jobSeekerProfile!.resumeType)}
+                              onClick={() => handleViewResume(selectedUserForDetails.profile.jobSeekerProfile!.resume!)}
+                              className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
+                            >
+                              <Eye className="h-3 w-3" />
+                              Shiko CV
+                            </button>
+                          </span>
                           <button
                             type="button"
                             onClick={() => handleDownloadResume(selectedUserForDetails.profile.jobSeekerProfile!.resume!, `${selectedUserForDetails.profile.firstName}_${selectedUserForDetails.profile.lastName}`)}
