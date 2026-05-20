@@ -228,3 +228,55 @@ describe('GET /api/users/resume/:filename — legacy retirement (Round O-B)', ()
     expect(res.body.success).toBe(false);
   });
 });
+
+// The resume-sign limiter (30/hr per user) caps a malicious employer who
+// holds ONE application from trying to enumerate other resume URLs. Normal
+// test runs set SKIP_RATE_LIMIT=true so happy paths don't trip limits — this
+// block un-sets it (same pattern as rate-limit-attacker-patterns.test.js).
+describe('POST /api/users/resume/sign — rate limiting (Round O-B)', () => {
+  let originalSkip;
+
+  beforeAll(async () => {
+    await connectTestDB();
+    await seedLocations();
+  });
+
+  beforeEach(() => {
+    originalSkip = process.env.SKIP_RATE_LIMIT;
+    delete process.env.SKIP_RATE_LIMIT;
+  });
+
+  afterEach(async () => {
+    if (originalSkip === undefined) delete process.env.SKIP_RATE_LIMIT;
+    else process.env.SKIP_RATE_LIMIT = originalSkip;
+    await clearTestDB();
+    await seedLocations();
+  });
+
+  afterAll(async () => {
+    await closeTestDB();
+  });
+
+  it('caps a single user at 30 sign requests/hour — 31st returns 429', async () => {
+    const { user: owner } = await createJobseeker();
+    const url = buildResumeUrl(owner._id.toString());
+    const headers = createAuthHeaders(owner);
+
+    // First 30 are allowed.
+    for (let i = 0; i < 30; i++) {
+      const r = await request(app)
+        .post('/api/users/resume/sign')
+        .set(headers)
+        .send({ resumeUrl: url });
+      expect(r.status).toBe(200);
+    }
+
+    // 31st trips the per-user limiter.
+    const r31 = await request(app)
+      .post('/api/users/resume/sign')
+      .set(headers)
+      .send({ resumeUrl: url });
+    expect(r31.status).toBe(429);
+    expect(r31.body.success).toBe(false);
+  }, 30000);
+});
