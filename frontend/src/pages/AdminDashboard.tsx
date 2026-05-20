@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { adminApi, reportsApi, isAuthenticated, getUserType, User, usersApi } from "@/lib/api";
+import { viewResume, downloadResume } from "@/lib/resumeView";
 import {
   CheckCircle, XCircle, Clock, Building, MapPin, Mail, Phone,
   Users, Briefcase, TrendingUp, TrendingDown, DollarSign,
@@ -386,20 +387,31 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Round O-B: resumes are Cloudinary `type: 'authenticated'`. Bare URL = 401.
-  // Get a signed URL via the backend (which verifies the caller is admin)
-  // then open in a new tab.
+  // Round O-B: resumes are Cloudinary `type:'authenticated'`. The shared
+  // resumeView helper signs the URL, sniffs the file's magic bytes, and
+  // opens PDFs inline (octet-stream + DOCX fall back to download — browsers
+  // can't render Word docs natively).
   const handleViewResume = async (resumeUrl: string) => {
     try {
       if (!resumeUrl) return;
-      const r = await usersApi.signResumeUrl(resumeUrl);
-      if (!r.success || !r.data?.url) {
-        toast({ title: 'Gabim', description: r.message || 'CV-ja nuk mund të hapet', variant: 'destructive' });
-        return;
+      const r = await viewResume(resumeUrl);
+      if (r.opened === 'downloaded' && r.format !== 'pdf') {
+        toast({
+          title: 'CV u shkarkua',
+          description: 'Skedarët .docx/.doc nuk mund të hapen direkt në shfletues — u shkarkua në vend të kësaj.',
+        });
       }
-      window.open(r.data.url, '_blank', 'noopener,noreferrer');
     } catch (err: any) {
       toast({ title: 'Gabim', description: err?.message || 'CV-ja nuk mund të hapet', variant: 'destructive' });
+    }
+  };
+
+  const handleDownloadResume = async (resumeUrl: string, applicantName: string) => {
+    try {
+      if (!resumeUrl) return;
+      await downloadResume(resumeUrl, `CV_${applicantName || 'user'}`);
+    } catch (err: any) {
+      toast({ title: 'Gabim', description: err?.message || 'CV nuk mund të shkarkohet', variant: 'destructive' });
     }
   };
 
@@ -2375,8 +2387,16 @@ const AdminDashboard = () => {
                                   onClick={(e) => { e.stopPropagation(); handleViewResume(user.profile.jobSeekerProfile!.resume!); }}
                                   className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline"
                                 >
+                                  <Eye className="h-3 w-3" />
+                                  Shiko CV
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleDownloadResume(user.profile.jobSeekerProfile!.resume!, `${user.profile.firstName}_${user.profile.lastName}`); }}
+                                  className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline"
+                                >
                                   <Download className="h-3 w-3" />
-                                  Shkarko CV
+                                  Shkarko
                                 </button>
                               </>
                             )}
@@ -2613,8 +2633,16 @@ const AdminDashboard = () => {
                                 onClick={(e) => { e.stopPropagation(); handleViewResume(user.profile.jobSeekerProfile!.resume!); }}
                                 className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline"
                               >
+                                <Eye className="h-3 w-3" />
+                                Shiko CV
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleDownloadResume(user.profile.jobSeekerProfile!.resume!, `${user.profile.firstName}_${user.profile.lastName}`); }}
+                                className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline"
+                              >
                                 <Download className="h-3 w-3" />
-                                CV
+                                Shkarko
                               </button>
                             </>
                           )}
@@ -3343,8 +3371,16 @@ const AdminDashboard = () => {
                             onClick={() => handleViewResume(selectedUserForDetails.profile.jobSeekerProfile!.resume!)}
                             className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline text-sm"
                           >
+                            <Eye className="h-3 w-3" />
+                            Shiko CV
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadResume(selectedUserForDetails.profile.jobSeekerProfile!.resume!, `${selectedUserForDetails.profile.firstName}_${selectedUserForDetails.profile.lastName}`)}
+                            className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline text-sm"
+                          >
                             <Download className="h-3 w-3" />
-                            Shkarko CV
+                            Shkarko
                           </button>
                         </>
                       ) : (

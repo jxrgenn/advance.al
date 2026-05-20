@@ -17,6 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import ReportUserModal from "@/components/ReportUserModal";
 import { useToast } from "@/hooks/use-toast";
 import { jobsApi, applicationsApi, usersApi, locationsApi, matchingApi, Job, Application, Location, CandidateMatch, User } from "@/lib/api";
+import { viewResume, downloadResume } from "@/lib/resumeView";
 import { useAuth } from "@/contexts/AuthContext";
 import { validateForm, employerDashboardSettingsRules, formatValidationErrors } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
@@ -974,61 +975,24 @@ const EmployerDashboard = () => {
     }
   };
 
-  // Round O-B: stored resume URLs are now Cloudinary `type: 'authenticated'`
-  // — bare GET returns 401. Backend mints short-lived signed URLs via
-  // /api/users/resume/sign after authz check (owner / admin / employer with
-  // an application from the jobseeker).
-  const resolveResumeUrl = async (cvUrl: string): Promise<string> => {
-    if (!cvUrl) throw new Error('CV URL not found');
-    // Cloudinary authenticated URL → sign via backend
-    if (cvUrl.includes('cloudinary.com')) {
-      const r = await usersApi.signResumeUrl(cvUrl);
-      if (!r.success || !r.data?.url) {
-        const msg = r.message || 'Nuk keni qasje në këtë CV';
-        throw new Error(msg);
-      }
-      return r.data.url;
-    }
-    // Legacy local-disk path (dev only) — should never happen in prod
-    if (cvUrl.startsWith('/')) {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-      return `${apiUrl}/users/resume/${cvUrl.split('/').pop()}`;
-    }
-    return cvUrl;
-  };
-
+  // CV view / download go through the shared resumeView helper. It signs
+  // the URL via /api/users/resume/sign, sniffs the file's magic bytes, and
+  // applies the right Blob MIME type so PDFs render inline in a new tab
+  // (DOCX/DOC fall back to download since browsers can't preview them).
   const handleDownloadCV = async (cvUrl: string, applicantName: string) => {
     try {
       setDownloadingCV(true);
-      const signedUrl = await resolveResumeUrl(cvUrl);
-      // Cloudinary signed URLs work without our Authorization header — the
-      // sign verb already happened server-side.
-      const response = await fetch(signedUrl);
-      if (!response.ok) throw new Error(`CV nuk u gjet (${response.status})`);
-
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      // Detect extension from URL or content-type
-      const ct = response.headers.get('content-type') || '';
-      const ext = ct.includes('word') || cvUrl.endsWith('.docx') ? '.docx' : ct.includes('msword') || cvUrl.endsWith('.doc') ? '.doc' : '.pdf';
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = `CV_${applicantName.replace(/\s+/g, '_')}${ext}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
-
+      await downloadResume(cvUrl, `CV_${applicantName}`);
       toast({
-        title: "CV në proces shkarkimi",
+        title: 'CV në proces shkarkimi',
         description: `CV-ja e ${applicantName} po shkarkohet`,
       });
     } catch (error: any) {
       console.error('❌ Error downloading CV:', error);
       toast({
-        title: "Gabim në shkarkimin e CV-së",
-        description: error.message || "CV-ja nuk është e disponueshme për shkarkım",
-        variant: "destructive"
+        title: 'Gabim në shkarkimin e CV-së',
+        description: error.message || 'CV-ja nuk është e disponueshme për shkarkim',
+        variant: 'destructive',
       });
     } finally {
       setDownloadingCV(false);
@@ -1037,21 +1001,19 @@ const EmployerDashboard = () => {
 
   const handleViewCV = async (cvUrl: string) => {
     try {
-      const signedUrl = await resolveResumeUrl(cvUrl);
-      const response = await fetch(signedUrl);
-      if (!response.ok) throw new Error(`CV nuk u gjet (${response.status})`);
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const win = window.open(blobUrl, '_blank');
-      if (win) {
-        setTimeout(() => { URL.revokeObjectURL(blobUrl); }, 10000);
+      const r = await viewResume(cvUrl);
+      if (r.opened === 'downloaded' && r.format !== 'pdf') {
+        toast({
+          title: 'CV u shkarkua',
+          description: 'Skedarët .docx/.doc nuk mund të hapen direkt në shfletues — u shkarkua në vend të kësaj.',
+        });
       }
     } catch (error: any) {
       console.error('❌ Error viewing CV:', error);
       toast({
-        title: "Gabim",
-        description: error.message || "CV nuk mund të hapet",
-        variant: "destructive"
+        title: 'Gabim',
+        description: error.message || 'CV nuk mund të hapet',
+        variant: 'destructive',
       });
     }
   };

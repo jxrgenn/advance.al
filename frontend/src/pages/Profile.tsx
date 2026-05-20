@@ -15,6 +15,7 @@ import { User, Mail, Phone, MapPin, Upload, FileText, Briefcase, Award, Loader2,
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { usersApi, applicationsApi, authApi } from "@/lib/api";
+import { viewResume, downloadResume } from "@/lib/resumeView";
 import { validateForm, profileValidationRules, formatValidationErrors } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { InputWithCounter, TextAreaWithCounter } from "@/components/CharacterCounter";
@@ -1914,35 +1915,41 @@ const Profile = () => {
                             onClick={async () => {
                               if (!currentCV) return;
                               try {
-                                // Round O-B: Cloudinary resumes are `type: 'authenticated'`
-                                // — bare URL returns 401. Get a 5-min signed URL via backend
-                                // (which verifies caller is the owner).
-                                let downloadUrl: string;
-                                if (currentCV.includes('cloudinary.com')) {
-                                  const r = await usersApi.signResumeUrl(currentCV);
-                                  if (!r.success || !r.data?.url) throw new Error(r.message || 'Nuk keni qasje në këtë CV');
-                                  downloadUrl = r.data.url;
-                                } else if (currentCV.startsWith('/')) {
-                                  // Legacy dev-only local-disk path
-                                  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-                                  downloadUrl = `${apiUrl}/users/resume/${currentCV.split('/').pop()}`;
-                                } else {
-                                  downloadUrl = currentCV;
+                                // Shared helper: signs the Cloudinary URL,
+                                // sniffs magic bytes, opens PDFs inline (DOCX
+                                // falls back to download — see resumeView.ts).
+                                const r = await viewResume(currentCV);
+                                if (r.opened === 'downloaded' && r.format !== 'pdf') {
+                                  toast({
+                                    title: 'CV u shkarkua',
+                                    description: 'Skedarët .docx/.doc nuk mund të hapen direkt në shfletues — u shkarkua në vend të kësaj.',
+                                  });
                                 }
-                                const res = await fetch(downloadUrl);
-                                if (!res.ok) throw new Error('CV nuk u gjet');
-                                const blob = await res.blob();
-                                const blobUrl = URL.createObjectURL(blob);
-                                const win = window.open(blobUrl, '_blank');
-                                if (win) {
-                                  setTimeout(() => { URL.revokeObjectURL(blobUrl); }, 10000);
-                                }
-                              } catch (err: any) { toast({ title: "Gabim", description: err?.message || "CV nuk mund të hapet", variant: "destructive" }); }
+                              } catch (err: any) {
+                                toast({ title: "Gabim", description: err?.message || "CV nuk mund të hapet", variant: "destructive" });
+                              }
                             }}
                             className="mr-2"
                           >
                             <FileText className="mr-2 h-4 w-4" />
                             Shiko CV
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              if (!currentCV) return;
+                              try {
+                                const name = `${formData.firstName}_${formData.lastName}`.trim() || 'CV';
+                                await downloadResume(currentCV, `CV_${name}`);
+                              } catch (err: any) {
+                                toast({ title: "Gabim", description: err?.message || "CV nuk mund të shkarkohet", variant: "destructive" });
+                              }
+                            }}
+                            className="mr-2"
+                          >
+                            <Download className="mr-2 h-4 w-4" />
+                            Shkarko CV
                           </Button>
                           <Button
                             variant="outline"
