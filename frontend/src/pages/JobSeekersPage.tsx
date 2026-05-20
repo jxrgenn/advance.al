@@ -37,7 +37,6 @@ import {
   Loader,
   FileInput,
   Alert,
-  Tooltip,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -1540,41 +1539,53 @@ Telefoni: _______________`;
             </Grid.Col>
 
             <Grid.Col span={12}>
+              {/* Logged-out users get a clear, always-visible notice + a
+                  clickable login button (a tooltip on a disabled button is
+                  invisible until hover, which users missed entirely). */}
+              {!isAuthenticated && (
+                <Alert
+                  icon={<Lightbulb size={18} />}
+                  color="yellow"
+                  variant="light"
+                  mb="sm"
+                >
+                  <Text size="sm" fw={600}>Duhet të kyçeni për të gjeneruar CV</Text>
+                  <Text size="xs" c="dimmed" mt={2}>
+                    Krijoni një llogari ose kyçuni si kërkues pune për të përdorur gjeneruesin e CV-së me AI.
+                  </Text>
+                </Alert>
+              )}
               <Group justify="space-between" align="center" wrap="wrap">
                 <Text size="xs" c="dimmed">
-                  {!isAuthenticated
-                    ? 'Kyçuni si kërkues pune për të gjeneruar CV.'
-                    : user?.userType !== 'jobseeker'
-                      ? 'Vetëm kërkuesit e punës mund të gjenerojnë CV.'
-                      : cvInput.trim().length < 50
-                        ? `Shkruani të paktën ${50 - cvInput.trim().length} karaktere më shumë.`
-                        : 'Të dhënat tuaja janë gati — shtypni butonin për të gjeneruar.'}
+                  {isAuthenticated && user?.userType === 'jobseeker' && cvInput.trim().length < 50
+                    ? `Shkruani të paktën ${50 - cvInput.trim().length} karaktere më shumë.`
+                    : isAuthenticated && user?.userType === 'jobseeker'
+                      ? 'Të dhënat tuaja janë gati — shtypni butonin për të gjeneruar.'
+                      : isAuthenticated && user?.userType !== 'jobseeker'
+                        ? 'Vetëm kërkuesit e punës mund të gjenerojnë CV.'
+                        : ''}
                 </Text>
-                <Tooltip
-                  label={
-                    !isAuthenticated
-                      ? 'Kyçuni për të gjeneruar CV'
-                      : user?.userType !== 'jobseeker'
-                        ? 'Vetëm kërkuesit e punës mund të gjenerojnë CV'
-                        : 'Shkruani të paktën 50 karaktere në CV'
-                  }
-                  disabled={isAuthenticated && user?.userType === 'jobseeker' && cvInput.trim().length >= 50}
-                  withArrow
-                  position="top"
-                >
-                  <span>
-                    <Button
-                      variant="filled"
-                      color="blue"
-                      rightSection={<FileText size={18} />}
-                      onClick={handleGenerateCV}
-                      loading={generating}
-                      disabled={!isAuthenticated || user?.userType !== 'jobseeker' || cvInput.trim().length < 50}
-                    >
-                      {generating ? 'Duke gjeneruar...' : 'Gjenero CV-në'}
-                    </Button>
-                  </span>
-                </Tooltip>
+                {!isAuthenticated ? (
+                  <Button
+                    variant="filled"
+                    color="yellow"
+                    rightSection={<ArrowRight size={18} />}
+                    onClick={() => navigate('/login')}
+                  >
+                    Kyçu për të gjeneruar CV
+                  </Button>
+                ) : (
+                  <Button
+                    variant="filled"
+                    color="blue"
+                    rightSection={<FileText size={18} />}
+                    onClick={handleGenerateCV}
+                    loading={generating}
+                    disabled={user?.userType !== 'jobseeker' || cvInput.trim().length < 50}
+                  >
+                    {generating ? 'Duke gjeneruar...' : 'Gjenero CV-në'}
+                  </Button>
+                )}
               </Group>
             </Grid.Col>
 
