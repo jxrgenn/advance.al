@@ -1,6 +1,10 @@
 # Logs
 logs
 *.log
+
+# Round O-B resume-migration artifacts (local-only, may contain resume URLs)
+resume-url-backup-*.json
+migration-resumes-*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

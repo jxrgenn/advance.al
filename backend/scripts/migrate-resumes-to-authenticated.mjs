@@ -24,14 +24,19 @@
  *      when trying to view resumes.
  *
  * WHAT IT DOES (per asset):
- *   - Calls cloudinary.uploader.explicit(publicId, { type: 'authenticated',
- *     resource_type: 'raw', overwrite: true }). This flips access mode in
- *     place WITHOUT re-uploading bytes.
- *   - Cloudinary returns a new secure_url containing `/authenticated/`.
- *   - We write that URL back to MongoDB.
+ *   - Calls cloudinary.uploader.rename(publicId, publicId, { resource_type:
+ *     'raw', type: 'upload', to_type: 'authenticated', overwrite: true }).
+ *     This flips the delivery type in place WITHOUT re-uploading bytes —
+ *     same publicId, just `/upload/` → `/authenticated/`.
+ *     (NOTE: `explicit({type:'authenticated'})` does NOT work here — explicit
+ *     LOOKS UP an already-authenticated asset and 404s on an upload-type one.
+ *     `rename` with `to_type` is the documented way to change delivery type.)
+ *   - We write the URL back to MongoDB as the original URL with `/raw/upload/`
+ *     swapped to `/raw/authenticated/`. We deliberately do NOT use rename()'s
+ *     returned secure_url because that embeds an `s--SIGNATURE--` segment that
+ *     would break extractCloudinaryPublicId in the sign endpoint.
  *   - Anyone hitting the old `/upload/` URL after this returns 401 from
- *     Cloudinary's CDN (the asset still exists at the same publicId, just
- *     with a different access mode).
+ *     Cloudinary's CDN (the asset no longer exists at the upload type).
  *
  * IDEMPOTENCY:
  *   Skips any URL that already contains `/authenticated/`. Safe to re-run.
@@ -126,19 +131,25 @@ async function flipOne({ kind, id, currentUrl }) {
     return { result: 'flip' };
   }
 
-  // Call Cloudinary's explicit() to change access mode. This is a metadata
-  // op only — does NOT re-upload bytes. Idempotent server-side too.
+  // Build the DB URL up-front by swapping the delivery type in the path.
+  // We do this on the ORIGINAL url rather than trusting rename()'s secure_url
+  // (which embeds an `s--SIG--` segment). If the swap is a no-op the source
+  // URL wasn't a raw/upload URL — bail before mutating Cloudinary.
+  const newUrl = currentUrl.replace('/raw/upload/', '/raw/authenticated/');
+  if (newUrl === currentUrl || !newUrl.includes('/raw/authenticated/')) {
+    logLine(`FAIL\t${kind}\t${id}\t${publicId}\tnot-a-raw-upload-url`);
+    return { result: 'fail', reason: 'not-a-raw-upload-url' };
+  }
+
+  // rename() with to_type flips delivery type in place — metadata op only,
+  // does NOT re-upload bytes.
   try {
-    const result = await cloudinary.uploader.explicit(publicId, {
-      type: 'authenticated',
+    await cloudinary.uploader.rename(publicId, publicId, {
       resource_type: QUICKUSER_RESOURCE_TYPE,
+      type: 'upload',
+      to_type: 'authenticated',
       overwrite: true,
     });
-    const newUrl = result.secure_url;
-    if (!newUrl || !newUrl.includes('/authenticated/')) {
-      logLine(`FAIL\t${kind}\t${id}\t${publicId}\tunexpected-cloudinary-response`);
-      return { result: 'fail', reason: 'unexpected-response' };
-    }
 
     // Persist new URL in Mongo
     if (kind === 'user') {
