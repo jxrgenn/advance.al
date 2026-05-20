@@ -214,7 +214,7 @@ export function Companies() {
         />
 
         <div className="px-4 sm:px-6 lg:px-8">
-          <Container size="lg" px={0} className="relative !pt-8 md:!pt-12 !pb-4 md:!pb-6">
+          <Container size="lg" px={0} className="relative !pt-8 md:!pt-12 !pb-1 md:!pb-2">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 items-start">
             {/* Left Column */}
             <div className="space-y-6 md:space-y-8 z-10 relative">

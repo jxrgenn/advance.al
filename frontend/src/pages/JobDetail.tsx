@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { jobsApi, applicationsApi, usersApi, Job } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import useRecentlyViewed from "@/hooks/useRecentlyViewed";
+import { waitForScrollSettle } from "@/lib/scrollSettle";
 
 // Client-side salary formatter — Mongoose virtuals are stripped by .lean()
 const formatSalaryDisplay = (salary: { min?: number; max?: number; currency: string; negotiable?: boolean }) => {
@@ -498,22 +499,26 @@ const JobDetail = () => {
         });
       }
 
-      setTimeout(() => {
-        const newRect = element.getBoundingClientRect();
+      // Wait for the smooth scroll to actually settle before measuring —
+      // a fixed timeout measured mid-scroll and made the highlight jump.
+      waitForScrollSettle(element as HTMLElement, () => {
         setHighlightedElement(element);
-        setElementPosition(newRect);
+        setElementPosition(element.getBoundingClientRect());
 
         // Re-lock scrolling after programmatic scroll completes
         document.body.style.overflow = 'hidden';
         isScrollLockedRef.current = true; // Re-enable scroll lock
+
+        // One more re-measure after the overlay paints.
+        requestAnimationFrame(() => setElementPosition(element.getBoundingClientRect()));
 
         setIsAnimating(true);
         setIsSpotlightAnimating(true);
         setTimeout(() => {
           setIsAnimating(false);
           setIsSpotlightAnimating(false);
-        }, 400);
-      }, 400);
+        }, 300);
+      });
     } else {
       setHighlightedElement(element);
       setElementPosition(rect);

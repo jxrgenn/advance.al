@@ -146,8 +146,8 @@ const Index = () => {
 
     const debounceTimeout = setTimeout(() => {
       loadJobs(1, searchQuery.length >= 3); // Reset to page 1 for new searches
-    }, searchQuery.length >= 3 ? 350 : 0); // 350ms: debounce already collapses a
-    // typing burst into one request; 600ms just felt laggy with no extra benefit.
+    }, searchQuery.length >= 3 ? 200 : 0); // 200ms — snappy; debounce still
+    // collapses a typing burst into a single request.
 
     return () => clearTimeout(debounceTimeout);
   }, [searchQuery, selectedLocations, selectedType, coreFilters]);

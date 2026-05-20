@@ -1216,9 +1216,9 @@ const EmployersPage = () => {
       <Companies />
 
       <div className="px-4 sm:px-6 lg:px-8">
-        <Container size="lg" px={0} py={24} pt={24} data-employer-form>
+        <Container size="lg" px={0} py={12} pt={4} data-employer-form>
           {/* Hero Section with 3D Asset */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center mb-4">
           <div className="text-center md:text-left">
             <Title ta={{ base: 'center', md: 'left' }} size="2.2rem" fw={700} lh={1.1} c="dark" mb={12} style={{ wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none' }}>
               Më shpejtë | Më thjeshtë | Më mirë
