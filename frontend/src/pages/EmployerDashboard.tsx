@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { jobsApi, applicationsApi, usersApi, locationsApi, matchingApi, Job, Application, Location, CandidateMatch, User } from "@/lib/api";
 import { viewResume, downloadResume, isInlineViewable, DOCX_VIEW_TOOLTIP } from "@/lib/resumeView";
 import { useAuth } from "@/contexts/AuthContext";
-import { validateForm, employerDashboardSettingsRules, formatValidationErrors } from "@/lib/formValidation";
+import { validateForm, employerDashboardSettingsRules, formatValidationErrors, isValidAlbanianPhone, normalizeAlbanianPhone, ALBANIAN_PHONE_MESSAGE } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { TextAreaWithCounter } from "@/components/CharacterCounter";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -764,16 +764,14 @@ const EmployerDashboard = () => {
         return;
       }
 
-      // Validate phone/whatsapp format if provided
-      const normalizePhone = (p: string) => p.replace(/[\s\-\(\)]/g, '');
-      const phoneRegex = /^\+\d{8,}$/;
-      if (profileData.phone && !phoneRegex.test(normalizePhone(profileData.phone))) {
-        toast({ title: "Numri i telefonit nuk është i vlefshëm", description: "Format: +355xxxxxxxx", variant: "destructive" });
+      // Validate phone/whatsapp format if provided (QA Round 2 — shared rule)
+      if (profileData.phone && !isValidAlbanianPhone(profileData.phone)) {
+        toast({ title: "Numri i telefonit nuk është i vlefshëm", description: ALBANIAN_PHONE_MESSAGE, variant: "destructive" });
         setSavingProfile(false);
         return;
       }
-      if (profileData.whatsapp && !phoneRegex.test(normalizePhone(profileData.whatsapp))) {
-        toast({ title: "Numri i WhatsApp nuk është i vlefshëm", description: "Format: +355xxxxxxxx", variant: "destructive" });
+      if (profileData.whatsapp && !isValidAlbanianPhone(profileData.whatsapp)) {
+        toast({ title: "Numri i WhatsApp nuk është i vlefshëm", description: ALBANIAN_PHONE_MESSAGE, variant: "destructive" });
         setSavingProfile(false);
         return;
       }
@@ -785,8 +783,8 @@ const EmployerDashboard = () => {
           website: profileData.website,
           industry: profileData.industry,
           companySize: profileData.companySize,
-          phone: profileData.phone ? profileData.phone.replace(/[\s\-\(\)]/g, '') : undefined,
-          whatsapp: profileData.whatsapp ? profileData.whatsapp.replace(/[\s\-\(\)]/g, '') : undefined,
+          phone: profileData.phone ? normalizeAlbanianPhone(profileData.phone) : undefined,
+          whatsapp: profileData.whatsapp ? normalizeAlbanianPhone(profileData.whatsapp) : undefined,
           contactPreferences: {
             enablePhoneContact: profileData.enablePhoneContact,
             enableWhatsAppContact: profileData.enableWhatsAppContact,
@@ -1177,9 +1175,6 @@ const EmployerDashboard = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-                {user?.profile?.employerProfile?.verified && (
-                  <CheckCircle className="h-6 w-6 text-green-600 flex-shrink-0" />
-                )}
               </div>
               <p className="text-muted-foreground mt-1">
                 {user?.profile?.employerProfile?.companyName ? (
@@ -1959,17 +1954,28 @@ const EmployerDashboard = () => {
                           id="emp-phone"
                           value={profileData.phone}
                           onChange={(e) => setProfileData(prev => ({ ...prev, phone: e.target.value }))}
-                          placeholder="+355xxxxxxxx"
+                          placeholder="+355 69 123 4567"
                         />
-                        <p className="text-xs text-muted-foreground mt-1">Format: +355xxxxxxxx</p>
+                        <p className="text-xs text-muted-foreground mt-1">Celular shqiptar — 9 shifra, fillon me 6</p>
                       </div>
                       <div>
-                        <Label htmlFor="emp-whatsapp">WhatsApp</Label>
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="emp-whatsapp">WhatsApp</Label>
+                          {profileData.phone && (
+                            <button
+                              type="button"
+                              onClick={() => setProfileData(prev => ({ ...prev, whatsapp: prev.phone }))}
+                              className="text-xs text-primary hover:underline"
+                            >
+                              Njëjtë si telefoni
+                            </button>
+                          )}
+                        </div>
                         <Input
                           id="emp-whatsapp"
                           value={profileData.whatsapp}
                           onChange={(e) => setProfileData(prev => ({ ...prev, whatsapp: e.target.value }))}
-                          placeholder="+355xxxxxxxx"
+                          placeholder="+355 69 123 4567"
                         />
                       </div>
                     </div>

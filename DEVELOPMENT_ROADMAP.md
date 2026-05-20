@@ -4276,9 +4276,9 @@ Second pre-deploy QA pass. Plan: `~/.claude/plans/resilient-kindling-fog.md`.
 - ✅ E2 — promoted job card text placement aligned to normal card
 
 **F. Employer dashboard**
-- ⏳ F1 — phone validation on phone + WhatsApp fields
-- ⏳ F2 — "copy phone → WhatsApp" button
-- ⏳ F3 — removed dashboard verified checkmark
+- ✅ F1 — phone validation on phone + WhatsApp fields
+- ✅ F2 — "copy phone → WhatsApp" button
+- ✅ F3 — removed dashboard verified checkmark
 
 **Deferred:** quick-user job application flow (needs design); employer subscription billing.
 **Infra (user action):** create `info@advance.al` mailboxes; add Twilio credentials for SMS.
