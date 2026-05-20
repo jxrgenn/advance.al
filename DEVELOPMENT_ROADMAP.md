@@ -4243,3 +4243,42 @@ sprite.userData = {
 - **Current Functional Status**: 99.8% - Excellent (maintained)
 - **3D Graph Quality**: Professional - Smooth, non-overlapping, organic movement
 - **Production Readiness**: 99.8% - Fully ready for deployment
+---
+
+## QA Sweep — Round 2 (pre-deploy hardening, 2026-05-20)
+
+Second pre-deploy QA pass. Plan: `~/.claude/plans/resilient-kindling-fog.md`.
+
+**A. Shared foundations**
+- ⏳ A1 — `User.preferences` sub-object (`tutorialsEnabled`, `salaryViewPeriod`)
+- ⏳ A2 — shared frontend password validator (`validatePassword` in formValidation.ts)
+- ⏳ A3 — shared Albanian phone policy (`backend/lib/phonePolicy.js` + FE `isValidAlbanianPhone`); national part = 9 digits, first digit 6; replaced ad-hoc regexes in auth/quickusers/users/verification routes
+
+**B. Profile settings**
+- ⏳ B1 — removed "Profil i dukshëm" toggle; all profiles visible to employers
+- ⏳ B2 — removed dead "Shfaq në kërkime" toggle
+- ⏳ B3 — removed "I hapur për punë në distancë" toggle
+- ⏳ B4 — tutorial on/off preference
+- ⏳ B5 — monthly/yearly salary view preference + shared salary formatter
+
+**C. Password flows**
+- ⏳ C1 — visibility toggles on change-password
+- ⏳ C2 — visibility toggles + full rule enforcement on reset-password
+- ⏳ C3 — "password changed" confirmation email
+
+**D. Signup forms**
+- ⏳ D1 — unified quick/full form headers (no remount)
+- ⏳ D2 — redesigned CV template (no underscore blanks / numbered lists)
+- ⏳ D3 — email-or-SMS verification choice
+
+**E. Pricing & cards**
+- ⏳ E1 — reconcile pricing to 35€/49€ everywhere
+- ⏳ E2 — promoted job card text placement aligned to normal card
+
+**F. Employer dashboard**
+- ⏳ F1 — phone validation on phone + WhatsApp fields
+- ⏳ F2 — "copy phone → WhatsApp" button
+- ⏳ F3 — removed dashboard verified checkmark
+
+**Deferred:** quick-user job application flow (needs design); employer subscription billing.
+**Infra (user action):** create `info@advance.al` mailboxes; add Twilio credentials for SMS.

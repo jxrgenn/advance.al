@@ -27,6 +27,7 @@ import notificationService from '../lib/notificationService.js';
 import { redis, cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
 import logger from '../config/logger.js';
 import { notifyDiscord, deriveRequestSignals } from '../services/discordNotifier.js';
+import { isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE } from '../lib/phonePolicy.js';
 
 const router = express.Router();
 
@@ -288,9 +289,9 @@ const registerValidation = [
     .isLength({ max: 100 })
     .withMessage('Qyteti nuk mund të ketë më shumë se 100 karaktere'),
   body('phone')
-    .optional()
-    .matches(/^\+\d{8,}$/)
-    .withMessage('Numri i telefonit duhet të ketë të paktën 8 shifra'),
+    .optional({ checkFalsy: true })
+    .custom(v => isValidAlbanianPhone(v))
+    .withMessage(ALBANIAN_PHONE_MESSAGE),
   // Employer-only: company description is required at signup and must be 400-1000 chars.
   // Existing employers with shorter/empty descriptions are unaffected (validator on User
   // model only fires when a value is provided + only on save).

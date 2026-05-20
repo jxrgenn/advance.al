@@ -160,7 +160,10 @@ describe('users.js — profile / account / stats / public-profile / DELETE resum
       expect(r.body.data.user.id).toBe(js._id.toString());
     });
 
-    it('returns 404 when target jobseeker has profileVisible=false (L450-454)', async () => {
+    // QA Round 2: the "Profil i dukshëm" toggle was removed — all active
+    // jobseeker profiles are visible to employers regardless of the legacy
+    // privacySettings.profileVisible flag.
+    it('still returns the profile even when legacy profileVisible=false', async () => {
       const { user: emp } = await createVerifiedEmployer();
       const { user: js } = await createJobseeker({ email: 'priv@example.com' });
       await User.findByIdAndUpdate(js._id, { 'privacySettings.profileVisible': false });
@@ -168,7 +171,8 @@ describe('users.js — profile / account / stats / public-profile / DELETE resum
       const r = await request(app)
         .get(`/api/users/public-profile/${js._id}`)
         .set(createAuthHeaders(emp));
-      expect(r.status).toBe(404);
+      expect(r.status).toBe(200);
+      expect(r.body.data.user.id).toBe(js._id.toString());
     });
 
     it('returns 403 for jobseeker trying to view another (requireEmployer)', async () => {

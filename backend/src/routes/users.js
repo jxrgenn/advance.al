@@ -14,6 +14,7 @@ import { sanitizeLimit, validateObjectId, stripHtml, normalizeOneLine, isObjectI
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { parseUserProfileCV } from '../services/cvParsingService.js';
 import { fireEmbedding } from '../services/embeddingTrigger.js';
+import { isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE } from '../lib/phonePolicy.js';
 
 const router = express.Router();
 
@@ -207,9 +208,9 @@ const jobSeekerProfileValidation = [
     .isLength({ min: 2, max: 50 })
     .withMessage('Mbiemri duhet të ketë midis 2-50 karaktere'),
   body('phone')
-    .optional()
-    .matches(/^\+355\d{8,9}$/)
-    .withMessage('Numri i telefonit duhet të jetë në formatin +355XXXXXXXX'),
+    .optional({ checkFalsy: true })
+    .custom(v => isValidAlbanianPhone(v))
+    .withMessage(ALBANIAN_PHONE_MESSAGE),
   body('jobSeekerProfile.title')
     .optional()
     .trim()
@@ -251,9 +252,17 @@ const employerProfileValidation = [
     .isLength({ min: 2, max: 50 })
     .withMessage('Mbiemri duhet të ketë midis 2-50 karaktere'),
   body('phone')
-    .optional()
-    .matches(/^\+355\d{8,9}$/)
-    .withMessage('Numri i telefonit duhet të jetë në formatin +355XXXXXXXX'),
+    .optional({ checkFalsy: true })
+    .custom(v => isValidAlbanianPhone(v))
+    .withMessage(ALBANIAN_PHONE_MESSAGE),
+  body('employerProfile.phone')
+    .optional({ checkFalsy: true })
+    .custom(v => isValidAlbanianPhone(v))
+    .withMessage(ALBANIAN_PHONE_MESSAGE),
+  body('employerProfile.whatsapp')
+    .optional({ checkFalsy: true })
+    .custom(v => isValidAlbanianPhone(v))
+    .withMessage('Numri i WhatsApp duhet të jetë celular shqiptar i vlefshëm'),
   body('employerProfile.companyName')
     .optional()
     .trim()
@@ -358,7 +367,8 @@ router.put('/profile', authenticate, async (req, res) => {
       location,
       jobSeekerProfile,
       employerProfile,
-      privacySettings
+      privacySettings,
+      preferences
     } = req.body;
 
     // Update basic profile fields
@@ -367,6 +377,18 @@ router.put('/profile', authenticate, async (req, res) => {
     if (phone) user.profile.phone = phone;
     if (location) user.profile.location = { ...user.profile.location, ...location };
     if (privacySettings) user.privacySettings = { ...user.privacySettings, ...privacySettings };
+
+    // Update user preferences (tutorialsEnabled, salaryViewPeriod) — per-key
+    // merge so a partial update doesn't wipe the other preference.
+    if (preferences && typeof preferences === 'object') {
+      user.preferences = user.preferences || {};
+      if (typeof preferences.tutorialsEnabled === 'boolean') {
+        user.preferences.tutorialsEnabled = preferences.tutorialsEnabled;
+      }
+      if (preferences.salaryViewPeriod === 'monthly' || preferences.salaryViewPeriod === 'yearly') {
+        user.preferences.salaryViewPeriod = preferences.salaryViewPeriod;
+      }
+    }
 
     // Update job seeker specific fields (field-level to avoid overwriting arrays)
     if (user.userType === 'jobseeker' && jobSeekerProfile) {
@@ -458,12 +480,13 @@ router.put('/profile', authenticate, async (req, res) => {
 // @access  Private (Employers only when viewing through applications)
 router.get('/public-profile/:id', validateObjectId('id'), authenticate, requireEmployer, async (req, res) => {
   try {
+    // QA Round 2: profile-visibility toggle removed — all active jobseeker
+    // profiles are visible to employers.
     const user = await User.findOne({
       _id: req.params.id,
       userType: 'jobseeker',
       isDeleted: false,
-      status: 'active',
-      'privacySettings.profileVisible': true
+      status: 'active'
     })
       .select('profile createdAt')
       .populate('profile.jobSeekerProfile.cvFile', 'fileName fileType fileSize fileCategory');

@@ -6,6 +6,7 @@ import { User } from '../models/index.js';
 import resendEmailService from '../lib/resendEmailService.js';
 import { cacheGet, cacheSet, cacheDelete, redis } from '../config/redis.js';
 import logger from '../config/logger.js';
+import { ALBANIAN_PHONE_REGEX, ALBANIAN_PHONE_MESSAGE } from '../lib/phonePolicy.js';
 
 const router = express.Router();
 
@@ -245,11 +246,12 @@ router.post('/request', verificationLimiter, verificationRequestValidation, hand
         });
       }
     } else if (method === 'sms') {
-      const phoneRegex = /^\+355\d{8,9}$/;
-      if (!phoneRegex.test(identifier)) {
+      // The identifier doubles as a cache key, so require the already-
+      // normalized +355 form (the frontend normalizes before sending).
+      if (!ALBANIAN_PHONE_REGEX.test(identifier)) {
         return res.status(400).json({
           success: false,
-          message: 'Numri i telefonit duhet të jetë në formatin +355XXXXXXXX'
+          message: ALBANIAN_PHONE_MESSAGE
         });
       }
     }

@@ -13,6 +13,7 @@ import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { uploadToCloudinary } from '../config/cloudinary.js';
 import { parseQuickUserCV } from '../services/cvParsingService.js';
 import { stripHtml, validateObjectId } from '../utils/sanitize.js';
+import { isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE } from '../lib/phonePolicy.js';
 import logger from '../config/logger.js';
 import { JOB_CATEGORIES } from '../constants/jobCategories.js';
 import { notifyDiscord, deriveRequestSignals } from '../services/discordNotifier.js';
@@ -114,9 +115,9 @@ const quickUserValidation = [
     .isIn(JOB_CATEGORIES)
     .withMessage('Interesi i zgjedhur nuk është i vlefshëm'),
   body('phone')
-    .optional()
-    .matches(/^\+\d{8,}$/)
-    .withMessage('Numri i telefonit duhet të ketë të paktën 8 shifra'),
+    .optional({ checkFalsy: true })
+    .custom(v => isValidAlbanianPhone(v))
+    .withMessage(ALBANIAN_PHONE_MESSAGE),
   body('customInterests')
     .optional()
     .isArray()

@@ -460,6 +460,9 @@ const userSchema = new Schema({
   passwordResetExpires: Date,
   lastLoginAt: Date,
   privacySettings: {
+    // NOTE (QA Round 2): profileVisible / showInSearch are deprecated. The
+    // "Profil i dukshëm" and "Shfaq në kërkime" toggles were removed — all
+    // profiles are now visible to employers. Fields kept to avoid a migration.
     profileVisible: {
       type: Boolean,
       default: true
@@ -467,6 +470,19 @@ const userSchema = new Schema({
     showInSearch: {
       type: Boolean,
       default: true
+    }
+  },
+
+  // User preferences (applies to all user types)
+  preferences: {
+    tutorialsEnabled: {
+      type: Boolean,
+      default: true
+    },
+    salaryViewPeriod: {
+      type: String,
+      enum: ['monthly', 'yearly'],
+      default: 'monthly'
     }
   },
 
