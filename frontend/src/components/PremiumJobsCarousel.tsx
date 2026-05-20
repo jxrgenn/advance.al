@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import useEmblaCarousel from 'embla-carousel-react';
 import Autoplay from 'embla-carousel-autoplay';
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { MapPin, Euro, Building, CheckCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { Job } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -99,11 +98,15 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
                           <h3 className={`font-bold text-foreground group-hover:text-primary transition-all duration-300 leading-tight ${isStuck ? 'text-sm line-clamp-1' : 'text-base md:text-sm line-clamp-2'}`}>
                             {job.title}
                           </h3>
-                          <div className={`transition-all duration-300 ease-out overflow-hidden ${isStuck ? 'max-h-0 opacity-0' : 'max-h-8 opacity-100'}`}>
-                            <Badge variant="secondary" className="text-xs py-0.5 px-2 bg-blue-100 text-blue-700 border-0 font-medium">
-                              {job.jobType}
-                            </Badge>
-                          </div>
+                          {/* jobType — same plain uppercase label as the
+                              normal JobCard, so text placement matches (QA R2-E2) */}
+                          {job.jobType && (
+                            <div className={`transition-all duration-300 ease-out overflow-hidden ${isStuck ? 'max-h-0 opacity-0' : 'max-h-8 opacity-100'}`}>
+                              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                {job.jobType}
+                              </span>
+                            </div>
+                          )}
                           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                             <Building className="h-3.5 w-3.5 flex-shrink-0" />
                             <span className="font-medium truncate">

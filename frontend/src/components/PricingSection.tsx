@@ -26,7 +26,7 @@ const defaultPlans: PricingPlan[] = [
   {
     name: 'Bazë',
     tagline: 'Për të filluar',
-    price: '28€',
+    price: '35€',
     serviceFee: '7.99%',
     period: '28 ditë',
     buttonText: 'Fillo me këtë plan',
@@ -43,7 +43,7 @@ const defaultPlans: PricingPlan[] = [
   {
     name: 'Business Plus',
     tagline: 'Për rritje',
-    price: '50€',
+    price: '49€',
     serviceFee: '10%',
     period: '28 ditë',
     buttonText: 'Regjistrohu falas',

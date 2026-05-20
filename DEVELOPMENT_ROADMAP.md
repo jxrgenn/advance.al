@@ -4272,8 +4272,8 @@ Second pre-deploy QA pass. Plan: `~/.claude/plans/resilient-kindling-fog.md`.
 - ✅ D3 — email-or-SMS verification choice
 
 **E. Pricing & cards**
-- ⏳ E1 — reconcile pricing to 35€/49€ everywhere
-- ⏳ E2 — promoted job card text placement aligned to normal card
+- ✅ E1 — reconcile pricing to 35€/49€ everywhere
+- ✅ E2 — promoted job card text placement aligned to normal card
 
 **F. Employer dashboard**
 - ⏳ F1 — phone validation on phone + WhatsApp fields
