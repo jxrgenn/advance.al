@@ -37,6 +37,7 @@ export interface User {
     jobSeekerProfile?: {
       title?: string;
       resume?: string;
+      resumeType?: 'pdf' | 'docx' | 'doc';
       bio?: string;
       experience?: string;
       skills?: string[];
@@ -2046,10 +2047,15 @@ export const cvApi = {
    */
   generate: async (naturalLanguageInput: string, targetLanguage: 'sq' | 'en' = 'sq'): Promise<ApiResponse<{
     cvData: any;
+    language: string;
+    files: {
+      pdf: { fileId: string; fileName: string; fileSize: number };
+      docx: { fileId: string; fileName: string; fileSize: number };
+    };
+    // Legacy fields (DOCX) — kept for backward compatibility.
     fileId: string;
     fileName: string;
     fileSize: number;
-    language: string;
     downloadUrl: string;
     previewUrl: string;
   }>> => {

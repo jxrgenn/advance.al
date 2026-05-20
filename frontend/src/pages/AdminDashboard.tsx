@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { adminApi, reportsApi, isAuthenticated, getUserType, User, usersApi } from "@/lib/api";
-import { viewResume, downloadResume } from "@/lib/resumeView";
+import { viewResume, downloadResume, isInlineViewable, DOCX_VIEW_TOOLTIP } from "@/lib/resumeView";
 import {
   CheckCircle, XCircle, Clock, Building, MapPin, Mail, Phone,
   Users, Briefcase, TrendingUp, TrendingDown, DollarSign,
@@ -2384,8 +2384,10 @@ const AdminDashboard = () => {
                                 <span>•</span>
                                 <button
                                   type="button"
+                                  disabled={!isInlineViewable(user.profile.jobSeekerProfile!.resumeType)}
+                                  title={!isInlineViewable(user.profile.jobSeekerProfile!.resumeType) ? DOCX_VIEW_TOOLTIP : undefined}
                                   onClick={(e) => { e.stopPropagation(); handleViewResume(user.profile.jobSeekerProfile!.resume!); }}
-                                  className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline"
+                                  className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
                                 >
                                   <Eye className="h-3 w-3" />
                                   Shiko CV
@@ -2630,8 +2632,10 @@ const AdminDashboard = () => {
                               <span>•</span>
                               <button
                                 type="button"
+                                disabled={!isInlineViewable(user.profile.jobSeekerProfile!.resumeType)}
+                                title={!isInlineViewable(user.profile.jobSeekerProfile!.resumeType) ? DOCX_VIEW_TOOLTIP : undefined}
                                 onClick={(e) => { e.stopPropagation(); handleViewResume(user.profile.jobSeekerProfile!.resume!); }}
-                                className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline"
+                                className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
                               >
                                 <Eye className="h-3 w-3" />
                                 Shiko CV
@@ -3368,8 +3372,10 @@ const AdminDashboard = () => {
                           <span className="text-green-600">Ngarkuar</span>
                           <button
                             type="button"
+                            disabled={!isInlineViewable(selectedUserForDetails.profile.jobSeekerProfile!.resumeType)}
+                            title={!isInlineViewable(selectedUserForDetails.profile.jobSeekerProfile!.resumeType) ? DOCX_VIEW_TOOLTIP : undefined}
                             onClick={() => handleViewResume(selectedUserForDetails.profile.jobSeekerProfile!.resume!)}
-                            className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline text-sm"
+                            className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
                           >
                             <Eye className="h-3 w-3" />
                             Shiko CV

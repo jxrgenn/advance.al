@@ -96,7 +96,21 @@ const jobSeekerProfileSchema = new Schema({
     type: String,
     maxlength: 500
   },
+  // File format of the uploaded resume — drives whether the "Shiko CV"
+  // (view inline) action is offered. Only 'pdf' can be rendered in-browser;
+  // 'docx'/'doc' can only be downloaded. Set on upload from magic bytes.
+  resumeType: {
+    type: String,
+    enum: ['pdf', 'docx', 'doc'],
+    default: undefined
+  },
+  // AI-generated CV — DOCX render (Word, editable).
   cvFile: {
+    type: Schema.Types.ObjectId,
+    ref: 'File'
+  },
+  // AI-generated CV — PDF render (viewable inline, same content as cvFile).
+  cvPdfFile: {
     type: Schema.Types.ObjectId,
     ref: 'File'
   },

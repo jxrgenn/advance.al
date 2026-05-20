@@ -5,6 +5,7 @@ import { authenticate, requireJobSeeker } from '../middleware/auth.js';
 import { validateObjectId, stripHtml } from '../utils/sanitize.js';
 import { extractCVDataFromText } from '../services/openaiService.js';
 import { generateCVDocument } from '../services/cvDocumentService.js';
+import { generateCVPdf } from '../services/cvPdfService.js';
 import User from '../models/User.js';
 import File from '../models/File.js';
 import logger from '../config/logger.js';
@@ -97,27 +98,41 @@ router.post('/generate', authenticate, requireJobSeeker, cvGenerateLimiter, asyn
     const extractionResult = await extractCVDataFromText(sanitizedInput, targetLanguage);
     const cvData = extractionResult.data;
 
-    // Generate Word document in the target language
-    const docBuffer = await generateCVDocument(cvData, targetLanguage);
+    // Render the SAME cvData as both a Word doc and a PDF. The expensive
+    // step (the OpenAI call above) ran once; rendering twice is just a few
+    // ms of layout work. DOCX = editable Word file; PDF = viewable inline.
+    const [docBuffer, pdfBuffer] = await Promise.all([
+      generateCVDocument(cvData, targetLanguage),
+      generateCVPdf(cvData, targetLanguage),
+    ]);
 
-    // Save file to File model
-    const fileName = `CV_${req.user.profile.firstName}_${req.user.profile.lastName}_${Date.now()}.docx`;
+    const baseName = `CV_${req.user.profile.firstName}_${req.user.profile.lastName}_${Date.now()}`;
+    const docxName = `${baseName}.docx`;
+    const pdfName = `${baseName}.pdf`;
 
-    // Create File document
-    const cvFile = new File({
-      fileName: fileName,
+    const docxFile = new File({
+      fileName: docxName,
       fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       fileSize: docBuffer.length,
       uploadedBy: req.user._id,
       fileCategory: 'cv',
-      fileData: docBuffer
+      fileData: docBuffer,
     });
-    await cvFile.save();
+    const pdfFile = new File({
+      fileName: pdfName,
+      fileType: 'application/pdf',
+      fileSize: pdfBuffer.length,
+      uploadedBy: req.user._id,
+      fileCategory: 'cv',
+      fileData: pdfBuffer,
+    });
+    await Promise.all([docxFile.save(), pdfFile.save()]);
 
-    // Update user profile with CV data
+    // Update user profile with CV data + both file references
     await User.findByIdAndUpdate(req.user._id, {
       'profile.jobSeekerProfile.aiGeneratedCV': cvData,
-      'profile.jobSeekerProfile.cvFile': cvFile._id,
+      'profile.jobSeekerProfile.cvFile': docxFile._id,
+      'profile.jobSeekerProfile.cvPdfFile': pdfFile._id,
       'profile.jobSeekerProfile.cvGeneratedAt': new Date(),
       'profile.jobSeekerProfile.cvLastUpdatedAt': new Date()
     });
@@ -130,12 +145,17 @@ router.post('/generate', authenticate, requireJobSeeker, cvGenerateLimiter, asyn
       message: 'CV generated successfully',
       data: {
         cvData,
-        fileId: cvFile._id,
-        fileName: fileName,
-        fileSize: docBuffer.length,
         language: cvData.language,
-        downloadUrl: `/api/cv/download/${cvFile._id}`,
-        previewUrl: `/api/cv/preview/${cvFile._id}`
+        files: {
+          pdf: { fileId: pdfFile._id, fileName: pdfName, fileSize: pdfBuffer.length },
+          docx: { fileId: docxFile._id, fileName: docxName, fileSize: docBuffer.length },
+        },
+        // Legacy fields — kept so an older cached frontend build keeps working.
+        fileId: docxFile._id,
+        fileName: docxName,
+        fileSize: docBuffer.length,
+        downloadUrl: `/api/cv/download/${docxFile._id}`,
+        previewUrl: `/api/cv/preview/${pdfFile._id}`,
       }
     });
 
@@ -221,7 +241,9 @@ router.get('/preview/:fileId', validateObjectId('fileId'), authenticate, async (
 // GET /api/cv/my-cv - Get current user's CV data
 router.get('/my-cv', authenticate, requireJobSeeker, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).populate('profile.jobSeekerProfile.cvFile');
+    const user = await User.findById(req.user._id)
+      .populate('profile.jobSeekerProfile.cvFile')
+      .populate('profile.jobSeekerProfile.cvPdfFile');
 
     if (!user.profile?.jobSeekerProfile?.aiGeneratedCV) {
       return res.status(404).json({
@@ -235,6 +257,7 @@ router.get('/my-cv', authenticate, requireJobSeeker, async (req, res) => {
       data: {
         cvData: user.profile.jobSeekerProfile.aiGeneratedCV,
         cvFile: user.profile.jobSeekerProfile.cvFile,
+        cvPdfFile: user.profile.jobSeekerProfile.cvPdfFile,
         generatedAt: user.profile.jobSeekerProfile.cvGeneratedAt,
         lastUpdatedAt: user.profile.jobSeekerProfile.cvLastUpdatedAt
       }

@@ -15,7 +15,7 @@ import { User, Mail, Phone, MapPin, Upload, FileText, Briefcase, Award, Loader2,
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { usersApi, applicationsApi, authApi } from "@/lib/api";
-import { viewResume, downloadResume } from "@/lib/resumeView";
+import { viewResume, downloadResume, isInlineViewable, DOCX_VIEW_TOOLTIP } from "@/lib/resumeView";
 import { validateForm, profileValidationRules, formatValidationErrors } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { InputWithCounter, TextAreaWithCounter } from "@/components/CharacterCounter";
@@ -32,6 +32,7 @@ const Profile = () => {
   const [showDeleteCVDialog, setShowDeleteCVDialog] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [currentCV, setCurrentCV] = useState<string | null>(null);
+  const [currentCVType, setCurrentCVType] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [applications, setApplications] = useState<any[]>([]);
   const [loadingApplications, setLoadingApplications] = useState(true);
@@ -283,6 +284,7 @@ const Profile = () => {
       // Set current CV if user has one uploaded
       if (user.profile?.jobSeekerProfile?.resume) {
         setCurrentCV(user.profile.jobSeekerProfile.resume);
+        setCurrentCVType(user.profile.jobSeekerProfile.resumeType || null);
       }
       
       // Initialize form data with user data
@@ -716,6 +718,7 @@ const Profile = () => {
 
       if (response.success && response.data) {
         setCurrentCV(response.data.resumeUrl);
+        setCurrentCVType(response.data.user?.profile?.jobSeekerProfile?.resumeType || null);
         // Refresh user data
         await refreshUser();
 
@@ -770,6 +773,7 @@ const Profile = () => {
 
       if (response.success && response.data) {
         setCurrentCV(response.data.resumeUrl);
+        setCurrentCVType(response.data.user?.profile?.jobSeekerProfile?.resumeType || null);
         await refreshUser();
 
         if (response.data.parsedData) {
@@ -1912,6 +1916,8 @@ const Profile = () => {
                           <Button
                             variant="outline"
                             size="sm"
+                            disabled={!isInlineViewable(currentCVType)}
+                            title={!isInlineViewable(currentCVType) ? DOCX_VIEW_TOOLTIP : undefined}
                             onClick={async () => {
                               if (!currentCV) return;
                               try {
@@ -3185,6 +3191,7 @@ const Profile = () => {
                   const res = await usersApi.deleteResume();
                   if (res.success) {
                     setCurrentCV(null);
+                    setCurrentCVType(null);
                     await refreshUser();
                     toast({ title: 'CV u fshi', description: 'CV-ja u hoq nga profili juaj.' });
                     setShowDeleteCVDialog(false);

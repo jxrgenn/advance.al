@@ -132,6 +132,21 @@ const validateResumeMagicBytes = (buffer) => {
   return false;
 };
 
+// Detect resume format from magic bytes. Stored on the User doc so the
+// frontend knows whether to offer the in-browser "Shiko CV" action (PDF
+// only) or download-only (.docx/.doc). Returns 'pdf' | 'docx' | 'doc' | null.
+const detectResumeFormat = (buffer) => {
+  if (!buffer || buffer.length < 5) return null;
+  if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) return 'pdf';
+  // PK\x03\x04 — zip container, used by DOCX (also XLSX/PPTX, but the
+  // resume file-filter only admits Word docs so this is .docx here).
+  if (buffer[0] === 0x50 && buffer[1] === 0x4B && buffer[2] === 0x03 && buffer[3] === 0x04) return 'docx';
+  // D0 CF 11 E0 — legacy MS Office compound file (.doc).
+  if (buffer.length >= 8 &&
+      buffer[0] === 0xD0 && buffer[1] === 0xCF && buffer[2] === 0x11 && buffer[3] === 0xE0) return 'doc';
+  return null;
+};
+
 // Image upload multer config (for logos and profile photos) — production requires Cloudinary.
 // Same dev-only fallback as diskStorage above.
 /* istanbul ignore next — dev-only disk fallback; tests run with Cloudinary configured */
@@ -707,11 +722,16 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
       });
     }
 
-    // Update user profile with resume URL
+    // Update user profile with resume URL + detected format. resumeType
+    // drives whether the frontend offers the in-browser "Shiko CV" action.
     if (!user.profile.jobSeekerProfile) {
       user.profile.jobSeekerProfile = {};
     }
     user.profile.jobSeekerProfile.resume = resumeUrl;
+    const detectedFormat = detectResumeFormat(req.file.buffer);
+    if (detectedFormat) {
+      user.profile.jobSeekerProfile.resumeType = detectedFormat;
+    }
 
     await user.save();
 
@@ -781,6 +801,7 @@ router.delete('/resume', authenticate, requireJobSeeker, async (req, res) => {
 
     // Clear resume from profile
     user.profile.jobSeekerProfile.resume = null;
+    user.profile.jobSeekerProfile.resumeType = undefined;
     await user.save();
 
     logger.info('Resume deleted', { userId: req.user._id });
@@ -983,11 +1004,15 @@ router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter,
       });
     }
 
-    // Update user profile with resume URL
+    // Update user profile with resume URL + detected format
     if (!user.profile.jobSeekerProfile) {
       user.profile.jobSeekerProfile = {};
     }
     user.profile.jobSeekerProfile.resume = resumeUrl;
+    const detectedParseFormat = detectResumeFormat(req.file.buffer);
+    if (detectedParseFormat) {
+      user.profile.jobSeekerProfile.resumeType = detectedParseFormat;
+    }
     await user.save();
 
     // --- Step 2: Parse CV with AI ---

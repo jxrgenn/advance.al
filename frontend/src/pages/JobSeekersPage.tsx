@@ -1593,7 +1593,10 @@ Telefoni: _______________`;
                     <Button
                       onClick={async () => {
                         try {
-                          await cvApi.previewFile(generatedCV.fileId);
+                          // Preview the PDF render — renders inline in a new
+                          // tab (DOCX can't be previewed natively by browsers).
+                          const pdfId = generatedCV.files?.pdf?.fileId || generatedCV.fileId;
+                          await cvApi.previewFile(pdfId);
                         } catch (error: any) {
                           notifications.show({
                             title: "Gabim",
@@ -1611,7 +1614,11 @@ Telefoni: _______________`;
                     <Button
                       onClick={async () => {
                         try {
-                          await cvApi.downloadFile(generatedCV.fileId, generatedCV.fileName);
+                          const pdf = generatedCV.files?.pdf;
+                          await cvApi.downloadFile(
+                            pdf?.fileId || generatedCV.fileId,
+                            pdf?.fileName || generatedCV.fileName,
+                          );
                         } catch (error: any) {
                           notifications.show({
                             title: "Gabim",
@@ -1624,7 +1631,29 @@ Telefoni: _______________`;
                       color="green"
                       leftSection={<Download size={18} />}
                     >
-                      Shkarko si Word
+                      Shkarko PDF
+                    </Button>
+                    <Button
+                      onClick={async () => {
+                        try {
+                          const docx = generatedCV.files?.docx;
+                          await cvApi.downloadFile(
+                            docx?.fileId || generatedCV.fileId,
+                            docx?.fileName || generatedCV.fileName,
+                          );
+                        } catch (error: any) {
+                          notifications.show({
+                            title: "Gabim",
+                            message: error.message || "Nuk mund të shkarkojë CV-në",
+                            color: "red"
+                          });
+                        }
+                      }}
+                      variant="outline"
+                      color="blue"
+                      leftSection={<Download size={18} />}
+                    >
+                      Shkarko Word
                     </Button>
                   </Group>
                 </Card>

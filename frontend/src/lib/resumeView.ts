@@ -20,6 +20,20 @@
 import { usersApi } from './api';
 
 export type ResumeFormat = 'pdf' | 'docx' | 'doc' | 'unknown';
+
+/** Tooltip shown on a disabled "Shiko CV" button for non-PDF resumes. */
+export const DOCX_VIEW_TOOLTIP =
+  'Ky CV është në format Word (.docx/.doc) — nuk mund të hapet direkt në shfletues. Përdorni "Shkarko".';
+
+/**
+ * Whether a resume can be opened inline in the browser. Only PDFs render
+ * natively. An UNKNOWN type (legacy upload with no stored resumeType) still
+ * returns true — viewResume() handles it and falls back to a download — so
+ * we only ever disable the button for a KNOWN .docx/.doc.
+ */
+export function isInlineViewable(resumeType?: string | null): boolean {
+  return resumeType !== 'docx' && resumeType !== 'doc';
+}
 export interface ResumeViewResult {
   format: ResumeFormat;
   opened: 'inline' | 'downloaded';

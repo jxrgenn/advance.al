@@ -17,7 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import ReportUserModal from "@/components/ReportUserModal";
 import { useToast } from "@/hooks/use-toast";
 import { jobsApi, applicationsApi, usersApi, locationsApi, matchingApi, Job, Application, Location, CandidateMatch, User } from "@/lib/api";
-import { viewResume, downloadResume } from "@/lib/resumeView";
+import { viewResume, downloadResume, isInlineViewable, DOCX_VIEW_TOOLTIP } from "@/lib/resumeView";
 import { useAuth } from "@/contexts/AuthContext";
 import { validateForm, employerDashboardSettingsRules, formatValidationErrors } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
@@ -2273,18 +2273,26 @@ const EmployerDashboard = () => {
                               )}
                               {downloadingCV ? 'Duke shkarkuar...' : 'Shkarko CV-në'}
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                const jobSeeker = selectedApplication.jobSeekerId as User;
-                                handleViewCV(jobSeeker.profile.jobSeekerProfile?.resume || '');
-                              }}
-                              className="text-xs"
-                            >
-                              <Eye className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                              Shiko
-                            </Button>
+                            {(() => {
+                              const jobSeeker = selectedApplication.jobSeekerId as User;
+                              const resumeType = jobSeeker.profile.jobSeekerProfile?.resumeType;
+                              const viewable = isInlineViewable(resumeType);
+                              return (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={!viewable}
+                                  title={!viewable ? DOCX_VIEW_TOOLTIP : undefined}
+                                  onClick={() => {
+                                    handleViewCV(jobSeeker.profile.jobSeekerProfile?.resume || '');
+                                  }}
+                                  className="text-xs"
+                                >
+                                  <Eye className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                                  Shiko
+                                </Button>
+                              );
+                            })()}
                             <Button
                               variant="destructive"
                               size="sm"
