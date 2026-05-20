@@ -1099,7 +1099,7 @@ Telefoni: _______________`;
           <Grid.Col span={{ base: 12, md: 7 }}>
 
             {/* Tutorial Help Button - Prominent CTA (Moved Above Form) */}
-            {!showTutorial && (
+            {!showTutorial && user?.preferences?.tutorialsEnabled !== false && (
               <Paper
                 withBorder
                 p="sm"

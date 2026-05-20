@@ -1255,7 +1255,7 @@ const EmployersPage = () => {
             {/* Right: Multi-step Registration Form */}
             <Stack gap="xl">
               {/* Tutorial Help Link */}
-              {!showTutorial && (
+              {!showTutorial && user?.preferences?.tutorialsEnabled !== false && (
                 <Paper shadow="xs" p="md" radius="md" withBorder style={{ backgroundColor: '#f8f9fa' }}>
                   <Group justify="space-between" wrap="nowrap">
                     <Group gap="sm">

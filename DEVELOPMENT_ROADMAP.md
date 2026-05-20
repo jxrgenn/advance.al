@@ -4250,16 +4250,16 @@ sprite.userData = {
 Second pre-deploy QA pass. Plan: `~/.claude/plans/resilient-kindling-fog.md`.
 
 **A. Shared foundations**
-- ⏳ A1 — `User.preferences` sub-object (`tutorialsEnabled`, `salaryViewPeriod`)
-- ⏳ A2 — shared frontend password validator (`validatePassword` in formValidation.ts)
-- ⏳ A3 — shared Albanian phone policy (`backend/lib/phonePolicy.js` + FE `isValidAlbanianPhone`); national part = 9 digits, first digit 6; replaced ad-hoc regexes in auth/quickusers/users/verification routes
+- ✅ A1 — `User.preferences` sub-object (`tutorialsEnabled`, `salaryViewPeriod`)
+- ✅ A2 — shared frontend password validator (`validatePassword` in formValidation.ts)
+- ✅ A3 — shared Albanian phone policy (`backend/lib/phonePolicy.js` + FE `isValidAlbanianPhone`); national part = 9 digits, first digit 6; replaced ad-hoc regexes in auth/quickusers/users/verification routes
 
 **B. Profile settings**
-- ⏳ B1 — removed "Profil i dukshëm" toggle; all profiles visible to employers
-- ⏳ B2 — removed dead "Shfaq në kërkime" toggle
-- ⏳ B3 — removed "I hapur për punë në distancë" toggle
-- ⏳ B4 — tutorial on/off preference
-- ⏳ B5 — monthly/yearly salary view preference + shared salary formatter
+- ✅ B1 — removed "Profil i dukshëm" toggle; all profiles visible to employers
+- ✅ B2 — removed dead "Shfaq në kërkime" toggle
+- ✅ B3 — removed "I hapur për punë në distancë" toggle
+- ✅ B4 — tutorial on/off preference
+- ✅ B5 — monthly/yearly salary view preference + shared salary formatter
 
 **C. Password flows**
 - ⏳ C1 — visibility toggles on change-password

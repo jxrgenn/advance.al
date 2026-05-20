@@ -95,6 +95,30 @@ describe('users.js — profile / account / stats / public-profile / DELETE resum
       expect(refreshed.profile.jobSeekerProfile.title).toBe('Senior Dev');
     });
 
+    it('persists user preferences (tutorialsEnabled, salaryViewPeriod)', async () => {
+      const { user } = await createJobseeker({ email: 'putprefs@example.com' });
+      const r = await request(app)
+        .put('/api/users/profile')
+        .set(createAuthHeaders(user))
+        .send({ preferences: { tutorialsEnabled: false, salaryViewPeriod: 'yearly' } });
+      expect(r.status).toBe(200);
+      const refreshed = await User.findById(user._id);
+      expect(refreshed.preferences.tutorialsEnabled).toBe(false);
+      expect(refreshed.preferences.salaryViewPeriod).toBe('yearly');
+    });
+
+    it('ignores an invalid salaryViewPeriod value (per-key merge)', async () => {
+      const { user } = await createJobseeker({ email: 'putprefsbad@example.com' });
+      const r = await request(app)
+        .put('/api/users/profile')
+        .set(createAuthHeaders(user))
+        .send({ preferences: { salaryViewPeriod: 'weekly' } });
+      expect(r.status).toBe(200);
+      const refreshed = await User.findById(user._id);
+      // Untouched — keeps the schema default rather than the bogus value.
+      expect(refreshed.preferences.salaryViewPeriod).toBe('monthly');
+    });
+
     it('employer website without protocol gets https:// prepended (L369-371)', async () => {
       const { user } = await createVerifiedEmployer({ email: 'putweb@example.com' });
       const r = await request(app)

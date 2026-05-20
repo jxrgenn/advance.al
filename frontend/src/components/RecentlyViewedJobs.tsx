@@ -19,6 +19,8 @@ import { Job, jobsApi } from "@/lib/api";
 import useRecentlyViewed from "@/hooks/useRecentlyViewed";
 import { useToast } from "@/hooks/use-toast";
 import JobCard from "./JobCard";
+import { formatSalary } from "@/lib/salary";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface RecentlyViewedJobsProps {
   limit?: number;
@@ -41,6 +43,7 @@ const RecentlyViewedJobs = ({
   const { recentlyViewed, removeRecentlyViewed, clearRecentlyViewed } = useRecentlyViewed();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   // Fetch job details for recently viewed jobs
   useEffect(() => {
@@ -282,10 +285,10 @@ const RecentlyViewedJobs = ({
 
                       {/* Wage - Right aligned on mobile, inline on desktop */}
                       <div className="flex items-center gap-1 sm:ml-auto">
-                        {job.salary?.showPublic && job.formattedSalary ? (
+                        {job.salary?.showPublic && (job.salary.min || job.salary.max) ? (
                           <>
                             <Euro className="h-3 w-3 flex-shrink-0 text-green-600" />
-                            <span className="font-semibold text-green-700 whitespace-nowrap">{job.formattedSalary}</span>
+                            <span className="font-semibold text-green-700 whitespace-nowrap">{formatSalary(job.salary, user?.preferences?.salaryViewPeriod)}</span>
                           </>
                         ) : (
                           <span className="text-muted-foreground whitespace-nowrap">Pagë për t'u negociuar</span>
@@ -378,10 +381,10 @@ const RecentlyViewedJobs = ({
 
                       {/* Wage - Right aligned on mobile, inline on desktop */}
                       <div className="flex items-center gap-1 sm:ml-auto">
-                        {job.salary?.showPublic && job.formattedSalary ? (
+                        {job.salary?.showPublic && (job.salary.min || job.salary.max) ? (
                           <>
                             <Euro className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0 text-green-600" />
-                            <span className="font-semibold text-green-700 whitespace-nowrap">{job.formattedSalary}</span>
+                            <span className="font-semibold text-green-700 whitespace-nowrap">{formatSalary(job.salary, user?.preferences?.salaryViewPeriod)}</span>
                           </>
                         ) : (
                           <span className="text-muted-foreground whitespace-nowrap">Pagë për t'u negociuar</span>

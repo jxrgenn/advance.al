@@ -18,16 +18,7 @@ import { jobsApi, applicationsApi, usersApi, Job } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import useRecentlyViewed from "@/hooks/useRecentlyViewed";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
-
-// Client-side salary formatter — Mongoose virtuals are stripped by .lean()
-const formatSalaryDisplay = (salary: { min?: number; max?: number; currency: string; negotiable?: boolean }) => {
-  if (!salary.min && !salary.max) return salary.negotiable !== false ? 'Pagë për t\'u negociuar' : null;
-  if (salary.min && salary.max && salary.min === salary.max) return `${salary.min} ${salary.currency}`;
-  if (salary.min && salary.max) return `${salary.min}-${salary.max} ${salary.currency}`;
-  if (salary.min) return `Nga ${salary.min} ${salary.currency}`;
-  if (salary.max) return `Deri në ${salary.max} ${salary.currency}`;
-  return null;
-};
+import { formatSalary } from "@/lib/salary";
 
 const JobDetail = () => {
   const { id } = useParams();
@@ -810,7 +801,7 @@ const JobDetail = () => {
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
             {/* Tutorial Help Button */}
-            {!showTutorial && (
+            {!showTutorial && user?.preferences?.tutorialsEnabled !== false && (
               <Card className="border-blue-200 bg-blue-50/50">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
@@ -870,8 +861,8 @@ const JobDetail = () => {
                   )}
                   <div className="flex items-center">
                     <Euro className="h-4 w-4 mr-1" />
-                    {job.salary?.showPublic !== false && (job.formattedSalary || job.salary?.min || job.salary?.max)
-                      ? (job.formattedSalary || formatSalaryDisplay(job.salary!))
+                    {job.salary?.showPublic !== false && (job.salary?.min || job.salary?.max)
+                      ? formatSalary(job.salary, user?.preferences?.salaryViewPeriod)
                       : "Pagë për t'u negociuar"}
                   </div>
                   <div className="flex items-center">

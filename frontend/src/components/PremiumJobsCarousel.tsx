@@ -8,12 +8,15 @@ import { MapPin, Euro, Building, CheckCircle, ChevronLeft, ChevronRight } from "
 import { Job } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { optimizedCloudinaryUrl } from "@/lib/imageUrl";
+import { formatSalary } from "@/lib/salary";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface PremiumJobsCarouselProps {
   jobs: Job[];
 }
 
 const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [isStuck, setIsStuck] = useState(false);
@@ -116,11 +119,11 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
                               {job.location?.city || 'Vendndodhje'}
                             </span>
                           </div>
-                          {job.salary?.showPublic && job.formattedSalary && (
+                          {job.salary?.showPublic && (job.salary.min || job.salary.max) && (
                             <div className={`flex items-center gap-1.5 transition-all duration-300 ease-out overflow-hidden ${isStuck ? 'max-h-0 opacity-0' : 'max-h-8 opacity-100'}`}>
                               <Euro className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
                               <span className="font-semibold text-green-700 text-sm">
-                                {job.formattedSalary}
+                                {formatSalary(job.salary, user?.preferences?.salaryViewPeriod)}
                               </span>
                             </div>
                           )}

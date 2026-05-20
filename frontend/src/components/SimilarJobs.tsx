@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { MapPin, Building, Euro, Clock, ArrowRight, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Job, jobsApi } from "@/lib/api";
+import { formatSalary } from "@/lib/salary";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface SimilarJobsProps {
   currentJob: Job;
@@ -19,6 +21,7 @@ interface ScoredJob extends Job {
 
 const SimilarJobs = ({ currentJob, limit = 4 }: SimilarJobsProps) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [similarJobs, setSimilarJobs] = useState<ScoredJob[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -147,10 +150,10 @@ const SimilarJobs = ({ currentJob, limit = 4 }: SimilarJobsProps) => {
 
               {/* Salary & Date */}
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-3">
-                {job.salary?.showPublic && job.formattedSalary ? (
+                {job.salary?.showPublic && (job.salary.min || job.salary.max) ? (
                   <div className="flex items-center">
                     <Euro className="h-3 w-3 mr-1" />
-                    <span className="font-medium text-green-700">{job.formattedSalary}</span>
+                    <span className="font-medium text-green-700">{formatSalary(job.salary, user?.preferences?.salaryViewPeriod)}</span>
                   </div>
                 ) : (
                   <div></div>

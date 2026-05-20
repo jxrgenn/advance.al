@@ -1259,7 +1259,7 @@ const EmployerDashboard = () => {
           {/* Tutorial Button - Show based on tab and data availability */}
           {!showTutorial && (
             <>
-              {currentTab === 'jobs' && jobs.length > 0 && (
+              {currentTab === 'jobs' && jobs.length > 0 && user?.preferences?.tutorialsEnabled !== false && (
                 <Card className="border-primary/20 bg-primary/5">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between flex-wrap gap-3">
@@ -1286,7 +1286,7 @@ const EmployerDashboard = () => {
                 </Card>
               )}
 
-              {currentTab === 'applicants' && applications.length > 0 && (
+              {currentTab === 'applicants' && applications.length > 0 && user?.preferences?.tutorialsEnabled !== false && (
                 <Card className="border-primary/20 bg-primary/5">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between flex-wrap gap-3">
@@ -1313,7 +1313,7 @@ const EmployerDashboard = () => {
                 </Card>
               )}
 
-              {currentTab === 'settings' && (
+              {currentTab === 'settings' && user?.preferences?.tutorialsEnabled !== false && (
                 <Card className="border-primary/20 bg-primary/5">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between flex-wrap gap-3">

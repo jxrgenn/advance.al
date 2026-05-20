@@ -126,9 +126,8 @@ const Profile = () => {
   const [desiredSalaryMin, setDesiredSalaryMin] = useState('');
   const [desiredSalaryMax, setDesiredSalaryMax] = useState('');
   const [desiredSalaryCurrency, setDesiredSalaryCurrency] = useState('ALL');
-  const [openToRemote, setOpenToRemote] = useState(false);
-  const [profileVisible, setProfileVisible] = useState(true);
-  const [showInSearch, setShowInSearch] = useState(true);
+  const [tutorialsEnabled, setTutorialsEnabled] = useState(true);
+  const [salaryViewPeriod, setSalaryViewPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [savingSettings, setSavingSettings] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
@@ -314,9 +313,8 @@ const Profile = () => {
       } else {
         setShowSalaryPreference(false);
       }
-      setOpenToRemote(user.profile?.jobSeekerProfile?.openToRemote ?? false);
-      setProfileVisible(user.privacySettings?.profileVisible ?? true);
-      setShowInSearch(user.privacySettings?.showInSearch ?? true);
+      setTutorialsEnabled(user.preferences?.tutorialsEnabled ?? true);
+      setSalaryViewPeriod(user.preferences?.salaryViewPeriod === 'yearly' ? 'yearly' : 'monthly');
     }
   }, [user]);
 
@@ -373,14 +371,13 @@ const Profile = () => {
     setSavingSettings(true);
     try {
       const updateData: any = {
-        privacySettings: {
-          profileVisible,
-          showInSearch
+        preferences: {
+          tutorialsEnabled,
+          salaryViewPeriod
         }
       };
       if (user?.userType === 'jobseeker') {
         updateData.jobSeekerProfile = {
-          openToRemote,
           desiredSalary: {
             min: salaryMin,
             max: salaryMax,
@@ -1581,7 +1578,7 @@ const Profile = () => {
 
       <div className="container py-8">
         {/* Tutorial Help Button */}
-        {!showTutorial && user && user.userType === 'jobseeker' && (
+        {!showTutorial && user && user.userType === 'jobseeker' && user.preferences?.tutorialsEnabled !== false && (
           <Card className="border-blue-200 bg-blue-50/50 mb-6">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -2294,7 +2291,7 @@ const Profile = () => {
                   <Card>
                     <CardHeader>
                       <CardTitle>Preferencat e Punës</CardTitle>
-                      <CardDescription>Vendos pagën e dëshiruar dhe preferencën për punë në distancë</CardDescription>
+                      <CardDescription>Vendos pagën e dëshiruar</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div>
@@ -2338,38 +2335,39 @@ const Profile = () => {
                           </div>
                         )}
                       </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <Label className="text-sm font-medium">I hapur për punë në distancë</Label>
-                          <p className="text-xs text-muted-foreground">Punëdhënësit do të shohin që pranoni punë remote</p>
-                        </div>
-                        <Switch checked={openToRemote} onCheckedChange={setOpenToRemote} />
-                      </div>
                     </CardContent>
                   </Card>
                 )}
 
-                {/* Privacy Settings */}
+                {/* Display preferences (QA Round 2) */}
                 <Card>
                   <CardHeader>
-                    <CardTitle>Privatësia</CardTitle>
-                    <CardDescription>Kontrollo kush mund të shohë profilin tënd</CardDescription>
+                    <CardTitle>Preferencat e Shfaqjes</CardTitle>
+                    <CardDescription>Personalizo si shfaqet platforma për ty</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <Label className="text-sm font-medium">Profili i dukshëm</Label>
-                        <p className="text-xs text-muted-foreground">Punëdhënësit mund të shohin profilin tuaj</p>
+                        <Label className="text-sm font-medium">Tutorialët udhëzues</Label>
+                        <p className="text-xs text-muted-foreground">Shfaq butonat e tutorialit nëpër faqe</p>
                       </div>
-                      <Switch checked={profileVisible} onCheckedChange={setProfileVisible} />
+                      <Switch checked={tutorialsEnabled} onCheckedChange={setTutorialsEnabled} />
                     </div>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <Label className="text-sm font-medium">Shfaq në kërkim</Label>
-                        <p className="text-xs text-muted-foreground">Profili juaj shfaqet në rezultatet e kërkimit</p>
+                    {user?.userType === 'jobseeker' && (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-sm font-medium">Shfaq pagat</Label>
+                          <p className="text-xs text-muted-foreground">Si dëshiron t'i shohësh pagat e punëve</p>
+                        </div>
+                        <Select value={salaryViewPeriod} onValueChange={(v) => setSalaryViewPeriod(v as 'monthly' | 'yearly')}>
+                          <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="monthly">Mujore</SelectItem>
+                            <SelectItem value="yearly">Vjetore</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
-                      <Switch checked={showInSearch} onCheckedChange={setShowInSearch} />
-                    </div>
+                    )}
                   </CardContent>
                 </Card>
 

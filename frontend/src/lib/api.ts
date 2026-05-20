@@ -79,6 +79,10 @@ export interface User {
     profileVisible: boolean;
     showInSearch: boolean;
   };
+  preferences?: {
+    tutorialsEnabled?: boolean;
+    salaryViewPeriod?: 'monthly' | 'yearly';
+  };
   savedJobs?: string[];
 }
 
