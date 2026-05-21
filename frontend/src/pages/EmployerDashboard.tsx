@@ -1976,13 +1976,13 @@ const EmployerDashboard = () => {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" data-tutorial="contact-info">
                       <div>
                         <Label htmlFor="emp-phone">Telefon</Label>
-                        <div className="flex">
-                          <span className="inline-flex items-center gap-1 rounded-l-md border border-r-0 border-input bg-muted px-3 text-sm text-muted-foreground">
+                        <div className="mt-1 flex items-stretch">
+                          <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-l-md border border-r-0 border-input bg-muted px-3 text-sm text-muted-foreground">
                             🇦🇱 +355
                           </span>
                           <Input
                             id="emp-phone"
-                            className="rounded-l-none"
+                            className="flex-1 min-w-0 rounded-l-none"
                             value={profileData.phone.replace(/^\+?355\s?/, '')}
                             onChange={(e) => setProfileData(prev => ({ ...prev, phone: e.target.value }))}
                             placeholder="69 123 4567"
@@ -1993,13 +1993,13 @@ const EmployerDashboard = () => {
                       <div>
                         <Label htmlFor="emp-whatsapp">WhatsApp</Label>
                         {!whatsappSameAsPhone && (
-                          <div className="flex">
-                            <span className="inline-flex items-center gap-1 rounded-l-md border border-r-0 border-input bg-muted px-3 text-sm text-muted-foreground">
+                          <div className="mt-1 flex items-stretch">
+                            <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-l-md border border-r-0 border-input bg-muted px-3 text-sm text-muted-foreground">
                               🇦🇱 +355
                             </span>
                             <Input
                               id="emp-whatsapp"
-                              className="rounded-l-none"
+                              className="flex-1 min-w-0 rounded-l-none"
                               value={profileData.whatsapp.replace(/^\+?355\s?/, '')}
                               onChange={(e) => setProfileData(prev => ({ ...prev, whatsapp: e.target.value }))}
                               placeholder="69 123 4567"

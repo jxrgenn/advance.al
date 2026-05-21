@@ -94,8 +94,9 @@ describe('jobs.js — outer catch + status validation paths', () => {
     expect(r.body.message).toMatch(/Puna nuk u gjet/);
   });
 
-  it('GET /:id/similar returns 500 when Job.findById throws (L794-795)', async () => {
-    jest.spyOn(Job, 'findById').mockImplementationOnce(() => {
+  it('GET /:id/similar returns 500 when the job lookup throws', async () => {
+    // The /:id/similar route does a dual ObjectId/slug lookup via Job.findOne.
+    jest.spyOn(Job, 'findOne').mockImplementationOnce(() => {
       throw new Error('similar fail');
     });
     const id = new mongoose.Types.ObjectId().toString();
