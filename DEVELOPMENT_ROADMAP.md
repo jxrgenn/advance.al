@@ -4300,3 +4300,23 @@ tokens). Payment receipts confirmed wired (Paysera callback → docx email).
 
 Known pre-existing test failure (not a regression): `jobs-error-paths.test.js`
 "GET /:id/similar returns 500 when Job.findById throws" — fails on clean main.
+
+### API data-exposure hardening (2026-05-21)
+
+- ✅ SEC1 — `backend/src/lib/serializers.js`: `publicJob` / `publicEmployer` /
+  `publicJobseekerProfile` — single source of truth for what public read
+  endpoints expose
+- ✅ SEC2 — applied to `jobs.js` (list / `:id` / `:id/similar`); internal job
+  fields (embedding, similarJobs, similarityMetadata, notification, payment
+  internals, moderation flags) no longer ship on public job payloads;
+  per-job `contactOverrides` gated to authenticated viewers; `public-profile/:id`
+  now requires an application relationship (blocks candidate enumeration)
+- ✅ SEC3 — `api-exposure.test.js`: negative contract test, deep-scans every
+  public endpoint and fails CI if a denylisted field leaks
+- ✅ FIX — `+355` prefix box layout; stale `jobs-error-paths` similar test
+- `companies.js` audited — already curates every field; no change needed.
+
+Known pre-existing failures (NOT regressions — confirmed on clean main):
+`jobs-listing-personalized.test.js` (2, personalization re-rank) and the
+`GET /api/users/resume/:filename` route tests (`users-resume-serve.test.js` +
+tenant-isolation, ~11) — the legacy local-disk resume route. Worth separate triage.

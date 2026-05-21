@@ -347,6 +347,12 @@ describe('Phase 2 — Tenant Isolation Matrix', () => {
       const { user: emp } = await createVerifiedEmployer();
       const { user: js1 } = await createJobseeker();
       const { user: js2 } = await createJobseeker();
+      // QA Round 2: an employer may only view a candidate who applied to them.
+      const job = await createJob(emp);
+      await Application.create({
+        jobId: job._id, jobSeekerId: js1._id, employerId: emp._id,
+        applicationMethod: 'one_click',
+      });
 
       const isoA = await request(app)
         .get(`/api/users/public-profile/${js1._id}`)

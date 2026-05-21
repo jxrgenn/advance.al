@@ -17,6 +17,7 @@ import { fireEmbedding } from '../services/embeddingTrigger.js';
 import { pingJob } from '../lib/indexNow.js';
 import { JOB_CATEGORIES } from '../constants/jobCategories.js';
 import { notifyDiscord, deriveRequestSignals } from '../services/discordNotifier.js';
+import { publicJob } from '../lib/serializers.js';
 
 const router = express.Router();
 
@@ -388,7 +389,7 @@ router.get('/', optionalAuth, async (req, res) => {
           return res.json({
             success: true,
             data: {
-              jobs: reranked,
+              jobs: reranked.map(j => publicJob(j, { viewer: req.user })),
               pagination: {
                 currentPage: 1,
                 totalPages,
@@ -452,7 +453,7 @@ router.get('/', optionalAuth, async (req, res) => {
     const responseData = {
       success: true,
       data: {
-        jobs,
+        jobs: jobs.map(j => publicJob(j, { viewer: req.user })),
         pagination: {
           currentPage: safePage,
           totalPages,
@@ -819,16 +820,11 @@ router.get('/employer/my-jobs', authenticate, requireEmployer, async (req, res) 
 // @access  Public
 router.get('/:id', optionalAuth, async (req, res) => {
   try {
-    // Public single-job detail. Do NOT populate the employer's login email
-    // here — anonymous callers would get a list of every employer's auth email
-    // by scraping job pages, enabling credential-stuffing attacks.
-    //
-    // QA Round 2: employer contact details (phone / whatsapp) and the contact
-    // person's name are populated ONLY for authenticated users. The frontend
-    // hides the contact section from logged-out visitors, so shipping these to
-    // anonymous callers just leaks them into the Network tab and lets people
-    // contact employers off-platform. companyName / website / description /
-    // logo / location stay public.
+    // Public single-job detail. The response is run through `publicJob`
+    // (lib/serializers.js): internal fields (embedding, similarJobs,
+    // payment internals, notification state, moderation flags) are dropped,
+    // and employer phone/whatsapp/contact-name are exposed only to
+    // authenticated viewers. The employer's login email is never populated.
     //
     // Dual-lookup: the URL segment is either a 24-char hex ObjectId or a slug.
     // Slug field is unique + indexed (Job.js:292) and generated automatically
@@ -840,10 +836,8 @@ router.get('/:id', optionalAuth, async (req, res) => {
       ? { _id: param, isDeleted: false }
       : { slug: param, isDeleted: false };
 
-    const employerSelect = 'profile.employerProfile.companyName profile.employerProfile.logo profile.location profile.employerProfile.description profile.employerProfile.website'
-      + (req.user ? ' profile.employerProfile.phone profile.employerProfile.whatsapp profile.firstName profile.lastName' : '');
-
-    const job = await Job.findOne(query).populate('employerId', employerSelect)
+    const job = await Job.findOne(query)
+      .populate('employerId', 'profile.employerProfile profile.location profile.firstName profile.lastName')
       .lean();
 
     if (!job) {
@@ -872,7 +866,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
 
     res.json({
       success: true,
-      data: { job }
+      data: { job: publicJob(job, { viewer: req.user }) }
     });
 
   } catch (error) {
@@ -931,7 +925,7 @@ router.get('/:id/similar', async (req, res) => {
           const { boost } = jobEmbeddingService.computeJobToJobBoost(job, candidate);
           const finalScore = Math.min(1, s.score + boost);
           return {
-            job: candidate,
+            job: publicJob(candidate, { viewer: req.user }),
             score: finalScore,
             cosineScore: s.score,
             tier: jobEmbeddingService.scoreToTier(finalScore),
@@ -954,7 +948,9 @@ router.get('/:id/similar', async (req, res) => {
     }
 
     // If embeddings are being processed, use fallback
-    const fallbackJobs = (await jobEmbeddingService.getSimilarJobsFallback(jobId)).slice(0, limit);
+    const fallbackJobs = (await jobEmbeddingService.getSimilarJobsFallback(jobId))
+      .slice(0, limit)
+      .map(f => ({ ...f, job: publicJob(f.job, { viewer: req.user }) }));
 
     res.json({
       success: true,

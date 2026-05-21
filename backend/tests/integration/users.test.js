@@ -36,6 +36,7 @@ import {
 import { createJob } from '../factories/job.factory.js';
 import { createAuthHeaders } from '../helpers/auth.helper.js';
 import User from '../../src/models/User.js';
+import Application from '../../src/models/Application.js';
 
 describe('Users API - Integration Tests', () => {
   beforeAll(async () => {
@@ -119,9 +120,16 @@ describe('Users API - Integration Tests', () => {
   });
 
   describe('GET /api/users/public-profile/:id', () => {
-    it('employer can view a jobseeker public profile', async () => {
+    it('employer can view a jobseeker who applied to one of their jobs', async () => {
       const { user: employer } = await createVerifiedEmployer();
       const { user: jobseeker } = await createJobseeker();
+      // QA Round 2: viewing a public profile now requires an application
+      // relationship — stops blind enumeration of every candidate by id.
+      const job = await createJob(employer);
+      await Application.create({
+        jobId: job._id, jobSeekerId: jobseeker._id, employerId: employer._id,
+        applicationMethod: 'one_click',
+      });
 
       const response = await request(app)
         .get(`/api/users/public-profile/${jobseeker._id}`)

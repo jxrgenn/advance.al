@@ -21,6 +21,7 @@ import { createJobseeker, createVerifiedEmployer, createEmployer } from '../fact
 import { createJob } from '../factories/job.factory.js';
 import { createAuthHeaders } from '../helpers/auth.helper.js';
 import User from '../../src/models/User.js';
+import Application from '../../src/models/Application.js';
 
 describe('users.js — profile / account / stats / public-profile / DELETE resume', () => {
   beforeAll(async () => {
@@ -169,12 +170,12 @@ describe('users.js — profile / account / stats / public-profile / DELETE resum
   });
 
   describe('GET /api/users/public-profile/:id', () => {
-    it('employer can view a visible jobseeker public profile (happy path)', async () => {
+    it('employer who received an application can view that jobseeker profile', async () => {
       const { user: emp } = await createVerifiedEmployer();
       const { user: js } = await createJobseeker({ email: 'pub@example.com' });
-      // Ensure profile is visible
-      await User.findByIdAndUpdate(js._id, {
-        'privacySettings.profileVisible': true,
+      const job = await createJob(emp);
+      await Application.create({
+        jobId: job._id, jobSeekerId: js._id, employerId: emp._id, applicationMethod: 'one_click',
       });
 
       const r = await request(app)
@@ -182,21 +183,21 @@ describe('users.js — profile / account / stats / public-profile / DELETE resum
         .set(createAuthHeaders(emp));
       expect(r.status).toBe(200);
       expect(r.body.data.user.id).toBe(js._id.toString());
+      // Curated profile — never leaks contact details.
+      expect(r.body.data.user.profile.email).toBeUndefined();
+      expect(r.body.data.user.profile.phone).toBeUndefined();
     });
 
-    // QA Round 2: the "Profil i dukshëm" toggle was removed — all active
-    // jobseeker profiles are visible to employers regardless of the legacy
-    // privacySettings.profileVisible flag.
-    it('still returns the profile even when legacy profileVisible=false', async () => {
+    // QA Round 2: an employer may only view a jobseeker who applied to them —
+    // blocks blind enumeration of every candidate by ObjectId.
+    it('returns 403 when the employer has no application from that jobseeker', async () => {
       const { user: emp } = await createVerifiedEmployer();
       const { user: js } = await createJobseeker({ email: 'priv@example.com' });
-      await User.findByIdAndUpdate(js._id, { 'privacySettings.profileVisible': false });
 
       const r = await request(app)
         .get(`/api/users/public-profile/${js._id}`)
         .set(createAuthHeaders(emp));
-      expect(r.status).toBe(200);
-      expect(r.body.data.user.id).toBe(js._id.toString());
+      expect(r.status).toBe(403);
     });
 
     it('returns 403 for jobseeker trying to view another (requireEmployer)', async () => {

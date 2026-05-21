@@ -5,7 +5,7 @@ import fs from 'fs';
 import { randomUUID } from 'crypto';
 import mammoth from 'mammoth';
 import { body, validationResult } from 'express-validator';
-import { User, SystemConfiguration } from '../models/index.js';
+import { User, SystemConfiguration, Application } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer, requireAdmin } from '../middleware/auth.js';
 import resendEmailService from '../lib/resendEmailService.js';
 import { uploadToCloudinary, deleteFromCloudinary, extractCloudinaryPublicId, signedAuthenticatedDownloadUrl } from '../config/cloudinary.js';
@@ -15,6 +15,7 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { parseUserProfileCV } from '../services/cvParsingService.js';
 import { fireEmbedding } from '../services/embeddingTrigger.js';
 import { isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE } from '../lib/phonePolicy.js';
+import { publicJobseekerProfile } from '../lib/serializers.js';
 
 const router = express.Router();
 
@@ -480,8 +481,20 @@ router.put('/profile', authenticate, async (req, res) => {
 // @access  Private (Employers only when viewing through applications)
 router.get('/public-profile/:id', validateObjectId('id'), authenticate, requireEmployer, async (req, res) => {
   try {
-    // QA Round 2: profile-visibility toggle removed — all active jobseeker
-    // profiles are visible to employers.
+    // QA Round 2: an employer may only view a jobseeker's profile if that
+    // jobseeker has applied to one of their jobs — stops blind enumeration
+    // of every candidate by ObjectId.
+    const hasApplication = await Application.exists({
+      jobSeekerId: req.params.id,
+      employerId: req.user._id,
+    });
+    if (!hasApplication) {
+      return res.status(403).json({
+        success: false,
+        message: 'Mund të shihni vetëm profilet e kandidatëve që kanë aplikuar te ju'
+      });
+    }
+
     const user = await User.findOne({
       _id: req.params.id,
       userType: 'jobseeker',
@@ -498,32 +511,10 @@ router.get('/public-profile/:id', validateObjectId('id'), authenticate, requireE
       });
     }
 
-    // Remove sensitive information
-    const publicProfile = {
-      id: user._id,
-      profile: {
-        firstName: user.profile.firstName,
-        lastName: user.profile.lastName,
-        location: user.profile.location,
-        jobSeekerProfile: {
-          title: user.profile.jobSeekerProfile?.title,
-          bio: user.profile.jobSeekerProfile?.bio,
-          experience: user.profile.jobSeekerProfile?.experience,
-          skills: user.profile.jobSeekerProfile?.skills,
-          education: user.profile.jobSeekerProfile?.education,
-          workHistory: user.profile.jobSeekerProfile?.workHistory,
-          profilePhoto: user.profile.jobSeekerProfile?.profilePhoto,
-          cvFile: user.profile.jobSeekerProfile?.cvFile,
-          availability: user.profile.jobSeekerProfile?.availability,
-          openToRemote: user.profile.jobSeekerProfile?.openToRemote
-        }
-      },
-      memberSince: user.createdAt
-    };
-
+    // Curated, non-sensitive profile — see lib/serializers.js
     res.json({
       success: true,
-      data: { user: publicProfile }
+      data: { user: publicJobseekerProfile(user) }
     });
 
   } catch (error) {
