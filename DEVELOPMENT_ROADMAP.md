@@ -4320,3 +4320,21 @@ Known pre-existing failures (NOT regressions — confirmed on clean main):
 `jobs-listing-personalized.test.js` (2, personalization re-rank) and the
 `GET /api/users/resume/:filename` route tests (`users-resume-serve.test.js` +
 tenant-isolation, ~11) — the legacy local-disk resume route. Worth separate triage.
+
+### Personalization fix + Twilio/Paysera key-readiness (2026-05-21)
+
+- ✅ Homepage personalization: `GET /api/jobs` page-1 embedding re-rank was
+  shadowed by the shared 60s response cache (key had no user). Personalizable
+  requests now bypass the cache; normal responses always carry `personalized:false`.
+- ✅ `jobs-listing-personalized.test.js`: fixture vectors now use `EMBEDDING_DIMS`
+  (was hardcoded 1536, mismatching the env-resolved dims) — suite green.
+- ✅ SMS verification is key-ready: `GET /api/configuration/public` reports a
+  fresh `smsEnabled` (Twilio env present); signup forms show the SMS option only
+  when true. No Twilio keys → email-only, no dead-end. Paste the 3 Twilio vars
+  into the prod env → SMS option appears, `sendSMS` (already real) delivers.
+- ✅ Paysera verified already key-ready — `payseraService.isConfigured()` gates
+  everything; pasting `PAYSERA_PROJECT_ID` + `PAYSERA_SIGN_PASSWORD` is all
+  that's needed. No code change.
+- Note: emails redirect to the test inbox ONLY when `EMAIL_TEST_MODE=true` —
+  prod must not set that var. Latent: test workers load prod `.env` via
+  server.js dotenv (separate cleanup, not launch-blocking).

@@ -32,7 +32,7 @@ import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { Play, Building, ArrowRight, ArrowLeft, User, FileText, CheckCircle, HelpCircle, X, Lightbulb, Euro, TrendingUp, Star, Users, Eye, EyeOff, Mail, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { authApi } from "@/lib/api";
+import { authApi, configApi } from "@/lib/api";
 import { validateForm, employerSignupRules, formatValidationErrors, normalizeAlbanianPhone } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { TextAreaWithCounter, InputWithCounter } from "@/components/CharacterCounter";
@@ -53,6 +53,15 @@ const EmployersPage = () => {
   const [resendCooldown, setResendCooldown] = useState(0);
   // QA Round 2 (D3): how the signup code is delivered — email or SMS.
   const [verificationMethod, setVerificationMethod] = useState<'email' | 'sms'>('email');
+  // SMS verification is only offered when Twilio is configured on the backend.
+  const [smsEnabled, setSmsEnabled] = useState(false);
+
+  // Learn whether SMS verification is available (Twilio configured).
+  useEffect(() => {
+    configApi.getPublic()
+      .then(res => { if (res.success && res.data) setSmsEnabled(!!res.data.smsEnabled); })
+      .catch(() => { /* default: SMS hidden */ });
+  }, []);
 
   // Resend cooldown timer
   useEffect(() => {
@@ -1197,19 +1206,22 @@ const EmployersPage = () => {
               </Stack>
             </Paper>
 
-            {/* QA Round 2 (D3): choose how to receive the code — compact single row */}
-            <Group justify="space-between" wrap="nowrap" gap="sm">
-              <Text size="sm" c="dimmed">Merr kodin me:</Text>
-              <SegmentedControl
-                size="xs"
-                value={verificationMethod}
-                onChange={(v) => setVerificationMethod(v as 'email' | 'sms')}
-                data={[
-                  { label: 'Email', value: 'email' },
-                  { label: 'SMS', value: 'sms', disabled: !employerForm.values.phone?.trim() },
-                ]}
-              />
-            </Group>
+            {/* QA Round 2 (D3): choose how to receive the code — compact single
+                row. Only shown when SMS (Twilio) is configured. */}
+            {smsEnabled && (
+              <Group justify="space-between" wrap="nowrap" gap="sm">
+                <Text size="sm" c="dimmed">Merr kodin me:</Text>
+                <SegmentedControl
+                  size="xs"
+                  value={verificationMethod}
+                  onChange={(v) => setVerificationMethod(v as 'email' | 'sms')}
+                  data={[
+                    { label: 'Email', value: 'email' },
+                    { label: 'SMS', value: 'sms', disabled: !employerForm.values.phone?.trim() },
+                  ]}
+                />
+              </Group>
+            )}
 
             <Text size="xs" c="dimmed">
               Duke klikuar "Krijo Llogarinë", ju pranoni Kushtet e Shërbimit dhe Politikën e Privatësisë së advance.al

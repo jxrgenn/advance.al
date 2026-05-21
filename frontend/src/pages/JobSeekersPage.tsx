@@ -42,7 +42,7 @@ import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { Play, Users, Bell, HelpCircle, X, Lightbulb, CheckCircle, ArrowRight, Briefcase, Zap, UserPlus, FileText, Send, Download, Eye, EyeOff, Mail, RefreshCw, Upload, Sparkles } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { authApi, quickUsersApi, cvApi } from "@/lib/api";
+import { authApi, quickUsersApi, cvApi, configApi } from "@/lib/api";
 import { validateForm, jobSeekerSignupRules, formatValidationErrors, normalizeAlbanianPhone } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { InputWithCounter } from "@/components/CharacterCounter";
@@ -66,10 +66,19 @@ const JobSeekersPage = () => {
   const [resendCooldown, setResendCooldown] = useState(0);
   // QA Round 2 (D3): how the signup code is delivered — email or SMS.
   const [verificationMethod, setVerificationMethod] = useState<'email' | 'sms'>('email');
+  // SMS verification is only offered when Twilio is configured on the backend.
+  const [smsEnabled, setSmsEnabled] = useState(false);
 
   // Reset scroll lock on unmount
   useEffect(() => {
     return () => { document.body.style.overflow = ''; };
+  }, []);
+
+  // Learn whether SMS verification is available (Twilio configured).
+  useEffect(() => {
+    configApi.getPublic()
+      .then(res => { if (res.success && res.data) setSmsEnabled(!!res.data.smsEnabled); })
+      .catch(() => { /* default: SMS hidden */ });
   }, []);
 
   // Check for query parameters to scroll to forms
@@ -1213,19 +1222,23 @@ CERTIFIKATA (opsionale)
                       />
                     </Box>
 
-                    {/* QA Round 2 (D3): choose how to receive the code — compact single row */}
-                    <Group justify="space-between" wrap="nowrap" gap="sm">
-                      <Text size="sm" c="dimmed">Merr kodin me:</Text>
-                      <SegmentedControl
-                        size="xs"
-                        value={verificationMethod}
-                        onChange={(v) => setVerificationMethod(v as 'email' | 'sms')}
-                        data={[
-                          { label: 'Email', value: 'email' },
-                          { label: 'SMS', value: 'sms', disabled: !fullForm.values.phone?.trim() },
-                        ]}
-                      />
-                    </Group>
+                    {/* QA Round 2 (D3): choose how to receive the code — compact
+                        single row. Only shown when SMS (Twilio) is configured;
+                        otherwise verification stays email-only. */}
+                    {smsEnabled && (
+                      <Group justify="space-between" wrap="nowrap" gap="sm">
+                        <Text size="sm" c="dimmed">Merr kodin me:</Text>
+                        <SegmentedControl
+                          size="xs"
+                          value={verificationMethod}
+                          onChange={(v) => setVerificationMethod(v as 'email' | 'sms')}
+                          data={[
+                            { label: 'Email', value: 'email' },
+                            { label: 'SMS', value: 'sms', disabled: !fullForm.values.phone?.trim() },
+                          ]}
+                        />
+                      </Group>
+                    )}
 
                     <Button
                       type="submit"

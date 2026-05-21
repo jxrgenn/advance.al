@@ -66,6 +66,31 @@ describe('Configuration API - Integration Tests', () => {
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
     });
+
+    it('reports smsEnabled (false when Twilio env is not configured)', async () => {
+      const saved = {
+        sid: process.env.TWILIO_ACCOUNT_SID,
+        token: process.env.TWILIO_AUTH_TOKEN,
+        phone: process.env.TWILIO_PHONE,
+      };
+      delete process.env.TWILIO_ACCOUNT_SID;
+      delete process.env.TWILIO_AUTH_TOKEN;
+      delete process.env.TWILIO_PHONE;
+      try {
+        const r1 = await request(app).get('/api/configuration/public');
+        expect(r1.body.data.smsEnabled).toBe(false);
+
+        process.env.TWILIO_ACCOUNT_SID = 'AC_test';
+        process.env.TWILIO_AUTH_TOKEN = 'tok_test';
+        process.env.TWILIO_PHONE = '+15550001111';
+        const r2 = await request(app).get('/api/configuration/public');
+        expect(r2.body.data.smsEnabled).toBe(true);
+      } finally {
+        if (saved.sid === undefined) delete process.env.TWILIO_ACCOUNT_SID; else process.env.TWILIO_ACCOUNT_SID = saved.sid;
+        if (saved.token === undefined) delete process.env.TWILIO_AUTH_TOKEN; else process.env.TWILIO_AUTH_TOKEN = saved.token;
+        if (saved.phone === undefined) delete process.env.TWILIO_PHONE; else process.env.TWILIO_PHONE = saved.phone;
+      }
+    });
   });
 
   describe('GET /api/configuration', () => {

@@ -108,12 +108,18 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
 // @access  Public
 router.get('/public', async (req, res) => {
   try {
+    // SMS-via-Twilio availability — computed fresh every request (NOT cached),
+    // so it flips the instant the Twilio keys are added to the env. The signup
+    // forms use this to show the "SMS" verification option only when it works.
+    const smsEnabled = !!(process.env.TWILIO_ACCOUNT_SID
+      && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE);
+
     // Check Redis cache first
     const cached = await cacheGet('config:public');
     if (cached) {
       return res.json({
         success: true,
-        data: { settings: typeof cached === 'string' ? JSON.parse(cached) : cached }
+        data: { settings: typeof cached === 'string' ? JSON.parse(cached) : cached, smsEnabled }
       });
     }
 
@@ -130,7 +136,7 @@ router.get('/public', async (req, res) => {
 
     res.json({
       success: true,
-      data: { settings: settingsMap }
+      data: { settings: settingsMap, smsEnabled }
     });
 
   } catch (error) {

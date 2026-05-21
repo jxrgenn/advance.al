@@ -1217,6 +1217,15 @@ export const statsApi = {
   }
 };
 
+// Public runtime configuration (no auth). `smsEnabled` reflects whether
+// Twilio is configured on the backend — the signup forms use it to decide
+// whether to offer SMS verification.
+export const configApi = {
+  getPublic: async (): Promise<ApiResponse<{ settings: Record<string, unknown>; smsEnabled: boolean }>> => {
+    return apiRequest<{ settings: Record<string, unknown>; smsEnabled: boolean }>('/configuration/public');
+  }
+};
+
 // Admin API
 export type AdminPayment = {
   _id: string;
