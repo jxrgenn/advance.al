@@ -927,14 +927,15 @@ router.get('/:id/similar', async (req, res) => {
           return {
             job: publicJob(candidate, { viewer: req.user }),
             score: finalScore,
-            cosineScore: s.score,
             tier: jobEmbeddingService.scoreToTier(finalScore),
-            computedAt: s.computedAt,
           };
         })
         .filter(Boolean)
         .sort((a, b) => b.score - a.score)
-        .slice(0, limit);
+        .slice(0, limit)
+        // Drop the raw relevance score from the response — `tier` is the only
+        // signal the UI needs; `score`/`cosineScore` are internal ML detail.
+        .map(({ job: j, tier }) => ({ job: j, tier }));
 
       return res.json({
         success: true,
@@ -942,7 +943,6 @@ router.get('/:id/similar', async (req, res) => {
           similarJobs: sortedSimilar,
           count: sortedSimilar.length,
           cached: true,
-          computedAt: job.similarityMetadata?.lastComputed
         }
       });
     }

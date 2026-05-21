@@ -67,17 +67,15 @@ describe('jobs.js — GET /:id/similar cached branch (L736-778)', () => {
 
     const byTitle = Object.fromEntries(r.body.data.similarJobs.map(s => [s.job.title, s]));
 
-    // Sim 1: cosine 0.65 + 0.14 = 0.79 → 'strong'
-    expect(byTitle['Full Match'].score).toBeCloseTo(0.79, 5);
-    expect(byTitle['Full Match'].cosineScore).toBe(0.65);
+    // QA Round 2: raw score / cosineScore are no longer exposed — only the
+    // `tier` label. The hybrid-boost math is still verified via tier + order.
+    // Sim 1: cosine 0.65 + 0.14 boost = 0.79 → 'strong'
     expect(byTitle['Full Match'].tier).toBe('strong');
-
+    expect(byTitle['Full Match'].score).toBeUndefined();
+    expect(byTitle['Full Match'].cosineScore).toBeUndefined();
     // Sim 2: cosine 0.85 + 0 = 0.85 → 'strong'
-    expect(byTitle['No Boost'].score).toBeCloseTo(0.85, 5);
     expect(byTitle['No Boost'].tier).toBe('strong');
-
     // Sim 3: cosine 0.55 + 0 = 0.55 → 'decent'
-    expect(byTitle['Decent Match'].score).toBeCloseTo(0.55, 5);
     expect(byTitle['Decent Match'].tier).toBe('decent');
 
     // Sorted desc by final score: No Boost (0.85), Full Match (0.79), Decent (0.55)
