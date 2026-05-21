@@ -822,8 +822,13 @@ router.get('/:id', optionalAuth, async (req, res) => {
     // Public single-job detail. Do NOT populate the employer's login email
     // here — anonymous callers would get a list of every employer's auth email
     // by scraping job pages, enabling credential-stuffing attacks.
-    // companyName / website / description / phone / whatsapp are intentionally
-    // shown so applicants can contact the employer.
+    //
+    // QA Round 2: employer contact details (phone / whatsapp) and the contact
+    // person's name are populated ONLY for authenticated users. The frontend
+    // hides the contact section from logged-out visitors, so shipping these to
+    // anonymous callers just leaks them into the Network tab and lets people
+    // contact employers off-platform. companyName / website / description /
+    // logo / location stay public.
     //
     // Dual-lookup: the URL segment is either a 24-char hex ObjectId or a slug.
     // Slug field is unique + indexed (Job.js:292) and generated automatically
@@ -835,7 +840,10 @@ router.get('/:id', optionalAuth, async (req, res) => {
       ? { _id: param, isDeleted: false }
       : { slug: param, isDeleted: false };
 
-    const job = await Job.findOne(query).populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.employerProfile.phone profile.employerProfile.whatsapp profile.location profile.employerProfile.description profile.employerProfile.website profile.firstName profile.lastName')
+    const employerSelect = 'profile.employerProfile.companyName profile.employerProfile.logo profile.location profile.employerProfile.description profile.employerProfile.website'
+      + (req.user ? ' profile.employerProfile.phone profile.employerProfile.whatsapp profile.firstName profile.lastName' : '');
+
+    const job = await Job.findOne(query).populate('employerId', employerSelect)
       .lean();
 
     if (!job) {

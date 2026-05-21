@@ -82,22 +82,10 @@ describe('Verification API - Integration Tests', () => {
     }, 30000);
   });
 
-  describe('GET /api/verification/status/:identifier — F-12 (no enumeration)', () => {
-    it('returns identical shape for known and unknown identifiers', async () => {
-      // Without any prior request, the identifier has no active verification
+  describe('GET /api/verification/status/:identifier — removed (QA Round 2)', () => {
+    it('endpoint no longer exists — eliminates the enumeration surface entirely', async () => {
       const unknown = await request(app).get('/api/verification/status/unknown@example.com');
-
-      // Request a code for a known identifier
-      await request(app)
-        .post('/api/verification/request')
-        .send({ identifier: 'known@example.com', method: 'email', userType: 'jobseeker' });
-
-      const known = await request(app).get('/api/verification/status/known@example.com');
-
-      expect(unknown.status).toBe(200);
-      expect(known.status).toBe(200);
-      // Both responses have the same shape (boolean field, expiresAt, attemptsRemaining)
-      expect(Object.keys(unknown.body.data).sort()).toEqual(Object.keys(known.body.data).sort());
+      expect(unknown.status).toBe(404);
     }, 30000);
   });
 

@@ -125,22 +125,10 @@ describe('verification.js — error/catch paths', () => {
     expect(r.body.message).toMatch(/prisni të paktën 1 minutë/);
   });
 
-  it('GET /status/:identifier returns hasActiveVerification=false for unknown identifier', async () => {
+  // QA Round 2: GET /status/:identifier was removed (email-enumeration vector).
+  it('GET /status/:identifier no longer exists (returns 404)', async () => {
     const r = await request(app).get(`/api/verification/status/unknown-${Date.now()}@example.com`);
-    expect(r.status).toBe(200);
-    expect(r.body.data.hasActiveVerification).toBe(false);
-    expect(r.body.data.expiresAt).toBeNull();
-  });
-
-  it('GET /status/:identifier returns hasActiveVerification=true after a request', async () => {
-    const identifier = `act-${Date.now()}@example.com`;
-    await request(app)
-      .post('/api/verification/request')
-      .send({ identifier, method: 'email', userType: 'jobseeker' });
-    const r = await request(app).get(`/api/verification/status/${identifier}`);
-    expect(r.status).toBe(200);
-    expect(r.body.data.hasActiveVerification).toBe(true);
-    expect(r.body.data.attemptsRemaining).toBe(3);
+    expect(r.status).toBe(404);
   });
 
   it('POST /request returns 400 for malformed email (L235-240)', async () => {

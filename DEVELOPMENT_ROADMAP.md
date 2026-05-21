@@ -4282,3 +4282,21 @@ Second pre-deploy QA pass. Plan: `~/.claude/plans/resilient-kindling-fog.md`.
 
 **Deferred:** quick-user job application flow (needs design); employer subscription billing.
 **Infra (user action):** create `info@advance.al` mailboxes; add Twilio credentials for SMS.
+
+### Round 2 follow-ups (2026-05-21)
+
+**Security audit (3-agent route audit):** CV-gen / apply / messaging confirmed
+properly enforced server-side — no logged-out bypass. CV files safe (Cloudinary
+authenticated + signed URLs). User serialization safe (User.toJSON strips
+tokens). Payment receipts confirmed wired (Paysera callback → docx email).
+- ✅ S1 — `GET /api/jobs/:id` no longer ships employer phone/whatsapp/contact
+  name to logged-out callers (was readable in the Network tab)
+- ✅ S2 — removed `GET /api/verification/status/:identifier` (email-enumeration
+  vector, unused by frontend)
+- ⏳ UX1 — salary thousands separators (1,000,000)
+- ⏳ UX2 — employer dashboard phone/WhatsApp: +355 prefix box, same-as-phone
+  checkbox, contact-channel-enabled ⇒ number required
+- ⏳ UX3 — compact email/SMS verification picker
+
+Known pre-existing test failure (not a regression): `jobs-error-paths.test.js`
+"GET /:id/similar returns 500 when Job.findById throws" — fails on clean main.

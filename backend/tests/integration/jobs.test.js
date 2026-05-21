@@ -13,6 +13,7 @@ import { createEmployer, createJobseeker, createVerifiedEmployer } from '../fact
 import { createJob, createJobs, createPremiumJob, createRemoteJob } from '../factories/job.factory.js';
 import { createAuthHeaders, createPublicHeaders } from '../helpers/auth.helper.js';
 import Job from '../../src/models/Job.js';
+import User from '../../src/models/User.js';
 import SystemConfiguration from '../../src/models/SystemConfiguration.js';
 
 describe('Jobs API - Integration Tests', () => {
@@ -458,6 +459,36 @@ describe('Jobs API - Integration Tests', () => {
       expect(response.body.data.job._id).toBe(job._id.toString());
       expect(response.body.data.job.title).toBe(job.title);
       expect(response.body.data.job.employerId).toHaveProperty('_id');
+    });
+
+    // QA Round 2 (S1): employer phone/whatsapp are gated behind authentication.
+    it('hides employer phone/whatsapp from logged-out callers, shows them when authenticated', async () => {
+      const { user: employer } = await createVerifiedEmployer();
+      await User.findByIdAndUpdate(employer._id, {
+        'profile.employerProfile.phone': '+355691234567',
+        'profile.employerProfile.whatsapp': '+355681234567',
+      });
+      const job = await createJob(employer);
+
+      // Logged-out — contact details must NOT be in the payload
+      const anon = await request(app)
+        .get(`/api/jobs/${job._id}`)
+        .set(createPublicHeaders());
+      expect(anon.status).toBe(200);
+      const anonEmp = anon.body.data.job.employerId;
+      expect(anonEmp.profile?.employerProfile?.phone).toBeUndefined();
+      expect(anonEmp.profile?.employerProfile?.whatsapp).toBeUndefined();
+      expect(anonEmp.profile?.employerProfile?.companyName).toBeTruthy(); // public info still present
+
+      // Authenticated jobseeker — contact details ARE present
+      const { user: seeker } = await createJobseeker();
+      const authed = await request(app)
+        .get(`/api/jobs/${job._id}`)
+        .set(createAuthHeaders(seeker));
+      expect(authed.status).toBe(200);
+      const authEmp = authed.body.data.job.employerId;
+      expect(authEmp.profile.employerProfile.phone).toBe('+355691234567');
+      expect(authEmp.profile.employerProfile.whatsapp).toBe('+355681234567');
     });
 
     it('should increment view count', async () => {
