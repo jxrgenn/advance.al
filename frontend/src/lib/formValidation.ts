@@ -133,6 +133,42 @@ export const validateForm = (
 };
 
 /**
+ * Validate an Albanian mobile number (QA Round 2 — shared rule).
+ * Accepts any spacing/dashes. After normalization the number must be
+ * +355 followed by a 9-digit national part whose first digit is 6
+ * (covers all Albanian mobile prefixes: 065/066/067/068/069).
+ * Landlines and wrong-length numbers are rejected.
+ * NOTE: declared above profileValidationRules because that object literal
+ * references ALBANIAN_PHONE_MESSAGE at module-init time (not lazily).
+ */
+export const ALBANIAN_PHONE_REGEX = /^\+3556\d{8}$/;
+
+export const ALBANIAN_PHONE_MESSAGE =
+  'Numri i telefonit duhet të jetë celular shqiptar (9 shifra, fillon me 6) — p.sh. 069 123 4567';
+
+export const isValidAlbanianPhone = (phone: string): boolean => {
+  const normalized = normalizeAlbanianPhone(phone);
+  return !!normalized && ALBANIAN_PHONE_REGEX.test(normalized);
+};
+
+/**
+ * Shared password policy (QA Round 2): min 8 chars, ≥1 uppercase,
+ * ≥1 lowercase, ≥1 digit. Matches signup and the backend change/reset
+ * validators. Returns a list of failed-rule messages (empty = valid).
+ */
+export const validatePassword = (value: string): string[] => {
+  const errors: string[] = [];
+  if (!value || value.length < 8) errors.push('të paktën 8 karaktere');
+  if (!/[A-Z]/.test(value || '')) errors.push('një shkronjë të madhe');
+  if (!/[a-z]/.test(value || '')) errors.push('një shkronjë të vogël');
+  if (!/[0-9]/.test(value || '')) errors.push('një numër');
+  return errors;
+};
+
+export const PASSWORD_RULE_MESSAGE =
+  'Fjalëkalimi duhet të ketë 8+ karaktere, 1 shkronjë të madhe, 1 të vogël, 1 numër';
+
+/**
  * Common validation rules for Profile forms
  */
 export const profileValidationRules = {
@@ -639,37 +675,3 @@ export const normalizeAlbanianPhone = (phone: string): string | undefined => {
   // Local number: strip leading 0, add +355
   return '+355' + cleaned.replace(/^0+/, '');
 };
-
-/**
- * Validate an Albanian mobile number (QA Round 2 — shared rule).
- * Accepts any spacing/dashes. After normalization the number must be
- * +355 followed by a 9-digit national part whose first digit is 6
- * (covers all Albanian mobile prefixes: 065/066/067/068/069).
- * Landlines and wrong-length numbers are rejected.
- */
-export const ALBANIAN_PHONE_REGEX = /^\+3556\d{8}$/;
-
-export const isValidAlbanianPhone = (phone: string): boolean => {
-  const normalized = normalizeAlbanianPhone(phone);
-  return !!normalized && ALBANIAN_PHONE_REGEX.test(normalized);
-};
-
-export const ALBANIAN_PHONE_MESSAGE =
-  'Numri i telefonit duhet të jetë celular shqiptar (9 shifra, fillon me 6) — p.sh. 069 123 4567';
-
-/**
- * Shared password policy (QA Round 2): min 8 chars, ≥1 uppercase,
- * ≥1 lowercase, ≥1 digit. Matches signup and the backend change/reset
- * validators. Returns a list of failed-rule messages (empty = valid).
- */
-export const validatePassword = (value: string): string[] => {
-  const errors: string[] = [];
-  if (!value || value.length < 8) errors.push('të paktën 8 karaktere');
-  if (!/[A-Z]/.test(value || '')) errors.push('një shkronjë të madhe');
-  if (!/[a-z]/.test(value || '')) errors.push('një shkronjë të vogël');
-  if (!/[0-9]/.test(value || '')) errors.push('një numër');
-  return errors;
-};
-
-export const PASSWORD_RULE_MESSAGE =
-  'Fjalëkalimi duhet të ketë 8+ karaktere, 1 shkronjë të madhe, 1 të vogël, 1 numër';
