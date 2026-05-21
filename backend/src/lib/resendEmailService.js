@@ -51,12 +51,25 @@ class ResendEmailService {
   // own error responses come back as { error, data } — those are handled by the
   // dispatcher's classifier, NOT here.
   async _sendWithRetry(sendFn) {
+    // Backstop timeout — a hung Resend API must not block a request (or a
+    // worker) indefinitely. On timeout the thrown error is classified as
+    // transient and the message falls back to the EmailOutbox for later retry.
+    const timeoutMs = parseInt(process.env.RESEND_TIMEOUT_MS || '10000', 10);
+    const attempt = () => {
+      let timer;
+      return Promise.race([
+        Promise.resolve(sendFn()).finally(() => clearTimeout(timer)),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Resend send timed out')), timeoutMs);
+        }),
+      ]);
+    };
     try {
-      return await sendFn();
+      return await attempt();
     } catch (firstError) {
       logger.warn('Email send failed, retrying in 2s...', { error: firstError.message });
       await new Promise(resolve => setTimeout(resolve, 2000));
-      return await sendFn();
+      return await attempt();
     }
   }
 

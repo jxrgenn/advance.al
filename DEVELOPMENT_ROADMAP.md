@@ -4338,3 +4338,28 @@ tenant-isolation, ~11) — the legacy local-disk resume route. Worth separate tr
 - Note: emails redirect to the test inbox ONLY when `EMAIL_TEST_MODE=true` —
   prod must not set that var. Latent: test workers load prod `.env` via
   server.js dotenv (separate cleanup, not launch-blocking).
+
+### Pre-launch hardening (2026-05-22)
+
+3-agent failure-mode audit → no critical crash bugs; indexes/queries/workers
+sound; payment verification solid. Hardened the predictable risks:
+- ✅ H1 — seed-database.js refuses to run with NODE_ENV=production or a
+  non-local MONGODB_URI (it wipes every collection)
+- ✅ H2 — OpenAI client `timeout` (60s) + `maxRetries:0` so a hung CV-gen call
+  can't tie up the backend
+- ✅ H3 — Resend send + Cloudinary upload have backstop timeouts (10s / 30s)
+- ✅ H4 — Mongo pool right-sized for a 512MB dyno (maxPoolSize 100→15,
+  minPoolSize 20→3; env-tunable)
+- ✅ H5 — partial-unique index on Job.paymentId → a replayed Paysera callback
+  physically cannot double-activate a job
+- ✅ H7 — capped the companies `$lookup` join at 1000
+
+Honest residual risk (not code): MongoDB Atlas M0 + Render free tier will be
+the capacity ceiling under real Albania-wide traffic — upgrade to M10 + Render
+paid when traffic is real. Email deliverability depends on verifying the
+advance.al domain in Resend.
+
+Known pre-existing test failures (NOT from this work — confirmed on clean
+main): a cluster in resend-email error-path tests, fireEmbedding contract,
+phase-15 path-traversal (stale — deprecated resume route), accountCleanup
+(replset infra timeout). Worth a triage pass before launch.

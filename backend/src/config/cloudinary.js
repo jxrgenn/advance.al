@@ -59,18 +59,28 @@ export function signedAuthenticatedDownloadUrl(publicId, { format = 'pdf', resou
 
 // Upload a file buffer to Cloudinary
 export async function uploadToCloudinary(fileBuffer, options = {}) {
+  // Backstop timeout — a hung upload must not wedge a signup/CV request on the
+  // single backend. Cloudinary's own `timeout` option plus a JS-level guard.
+  const timeoutMs = parseInt(process.env.CLOUDINARY_TIMEOUT_MS || '30000', 10);
   return new Promise((resolve, reject) => {
     const uploadOptions = {
       folder: options.folder || 'advance-al',
       resource_type: options.resourceType || 'auto',
+      timeout: timeoutMs,
       ...options,
     };
+
+    let settled = false;
+    const done = (fn) => (arg) => { if (!settled) { settled = true; clearTimeout(timer); fn(arg); } };
+    const ok = done(resolve);
+    const fail = done(reject);
+    const timer = setTimeout(() => fail(new Error('Cloudinary upload timed out')), timeoutMs + 2000);
 
     const stream = cloudinary.uploader.upload_stream(
       uploadOptions,
       (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
+        if (error) fail(error);
+        else ok(result);
       }
     );
 

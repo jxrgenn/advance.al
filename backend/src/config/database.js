@@ -13,8 +13,12 @@ export const connectDB = async (retries = 5, delay = 3000) => {
       const conn = await mongoose.connect(mongoUri, {
         serverSelectionTimeoutMS: 5000,
         socketTimeoutMS: 45000,
-        maxPoolSize: 100,
-        minPoolSize: 20,
+        // Right-sized for a single small (512MB) dyno. 100 connections from one
+        // instance wastes memory and pushes toward the Atlas connection cap
+        // under bursts; ~15 is plenty for one node. Env-tunable so a larger
+        // instance can scale up without a code change.
+        maxPoolSize: parseInt(process.env.MONGO_MAX_POOL || '15', 10),
+        minPoolSize: parseInt(process.env.MONGO_MIN_POOL || '3', 10),
         maxIdleTimeMS: 30000,
         compressors: ['zstd', 'snappy'],
         heartbeatFrequencyMS: 10000,

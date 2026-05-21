@@ -3,7 +3,14 @@ import { zodResponseFormat } from 'openai/helpers/zod';
 import { cvSchema } from '../schemas/cvSchema.js';
 import logger from '../config/logger.js';
 
-let _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// `timeout` is a backstop so a hung OpenAI request can't tie up the single
+// backend forever (the SDK default is 10 minutes). `maxRetries: 0` because
+// retries are owned by withRetry() below — otherwise attempts compound.
+let _openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+  timeout: parseInt(process.env.OPENAI_TIMEOUT_MS || '60000', 10),
+  maxRetries: 0,
+});
 let _clientOverride = null;
 function openaiClient() { return _clientOverride || _openai; }
 /** Test-only hook to inject a stub client. Pass null to reset. */

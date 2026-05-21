@@ -6,6 +6,18 @@ import { connectDB } from '../src/config/database.js';
 // Load environment variables
 dotenv.config();
 
+// Safety guard — this script wipes every collection (deleteMany). It must
+// never run against production. Refuse on NODE_ENV=production, or when the
+// connection string points at a non-local host without an explicit override.
+if (process.env.NODE_ENV === 'production') {
+  console.error('❌ seed-database.js refuses to run with NODE_ENV=production — it deletes all data.');
+  process.exit(1);
+}
+if (!process.env.ALLOW_SEED && !/localhost|127\.0\.0\.1|mongodb-memory/.test(process.env.MONGODB_URI || 'localhost')) {
+  console.error('❌ seed-database.js: MONGODB_URI is not local. Set ALLOW_SEED=1 to confirm you really mean this database.');
+  process.exit(1);
+}
+
 // Albanian cities and regions data
 const albanianLocations = [
   { city: 'Tiranë', region: 'Tiranë', country: 'Albania', isActive: true, displayOrder: 1 },

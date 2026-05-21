@@ -90,7 +90,10 @@ router.get('/', optionalAuth, async (req, res) => {
                 isDeleted: false,
                 expiresAt: { $gt: new Date() }
               }
-            }
+            },
+            // Only the count is used ($size below). Cap the join so one
+            // employer with a huge job count can't blow up the aggregation.
+            { $limit: 1000 }
           ],
           as: 'activeJobs'
         }

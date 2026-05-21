@@ -413,6 +413,15 @@ jobSchema.index({ 'similarityMetadata.nextComputeAt': 1 }); // For recomputation
 // M3: payment worker scans (reminder + timeout crons) — pending jobs by age
 jobSchema.index({ paymentStatus: 1, paymentInitiatedAt: 1 });
 
+// Payment idempotency — a given Paysera transaction id can activate at most
+// ONE job. A duplicate/replayed callback hits this unique constraint instead
+// of relying on last-write-wins. Partial filter so the (many) jobs with no
+// paymentId are not indexed and never collide.
+jobSchema.index(
+  { paymentId: 1 },
+  { unique: true, partialFilterExpression: { paymentId: { $type: 'string' } } }
+);
+
 // Virtual for formatted salary
 jobSchema.virtual('formattedSalary').get(function() {
   if (!this.salary.min && !this.salary.max) return 'Pagë për t\'u negociuar';
