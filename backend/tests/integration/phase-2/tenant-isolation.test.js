@@ -271,74 +271,14 @@ describe('Phase 2 — Tenant Isolation Matrix', () => {
     });
   });
 
-  describe('Resume file at /api/users/resume/:filename — F-1 ISO-A/B/C', () => {
-    const RESUME_DIR = path.join(process.cwd(), 'uploads', 'resumes');
-
-    afterEach(() => {
-      try {
-        const files = fs.readdirSync(RESUME_DIR);
-        for (const f of files) {
-          if (f.includes('-iso-test-')) fs.unlinkSync(path.join(RESUME_DIR, f));
-        }
-      } catch {}
-    });
-
-    it('owner ✓ / different jobseeker ✗ / different employer (no application) ✗ / admin ✓', async () => {
-      const { user: owner } = await createJobseeker();
-      const { user: otherJs } = await createJobseeker();
-      const { user: emp } = await createVerifiedEmployer();
-      const { user: admin } = await createAdmin();
-      const ownerHex = owner._id.toString();
-      const filename = `resume-${ownerHex}-iso-test-${Date.now()}.pdf`;
-      fs.mkdirSync(RESUME_DIR, { recursive: true });
-      fs.writeFileSync(path.join(RESUME_DIR, filename), 'PDF-OWNER');
-
-      try {
-        const isoA = await request(app)
-          .get(`/api/users/resume/${filename}`)
-          .set(createAuthHeaders(owner));
-        expect(isoA.status).toBe(200);
-
-        const isoB1 = await request(app)
-          .get(`/api/users/resume/${filename}`)
-          .set(createAuthHeaders(otherJs));
-        expect(isoB1.status).toBe(403);
-
-        const isoB2 = await request(app)
-          .get(`/api/users/resume/${filename}`)
-          .set(createAuthHeaders(emp));
-        expect(isoB2.status).toBe(403);
-
-        const isoAdmin = await request(app)
-          .get(`/api/users/resume/${filename}`)
-          .set(createAuthHeaders(admin));
-        expect(isoAdmin.status).toBe(200);
-      } finally {
-        fs.unlinkSync(path.join(RESUME_DIR, filename));
-      }
-    });
-
-    it('employer with an application from this jobseeker ✓ (legitimate access)', async () => {
-      const { user: owner } = await createJobseeker({ emailVerified: true });
-      const { user: emp } = await createVerifiedEmployer();
-      const job = await createJob(emp);
-      await Application.create({
-        jobId: job._id, jobSeekerId: owner._id, employerId: emp._id, applicationMethod: 'one_click'
-      });
-
-      const ownerHex = owner._id.toString();
-      const filename = `resume-${ownerHex}-iso-test-${Date.now()}.pdf`;
-      fs.mkdirSync(RESUME_DIR, { recursive: true });
-      fs.writeFileSync(path.join(RESUME_DIR, filename), 'PDF-OWNER');
-
-      try {
-        const response = await request(app)
-          .get(`/api/users/resume/${filename}`)
-          .set(createAuthHeaders(emp));
-        expect(response.status).toBe(200);
-      } finally {
-        fs.unlinkSync(path.join(RESUME_DIR, filename));
-      }
+  describe('Resume file at /api/users/resume/:filename', () => {
+    // Round O-B: the legacy local-disk resume endpoint was deprecated — it
+    // always returns 410 Gone. CV access now goes through the signed-URL
+    // endpoint POST /api/users/resume/sign (covered by resume-sign.test.js).
+    it('the legacy GET /resume/:filename endpoint is gone (410)', async () => {
+      const r = await request(app).get('/api/users/resume/resume-abc-123.pdf');
+      expect(r.status).toBe(410);
+      expect(r.body.code).toBe('RESUME_ENDPOINT_DEPRECATED');
     });
   });
 
