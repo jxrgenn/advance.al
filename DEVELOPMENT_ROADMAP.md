@@ -4293,10 +4293,10 @@ tokens). Payment receipts confirmed wired (Paysera callback → docx email).
   name to logged-out callers (was readable in the Network tab)
 - ✅ S2 — removed `GET /api/verification/status/:identifier` (email-enumeration
   vector, unused by frontend)
-- ⏳ UX1 — salary thousands separators (1,000,000)
-- ⏳ UX2 — employer dashboard phone/WhatsApp: +355 prefix box, same-as-phone
+- ✅ UX1 — salary thousands separators (1,000,000)
+- ✅ UX2 — employer dashboard phone/WhatsApp: +355 prefix box, same-as-phone
   checkbox, contact-channel-enabled ⇒ number required
-- ⏳ UX3 — compact email/SMS verification picker
+- ✅ UX3 — compact email/SMS verification picker
 
 Known pre-existing test failure (not a regression): `jobs-error-paths.test.js`
 "GET /:id/similar returns 500 when Job.findById throws" — fails on clean main.

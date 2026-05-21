@@ -1197,11 +1197,11 @@ const EmployersPage = () => {
               </Stack>
             </Paper>
 
-            {/* QA Round 2 (D3): choose how to receive the code */}
-            <Box>
-              <Text size="sm" fw={500} mb={6}>Merr kodin e verifikimit me:</Text>
+            {/* QA Round 2 (D3): choose how to receive the code — compact single row */}
+            <Group justify="space-between" wrap="nowrap" gap="sm">
+              <Text size="sm" c="dimmed">Merr kodin me:</Text>
               <SegmentedControl
-                fullWidth
+                size="xs"
                 value={verificationMethod}
                 onChange={(v) => setVerificationMethod(v as 'email' | 'sms')}
                 data={[
@@ -1209,10 +1209,7 @@ const EmployersPage = () => {
                   { label: 'SMS', value: 'sms', disabled: !employerForm.values.phone?.trim() },
                 ]}
               />
-              {!employerForm.values.phone?.trim() && (
-                <Text size="xs" c="dimmed" mt={4}>Shtoni numrin e telefonit për të marrë kodin me SMS.</Text>
-              )}
-            </Box>
+            </Group>
 
             <Text size="xs" c="dimmed">
               Duke klikuar "Krijo Llogarinë", ju pranoni Kushtet e Shërbimit dhe Politikën e Privatësisë së advance.al

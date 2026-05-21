@@ -135,6 +135,7 @@ const EmployerDashboard = () => {
   });
 
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [whatsappSameAsPhone, setWhatsappSameAsPhone] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   const { toast } = useToast();
@@ -339,8 +340,19 @@ const EmployerDashboard = () => {
         enableWhatsAppContact: user.profile.employerProfile?.contactPreferences?.enableWhatsAppContact ?? true,
         enableEmailContact: user.profile.employerProfile?.contactPreferences?.enableEmailContact ?? false
       });
+      // Pre-tick the "same as phone" box when the saved numbers already match.
+      const ph = user.profile.employerProfile?.phone || '';
+      const wa = user.profile.employerProfile?.whatsapp || '';
+      setWhatsappSameAsPhone(!!ph && ph === wa);
     }
   }, [user]);
+
+  // Keep WhatsApp mirrored to the phone while "same as phone" is ticked.
+  useEffect(() => {
+    if (whatsappSameAsPhone) {
+      setProfileData(prev => (prev.whatsapp === prev.phone ? prev : { ...prev, whatsapp: prev.phone }));
+    }
+  }, [whatsappSameAsPhone, profileData.phone]);
 
   const loadDashboardData = async () => {
     try {
@@ -764,14 +776,28 @@ const EmployerDashboard = () => {
         return;
       }
 
+      // Sync WhatsApp to phone when the "same as phone" box is ticked.
+      const whatsappValue = whatsappSameAsPhone ? profileData.phone : profileData.whatsapp;
+
       // Validate phone/whatsapp format if provided (QA Round 2 — shared rule)
       if (profileData.phone && !isValidAlbanianPhone(profileData.phone)) {
         toast({ title: "Numri i telefonit nuk është i vlefshëm", description: ALBANIAN_PHONE_MESSAGE, variant: "destructive" });
         setSavingProfile(false);
         return;
       }
-      if (profileData.whatsapp && !isValidAlbanianPhone(profileData.whatsapp)) {
+      if (whatsappValue && !isValidAlbanianPhone(whatsappValue)) {
         toast({ title: "Numri i WhatsApp nuk është i vlefshëm", description: ALBANIAN_PHONE_MESSAGE, variant: "destructive" });
+        setSavingProfile(false);
+        return;
+      }
+      // A contact channel can't be enabled without the number it needs.
+      if (profileData.enablePhoneContact && !profileData.phone.trim()) {
+        toast({ title: "Shto numrin e telefonit", description: "Kontakti me telefon është i aktivizuar — duhet një numër telefoni.", variant: "destructive" });
+        setSavingProfile(false);
+        return;
+      }
+      if (profileData.enableWhatsAppContact && !whatsappValue.trim()) {
+        toast({ title: "Shto numrin e WhatsApp", description: "Kontakti me WhatsApp është i aktivizuar — duhet një numër WhatsApp.", variant: "destructive" });
         setSavingProfile(false);
         return;
       }
@@ -784,7 +810,7 @@ const EmployerDashboard = () => {
           industry: profileData.industry,
           companySize: profileData.companySize,
           phone: profileData.phone ? normalizeAlbanianPhone(profileData.phone) : undefined,
-          whatsapp: profileData.whatsapp ? normalizeAlbanianPhone(profileData.whatsapp) : undefined,
+          whatsapp: whatsappValue ? normalizeAlbanianPhone(whatsappValue) : undefined,
           contactPreferences: {
             enablePhoneContact: profileData.enablePhoneContact,
             enableWhatsAppContact: profileData.enableWhatsAppContact,
@@ -1950,33 +1976,45 @@ const EmployerDashboard = () => {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" data-tutorial="contact-info">
                       <div>
                         <Label htmlFor="emp-phone">Telefon</Label>
-                        <Input
-                          id="emp-phone"
-                          value={profileData.phone}
-                          onChange={(e) => setProfileData(prev => ({ ...prev, phone: e.target.value }))}
-                          placeholder="+355 69 123 4567"
-                        />
+                        <div className="flex">
+                          <span className="inline-flex items-center gap-1 rounded-l-md border border-r-0 border-input bg-muted px-3 text-sm text-muted-foreground">
+                            🇦🇱 +355
+                          </span>
+                          <Input
+                            id="emp-phone"
+                            className="rounded-l-none"
+                            value={profileData.phone.replace(/^\+?355\s?/, '')}
+                            onChange={(e) => setProfileData(prev => ({ ...prev, phone: e.target.value }))}
+                            placeholder="69 123 4567"
+                          />
+                        </div>
                         <p className="text-xs text-muted-foreground mt-1">Celular shqiptar — 9 shifra, fillon me 6</p>
                       </div>
                       <div>
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="emp-whatsapp">WhatsApp</Label>
-                          {profileData.phone && (
-                            <button
-                              type="button"
-                              onClick={() => setProfileData(prev => ({ ...prev, whatsapp: prev.phone }))}
-                              className="text-xs text-primary hover:underline"
-                            >
-                              Njëjtë si telefoni
-                            </button>
-                          )}
-                        </div>
-                        <Input
-                          id="emp-whatsapp"
-                          value={profileData.whatsapp}
-                          onChange={(e) => setProfileData(prev => ({ ...prev, whatsapp: e.target.value }))}
-                          placeholder="+355 69 123 4567"
-                        />
+                        <Label htmlFor="emp-whatsapp">WhatsApp</Label>
+                        {!whatsappSameAsPhone && (
+                          <div className="flex">
+                            <span className="inline-flex items-center gap-1 rounded-l-md border border-r-0 border-input bg-muted px-3 text-sm text-muted-foreground">
+                              🇦🇱 +355
+                            </span>
+                            <Input
+                              id="emp-whatsapp"
+                              className="rounded-l-none"
+                              value={profileData.whatsapp.replace(/^\+?355\s?/, '')}
+                              onChange={(e) => setProfileData(prev => ({ ...prev, whatsapp: e.target.value }))}
+                              placeholder="69 123 4567"
+                            />
+                          </div>
+                        )}
+                        <label className="mt-2 flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-input accent-primary"
+                            checked={whatsappSameAsPhone}
+                            onChange={(e) => setWhatsappSameAsPhone(e.target.checked)}
+                          />
+                          Numri i WhatsApp është i njëjtë me telefonin
+                        </label>
                       </div>
                     </div>
                   </div>

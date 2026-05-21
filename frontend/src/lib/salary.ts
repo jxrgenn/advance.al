@@ -25,6 +25,9 @@ const PERIOD_SUFFIX: Record<SalaryViewPeriod, string> = {
 const toPeriod = (annual: number, period: SalaryViewPeriod): number =>
   period === 'monthly' ? Math.round(annual / 12) : annual;
 
+/** Group thousands with commas, e.g. 1000000 → "1,000,000". */
+const grouped = (n: number): string => n.toLocaleString('en-US');
+
 /**
  * Format a job salary for display.
  * Returns null when there is nothing to show (no range and not negotiable).
@@ -48,9 +51,9 @@ export const formatSalary = (
 
   if (min !== undefined && max !== undefined) {
     return min === max
-      ? `${min} ${currency}${suffix}`
-      : `${min}-${max} ${currency}${suffix}`;
+      ? `${grouped(min)} ${currency}${suffix}`
+      : `${grouped(min)}-${grouped(max)} ${currency}${suffix}`;
   }
-  if (min !== undefined) return `Nga ${min} ${currency}${suffix}`;
-  return `Deri në ${max} ${currency}${suffix}`;
+  if (min !== undefined) return `Nga ${grouped(min)} ${currency}${suffix}`;
+  return `Deri në ${grouped(max as number)} ${currency}${suffix}`;
 };
