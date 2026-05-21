@@ -21,8 +21,11 @@ import { createJob } from '../factories/job.factory.js';
 import { createAuthHeaders } from '../helpers/auth.helper.js';
 import User from '../../src/models/User.js';
 import Job from '../../src/models/Job.js';
+import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
 
-const DIM = 1536;
+// Match the dimension the running config actually uses (env-driven) — a
+// hardcoded 1536 fails when the env resolves to a different model/dims.
+const DIM = EMBEDDING_DIMS;
 
 function spikedVector(index, dim = DIM) {
   const v = new Array(dim).fill(0);
@@ -147,7 +150,7 @@ describe('GET /api/jobs — PR-E personalized listing', () => {
 
     const r = await request(app).get('/api/jobs');
     expect(r.status).toBe(200);
-    expect(r.body.data.personalized).toBeUndefined();
+    expect(r.body.data.personalized).toBe(false);
   });
 
   it('falls through (no personalized flag) for employer', async () => {
@@ -159,7 +162,7 @@ describe('GET /api/jobs — PR-E personalized listing', () => {
       .set(createAuthHeaders(emp));
 
     expect(r.status).toBe(200);
-    expect(r.body.data.personalized).toBeUndefined();
+    expect(r.body.data.personalized).toBe(false);
   });
 
   it('falls through on page 2 (no re-ranking for non-first pages)', async () => {
@@ -174,7 +177,7 @@ describe('GET /api/jobs — PR-E personalized listing', () => {
       .set(createAuthHeaders(js));
 
     expect(r.status).toBe(200);
-    expect(r.body.data.personalized).toBeUndefined();
+    expect(r.body.data.personalized).toBe(false);
   });
 
   it('falls through when sortBy is explicit non-default (e.g. salary)', async () => {
@@ -189,7 +192,7 @@ describe('GET /api/jobs — PR-E personalized listing', () => {
       .set(createAuthHeaders(js));
 
     expect(r.status).toBe(200);
-    expect(r.body.data.personalized).toBeUndefined();
+    expect(r.body.data.personalized).toBe(false);
   });
 
   it('falls through for jobseeker with no embedding (fresh signup)', async () => {
@@ -204,6 +207,6 @@ describe('GET /api/jobs — PR-E personalized listing', () => {
       .set(createAuthHeaders(js));
 
     expect(r.status).toBe(200);
-    expect(r.body.data.personalized).toBeUndefined();
+    expect(r.body.data.personalized).toBe(false);
   });
 });

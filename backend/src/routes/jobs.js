@@ -216,6 +216,14 @@ router.get('/', optionalAuth, async (req, res) => {
     // Strip null bytes from search to prevent MongoDB regex crash
     const safeSearch = search ? search.replace(/\0/g, '') : '';
 
+    // A personalizable request (logged-in jobseeker, page 1, default sort) gets
+    // a per-user embedding re-rank further down. It must BYPASS the shared 60s
+    // cache entirely — the cache key has no user identity, so otherwise a
+    // cached anonymous list would shadow the re-rank (and a personalized list
+    // could be served to others).
+    const isPersonalizable = req.user?.userType === 'jobseeker'
+      && safePage === 1 && sortBy === 'postedAt' && sortOrder !== 'asc';
+
     // Redis cache — 60s TTL for public job search results
     const cacheKey = `jobs:search:${crypto.createHash('md5').update(JSON.stringify({
       search: safeSearch, city, category, categories, jobType, minSalary, maxSalary,
@@ -223,13 +231,15 @@ router.get('/', optionalAuth, async (req, res) => {
       page: safePage, limit: safeLimit, sortBy, sortOrder,
       diaspora, ngaShtepia, partTime, administrata, sezonale
     })).digest('hex')}`;
-    try {
-      const cached = await cacheGet(cacheKey);
-      if (cached) {
-        const data = typeof cached === 'string' ? JSON.parse(cached) : cached;
-        return res.json(data);
-      }
-    } catch { /* cache miss — proceed with DB query */ }
+    if (!isPersonalizable) {
+      try {
+        const cached = await cacheGet(cacheKey);
+        if (cached) {
+          const data = typeof cached === 'string' ? JSON.parse(cached) : cached;
+          return res.json(data);
+        }
+      } catch { /* cache miss — proceed with DB query */ }
+    }
 
     // Build search filters
     const filters = {};
@@ -349,10 +359,10 @@ router.get('/', optionalAuth, async (req, res) => {
     }
 
     // PR-E: Personalize the default listing for logged-in jobseekers on page 1.
-    // Conditions: jobseeker role, completed embedding, page 1, DEFAULT sort only
-    // (newest = postedAt desc). An explicit "oldest" request (postedAt asc) must
-    // NOT be hijacked by the cosine re-rank — it ignores chronological order.
-    if (req.user?.userType === 'jobseeker' && safePage === 1 && sortBy === 'postedAt' && sortOrder !== 'asc') {
+    // `isPersonalizable` (computed above) gates this — jobseeker role, page 1,
+    // DEFAULT sort only (newest = postedAt desc). An explicit "oldest" request
+    // (postedAt asc) must NOT be hijacked by the cosine re-rank.
+    if (isPersonalizable) {
       const userWithEmb = await User.findById(req.user._id)
         .select('+profile.jobSeekerProfile.embedding.vector')
         .lean();
@@ -454,6 +464,10 @@ router.get('/', optionalAuth, async (req, res) => {
       success: true,
       data: {
         jobs: jobs.map(j => publicJob(j, { viewer: req.user })),
+        // Always present so the frontend never sees `undefined`. This is the
+        // non-personalized path; the re-rank above returns its own response
+        // with personalized:true.
+        personalized: false,
         pagination: {
           currentPage: safePage,
           totalPages,
@@ -472,8 +486,11 @@ router.get('/', optionalAuth, async (req, res) => {
       }
     };
 
-    // Cache for 60 seconds
-    cacheSet(cacheKey, responseData, 60).catch(() => {});
+    // Cache for 60 seconds — but never cache a personalizable request's
+    // result (it bypassed the cache read; caching it would shadow others).
+    if (!isPersonalizable) {
+      cacheSet(cacheKey, responseData, 60).catch(() => {});
+    }
 
     res.json(responseData);
 
