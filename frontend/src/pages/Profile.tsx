@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { usersApi, applicationsApi, authApi } from "@/lib/api";
 import { viewResume, downloadResume, isInlineViewable, DOCX_VIEW_TOOLTIP } from "@/lib/resumeView";
-import { validateForm, profileValidationRules, formatValidationErrors, validatePassword } from "@/lib/formValidation";
+import { validateForm, profileValidationRules, formatValidationErrors, validatePassword, cleanAlbanianPhoneInput } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { InputWithCounter, TextAreaWithCounter } from "@/components/CharacterCounter";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -1742,8 +1742,11 @@ const Profile = () => {
                           id="phone"
                           value={formData.phone.replace(/^\+?355\s?/, '')}
                           onChange={(e) => {
-                            const value = e.target.value.replace(/[^\d\s]/g, '');
-                            handleInputChange('phone', '+355 ' + value);
+                            // Shared cleaner: digits only, no leading 0, max 9.
+                            // Store '' (not '+355') when empty so the optional
+                            // phone rule doesn't flag a cleared field.
+                            const national = cleanAlbanianPhoneInput(e.target.value);
+                            handleInputChange('phone', national ? '+355' + national : '');
                           }}
                           placeholder="69 123 4567"
                           className={`flex-1 ${fieldErrors.phone ? 'border-red-500 focus-visible:ring-red-500' : ''}`}

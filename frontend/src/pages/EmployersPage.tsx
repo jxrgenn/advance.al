@@ -33,7 +33,7 @@ import { notifications } from '@mantine/notifications';
 import { Play, Building, ArrowRight, ArrowLeft, User, FileText, CheckCircle, HelpCircle, X, Lightbulb, Euro, TrendingUp, Star, Users, Eye, EyeOff, Mail, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi, configApi, locationsApi } from "@/lib/api";
-import { validateForm, employerSignupRules, formatValidationErrors, normalizeAlbanianPhone } from "@/lib/formValidation";
+import { validateForm, employerSignupRules, formatValidationErrors, normalizeAlbanianPhone, cleanAlbanianPhoneInput, isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE, validatePassword, PASSWORD_RULE_MESSAGE } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { TextAreaWithCounter, InputWithCounter } from "@/components/CharacterCounter";
 
@@ -144,10 +144,13 @@ const EmployersPage = () => {
         
         if (!values.password) {
           errors.password = 'Fjalëkalimi është i detyrueshëm';
-        } else if (values.password.length < 8) {
-          errors.password = 'Fjalëkalimi duhet të ketë të paktën 8 karaktere';
+        } else if (validatePassword(values.password).length > 0) {
+          errors.password = PASSWORD_RULE_MESSAGE;
         }
-        // Phone is optional for step 0
+        // Phone is optional for step 0 — but if given, must be a valid AL mobile
+        if (values.phone && !isValidAlbanianPhone(values.phone)) {
+          errors.phone = ALBANIAN_PHONE_MESSAGE;
+        }
       }
 
       // Step 2: Company Information validation
@@ -1093,12 +1096,7 @@ const EmployersPage = () => {
                 leftSection={<Text size="sm" c="dimmed" fw={500}>+355</Text>}
                 leftSectionWidth={52}
                 {...employerForm.getInputProps('phone')}
-                onChange={(e) => {
-                  let val = e.target.value;
-                  // Strip leading 0 as user types (0 = +355 in Albanian format)
-                  if (val.startsWith('0')) val = val.replace(/^0+/, '');
-                  employerForm.setFieldValue('phone', val);
-                }}
+                onChange={(e) => employerForm.setFieldValue('phone', cleanAlbanianPhoneInput(e.target.value))}
               />
             </Box>
           </Stack>

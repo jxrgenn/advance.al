@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi } from "@/lib/api";
 import { useEmailAvailability } from "@/hooks/useEmailAvailability";
+import { validatePassword, PASSWORD_RULE_MESSAGE } from "@/lib/formValidation";
 
 const INDUSTRIES = [
   'Teknologji Informacioni',
@@ -89,7 +90,7 @@ const EmployerRegister = () => {
       const r = await authApi.checkEmail(email);
       if (!r.available) return 'Ky email është tashmë i regjistruar. Provoni hyrjen.';
     }
-    if (password.length < 8) return 'Fjalëkalimi duhet të ketë të paktën 8 karaktere';
+    if (validatePassword(password).length > 0) return PASSWORD_RULE_MESSAGE;
     if (password !== confirmPassword) return 'Fjalëkalimet nuk përputhen';
     return null;
   };
@@ -323,6 +324,7 @@ const EmployerRegister = () => {
                         />
                       </div>
                     </div>
+                    <p className="text-xs text-muted-foreground">8+ karaktere, 1 shkronjë e madhe, 1 e vogël, 1 numër</p>
 
                     <Button type="button" onClick={nextStep} className="w-full" disabled={validatingStep1 || emailAvailability.status === 'taken'}>
                       {validatingStep1 ? (

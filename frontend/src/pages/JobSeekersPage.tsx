@@ -43,7 +43,7 @@ import { notifications } from '@mantine/notifications';
 import { Play, Users, Bell, HelpCircle, X, Lightbulb, CheckCircle, ArrowRight, Briefcase, Zap, UserPlus, FileText, Send, Download, Eye, EyeOff, Mail, RefreshCw, Upload, Sparkles } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi, quickUsersApi, cvApi, configApi, locationsApi } from "@/lib/api";
-import { validateForm, jobSeekerSignupRules, formatValidationErrors, normalizeAlbanianPhone } from "@/lib/formValidation";
+import { validateForm, jobSeekerSignupRules, formatValidationErrors, normalizeAlbanianPhone, cleanAlbanianPhoneInput, isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE, validatePassword, PASSWORD_RULE_MESSAGE } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { InputWithCounter } from "@/components/CharacterCounter";
 import { JOB_CATEGORIES } from "@/constants/jobCategories";
@@ -181,7 +181,8 @@ const JobSeekersPage = () => {
       firstName: (value) => (!value ? 'Emri është i detyrueshëm' : null),
       lastName: (value) => (!value ? 'Mbiemri është i detyrueshëm' : null),
       email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Email i pavlefshëm'),
-      password: (value) => (value.length < 8 ? 'Fjalëkalimi duhet të ketë të paktën 8 karaktere' : null),
+      password: (value) => (validatePassword(value).length > 0 ? PASSWORD_RULE_MESSAGE : null),
+      phone: (value) => (!value || isValidAlbanianPhone(value) ? null : ALBANIAN_PHONE_MESSAGE),
     },
   });
 
@@ -199,6 +200,7 @@ const JobSeekersPage = () => {
       firstName: (value) => (!value ? 'Emri është i detyrueshëm' : null),
       lastName: (value) => (!value ? 'Mbiemri është i detyrueshëm' : null),
       email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Email i pavlefshëm'),
+      phone: (value) => (!value || isValidAlbanianPhone(value) ? null : ALBANIAN_PHONE_MESSAGE),
       interests: (value) => (value.length === 0 ? 'Zgjidhni të paktën një kategori' : null),
     },
   });
@@ -1211,11 +1213,7 @@ CERTIFIKATA (opsionale)
                         leftSection={<Text size="sm" c="dimmed" fw={500}>+355</Text>}
                         leftSectionWidth={52}
                         {...fullForm.getInputProps('phone')}
-                        onChange={(e) => {
-                          let val = e.target.value;
-                          if (val.startsWith('0')) val = val.replace(/^0+/, '');
-                          fullForm.setFieldValue('phone', val);
-                        }}
+                        onChange={(e) => fullForm.setFieldValue('phone', cleanAlbanianPhoneInput(e.target.value))}
                       />
                     </Box>
 
@@ -1342,11 +1340,7 @@ CERTIFIKATA (opsionale)
                         leftSection={<Text size="sm" c="dimmed" fw={500}>+355</Text>}
                         leftSectionWidth={52}
                         {...quickForm.getInputProps('phone')}
-                        onChange={(e) => {
-                          let val = e.target.value;
-                          if (val.startsWith('0')) val = val.replace(/^0+/, '');
-                          quickForm.setFieldValue('phone', val);
-                        }}
+                        onChange={(e) => quickForm.setFieldValue('phone', cleanAlbanianPhoneInput(e.target.value))}
                       />
                     </Box>
 

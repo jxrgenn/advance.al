@@ -152,6 +152,16 @@ export const isValidAlbanianPhone = (phone: string): boolean => {
 };
 
 /**
+ * Clean a user-typed Albanian mobile number AS THEY TYPE. The +355 prefix is
+ * shown separately by every phone field, so this returns just the 9-digit
+ * national part: digits only, no leading 0 (0 = the domestic prefix +355
+ * replaces), capped at 9 digits. Use this in every phone input's onChange so
+ * all forms behave identically.
+ */
+export const cleanAlbanianPhoneInput = (raw: string): string =>
+  (raw || '').replace(/\D/g, '').replace(/^0+/, '').slice(0, 9);
+
+/**
  * Shared password policy (QA Round 2): min 8 chars, ≥1 uppercase,
  * ≥1 lowercase, ≥1 digit. Matches signup and the backend change/reset
  * validators. Returns a list of failed-rule messages (empty = valid).

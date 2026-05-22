@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { jobsApi, applicationsApi, usersApi, locationsApi, matchingApi, Job, Application, Location, CandidateMatch, User } from "@/lib/api";
 import { viewResume, downloadResume, isInlineViewable, DOCX_VIEW_TOOLTIP } from "@/lib/resumeView";
 import { useAuth } from "@/contexts/AuthContext";
-import { validateForm, employerDashboardSettingsRules, formatValidationErrors, isValidAlbanianPhone, normalizeAlbanianPhone, ALBANIAN_PHONE_MESSAGE } from "@/lib/formValidation";
+import { validateForm, employerDashboardSettingsRules, formatValidationErrors, isValidAlbanianPhone, normalizeAlbanianPhone, ALBANIAN_PHONE_MESSAGE, cleanAlbanianPhoneInput } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { TextAreaWithCounter } from "@/components/CharacterCounter";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -1984,7 +1984,7 @@ const EmployerDashboard = () => {
                             id="emp-phone"
                             className="flex-1 min-w-0 rounded-l-none"
                             value={profileData.phone.replace(/^\+?355\s?/, '')}
-                            onChange={(e) => setProfileData(prev => ({ ...prev, phone: e.target.value }))}
+                            onChange={(e) => setProfileData(prev => ({ ...prev, phone: cleanAlbanianPhoneInput(e.target.value) }))}
                             placeholder="69 123 4567"
                           />
                         </div>
@@ -2001,7 +2001,7 @@ const EmployerDashboard = () => {
                               id="emp-whatsapp"
                               className="flex-1 min-w-0 rounded-l-none"
                               value={profileData.whatsapp.replace(/^\+?355\s?/, '')}
-                              onChange={(e) => setProfileData(prev => ({ ...prev, whatsapp: e.target.value }))}
+                              onChange={(e) => setProfileData(prev => ({ ...prev, whatsapp: cleanAlbanianPhoneInput(e.target.value) }))}
                               placeholder="69 123 4567"
                             />
                           </div>

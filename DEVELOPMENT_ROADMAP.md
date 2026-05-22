@@ -4420,6 +4420,30 @@ intentional design:
   let IPv6 users rotate addresses within their /64 to bypass the payment-
   initiate limit. Now uses `ipKeyGenerator(req)`. 44/44 payment tests green.
 
+### Phone + password consistency sweep (2026-05-22)
+
+- ✅ **Profile save 400 bug** (`b211b25`) — `profile.phone` /
+  `employerProfile.phone` / `employerProfile.whatsapp` have a schema `match`
+  regex that forbids spaces; the frontend sends "+355 69 123 4567" and the
+  route stored it raw → `user.save()` threw a Mongoose ValidationError →
+  400 "Të dhënat e profilit nuk janë të vlefshme" on every profile save
+  touching a phone. Fixed with `set: normalizeAlbanianPhone` on all three
+  phone schema paths — normalizes at the storage layer for EVERY write site.
+- ✅ **Phone input — uniform everywhere**. New shared `cleanAlbanianPhoneInput`
+  (digits only, strip leading 0, cap 9) wired into every phone onChange:
+  jobseeker signup (quick+full), employer signup, employer dashboard
+  (phone+whatsapp), Profile. Previously each form behaved differently —
+  Profile/dashboard accepted a leading 0, dashboard didn't strip non-digits.
+- ✅ **Phone validation everywhere** — jobseeker + employer signup Mantine
+  forms now validate the phone field with `isValidAlbanianPhone` /
+  `ALBANIAN_PHONE_MESSAGE` (Profile + dashboard already did).
+- ✅ **Password — complexity enforced on every form**. Signup forms
+  (JobSeekersPage, EmployersPage, EmployerRegister) only checked length ≥ 8
+  while their placeholders advertised the full rule and the backend
+  (`registerValidation`) already enforced 8+/upper/lower/number. All three
+  now validate via the shared `validatePassword` + `PASSWORD_RULE_MESSAGE`;
+  EmployerRegister gained the standard rule hint line.
+
 Deferred (Tier 3, follow-up): notification-preferences UI; save-button
 loading/disabled states; roll the inline-field-error pattern out to the
 remaining forms (signup, PostJob, dashboard) once the pilot is approved.
