@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import { connectDB } from '../src/config/database.js';
+import { locationSeedDocs } from '../src/constants/albanianLocations.js';
 
 // Load environment variables
 dotenv.config();
@@ -19,21 +20,8 @@ if (!process.env.ALLOW_SEED && !/localhost|127\.0\.0\.1|mongodb-memory/.test(pro
 }
 
 // Albanian cities and regions data
-const albanianLocations = [
-  { city: 'Tiranë', region: 'Tiranë', country: 'Albania', isActive: true, displayOrder: 1 },
-  { city: 'Durrës', region: 'Durrës', country: 'Albania', isActive: true, displayOrder: 2 },
-  { city: 'Vlorë', region: 'Vlorë', country: 'Albania', isActive: true, displayOrder: 3 },
-  { city: 'Shkodër', region: 'Shkodër', country: 'Albania', isActive: true, displayOrder: 4 },
-  { city: 'Fier', region: 'Fier', country: 'Albania', isActive: true, displayOrder: 5 },
-  { city: 'Korçë', region: 'Korçë', country: 'Albania', isActive: true, displayOrder: 6 },
-  { city: 'Elbasan', region: 'Elbasan', country: 'Albania', isActive: true, displayOrder: 7 },
-  { city: 'Gjirokastër', region: 'Gjirokastër', country: 'Albania', isActive: true, displayOrder: 8 },
-  { city: 'Berat', region: 'Berat', country: 'Albania', isActive: true, displayOrder: 9 },
-  { city: 'Lushnjë', region: 'Fier', country: 'Albania', isActive: true, displayOrder: 10 },
-  { city: 'Kavajë', region: 'Tiranë', country: 'Albania', isActive: true, displayOrder: 11 },
-  { city: 'Pogradec', region: 'Korçë', country: 'Albania', isActive: true, displayOrder: 12 },
-  { city: 'Online/Remote', region: 'Remote', country: 'Albania', isActive: true, displayOrder: 0 }
-];
+// Canonical Albanian locations — shared with seed-locations.js + the test fixture.
+const albanianLocations = locationSeedDocs();
 
 // Job categories
 const jobCategories = [

@@ -42,7 +42,7 @@ import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { Play, Users, Bell, HelpCircle, X, Lightbulb, CheckCircle, ArrowRight, Briefcase, Zap, UserPlus, FileText, Send, Download, Eye, EyeOff, Mail, RefreshCw, Upload, Sparkles } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { authApi, quickUsersApi, cvApi, configApi } from "@/lib/api";
+import { authApi, quickUsersApi, cvApi, configApi, locationsApi } from "@/lib/api";
 import { validateForm, jobSeekerSignupRules, formatValidationErrors, normalizeAlbanianPhone } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { InputWithCounter } from "@/components/CharacterCounter";
@@ -68,6 +68,8 @@ const JobSeekersPage = () => {
   const [verificationMethod, setVerificationMethod] = useState<'email' | 'sms'>('email');
   // SMS verification is only offered when Twilio is configured on the backend.
   const [smsEnabled, setSmsEnabled] = useState(false);
+  // Cities load from the canonical Location collection (single source of truth).
+  const [cities, setCities] = useState<string[]>([]);
 
   // Reset scroll lock on unmount
   useEffect(() => {
@@ -79,6 +81,17 @@ const JobSeekersPage = () => {
     configApi.getPublic()
       .then(res => { if (res.success && res.data) setSmsEnabled(!!res.data.smsEnabled); })
       .catch(() => { /* default: SMS hidden */ });
+  }, []);
+
+  // Load the canonical city list for the signup forms.
+  useEffect(() => {
+    locationsApi.getLocations()
+      .then(res => {
+        if (res.success && res.data?.locations) {
+          setCities(res.data.locations.map((l: { city: string }) => l.city));
+        }
+      })
+      .catch(() => { /* leave empty */ });
   }, []);
 
   // Check for query parameters to scroll to forms
@@ -231,13 +244,15 @@ GJUHËT
 CERTIFIKATA (opsionale)
 `;
 
-  // Toggle template handler
+  // Toggle template handler — confirm before discarding anything the user typed.
   const handleToggleTemplate = () => {
+    const hasContent = cvInput.trim().length > 0 && cvInput !== cvTemplateText;
     if (!useTemplate) {
+      if (hasContent && !window.confirm('Aktivizimi i shabllonit do të zëvendësojë tekstin që keni shkruar. Vazhdoni?')) return;
       setCvInput(cvTemplateText);
       setUseTemplate(true);
     } else {
-      // Switching off template mode - clear input
+      if (hasContent && !window.confirm('Çaktivizimi i shabllonit do të fshijë tekstin aktual. Vazhdoni?')) return;
       setCvInput('');
       setUseTemplate(false);
     }
@@ -1178,7 +1193,7 @@ CERTIFIKATA (opsionale)
 
                     <Box data-tutorial="password">
                       <TextInput
-                        placeholder="Fjalëkalimi (min. 8 karaktere, 1 e madhe, 1 numër, 1 special) *"
+                        placeholder="Fjalëkalimi (min. 8 karaktere, 1 e madhe, 1 e vogël, 1 numër) *"
                         type={showPassword ? "text" : "password"}
                         {...fullForm.getInputProps('password')}
                         required
@@ -1207,18 +1222,9 @@ CERTIFIKATA (opsionale)
                     <Box data-tutorial="city">
                       <Select
                         placeholder="Zgjidhni qytetin *"
+                        searchable
                         {...fullForm.getInputProps('city')}
-                        data={[
-                          'Tiranë',
-                          'Durrës',
-                          'Vlorë',
-                          'Shkodër',
-                          'Korçë',
-                          'Elbasan',
-                          'Fier',
-                          'Berat',
-                          'Tjetër'
-                        ]}
+                        data={cities}
                       />
                     </Box>
 
@@ -1346,18 +1352,9 @@ CERTIFIKATA (opsionale)
                     <Box data-tutorial="quick-city">
                       <Select
                         placeholder="Zgjidhni qytetin"
+                        searchable
                         {...quickForm.getInputProps('city')}
-                        data={[
-                          'Tiranë',
-                          'Durrës',
-                          'Vlorë',
-                          'Shkodër',
-                          'Korçë',
-                          'Elbasan',
-                          'Fier',
-                          'Berat',
-                          'Tjetër'
-                        ]}
+                        data={cities}
                       />
                     </Box>
 

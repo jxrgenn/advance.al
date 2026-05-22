@@ -4382,3 +4382,24 @@ intentional design:
 - account-cleanup: bumped the suite timeout (MongoMemoryReplSet transactions
   are slow); one cascade variant skipped — pathologically slow under the
   in-memory replset, logic covered by the passing employer-cascade sibling
+
+### Pre-launch polish — cities, categories, forms (2026-05-22)
+
+3-agent "small things" review. Done:
+- ✅ Cities: one canonical list of all 61 Albanian municipalities + Online/Remote
+  + Jashtë Shqipërisë (backend/src/constants/albanianLocations.js). New
+  prod-safe idempotent `seed-locations.js` (npm run seed:locations) — this is
+  how a fresh prod DB gets its cities. Signup forms (jobseeker quick+full,
+  employer) now load cities from GET /api/locations instead of 3 disagreeing
+  hardcoded lists.
+- ✅ Categories: curated JOB_CATEGORIES — dropped 2 dead duplicates, added 10
+  common missing categories (Administratë & Zyrë, Shërbim Klienti, Gastronomi,
+  Bukuri, Pastrim, Siguri, Bujqësi, Media, Drejtësi, Logjistikë); backend +
+  frontend copies kept identical.
+- ✅ Password placeholder hint corrected (claimed a special char that the rule
+  doesn't require).
+- ✅ CV-template toggle confirms before discarding typed text.
+- ✅ PostJob salary message clarified (already blocked incomplete ranges).
+
+Deferred (Tier 3, follow-up): notification-preferences UI; save-button
+loading/disabled states; the broad inline-field-error pass.

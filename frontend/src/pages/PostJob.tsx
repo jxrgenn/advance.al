@@ -350,14 +350,14 @@ const PostJob = () => {
         return;
       }
 
-      // Validate salary: warn if only one of min/max is filled
+      // Salary must be a complete range — both min and max, or neither.
       const hasMin = !!values.salaryMin;
       const hasMax = !!values.salaryMax;
       if ((hasMin && !hasMax) || (!hasMin && hasMax)) {
         notifications.show({
           title: 'Paga jo e plotë',
-          message: 'Duhet të plotësoni si pagën minimale ashtu edhe atë maksimale, ose lini të dyja bosh. Paga nuk do të ruhet nëse vetëm njëra është plotësuar.',
-          color: 'orange',
+          message: 'Plotësoni si pagën minimale ashtu edhe atë maksimale, ose lini të dyja bosh.',
+          color: 'red',
           autoClose: 6000,
         });
         setLoading(false);

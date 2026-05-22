@@ -32,7 +32,7 @@ import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { Play, Building, ArrowRight, ArrowLeft, User, FileText, CheckCircle, HelpCircle, X, Lightbulb, Euro, TrendingUp, Star, Users, Eye, EyeOff, Mail, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { authApi, configApi } from "@/lib/api";
+import { authApi, configApi, locationsApi } from "@/lib/api";
 import { validateForm, employerSignupRules, formatValidationErrors, normalizeAlbanianPhone } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { TextAreaWithCounter, InputWithCounter } from "@/components/CharacterCounter";
@@ -181,10 +181,18 @@ const EmployersPage = () => {
     'Tjetër',
   ];
 
-  const cities = [
-    'Tiranë', 'Durrës', 'Vlorë', 'Shkodër', 'Korçë', 'Elbasan',
-    'Fier', 'Berat', 'Gjirokastër', 'Kukës', 'Lezhë', 'Tjetër'
-  ];
+  // Cities load from the canonical Location collection (GET /api/locations) —
+  // single source of truth, same list job search & post-job use.
+  const [cities, setCities] = useState<string[]>([]);
+  useEffect(() => {
+    locationsApi.getLocations()
+      .then(res => {
+        if (res.success && res.data?.locations) {
+          setCities(res.data.locations.map((l: { city: string }) => l.city));
+        }
+      })
+      .catch(() => { /* leave empty — Select just shows no options */ });
+  }, []);
 
   // Based on database schema: ['1-10', '11-50', '51-200', '200+']
   const companySizes = [
@@ -1067,7 +1075,7 @@ const EmployersPage = () => {
 
             <Box data-tutorial="password">
               <TextInput
-                placeholder="Fjalëkalimi (min. 8 karaktere, 1 e madhe, 1 numër, 1 special) *"
+                placeholder="Fjalëkalimi (min. 8 karaktere, 1 e madhe, 1 e vogël, 1 numër) *"
                 type={showPassword ? "text" : "password"}
                 {...employerForm.getInputProps('password')}
                 required

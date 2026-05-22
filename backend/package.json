@@ -10,6 +10,7 @@
     "dev": "node --watch=src --watch=server.js server.js",
     "start": "NODE_ENV=production node server.js",
     "seed": "node scripts/seed-database.js",
+    "seed:locations": "node scripts/seed-locations.js",
     "diag:paywall": "node scripts/diagnose-paywall.js",
     "diag:env": "node scripts/diagnose-env.js",
     "ensure:admin": "node scripts/ensure-admin-account.js",
