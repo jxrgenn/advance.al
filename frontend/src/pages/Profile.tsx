@@ -272,7 +272,10 @@ const Profile = () => {
     availability: ''
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+  // Inline per-field validation errors for the personal/professional form.
+  // Keyed by formData field name; shown under each field and cleared on edit.
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
   const { toast } = useToast();
   const { user, refreshUser } = useAuth();
 
@@ -530,6 +533,13 @@ const Profile = () => {
       [field]: value
     }));
     setHasChanges(true);
+    // Clear this field's inline error as soon as the user edits it.
+    setFieldErrors(prev => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
   };
   
   const handleSkillsChange = (skillsString: string) => {
@@ -577,7 +587,10 @@ const Profile = () => {
     try {
       setSavingProfile(true);
 
-      // Validate personal information
+      // Validate personal + professional info, collecting per-field errors so
+      // they can be shown inline under each field (not just in a toast).
+      const newErrors: Record<string, string> = {};
+
       const personalValidation = validateForm(
         {
           firstName: formData.firstName,
@@ -587,18 +600,8 @@ const Profile = () => {
         },
         profileValidationRules.personal
       );
+      personalValidation.errors.forEach((e) => { newErrors[e.field] = e.message; });
 
-      if (!personalValidation.isValid) {
-        toast({
-          title: "Fushat e detyrueshme nuk janë plotësuar korrekt",
-          description: formatValidationErrors(personalValidation.errors),
-          variant: "destructive"
-        });
-        setSavingProfile(false);
-        return;
-      }
-
-      // Validate professional information if job seeker
       if (user?.userType === 'jobseeker') {
         const professionalValidation = validateForm(
           {
@@ -607,17 +610,23 @@ const Profile = () => {
           },
           profileValidationRules.professional
         );
-
-        if (!professionalValidation.isValid) {
-          toast({
-            title: "Fushat e detyrueshme nuk janë plotësuar korrekt",
-            description: formatValidationErrors(professionalValidation.errors),
-            variant: "destructive"
-          });
-          setSavingProfile(false);
-          return;
-        }
+        // 'headline' is the rule key; the form field is 'title'.
+        professionalValidation.errors.forEach((e) => {
+          newErrors[e.field === 'headline' ? 'title' : e.field] = e.message;
+        });
       }
+
+      if (Object.keys(newErrors).length > 0) {
+        setFieldErrors(newErrors);
+        toast({
+          title: "Disa fusha kanë gabime",
+          description: "Kontrollo fushat e shënuara me të kuqe dhe provo përsëri.",
+          variant: "destructive"
+        });
+        setSavingProfile(false);
+        return;
+      }
+      setFieldErrors({});
 
       // Prepare update data
       const updateData = {
@@ -1691,6 +1700,7 @@ const Profile = () => {
                           onChange={(e) => handleInputChange('firstName', e.target.value)}
                           maxLength={50}
                           minLength={2}
+                          error={fieldErrors.firstName}
                         />
                       </div>
                       <div className="space-y-2">
@@ -1701,6 +1711,7 @@ const Profile = () => {
                           onChange={(e) => handleInputChange('lastName', e.target.value)}
                           maxLength={50}
                           minLength={2}
+                          error={fieldErrors.lastName}
                         />
                       </div>
                     </div>
@@ -1735,9 +1746,12 @@ const Profile = () => {
                             handleInputChange('phone', '+355 ' + value);
                           }}
                           placeholder="69 123 4567"
-                          className="flex-1"
+                          className={`flex-1 ${fieldErrors.phone ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                         />
                       </div>
+                      {fieldErrors.phone && (
+                        <p className="text-xs text-red-600 dark:text-red-400">{fieldErrors.phone}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -1763,6 +1777,7 @@ const Profile = () => {
                           onChange={(e) => handleInputChange('bio', e.target.value)}
                           maxLength={500}
                           rows={4}
+                          error={fieldErrors.bio}
                         />
                       </div>
                     </CardContent>
@@ -1777,6 +1792,7 @@ const Profile = () => {
                         onChange={(e) => handleInputChange('title', e.target.value)}
                         placeholder="Frontend Developer, Accountant, etc."
                         maxLength={100}
+                        error={fieldErrors.title}
                       />
                     </div>
 
@@ -1804,7 +1820,11 @@ const Profile = () => {
                         value={formData.skills.join(', ')}
                         onChange={(e) => handleSkillsChange(e.target.value)}
                         placeholder="React, JavaScript, Python, Marketing, etc."
+                        className={fieldErrors.skills ? 'border-red-500 focus-visible:ring-red-500' : ''}
                       />
+                      {fieldErrors.skills && (
+                        <p className="text-xs text-red-600 dark:text-red-400">{fieldErrors.skills}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2">

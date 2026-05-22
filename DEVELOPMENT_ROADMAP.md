@@ -4392,14 +4392,29 @@ intentional design:
   how a fresh prod DB gets its cities. Signup forms (jobseeker quick+full,
   employer) now load cities from GET /api/locations instead of 3 disagreeing
   hardcoded lists.
-- ✅ Categories: curated JOB_CATEGORIES — dropped 2 dead duplicates, added 10
-  common missing categories (Administratë & Zyrë, Shërbim Klienti, Gastronomi,
-  Bukuri, Pastrim, Siguri, Bujqësi, Media, Drejtësi, Logjistikë); backend +
-  frontend copies kept identical.
+- ✅ Categories: curated JOB_CATEGORIES — dropped 2 dead duplicates, added 9
+  common missing categories (Shërbim Klienti, Gastronomi, Bukuri, Pastrim,
+  Siguri, Bujqësi, Media, Drejtësi, Logjistikë); backend + frontend copies kept
+  identical.
 - ✅ Password placeholder hint corrected (claimed a special char that the rule
   doesn't require).
 - ✅ CV-template toggle confirms before discarding typed text.
 - ✅ PostJob salary message clarified (already blocked incomplete ranges).
 
+### Pre-launch polish — follow-up (2026-05-22)
+
+- ✅ Dropped "Administratë & Zyrë" from JOB_CATEGORIES — it overlapped the
+  existing `administrata` platform quick-filter (platformCategories), which
+  would have confused users. JOB_CATEGORIES is industry/field only.
+- ✅ All city pickers searchable: employer signup Select now `searchable` (was
+  scroll-only); added `nothingFoundMessage` to all 3 signup city Selects.
+  Combined with displayOrder (major cities first via getActiveLocations sort),
+  the 63-location list is type-to-filter, not scroll-heavy.
+- ✅ Inline field errors — pilot on the jobseeker Profile personal/professional
+  form. `validateForm` errors now populate a `fieldErrors` map shown under each
+  field (red border + message) instead of one flat toast; errors clear on edit.
+  Pilot for a future roll-out to all forms if approved.
+
 Deferred (Tier 3, follow-up): notification-preferences UI; save-button
-loading/disabled states; the broad inline-field-error pass.
+loading/disabled states; roll the inline-field-error pattern out to the
+remaining forms (signup, PostJob, dashboard) once the pilot is approved.

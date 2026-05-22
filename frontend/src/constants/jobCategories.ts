@@ -1,10 +1,11 @@
 // Job categories for advance.al. KEEP THIS LIST IDENTICAL to
 // backend/src/constants/jobCategories.js — the two are validated against
-// each other and must not drift.
+// each other and must not drift. 'Administratë' is NOT a category — it's a
+// separate platform quick-filter (platformCategories).
 export const JOB_CATEGORIES = [
   'Teknologji', 'Marketing', 'Shitje', 'Shitës/e', 'Financë',
   'Burime Njerëzore', 'Inxhinieri', 'Dizajn', 'Menaxhim',
-  'Administratë & Zyrë', 'Shërbim Klienti', 'Shëndetësi', 'Arsim',
+  'Shërbim Klienti', 'Shëndetësi', 'Arsim',
   'Turizëm', 'Gastronomi & Kuzhinë', 'Ndërtim', 'Transport', 'Logjistikë',
   'Bujqësi', 'Punë Krahu', 'Pastrim & Mirëmbajtje', 'Bukuri & Estetikë',
   'Siguri', 'Media & Gazetari', 'Drejtësi & Ligj', 'Tjetër',

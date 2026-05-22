@@ -1144,6 +1144,8 @@ const EmployersPage = () => {
                 placeholder="Qyteti *"
                 {...employerForm.getInputProps('city')}
                 data={cities}
+                searchable
+                nothingFoundMessage="Qyteti nuk u gjet"
                 required
               />
               <TextInput

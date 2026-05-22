@@ -1223,6 +1223,7 @@ CERTIFIKATA (opsionale)
                       <Select
                         placeholder="Zgjidhni qytetin *"
                         searchable
+                        nothingFoundMessage="Qyteti nuk u gjet"
                         {...fullForm.getInputProps('city')}
                         data={cities}
                       />
@@ -1353,6 +1354,7 @@ CERTIFIKATA (opsionale)
                       <Select
                         placeholder="Zgjidhni qytetin"
                         searchable
+                        nothingFoundMessage="Qyteti nuk u gjet"
                         {...quickForm.getInputProps('city')}
                         data={cities}
                       />
