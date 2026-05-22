@@ -27,7 +27,7 @@
 
 import express from 'express';
 import crypto from 'crypto';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { Job, SystemConfiguration, PaymentEvent, User } from '../models/index.js';
 import { authenticate, requireEmployer } from '../middleware/auth.js';
 import { createPaymentUrl, verifyCallback, isConfigured } from '../services/payseraService.js';
@@ -50,7 +50,9 @@ const initiateLimiter = rateLimit({
   skip: () =>
     process.env.NODE_ENV !== 'production' &&
     process.env.SKIP_RATE_LIMIT === 'true',
-  keyGenerator: (req) => req.user?._id ? `user:${req.user._id}` : `ip:${req.ip}`,
+  // ipKeyGenerator normalizes IPv6 to a /64 subnet so a user can't rotate
+  // addresses within their block to bypass the limit (express-rate-limit v8).
+  keyGenerator: (req) => req.user?._id ? `user:${req.user._id}` : `ip:${ipKeyGenerator(req)}`,
   message: { success: false, message: 'Shumë tentativa pagese — provoni përsëri pas një minute.' },
   standardHeaders: true,
   legacyHeaders: false,

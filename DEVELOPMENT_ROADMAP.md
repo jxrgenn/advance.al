@@ -4414,6 +4414,11 @@ intentional design:
   form. `validateForm` errors now populate a `fieldErrors` map shown under each
   field (red border + message) instead of one flat toast; errors clear on edit.
   Pilot for a future roll-out to all forms if approved.
+- ✅ Fixed `ERR_ERL_KEY_GEN_IPV6` startup ValidationError — `payments.js`
+  initiateLimiter was the lone rate limiter still keying on raw `req.ip`
+  (every other route already used the `ipKeyGenerator` helper). Raw `req.ip`
+  let IPv6 users rotate addresses within their /64 to bypass the payment-
+  initiate limit. Now uses `ipKeyGenerator(req)`. 44/44 payment tests green.
 
 Deferred (Tier 3, follow-up): notification-preferences UI; save-button
 loading/disabled states; roll the inline-field-error pattern out to the
