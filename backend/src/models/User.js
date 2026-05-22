@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import { normalizeAlbanianPhone } from '../lib/phonePolicy.js';
 
 const { Schema } = mongoose;
 
@@ -285,13 +286,18 @@ const employerProfileSchema = new Schema({
     default: 'basic'
   },
 
-  // Contact preferences and details
+  // Contact preferences and details.
+  // `set` normalizes any spacing/dashes/leading-0 to +355XXXXXXXXX BEFORE the
+  // `match` validator runs — callers may store user-typed values like
+  // "+355 69 123 4567" and the schema must not reject the spaces.
   phone: {
     type: String,
+    set: normalizeAlbanianPhone,
     match: [/^\+\d{8,}$/, 'Numri i telefonit duhet të ketë të paktën 8 shifra']
   },
   whatsapp: {
     type: String,
+    set: normalizeAlbanianPhone,
     match: [/^\+\d{8,}$/, 'Numri i WhatsApp duhet të ketë të paktën 8 shifra']
   },
   contactPreferences: {
@@ -422,8 +428,11 @@ const userSchema = new Schema({
       maxlength: 50,
       trim: true
     },
+    // `set` normalizes spacing/dashes/leading-0 before `match` runs — see the
+    // employerProfile.phone note above.
     phone: {
       type: String,
+      set: normalizeAlbanianPhone,
       match: [/^\+\d{8,}$/, 'Numri i telefonit duhet të ketë të paktën 8 shifra']
     },
     location: {

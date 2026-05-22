@@ -117,6 +117,25 @@ describe('Users API - Integration Tests', () => {
       const dbUser = await User.findById(user._id);
       expect(dbUser.freePostingEnabled).toBe(false);
     });
+
+    // Regression: the profile.phone schema `match` regex forbids spaces, but
+    // the frontend sends user-typed values like "+355 69 123 4567". Without
+    // the schema `set: normalizeAlbanianPhone`, user.save() threw a Mongoose
+    // ValidationError → 400 "Të dhënat e profilit nuk janë të vlefshme" on
+    // every profile save that touched the phone.
+    it('saves a spaced/0-prefixed phone — normalized to +355XXXXXXXXX', async () => {
+      const { user } = await createJobseeker();
+
+      const response = await request(app)
+        .put('/api/users/profile')
+        .set(createAuthHeaders(user))
+        .send({ phone: '+355 069 123 4567' });
+
+      expect(response.status).toBe(200);
+
+      const dbUser = await User.findById(user._id);
+      expect(dbUser.profile.phone).toBe('+355691234567');
+    });
   });
 
   describe('GET /api/users/public-profile/:id', () => {
