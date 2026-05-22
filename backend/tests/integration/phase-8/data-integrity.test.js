@@ -161,14 +161,16 @@ describe('Phase 8 — Data Integrity', () => {
       expect(response.status).toBe(404);
     });
 
-    it('apply with malformed jobId → 400', async () => {
+    it('apply with a non-existent jobId → 404', async () => {
+      // A non-ObjectId string is treated as a job slug (Phase-B SEO dual
+      // lookup); no job has that slug → 404 not found.
       const { user: js } = await createJobseeker({ emailVerified: true });
       const response = await request(app)
         .post('/api/applications/apply')
         .set(createAuthHeaders(js))
         .send({ jobId: 'not-a-mongo-id', applicationMethod: 'one_click' });
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(404);
     });
   });
 

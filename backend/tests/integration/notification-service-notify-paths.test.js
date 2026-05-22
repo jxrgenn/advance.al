@@ -109,7 +109,10 @@ describe('notificationService — notifyMatchingUsers + notifyUserAboutMatchingJ
       expect(r.stats.errors).toBe(0);
     });
 
-    it('counts errors when sendJobNotificationToFullUser rejects (L369-377)', async () => {
+    it('counts errors when queueing a full jobseeker for digest fails', async () => {
+      // Full jobseekers are queued for the 2h digest via queueMatchForDigest,
+      // which does a User.findByIdAndUpdate. If that write fails, the per-user
+      // catch must increment stats.errors (notificationService.js ~L502-504).
       const { user: emp } = await createVerifiedEmployer();
       const job = await createJob(emp);
       const { user: js } = await createJobseeker();
@@ -117,8 +120,8 @@ describe('notificationService — notifyMatchingUsers + notifyUserAboutMatchingJ
       jest.spyOn(userEmbeddingService, 'findSemanticMatchesForJob')
         .mockResolvedValueOnce({ quickUsers: [], jobSeekers: [{ user: js, score: 0.8 }] });
       jest.spyOn(QuickUser, 'findMatchesForJob').mockResolvedValueOnce([]);
-      jest.spyOn(notificationService, 'sendJobNotificationToFullUser')
-        .mockRejectedValueOnce(new Error('full user send fail'));
+      jest.spyOn(User, 'findByIdAndUpdate')
+        .mockRejectedValueOnce(new Error('digest queue write fail'));
 
       const r = await notificationService.notifyMatchingUsers(job);
       expect(r.success).toBe(true);

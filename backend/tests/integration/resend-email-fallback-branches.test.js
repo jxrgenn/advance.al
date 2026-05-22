@@ -162,7 +162,7 @@ describe('resendEmailService — fallback ternary branches', () => {
       resendEmailService.enabled = false;
       const r = await resendEmailService.sendTransactionalEmail('a@x.com', 'S', '<p/>', 'p');
       expect(r.success).toBe(false);
-      expect(r.message).toMatch(/disabled/i);
+      expect(r.error).toMatch(/disabled/i);
       // Restore for afterEach
       resendEmailService.enabled = true;
     });

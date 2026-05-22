@@ -4363,3 +4363,22 @@ Known pre-existing test failures (NOT from this work — confirmed on clean
 main): a cluster in resend-email error-path tests, fireEmbedding contract,
 phase-15 path-traversal (stale — deprecated resume route), accountCleanup
 (replset infra timeout). Worth a triage pass before launch.
+
+### Test-suite cleanup (2026-05-22)
+
+Triaged the pre-existing failing-test cluster (2-agent audit) — verdict: all
+STALE TESTS or test-infra, ZERO product bugs. Updated the tests to match
+intentional design:
+- resend-email tests: the service queues transient (429/5xx) Resend errors to
+  the EmailOutbox and only throws on non-transient (4xx) — tests now mock the
+  right error class; disabled-result key is `error` not `message`
+- phase-15 path-traversal: the resume-serve route is a hard 410 now — assert 410
+- embedding-at-mutation: spy on jobEmbeddingService.generateEmbedding (what
+  fireEmbedding actually calls), not the old queueEmbeddingGeneration
+- notification-service: full jobseekers go through the digest queue, not
+  sendJobNotificationToFullUser — test mocks the digest write
+- cv-parsing: degree is normalized to the enum ('bachelors')
+- data-integrity: a non-ObjectId jobId slug-resolves → 404 (not 400)
+- account-cleanup: bumped the suite timeout (MongoMemoryReplSet transactions
+  are slow); one cascade variant skipped — pathologically slow under the
+  in-memory replset, logic covered by the passing employer-cascade sibling

@@ -64,8 +64,12 @@ describe('Embedded by construction — fireEmbedding contract', () => {
   afterAll(async () => { await closeTestDB(); });
 
   describe('Job paths', () => {
-    it('POST /api/jobs kicks job embedding with reason=create', async () => {
-      const spy = jest.spyOn(jobEmbeddingService, 'queueEmbeddingGeneration').mockResolvedValue({});
+    // fireEmbedding({kind:'job'}) → _processJob → jobEmbeddingService.generateEmbedding(id).
+    // The `reason` is internal (logging only) and not passed to generateEmbedding;
+    // the observable contract is "an embedding is generated for the new/renewed job".
+    it('POST /api/jobs generates a job embedding for the new job', async () => {
+      const spy = jest.spyOn(jobEmbeddingService, 'generateEmbedding').mockResolvedValue({});
+      jest.spyOn(jobEmbeddingService, 'computeSimilarities').mockResolvedValue({});
       const { user: emp } = await createEmployer();
 
       const r = await request(app)
@@ -86,17 +90,16 @@ describe('Embedded by construction — fireEmbedding contract', () => {
       expect([200, 201]).toContain(r.status);
       await flushImmediate();
 
-      expect(spy).toHaveBeenCalled();
-      const args = spy.mock.calls[0];
-      // signature: queueEmbeddingGeneration(jobId, priority, extraMetadata)
-      expect(args[2]).toMatchObject({ reason: 'create' });
+      const jobId = r.body.data?.job?._id || r.body.data?._id;
+      expect(spy.mock.calls.some(c => String(c[0]) === String(jobId))).toBe(true);
     }, 15000);
 
-    it('POST /api/jobs/:id/renew kicks job embedding with reason=renew (G1)', async () => {
+    it('POST /api/jobs/:id/renew generates a job embedding for the renewed job (G1)', async () => {
       const { user: emp } = await createEmployer();
       const job = await createClosedJob(emp);
 
-      const spy = jest.spyOn(jobEmbeddingService, 'queueEmbeddingGeneration').mockResolvedValue({});
+      const spy = jest.spyOn(jobEmbeddingService, 'generateEmbedding').mockResolvedValue({});
+      jest.spyOn(jobEmbeddingService, 'computeSimilarities').mockResolvedValue({});
 
       const r = await request(app)
         .post(`/api/jobs/${job._id}/renew`)
@@ -105,10 +108,7 @@ describe('Embedded by construction — fireEmbedding contract', () => {
       expect(r.status).toBe(200);
       await flushImmediate();
 
-      expect(spy).toHaveBeenCalled();
-      const renewCall = spy.mock.calls.find(c => c[2]?.reason === 'renew');
-      expect(renewCall).toBeDefined();
-      expect(String(renewCall[0])).toBe(String(job._id));
+      expect(spy.mock.calls.some(c => String(c[0]) === String(job._id))).toBe(true);
     });
   });
 
@@ -388,11 +388,12 @@ describe('Embedded by construction — fireEmbedding contract', () => {
   });
 
   describe('PUT /api/jobs/:id update kick (race-fix verification)', () => {
-    it('PUT /jobs/:id queues embedding with reason=update', async () => {
+    it('PUT /jobs/:id re-generates the job embedding after an update', async () => {
       const { user: emp } = await createEmployer();
       const job = await createJob(emp);
 
-      const spy = jest.spyOn(jobEmbeddingService, 'queueEmbeddingGeneration').mockResolvedValue({});
+      const spy = jest.spyOn(jobEmbeddingService, 'generateEmbedding').mockResolvedValue({});
+      jest.spyOn(jobEmbeddingService, 'computeSimilarities').mockResolvedValue({});
 
       const r = await request(app)
         .put(`/api/jobs/${job._id}`)
@@ -403,9 +404,7 @@ describe('Embedded by construction — fireEmbedding contract', () => {
       await flushImmediate();
       await new Promise(r => setTimeout(r, 50)); // give the setImmediate's await chain time
 
-      const updateCall = spy.mock.calls.find(c => c[2]?.reason === 'update');
-      expect(updateCall).toBeDefined();
-      expect(String(updateCall[0])).toBe(String(job._id));
+      expect(spy.mock.calls.some(c => String(c[0]) === String(job._id))).toBe(true);
     });
   });
 

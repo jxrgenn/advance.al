@@ -230,7 +230,8 @@ describe('sanitizeParsedProfile — education', () => {
       ],
     });
     expect(r.education.length).toBe(1);
-    expect(r.education[0].degree).toBe('Bachelor');
+    // sanitizeParsedProfile normalizes the degree to the schema enum.
+    expect(r.education[0].degree).toBe('bachelors');
   });
 
   it('handles isCurrentStudy', () => {

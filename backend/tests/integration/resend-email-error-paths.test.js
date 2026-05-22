@@ -13,10 +13,13 @@ import resendEmailService from '../../src/lib/resendEmailService.js';
 let originalResend;
 let originalEnabled;
 
+// A NON-transient (4xx) Resend error — the service surfaces these to the
+// caller (throws) rather than queueing to the outbox. Transient (429/5xx/no
+// status) errors are queued instead; that path is covered by the outbox tests.
 function mockResendError(errorMessage = 'Resend API down') {
   resendEmailService.resend = {
     emails: {
-      send: async () => ({ data: null, error: { message: errorMessage } }),
+      send: async () => ({ data: null, error: { message: errorMessage, statusCode: 422 } }),
     },
   };
   resendEmailService.enabled = true;
@@ -95,7 +98,8 @@ describe('resendEmailService — error/catch paths', () => {
         'x@y.com', 'Subject', '<p>html</p>', 'plain'
       );
       expect(r.success).toBe(false);
-      expect(r.error).toMatch(/Failed to send transactional/);
+      // sendTransactionalEmail surfaces the underlying Resend error verbatim.
+      expect(r.error).toMatch(/Resend API down/);
     });
 
     it('returns success=false when send throws (L704-706)', async () => {

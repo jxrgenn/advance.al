@@ -144,29 +144,21 @@ describe('Phase 15 — Security Adversarial', () => {
     });
   });
 
-  describe('Path traversal in resume route', () => {
-    it('encoded path traversal segments rejected → 400', async () => {
+  describe('Legacy resume-serve route is retired', () => {
+    // GET /api/users/resume/:filename was deprecated (Round O-B) — it now
+    // returns 410 Gone unconditionally and serves no file, so path-traversal
+    // / filename-pattern attacks against it are moot. CV access is via the
+    // signed-URL endpoint POST /api/users/resume/sign.
+    it('returns 410 Gone for any filename, incl. traversal attempts', async () => {
       const { user } = await createJobseeker();
-      const r1 = await request(app)
-        .get('/api/users/resume/..%2F..%2Fetc%2Fpasswd')
-        .set(createAuthHeaders(user));
-      // JUSTIFIED: Token/resource lookup — 400 (validator) or 404 (not found in store).
-      expect([400, 404]).toContain(r1.status);
-
-      const r2 = await request(app)
-        .get('/api/users/resume/%5C..%5Cetc%5Cpasswd')
-        .set(createAuthHeaders(user));
-      // JUSTIFIED: Token/resource lookup — 400 (validator) or 404 (not found in store).
-      expect([400, 404]).toContain(r2.status);
-    });
-
-    it('non-pattern filenames (no resume-<userId>- prefix) rejected', async () => {
-      const { user } = await createJobseeker();
-      const response = await request(app)
-        .get('/api/users/resume/random_name.pdf')
-        .set(createAuthHeaders(user));
-      // JUSTIFIED: Token/resource lookup — 400 (validator) or 404 (not found in store).
-      expect([400, 404]).toContain(response.status);
+      for (const path of [
+        '/api/users/resume/..%2F..%2Fetc%2Fpasswd',
+        '/api/users/resume/%5C..%5Cetc%5Cpasswd',
+        '/api/users/resume/random_name.pdf',
+      ]) {
+        const r = await request(app).get(path).set(createAuthHeaders(user));
+        expect(r.status).toBe(410);
+      }
     });
   });
 

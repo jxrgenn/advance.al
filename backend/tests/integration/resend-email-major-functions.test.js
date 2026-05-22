@@ -73,10 +73,12 @@ describe('resendEmailService — major functions', () => {
       resendEmailService.enabled = true;
     });
 
-    it('throws when Resend returns an error', async () => {
+    it('throws when Resend returns a non-transient error', async () => {
+      // 4xx → non-transient → surfaced to the caller (transient errors are
+      // instead queued to the EmailOutbox, covered by the outbox tests).
       resendEmailService.resend = {
         emails: {
-          send: async () => ({ data: null, error: { message: 'API down' } }),
+          send: async () => ({ data: null, error: { message: 'API down', statusCode: 422 } }),
         },
       };
       const user = { email: 'fail@x.com', profile: { firstName: 'X', lastName: 'Y', location: {} } };
