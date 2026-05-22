@@ -45,7 +45,9 @@ describe('config/database.js — connectDB retry + exit logic', () => {
       expect.any(String),
       expect.objectContaining({
         serverSelectionTimeoutMS: 5000,
-        maxPoolSize: 100,
+        // Pool right-sized for a small dyno (env-tunable; defaults 15/3).
+        maxPoolSize: 15,
+        minPoolSize: 3,
       })
     );
   });

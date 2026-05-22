@@ -7,7 +7,7 @@ import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
 import { seedLocations } from '../fixtures/locations.fixture.js';
 import { createVerifiedEmployer } from '../factories/user.factory.js';
 import { createJob } from '../factories/job.factory.js';
-import Job from '../../src/models/Job.js';
+import Job, { JOB_TTL_DAYS } from '../../src/models/Job.js';
 import Location from '../../src/models/Location.js';
 
 describe('Phase 10 — Job Model', () => {
@@ -42,10 +42,10 @@ describe('Phase 10 — Job Model', () => {
   });
 
   describe('Pre-save: expiresAt default', () => {
-    it('isNew job without expiresAt gets +30 days', async () => {
+    it(`isNew job without expiresAt gets +${JOB_TTL_DAYS} days (hard product policy)`, async () => {
       const { user: emp } = await createVerifiedEmployer();
       const job = await createJob(emp);
-      const expectedMs = Date.now() + 30 * 86400_000;
+      const expectedMs = Date.now() + JOB_TTL_DAYS * 86400_000;
       expect(Math.abs(new Date(job.expiresAt).getTime() - expectedMs)).toBeLessThan(60_000); // within 1min tolerance
     });
   });

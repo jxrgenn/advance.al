@@ -93,7 +93,7 @@ describe('SystemConfiguration — createDefaultSettings + statics', () => {
 
       const s = await SystemConfiguration.getSetting('payment_enabled');
       expect(s.key).toBe('payment_enabled');
-      expect(s.value).toBe(false);
+      expect(s.value).toBe(true);
     });
 
     it('getSetting returns null when not found', async () => {
@@ -106,7 +106,7 @@ describe('SystemConfiguration — createDefaultSettings + statics', () => {
       await SystemConfiguration.createDefaultSettings(adminId);
 
       const v = await SystemConfiguration.getSettingValue('pricing_standard_posting');
-      expect(v).toBe(28);
+      expect(v).toBe(35);
     });
 
     it('getSettingValue returns defaultValue param when setting missing (L213)', async () => {

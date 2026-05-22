@@ -28,7 +28,7 @@ describe('notificationService — batch-delay setTimeout branches (>4 users)', (
   });
   afterAll(async () => { await closeTestDB(); });
 
-  it('triggers QuickUser batch-delay (L358) and JobSeeker batch-delay (L380) with 5+ matches each', async () => {
+  it('triggers the QuickUser batch-delay (5+ matches) and queues jobseekers for digest', async () => {
     const { user: emp } = await createVerifiedEmployer();
     const job = await createJob(emp);
 
@@ -56,7 +56,9 @@ describe('notificationService — batch-delay setTimeout branches (>4 users)', (
       });
     jest.spyOn(QuickUser, 'findMatchesForJob').mockResolvedValueOnce([]);
 
-    // Mix successes + one rejection per batch group → covers L347-355 + L369-377
+    // QuickUsers are sent directly (batched 4+1 → exercises the batch-delay);
+    // one rejection covers the batch error-log branch. Full jobseekers are
+    // queued for the 2h digest, NOT sent directly.
     let qCalls = 0;
     jest.spyOn(notificationService, 'sendJobNotificationToUser')
       .mockImplementation(async () => {
@@ -64,19 +66,14 @@ describe('notificationService — batch-delay setTimeout branches (>4 users)', (
         if (qCalls === 5) throw new Error('q5 fails');
         return { success: true };
       });
-    let jCalls = 0;
-    jest.spyOn(notificationService, 'sendJobNotificationToFullUser')
-      .mockImplementation(async () => {
-        jCalls++;
-        if (jCalls === 5) throw new Error('j5 fails');
-        return { success: true };
-      });
 
     const r = await notificationService.notifyMatchingUsers(job);
     expect(r.success).toBe(true);
     expect(r.stats.totalUsers).toBe(10);
-    // 5 QU + 5 JS, 1 rejection each = 8 ok + 2 errors
-    expect(r.stats.notificationsSent).toBe(8);
-    expect(r.stats.errors).toBe(2);
+    // 5 QuickUsers sent directly: 4 ok + 1 rejection. The 5 jobseekers are
+    // queued for digest (counted separately, not in notificationsSent).
+    expect(r.stats.notificationsSent).toBe(4);
+    expect(r.stats.errors).toBe(1);
+    expect(r.stats.jobseekersQueuedForDigest).toBe(5);
   }, 30000);
 });
