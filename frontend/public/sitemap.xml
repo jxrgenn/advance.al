@@ -37,27 +37,12 @@
     <priority>0.7</priority>
   </url>
 
-  <url>
-    <loc>https://advance.al/employer-register</loc>
-    <lastmod>2026-05-15</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
-  </url>
-
-  <url>
-    <loc>https://advance.al/login</loc>
-    <lastmod>2026-05-15</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.3</priority>
-  </url>
-
-  <url>
-    <loc>https://advance.al/register</loc>
-    <lastmod>2026-05-15</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.4</priority>
-  </url>
-
+  <!--
+    /login, /register, /employer-register intentionally REMOVED from the
+    sitemap (2026-06-08): they are thin auth pages served noindex. Listing
+    them made Google cluster them as duplicates of "/". See api/seo.js
+    NOINDEX_PATHS and the <SEO noindex> tags on Login.tsx / EmployerRegister.tsx.
+  -->
   <url>
     <loc>https://advance.al/privacy</loc>
     <lastmod>2026-05-15</lastmod>

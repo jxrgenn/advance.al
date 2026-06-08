@@ -327,6 +327,37 @@ async function handleRoute(req) {
     };
   }
 
+  // Utility / auth routes — intentionally NOINDEX. Previously these fell
+  // through to the catch-all below and were served an indexable Organization
+  // shell with the DEFAULT homepage title, so Google clustered them as
+  // duplicates of "/" ("Duplicate, Google chose different canonical than
+  // user"). They are thin, non-content pages: keep them out of the index and
+  // out of sitemap.xml so crawl budget concentrates on real content.
+  const NOINDEX_PATHS = new Set([
+    '/login',
+    '/register',
+    '/employer-register',
+    '/forgot-password',
+    '/reset-password',
+    '/unsubscribe',
+    '/preferences',
+    '/report-user',
+  ]);
+  if (NOINDEX_PATHS.has(pathname)) {
+    return {
+      status: 200,
+      cacheControl: 's-maxage=3600, stale-while-revalidate=86400',
+      html: buildBotHtml({
+        title: null,
+        description: DEFAULT_DESCRIPTION,
+        canonical: `${SITE_URL}${pathname}`,
+        noindex: true,
+        bodyContent: `    <section><h1>${escapeHtml(SITE_NAME)}</h1><p>Portal i punës në Shqipëri. <a href="${SITE_URL}/jobs">Shiko punët aktive</a>.</p></section>`,
+        jsonLdBlocks: [],
+      }),
+    };
+  }
+
   // Static routes (home, about, employers, jobseekers, privacy, terms)
   const meta = staticPageMeta(pathname);
   if (meta) {

@@ -12,6 +12,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { authApi } from "@/lib/api";
 import { useEmailAvailability } from "@/hooks/useEmailAvailability";
 import { validatePassword, PASSWORD_RULE_MESSAGE } from "@/lib/formValidation";
+import SEO from "@/components/SEO";
 
 const INDUSTRIES = [
   'Teknologji Informacioni',
@@ -210,6 +211,7 @@ const EmployerRegister = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO noindex title="Regjistrohu si Punëdhënës" path="/employer-register" />
       <Navigation />
 
       <div className="container flex items-center justify-center min-h-[calc(100vh-4rem)] py-8">

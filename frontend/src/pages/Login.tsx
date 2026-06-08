@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Mail, Lock, AlertCircle, Briefcase, User, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import SEO from "@/components/SEO";
 
 const Login = () => {
   const [formData, setFormData] = useState({
@@ -85,6 +86,7 @@ const Login = () => {
   if (isRegisterPage) {
     return (
       <div className="min-h-screen bg-background">
+        <SEO noindex title="Regjistrohu" path="/register" />
         <Navigation />
         <div className="container flex items-center justify-center min-h-[calc(100vh-4rem)] py-12 pt-12">
           <div className="w-full max-w-md">
@@ -138,6 +140,7 @@ const Login = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO noindex title="Hyr" path="/login" />
       <Navigation />
 
       <div className="container flex items-center justify-center min-h-[calc(100vh-4rem)] py-12 pt-12">
