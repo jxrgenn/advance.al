@@ -26,15 +26,25 @@ with Playwright; set `CHROME=` to point at any other Chrome/Chromium binary.
 ## Wi-Fi QR codes
 
 `qr/*.svg` are pre-generated and committed, so a rebuild never needs network
-access. They encode the standard `WIFI:T:WPA;S:<ssid>;P:<pass>;;` payload, and
-each one has been decoded back to verify it matches the credentials printed
-beside it. If the credentials change, edit `gen-qr.mjs` and re-run it — it
-regenerates and re-verifies in one pass:
+access. They encode the standard `WIFI:T:WPA;S:<ssid>;P:<pass>;;` payload with
+a full 4-module quiet zone.
+
+Credentials, security type and the hidden-SSID flag live in `NETWORKS` at the
+top of `gen-qr.mjs`. If a network is not broadcast, set `hidden: true` or the
+phone will scan the code and then report that it cannot join.
 
 ```sh
 npm install --no-save qrcode jsqr canvas   # from the repo root
-node guest-guide/gen-qr.mjs                # prints PASS/FAIL per network
+node guest-guide/gen-qr.mjs                # regenerate qr/*.svg
+node guest-guide/build.mjs
+node guest-guide/verify-qr.mjs             # PASS/FAIL per page
 ```
+
+`verify-qr.mjs` is the check that matters: it renders each built page in
+Chromium at print scale, crops each QR the way a phone would frame it, and
+decodes it back. Decoding a freshly generated bitmap proves only that the
+encoder works, not that the code on the page is scannable, so do not treat
+that as verification.
 
 ## Checking the layout before printing
 

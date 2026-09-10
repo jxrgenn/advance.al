@@ -1,55 +1,53 @@
 #!/usr/bin/env node
 /**
- * Regenerates qr/*.svg from the Wi-Fi credentials and verifies each one
- * decodes back to exactly the payload it was built from.
+ * Regenerates qr/*.svg from the Wi-Fi credentials below.
  *
- *   npm install --no-save qrcode jsqr canvas   # from the repo root
+ *   npm install --no-save qrcode          # from the repo root
  *   node guest-guide/gen-qr.mjs
+ *
+ * This only proves the SVG encodes what we asked for. To prove the code is
+ * scannable AS PRINTED, run verify-qr.mjs after build.mjs — it renders the
+ * real page and decodes the QR back out of it.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import QRCode from 'qrcode';
-import jsQRmod from 'jsqr';
-import { createCanvas, loadImage } from 'canvas';
 
-const jsQR = jsQRmod.default || jsQRmod;
 const dir = path.dirname(fileURLToPath(import.meta.url));
 
-const NETWORKS = [
-  ['merlin-5ghz',  'merlin 5GHZ',    '101090ora20'],
-  ['merlin-24ghz', 'merlin 2.4GHZ',  '101090ora20'],
-  ['digicom',      'Digicom.AL - 1', 'merlin1990'],
+// security: 'WPA' covers WPA/WPA2/WPA3 on most phones. Use 'nopass' for an
+// open network, 'WEP' for WEP. hidden: true is REQUIRED if the router does
+// not broadcast the SSID, otherwise the phone cannot find it and reports
+// "unable to join".
+export const NETWORKS = [
+  { slug: 'merlin-5ghz',  ssid: 'merlin 5GHZ',    pass: '101090ora20', security: 'WPA', hidden: false },
+  { slug: 'merlin-24ghz', ssid: 'merlin 2.4GHZ',  pass: '101090ora20', security: 'WPA', hidden: false },
+  { slug: 'digicom',      ssid: 'Digicom.AL - 1', pass: 'merlin1990',  security: 'WPA', hidden: false },
 ];
 
 // WIFI: URI scheme — ; , : \ and " must be backslash-escaped inside S: and P:
 const esc = (s) => s.replace(/([\;,:"])/g, '\\$1');
 
-let failed = false;
-fs.mkdirSync(path.join(dir, 'qr'), { recursive: true });
+export const payloadFor = ({ ssid, pass, security = 'WPA', hidden = false }) =>
+  security === 'nopass'
+    ? `WIFI:T:nopass;S:${esc(ssid)};${hidden ? 'H:true;' : ''};`
+    : `WIFI:T:${security};S:${esc(ssid)};P:${esc(pass)};${hidden ? 'H:true;' : ''};`;
 
-for (const [slug, ssid, pass] of NETWORKS) {
-  const payload = `WIFI:T:WPA;S:${esc(ssid)};P:${esc(pass)};;`;
-
-  const svg = await QRCode.toString(payload, {
-    type: 'svg', errorCorrectionLevel: 'M', margin: 0,
-    color: { dark: '#221d19', light: '#0000' },
-  });
-  fs.writeFileSync(path.join(dir, 'qr', `${slug}.svg`),
-    svg.replace(/<\?xml[^>]*\?>\s*/, '').trim() + '\n');
-
-  // decode a raster of the same payload to prove the content is right
-  const url = await QRCode.toDataURL(payload, { errorCorrectionLevel: 'M', margin: 2, scale: 8 });
-  const img = await loadImage(url);
-  const canvas = createCanvas(img.width, img.height);
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(img, 0, 0);
-  const { data, width, height } = ctx.getImageData(0, 0, img.width, img.height);
-  const decoded = jsQR(data, width, height);
-
-  const ok = decoded && decoded.data === payload;
-  failed ||= !ok;
-  console.log(`${ok ? 'PASS' : 'FAIL'} | ${slug} -> ${decoded ? JSON.stringify(decoded.data) : '(no decode)'}`);
+if (import.meta.url === `file://${process.argv[1]}`) {
+  fs.mkdirSync(path.join(dir, 'qr'), { recursive: true });
+  for (const net of NETWORKS) {
+    const payload = payloadFor(net);
+    const svg = await QRCode.toString(payload, {
+      type: 'svg',
+      errorCorrectionLevel: 'M',
+      margin: 4,              // full 4-module quiet zone; phones need it on paper
+      color: { dark: '#221d19', light: '#ffffff' },
+    });
+    fs.writeFileSync(
+      path.join(dir, 'qr', `${net.slug}.svg`),
+      svg.replace(/<\?xml[^>]*\?>\s*/, '').trim().replace('<svg ', '<svg width="100%" height="100%" ') + '\n',
+    );
+    console.log(`${net.slug}: ${payload}`);
+  }
 }
-
-if (failed) process.exit(1);

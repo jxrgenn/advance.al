@@ -66,8 +66,9 @@
   .netgrid{ display:flex; gap:5mm; flex:1; }
   .net{ flex:1; text-align:center; }
   .net .qr{
-    width:29mm; height:29mm; margin:0 auto 2mm; display:block;
-    background:#fff; padding:1.6mm; border:.6pt solid var(--line); border-radius:1.5mm;
+    /* the SVG carries its own 4-module quiet zone, so no inner padding here */
+    width:32mm; height:32mm; margin:0 auto 2mm; display:block;
+    background:#fff; border:.6pt solid var(--line); border-radius:1.5mm;
   }
   .net .qr svg{ display:block; width:100%; height:100%; }
   .net .lbl{
