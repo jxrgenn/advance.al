@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Welcome Home — Tirana Guest Guide</title>
+<title>Welcome Home · Tirana Guest Guide</title>
 <style>
   @page { size: A4; margin: 0; }
 
@@ -98,6 +98,10 @@
   .tile.flag .t{ color:var(--brick); }
 
   /* ---- two-column body ---- */
+  .checkout{
+    font-size:9pt; color:var(--body); margin-top:2.4mm;
+    padding-top:2.2mm; border-top:.5pt dotted var(--line);
+  }
   .cols{ display:flex; gap:6mm; }
   .cols > *{ flex:1; min-width:0; }
 
@@ -107,12 +111,12 @@
   .e .n{ font-size:9.8pt; font-weight:700; color:var(--ink); }
   .e .d{ color:var(--body); }
   .e .w{
-    font-family:var(--sans); font-size:6.1pt; font-weight:700;
-    letter-spacing:.1em; text-transform:uppercase; color:var(--brick);
-    background:#f7e9e5; border-radius:1.6mm; padding:.5mm 1.4mm;
-    margin-left:1.4mm; white-space:nowrap; vertical-align:1.2px;
+    font-family:var(--sans); font-size:6.3pt; font-weight:600;
+    letter-spacing:.1em; text-transform:uppercase; color:#867a6d;
+    margin-left:1.6mm; white-space:nowrap; vertical-align:1.2px;
   }
-  .e .w.g{ color:#6f6459; background:#f0ece5; }
+  .e .w::before{ content:"· "; color:#c9bfae; }
+  .e .w.g{ color:#867a6d; }
   .e .r{
     font-family:var(--sans); font-size:6.4pt; font-weight:700;
     color:var(--olive); margin-left:1.4mm; vertical-align:1.2px;
@@ -162,7 +166,7 @@
       <div class="pwbox">
         <div class="lbl">{{PW_LABEL}}</div>
         <div class="pw">{{WIFI_PASS}}</div>
-        <div class="hint">Scan a QR code with your phone camera to connect instantly — no typing.</div>
+        <div class="hint">Scan a QR code with your phone camera to connect instantly.</div>
       </div>
     </div>
   </div>
@@ -175,22 +179,23 @@
       <div class="tile"><div class="t">Quiet Hours</div><div class="d">After 11 PM</div></div>
       <div class="tile"><div class="t">No Pets</div><div class="d">Sorry, no animals</div></div>{{LAUNDRY_TILE}}
     </div>{{LAUNDRY_NOTE}}
+    <p class="checkout"><strong>Check-out is 11 AM.</strong> Please leave the keys on the inner side of the door.</p>
   </div>
 
   <div class="sec">
-    <h2>Pharmacy &amp; Medical <span class="note">the hospital is around the corner from you</span></h2>
+    <h2>Pharmacy &amp; Medical <span class="note">the hospital is a minute from the door</span></h2>
     <div class="cols">
       <div>
-        <div class="e"><span class="n">Spitali Amavita</span><span class="w">closest hospital</span>
-          <div class="d">Rruga Pjetër Budi, opposite the Italian Cultural Institute — a few minutes on foot. Private, English spoken, 24-hour emergency. <strong>Go here first</strong> for anything that isn't life-threatening. Card payment, and they'll give you an invoice for your insurer.</div></div>
-        <div class="e"><span class="n">Spitali Amerikan</span><span class="w g">15 min taxi</span>
-          <div class="d">The large private hospital, for anything serious or for scans.</div></div>
+        <div class="e"><span class="n">Spitali Amavita</span><span class="w">1 minute walk</span>
+          <div class="d">Rruga Pjetër Budi, opposite the Italian Cultural Institute. A private hospital, and by far the closest place to see a doctor. Start here for anything that isn't a 127 emergency.</div></div>
+        <div class="e"><span class="n">Spitali Amerikan</span><span class="w g">by taxi</span>
+          <div class="d">The large private hospital network, further out. Worth the ride for anything serious.</div></div>
       </div>
       <div>
-        <div class="e"><span class="n">Farmaci Arena</span><span class="w">7 min</span>
-          <div class="d"><span class="a">Arena Center · 8 AM – 10 PM.</span> There are also several pharmacies within 3–4 minutes on Rruga e Elbasanit and Rruga Pjetër Budi — look for the green cross.</div></div>
+        <div class="e"><span class="n">Farmaci Arena</span><span class="w">Arena Center</span>
+          <div class="d"><span class="a">8 AM to 10 PM.</span> There are more pharmacies within a few minutes in every direction. Look for the green cross.</div></div>
         <div class="e"><span class="n">Farmaci Ditë e Natë</span><span class="w g">24 hours</span>
-          <div class="d">Genuinely round-the-clock chain for the 3 AM emergency. Wolt and Baboon also deliver pharmacy items until late.</div></div>
+          <div class="d">A round-the-clock chain, for the middle of the night. Wolt and Baboon also deliver late.</div></div>
       </div>
     </div>
   </div>
@@ -199,14 +204,14 @@
     <h2>Money &amp; Exchange <span class="note">cards work almost everywhere · carry cash for small cafés and taxis</span></h2>
     <div class="cols">
       <div>
-        <div class="e"><span class="n">Këmbim Valutor — Rruga e Elbasanit</span><span class="w">5–8 min</span>
-          <div class="d">Your nearest exchange windows, plus more around Sheshi Nënë Tereza. Mon–Sat, roughly 8 AM – 7 PM. No commission; the rate is on the board.</div></div>
-        <div class="e"><span class="n">The cluster near Skanderbeg Square</span><span class="w">15 min</span>
-          <div class="d">A dozen offices within two blocks around Rruga e Barrikadave. Best rates in the city, many open Sundays and until 8 PM.</div></div>
+        <div class="e"><span class="n">Nerguti</span><span class="w">closest</span>
+          <div class="d">Right across from Fishop, so about as close as it gets. The rate is on the board and there is normally no commission.</div></div>
+        <div class="e"><span class="n">Around Skanderbeg Square</span><span class="w g">if you want to compare</span>
+          <div class="d">Several more exchange offices sit within a couple of blocks of each other near the square, so it is easy to check two rates before changing anything.</div></div>
       </div>
       <div>
-        <div class="e"><span class="n">Open at any hour</span><span class="w g">ATMs</span>
-          <div class="d">There is no true 24-hour exchange desk in central Tirana. After 8 PM use an ATM — and always choose <strong>“continue without conversion”</strong>, which saves you 5–10%. Bank machines (BKT, Credins, Raiffeisen) beat the standalone Euronet boxes. The airport desk runs for every flight but has the worst rate in the country.</div></div>
+        <div class="e"><span class="n">After hours</span><span class="w g">ATMs</span>
+          <div class="d">Exchange offices keep shop hours, so once they close an ATM is the answer. When the machine offers to convert the amount into your own currency, always choose <strong>“continue without conversion”</strong>: its rate is worse than your bank's. Prefer a bank's own machine over a standalone Euronet box.</div></div>
       </div>
     </div>
   </div>
@@ -222,7 +227,7 @@
   </div>
 
   <div class="close">
-    <p class="big">Make yourself at home — we're happy to have you here.</p>
+    <p class="big">Make yourself at home. We're happy to have you here.</p>
     <p class="sm">Tirana, Albania</p>
   </div>
 </section>
@@ -231,64 +236,64 @@
 <section class="page">
   <p class="eyebrow">· · · &nbsp;Our local picks&nbsp; · · ·</p>
   <h1>Around the Neighbourhood</h1>
-  <p class="sub">Walking times are from your front door. Anything that needs a taxi, we've said so.</p>
+  <p class="sub">Places we go ourselves. Distances are from your front door.</p>
 
   <div class="sec">
     <h2>Food &amp; Restaurants</h2>
     <div class="cols">
       <div>
         <div class="e"><span class="n">Fishop</span><span class="w">closest</span>
-          <div class="d">Fish and seafood done plainly and done well — pick what looks good and they cook it. Honest prices, no fuss. Our default when we can't be bothered to cook.</div></div>
+          <div class="d">Fish and seafood, simply done. The closest proper dinner to the door, and our default when we cannot be bothered to cook.</div></div>
         <div class="e"><span class="n">Era Blloku</span><span class="w g">Rruga Ismail Qemali</span><span class="r">4.6</span>
-          <div class="d">Beloved Albanian kitchen — try the lamb shanks and the rice pudding. Always busy, never bad.</div></div>
+          <div class="d">Beloved Albanian kitchen. Try the lamb shanks and the rice pudding.</div></div>
         <div class="e"><span class="n">Morsi Tirana</span><span class="w g">Rruga Abdyl Frashëri</span><span class="r">4.7</span>
-          <div class="d">Italian bar and restaurant in Blloku. Try the lasagna.</div></div>
+          <div class="d">Italian bar and restaurant in Blloku. Handmade panini, burgers and Pinsa Romana, from breakfast until late.</div></div>
       </div>
       <div>
         <div class="e"><span class="n">Odas Garden</span><span class="w g">near the New Bazaar</span><span class="r">4.6</span>
-          <div class="d">Traditional Albanian in an atmospheric old-house setting, with live music. About 11 minutes on foot.</div></div>
+          <div class="d">Traditional Albanian in an atmospheric old-house setting, with live music.</div></div>
         <div class="e"><span class="n">Artigiano at Vila</span><span class="w g">Rruga Papa Gjon Pali II</span><span class="r">4.7</span>
           <div class="d">Italian fine dining near the Pyramid. Incredible pasta and desserts.</div></div>
         <div class="e"><span class="n">Salt Tirana</span><span class="w g">Rruga Pjetër Bogdani</span><span class="r">4.5</span>
-          <div class="d">Upscale fusion and sushi for a special night, with great cocktails. Book ahead.</div></div>
+          <div class="d">Upscale fusion and sushi for a special night, with great cocktails.</div></div>
       </div>
     </div>
   </div>
 
   <div class="sec">
-    <h2>Brunch &amp; Coffee <span class="note">coffee here is a two-hour sit-down, not a takeaway</span></h2>
+    <h2>Brunch &amp; Coffee <span class="note">coffee here is a sit-down, not a takeaway</span></h2>
     <div class="cols">
       <div>
-        <div class="e"><span class="n">Inn's</span><span class="w">brunch · by the Arena</span>
-          <div class="d">Rruga Faik Konica, minutes away. Eggs every way, pancakes, French toast, avocado toast, proper coffee. <strong>Go before 11 AM at the weekend</strong> or expect a wait.</div></div>
-        <div class="e"><span class="n">Mulliri i Vjetër</span><span class="w">close · everyday</span>
-          <div class="d">The local chain Albanians actually use. Opens early, reliable espresso, a counter full of byrek and pastries. Coffee and something warm for under 300 lekë.</div></div>
+        <div class="e"><span class="n">Inn's</span><span class="w">brunch</span>
+          <div class="d">Rruga Faik Konica, just by the Arena. This is the brunch: eggs, pancakes, French toast, big plates and proper coffee. Busy at the weekend, so go early.</div></div>
+        <div class="e"><span class="n">Mulliri i Vjetër</span><span class="w">close</span>
+          <div class="d">The local chain Albanians actually use, and one of the closest to you. Opens early, reliable coffee, a counter full of byrek and pastries.</div></div>
       </div>
       <div>
         <div class="e"><span class="n">Mon Cheri</span><span class="w">close</span>
-          <div class="d">Also right nearby, and the nicer place to sit for an hour — proper croissants, cakes, a good cappuccino. For when the morning should take its time.</div></div>
+          <div class="d">Also right nearby, and the nicer place to sit for an hour over pastries and a coffee.</div></div>
         <div class="e"><span class="n">D'Anvers</span><span class="w">close</span>
-          <div class="d">Belgian chocolate house with a café attached. Come for the hot chocolate — thick, dark, unreasonable.</div></div>
+          <div class="d">Coffee and chocolate, a short walk away. The one to go to when you want something sweet with it.</div></div>
       </div>
     </div>
   </div>
 
   <div class="sec">
-    <h2>Drinks &amp; Going Out <span class="note">Tirana starts late — bars from eleven, clubs after one</span></h2>
+    <h2>Drinks &amp; Going Out <span class="note">Tirana starts late, so nothing gets going before eleven</span></h2>
     <div class="cols">
       <div>
-        <div class="e"><span class="n">Around the Air Albania Stadium</span><span class="w">7 min · closest</span>
-          <div class="d">Your nearest night out, and underrated. The stadium's ground floor and the streets around it are wall-to-wall cafés, lounges and shisha terraces — open very late, mostly locals. On match nights the whole quarter is a party.</div></div>
-        <div class="e"><span class="n">Puls</span><span class="w">11 min · Blloku</span>
-          <div class="d">The club people name first — big room, loud, packed from one in the morning.</div></div>
+        <div class="e"><span class="n">Around the Air Albania Stadium</span><span class="w">closest</span>
+          <div class="d">Your nearest night out. The stadium and the streets around it are full of cafés and lounges with big terraces, open late, and it is mostly locals rather than tourists.</div></div>
+        <div class="e"><span class="n">Puls</span><span class="w g">Blloku</span>
+          <div class="d">A club in Blloku, and the one people name first. There are plenty more within a few streets of it.</div></div>
         <div class="e"><span class="n">Koni Bar</span><span class="w g">Rruga Pasho Hysa</span><span class="r">4.9</span>
-          <div class="d">Proper cocktail bar and a local favourite — warm room, no attitude, and the best rakija in town. The one to end the night in.</div></div>
+          <div class="d">A cocktail bar, and a local favourite. Good place to end the night.</div></div>
       </div>
       <div>
-        <div class="e"><span class="n">Blloku, generally</span><span class="w">11 min</span>
-          <div class="d">Don't plan it. Thirty-odd bars in four blocks, half of them renamed by next season. Walk down <strong>Rruga Pjetër Bogdani</strong> or <strong>Rruga Ismail Qemali</strong> after eleven and pick whatever sounds right. Radio Bar and Nouvelle Vague are the reliable ones.</div></div>
+        <div class="e"><span class="n">Blloku, generally</span><span class="w g">Blloku</span>
+          <div class="d">Do not plan this one. Walk down <strong>Rruga Pjetër Bogdani</strong> or <strong>Rruga Ismail Qemali</strong> after eleven and pick whatever sounds right. Radio Bar and Nouvelle Vague are the reliable ones if you want a name.</div></div>
         <div class="e"><span class="n">Patala by Naga</span><span class="w">Rruga e Sales</span>
-          <div class="d">On the city's best bar street (officially Rruga Mustafa Matohiti) — wine bars and small restaurants, one long terrace in summer. 15 minutes, or a 300 lekë taxi.</div></div>
+          <div class="d">On Rruga e Sales, a street lined with bars, cafés and restaurants. Worth going for the street as much as for any one place on it.</div></div>
       </div>
     </div>
   </div>
@@ -297,16 +302,16 @@
     <h2>Culture &amp; Sightseeing</h2>
     <div class="cols">
       <div>
-        <div class="e"><span class="n">National Archaeological Museum</span><span class="w">7 min · closest</span>
-          <div class="d">On Sheshi Nënë Tereza. Small, cheap and a genuinely good hour — Illyrian bronze, Roman mosaics, Butrint finds.</div></div>
-        <div class="e"><span class="n">Pyramid of Tirana</span><span class="w">10 min · free</span>
-          <div class="d">Climb it for 360° views. Art installations inside, open 24h. Best at sunset.</div></div>
+        <div class="e"><span class="n">National Archaeological Museum</span><span class="w">closest</span>
+          <div class="d">On Sheshi Nënë Tereza, and the closest museum to you. Small, cheap and worth an hour.</div></div>
+        <div class="e"><span class="n">Pyramid of Tirana</span><span class="w g">free</span>
+          <div class="d">Climb the steps for views over the whole city. Free, and best at sunset.</div></div>
       </div>
       <div>
-        <div class="e"><span class="n">House of Leaves</span><span class="w">12 min</span>
-          <div class="d">Museum of secret surveillance, left much as it was found. The best museum in Tirana. Closed Mondays. 700 lekë.</div></div>
-        <div class="e"><span class="n">Bunk'Art 2</span><span class="w">13 min</span>
-          <div class="d">Cold War bunker museum near Skanderbeg Square. 900 lekë. <span class="a">(Bunk'Art 1, under Dajti, is a 20-minute taxi and half a day.)</span></div></div>
+        <div class="e"><span class="n">House of Leaves</span>
+          <div class="d">Museum of secret surveillance, in the old Sigurimi building. Closed Mondays. 700 lekë.</div></div>
+        <div class="e"><span class="n">Bunk'Art 2</span>
+          <div class="d">Cold War bunker museum near Skanderbeg Square. 900 lekë. <span class="a">(Bunk'Art 1, out under Dajti, is a taxi ride and most of a day.)</span></div></div>
       </div>
     </div>
   </div>
@@ -314,15 +319,15 @@
   <div class="sec">
     <h2>Essentials Nearby</h2>
     <div class="tiles">
-      <div class="tile"><div class="t">Corner mini-markets</div><div class="d">1–3 min · bread, water, beer,<br>basics · until ~10 PM</div></div>
+      <div class="tile"><div class="t">Corner mini-markets</div><div class="d">A couple of minutes away<br>bread, water, beer, basics</div></div>
       <div class="tile"><div class="t">Big Market</div><div class="d">Rruga Dervish Hima<br>until 10 PM</div></div>
       <div class="tile"><div class="t">Tregu i Fshatarëve</div><div class="d">Along Rruga Vath Koreshi<br>produce straight from the countryside</div></div>
-      <div class="tile"><div class="t">Wolt &amp; Baboon</div><div class="d">Groceries and pharmacy<br>delivered until late</div></div>
+      <div class="tile"><div class="t">Wolt &amp; Baboon</div><div class="d">Food, groceries and more<br>delivered until late</div></div>
     </div>
   </div>
 
   <div class="close">
-    <p class="big">Enjoy your time in Tirana — faleminderit!</p>
+    <p class="big">Enjoy your time in Tirana. Faleminderit!</p>
     <p class="sm">For anything else, call your host &nbsp;<span class="dot">·</span>&nbsp; {{HOST_PHONE}}</p>
   </div>
 </section>

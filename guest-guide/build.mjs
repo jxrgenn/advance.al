@@ -31,13 +31,13 @@ const card = (label, ssid, slug) => `
         </div>`;
 
 const LAUNDRY_TILE = `
-      <div class="tile"><div class="t">Check Your Pockets</div><div class="d">Before the washing machine</div></div>`;
+      <div class="tile"><div class="t">Washing Machine</div><div class="d">Please check pockets first</div></div>`;
 
 const LAUNDRY_NOTE = `
     <p style="font-size:8pt;color:#7d7268;font-style:italic;margin-top:2.2mm;line-height:1.3">
-      One small favour — give your pockets a check before loading the washing machine. Coins, keys and
-      lighters go straight into the pump, and a repair is a cost we'd have to pass on. Two seconds saves
-      us both the hassle. Thank you!
+      One small favour: please check your pockets before loading the washing machine. Coins, keys and
+      lighters go straight into the pump, and a repair is a cost we would have to pass on. Two seconds
+      saves us both the hassle. Thank you!
     </p>`;
 
 const versions = [
