@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
  * Builds the two printable versions of the Tirana guest guide from template.html.
+ * Wi-Fi QR codes are inlined from qr/*.svg (pre-generated and verified — see
+ * gen-qr.mjs to regenerate them if the credentials change).
  *
- * Edit the `shared` block below once and both versions update.
- * Then: node build.mjs && ./render.sh
+ *   node build.mjs && ./render.sh
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,37 +14,56 @@ const dir = path.dirname(fileURLToPath(import.meta.url));
 const template = fs.readFileSync(path.join(dir, 'template.html'), 'utf8');
 
 // ---- edit these -----------------------------------------------------------
-const shared = {
-  CHECKOUT:   '11:00',
-  KEYS:       'on the kitchen counter',
-  HOST_NAME:  '<span class="fill">[ your name ]</span>',
-  HOST_PHONE: '<span class="fill">[ +355 __ ___ ____ ]</span>',
-};
+const HOST_PHONE = '069 202 5137';
 
-const LAUNDRY_RULE = `
-    <li><strong>Empty your pockets before you use the washing machine.</strong> Coins, keys, lighters, sand and hair clips wreck the drum and the pump, and a replacement machine is not a small bill. <span class="muted">Any damage caused this way will be charged to the guest.</span></li>`;
+const MERLIN_PASS  = '101090ora20';
+const DIGICOM_SSID = 'Digicom.AL - 1';
+const DIGICOM_PASS = 'merlin1990';
+// ---------------------------------------------------------------------------
+
+const qrSvg = (slug) => fs.readFileSync(path.join(dir, 'qr', `${slug}.svg`), 'utf8').trim();
+
+const card = (label, ssid, slug) => `
+        <div class="net">
+          <div class="qr">${qrSvg(slug)}</div>
+          <div class="lbl">${label}</div>
+          <div class="ssid">${ssid}</div>
+        </div>`;
+
+const LAUNDRY_TILE = `
+      <div class="tile flag"><div class="t">Empty Your Pockets</div><div class="d">Before the washing machine</div></div>`;
+
+const LAUNDRY_NOTE = `
+    <p style="font-size:8pt;color:#7d7268;font-style:italic;margin-top:2.2mm;line-height:1.3">
+      Coins, keys, lighters, sand and hair clips wreck the drum and the pump of the washing machine.
+      Please check every pocket before you load it — damage caused this way will be charged to the guest.
+    </p>`;
 
 const versions = [
   {
     file: 'welcome-home-tirana-guide.html',
     vars: {
-      ...shared,
-      WIFI_SSID: '<span class="fill">[ network name ]</span>',
-      WIFI_PASS: '<span class="fill">[ password ]</span>',
-      LAUNDRY_RULE: '',
+      HOST_PHONE,
+      PW_LABEL: 'Password — same for both',
+      WIFI_PASS: MERLIN_PASS,
+      WIFI_CARDS: card('Network — fast', 'merlin 5GHZ', 'merlin-5ghz')
+                + card('Network — wide range', 'merlin 2.4GHZ', 'merlin-24ghz'),
+      LAUNDRY_TILE: '',
+      LAUNDRY_NOTE: '',
     },
   },
   {
     file: 'welcome-home-tirana-guide-digicom.html',
     vars: {
-      ...shared,
-      WIFI_SSID: 'Digicom.AL - 1',
-      WIFI_PASS: 'merlin1990',
-      LAUNDRY_RULE,
+      HOST_PHONE,
+      PW_LABEL: 'Password',
+      WIFI_PASS: DIGICOM_PASS,
+      WIFI_CARDS: card('Network', DIGICOM_SSID, 'digicom'),
+      LAUNDRY_TILE,
+      LAUNDRY_NOTE,
     },
   },
 ];
-// ---------------------------------------------------------------------------
 
 for (const { file, vars } of versions) {
   let out = template;

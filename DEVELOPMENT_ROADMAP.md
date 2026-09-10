@@ -4456,17 +4456,19 @@ remaining forms (signup, PostJob, dashboard) once the pilot is approved.
 
 ## Side artefact — `guest-guide/` (Tirana Airbnb guest guide)
 
-Not part of the advance.al product. A print-ready A4 guest guide for the
-Tirana apartment at 41.322722, 19.828778, kept here for version control.
+Not part of the advance.al product. A two-page A4 guest guide for the Tirana
+apartment, kept here for version control.
 
-- `template.html` — the single source; host-specific values are `{{TOKENS}}`.
-- `build.mjs` — fills tokens, emits the two HTML versions.
+- `template.html` — the single source, two `.page` sections.
+- `build.mjs` — fills tokens, inlines the QR SVGs, emits the two HTML versions.
+- `gen-qr.mjs` — regenerates `qr/*.svg` and verifies each decodes back to the
+  exact `WIFI:` payload it was built from.
 - `render.sh` — renders both to A4 PDF via the bundled Chromium.
 
-Two versions, identical except for the Wi-Fi block and one house rule:
-the default (Wi-Fi placeholders still to fill in) and the **Digicom** one
-(`Digicom.AL - 1` / `merlin1990`, plus the washing-machine-pockets rule).
+Two versions, identical except for the Wi-Fi block and one house rule: the
+`merlin 5GHZ` / `merlin 2.4GHZ` original, and the **Digicom** one
+(`Digicom.AL - 1`), which adds the empty-your-pockets washing-machine rule.
 
-Layout is verified by measuring each `.page`'s content bottom against its
-printable limit — all ten pages fit with no clipping in both versions.
-Re-run that check after any copy edit; overflow is silent (`overflow:hidden`).
+Pages are fixed-height with `overflow:hidden`, so overflow is silent. After
+any copy edit, verify each page's flow content still clears the absolutely
+positioned `.close` block at the bottom.
