@@ -4451,3 +4451,22 @@ intentional design:
 Deferred (Tier 3, follow-up): notification-preferences UI; save-button
 loading/disabled states; roll the inline-field-error pattern out to the
 remaining forms (signup, PostJob, dashboard) once the pilot is approved.
+
+---
+
+## Side artefact — `guest-guide/` (Tirana Airbnb guest guide)
+
+Not part of the advance.al product. A print-ready A4 guest guide for the
+Tirana apartment at 41.322722, 19.828778, kept here for version control.
+
+- `template.html` — the single source; host-specific values are `{{TOKENS}}`.
+- `build.mjs` — fills tokens, emits the two HTML versions.
+- `render.sh` — renders both to A4 PDF via the bundled Chromium.
+
+Two versions, identical except for the Wi-Fi block and one house rule:
+the default (Wi-Fi placeholders still to fill in) and the **Digicom** one
+(`Digicom.AL - 1` / `merlin1990`, plus the washing-machine-pockets rule).
+
+Layout is verified by measuring each `.page`'s content bottom against its
+printable limit — all ten pages fit with no clipping in both versions.
+Re-run that check after any copy edit; overflow is silent (`overflow:hidden`).

@@ -1,0 +1,788 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Welcome Home — Tirana Guest Guide</title>
+<style>
+  @page { size: A4; margin: 0; }
+
+  :root{
+    --ink:#241f1b;
+    --body:#3b3430;
+    --muted:#7a6f65;
+    --brick:#9a3324;
+    --olive:#5c6247;
+    --sand:#f7f2e9;
+    --sand2:#efe7d9;
+    --line:#ded4c4;
+    --serif: "Charter","Bitstream Charter","Iowan Old Style","Source Serif Pro",Georgia,"Liberation Serif",serif;
+    --sans: "Inter","Helvetica Neue",Helvetica,Arial,"Liberation Sans",sans-serif;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    font-family:var(--serif);
+    color:var(--body);
+    background:#fff;
+    font-size:10.2pt;
+    line-height:1.46;
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+  }
+
+  .page{
+    width:210mm;
+    height:297mm;
+    padding:16mm 17mm 14mm;
+    position:relative;
+    overflow:hidden;
+    page-break-after:always;
+    background:#fff;
+  }
+  .page:last-child{ page-break-after:auto; }
+
+  /* ---------- running foot ---------- */
+  .foot{
+    position:absolute;
+    left:17mm; right:17mm; bottom:8mm;
+    display:flex; justify-content:space-between;
+    font-family:var(--sans);
+    font-size:7pt;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:#a2947f;
+    border-top:.4pt solid var(--line);
+    padding-top:2.5mm;
+  }
+
+  /* ---------- typography ---------- */
+  .eyebrow{
+    font-family:var(--sans);
+    font-size:7pt;
+    letter-spacing:.24em;
+    text-transform:uppercase;
+    color:var(--brick);
+    font-weight:600;
+    margin:0 0 2mm;
+  }
+  h1{
+    font-family:var(--serif);
+    font-weight:400;
+    font-size:34pt;
+    line-height:1.03;
+    letter-spacing:-.01em;
+    color:var(--ink);
+    margin:0 0 4mm;
+  }
+  h2{
+    font-family:var(--serif);
+    font-weight:400;
+    font-size:21pt;
+    line-height:1.1;
+    color:var(--ink);
+    margin:0 0 3mm;
+    letter-spacing:-.005em;
+  }
+  h3{
+    font-family:var(--sans);
+    font-size:8pt;
+    font-weight:700;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:var(--olive);
+    margin:5.2mm 0 2.2mm;
+    padding-bottom:1.4mm;
+    border-bottom:.5pt solid var(--line);
+  }
+  h3:first-child{ margin-top:0; }
+  p{ margin:0 0 2.3mm; }
+  .lede{ font-size:11.6pt; line-height:1.45; color:var(--ink); }
+  .rule{ height:.8pt; background:var(--ink); margin:0 0 5mm; width:14mm; }
+  em{ font-style:italic; }
+  strong{ font-weight:700; color:var(--ink); }
+  .al{ font-style:italic; color:var(--olive); }
+  .small{ font-size:9pt; }
+  .muted{ color:var(--muted); }
+
+  /* ---------- entries ---------- */
+  .entry{ margin:0 0 2.9mm; page-break-inside:avoid; }
+  .entry .nm{
+    font-family:var(--serif);
+    font-size:11.6pt;
+    font-weight:700;
+    color:var(--ink);
+  }
+  .pill{
+    font-family:var(--sans);
+    font-size:6.8pt;
+    font-weight:600;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--brick);
+    background:#f6e9e5;
+    border-radius:2mm;
+    padding:.6mm 1.8mm;
+    margin-left:2mm;
+    white-space:nowrap;
+    vertical-align:1.5px;
+  }
+  .pill.far{ color:#7a6f65; background:#f0ece4; }
+  .entry p{ margin:.6mm 0 0; }
+
+  /* ---------- panels ---------- */
+  .panel{
+    background:var(--sand);
+    border:.5pt solid var(--line);
+    border-radius:2mm;
+    padding:4.4mm 5mm;
+    margin:0 0 3.5mm;
+    page-break-inside:avoid;
+  }
+  .panel.warn{ background:#fbeeeb; border-color:#e8cdc6; }
+  .panel h4{
+    font-family:var(--sans);
+    font-size:7.4pt;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    color:var(--brick);
+    margin:0 0 2.5mm;
+    font-weight:700;
+  }
+  .panel p:last-child{ margin-bottom:0; }
+
+  .cols{ display:flex; gap:8mm; }
+  .cols > *{ flex:1; min-width:0; }
+
+  /* ---------- key/value grid ---------- */
+  .kv{ width:100%; border-collapse:collapse; }
+  .kv td{
+    padding:1.7mm 0;
+    border-bottom:.4pt solid var(--line);
+    vertical-align:top;
+  }
+  .kv tr:last-child td{ border-bottom:none; }
+  .kv td.k{
+    font-family:var(--sans);
+    font-size:7.4pt;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--muted);
+    width:34mm;
+    padding-top:2.7mm;
+  }
+  .kv td.v{ font-size:11pt; color:var(--ink); }
+  .kv td.v .big{ font-size:14pt; font-weight:700; letter-spacing:.01em; }
+
+  /* ---------- numbered rules ---------- */
+  ol.rules{ margin:0; padding:0; list-style:none; counter-reset:r; }
+  ol.rules li{
+    counter-increment:r;
+    position:relative;
+    padding-left:8mm;
+    margin-bottom:2.5mm;
+    page-break-inside:avoid;
+  }
+  ol.rules li::before{
+    content:counter(r);
+    position:absolute; left:0; top:.2mm;
+    font-family:var(--sans);
+    font-size:7.4pt;
+    font-weight:700;
+    color:#fff;
+    background:var(--brick);
+    width:5mm; height:5mm;
+    border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+  }
+
+  /* ---------- emergency numbers ---------- */
+  .sos{ display:flex; gap:3mm; margin:0 0 4mm; }
+  .sos div{
+    flex:1;
+    text-align:center;
+    border:.6pt solid #e8cdc6;
+    background:#fbeeeb;
+    border-radius:2mm;
+    padding:3mm 1mm;
+  }
+  .sos .n{
+    font-family:var(--sans);
+    font-size:17pt;
+    font-weight:700;
+    color:var(--brick);
+    line-height:1;
+    letter-spacing:.02em;
+  }
+  .sos .l{
+    font-family:var(--sans);
+    font-size:6.6pt;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-top:1.5mm;
+  }
+
+  /* ---------- walk table ---------- */
+  .walk{ width:100%; border-collapse:collapse; font-size:9.6pt; }
+  .walk td{ padding:1.3mm 0; border-bottom:.4pt dotted var(--line); }
+  .walk td:last-child{
+    text-align:right;
+    font-family:var(--sans);
+    font-size:8pt;
+    font-weight:600;
+    color:var(--brick);
+    white-space:nowrap;
+    padding-left:3mm;
+  }
+  .walk tr:last-child td{ border-bottom:none; }
+
+  /* ---------- phrases ---------- */
+  .ph{ width:100%; border-collapse:collapse; font-size:9.8pt; }
+  .ph td{ padding:1.6mm 0; border-bottom:.4pt dotted var(--line); vertical-align:top; }
+  .ph td.a{ font-weight:700; color:var(--ink); width:42%; }
+  .ph td.b{ color:var(--body); }
+  .ph .say{ font-family:var(--sans); font-size:7.2pt; color:var(--muted); letter-spacing:.04em; }
+
+  .fill{ color:var(--brick); font-weight:700; }
+
+  /* ---------- cover ---------- */
+  .cover{
+    background:var(--sand);
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    padding:20mm 20mm 16mm;
+  }
+  .cover h1{ font-size:44pt; line-height:.98; }
+  .cover .sub{
+    font-size:13pt;
+    line-height:1.4;
+    color:var(--body);
+    max-width:118mm;
+  }
+  .coverline{ height:1pt; background:var(--brick); width:30mm; margin:7mm 0; }
+  .coords{
+    font-family:var(--sans);
+    font-size:8.4pt;
+    letter-spacing:.06em;
+    color:var(--muted);
+  }
+  .toc{ margin:0; }
+  .toclabel{
+    font-family:var(--sans);
+    font-size:7pt;
+    letter-spacing:.24em;
+    text-transform:uppercase;
+    color:var(--brick);
+    font-weight:600;
+    margin:0 0 3mm;
+  }
+  .tocgrid{ width:100%; border-collapse:collapse; }
+  .tocgrid td{
+    padding:2.2mm 0;
+    border-bottom:.4pt solid #e3d9c8;
+    vertical-align:baseline;
+  }
+  .tocgrid tr:last-child td{ border-bottom:none; }
+  .tocgrid td:first-child{
+    font-size:11.4pt;
+    font-weight:700;
+    color:var(--ink);
+    width:62mm;
+    padding-right:6mm;
+  }
+  .tocgrid td:last-child{
+    font-size:9.4pt;
+    color:var(--muted);
+  }
+
+  .coverfoot{
+    border-top:.6pt solid var(--line);
+    padding-top:5mm;
+    font-family:var(--sans);
+    font-size:7.6pt;
+    letter-spacing:.2em;
+    text-transform:uppercase;
+    color:var(--muted);
+    display:flex;
+    justify-content:space-between;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ 1 · COVER ============ -->
+<section class="page cover">
+  <div>
+    <p class="eyebrow">Tiranë · Shqipëri</p>
+    <h1>Welcome<br>Home</h1>
+    <div class="coverline"></div>
+    <p class="sub">Everything in this guide is somewhere we actually go. Where a place is a short walk, we say how many minutes. Where it isn't, we say that too — and tell you what the taxi costs.</p>
+  </div>
+
+  <div class="toc">
+    <p class="toclabel">In this guide</p>
+    <table class="tocgrid">
+      <tr><td>The first five minutes</td><td>Wi-Fi, walking times, what nobody tells you</td></tr>
+      <tr><td>House rules</td><td>Short, and all of them earned</td></tr>
+      <tr><td>Pharmacies &amp; hospitals</td><td>Emergency numbers, and the hospital round the corner</td></tr>
+      <tr><td>Money &amp; getting around</td><td>Exchange offices, ATMs, taxis, the airport</td></tr>
+      <tr><td>Coffee &amp; brunch</td><td>The close ones, not the famous ones</td></tr>
+      <tr><td>Where we actually eat</td><td>Five minutes away, and worth the walk</td></tr>
+      <tr><td>Bars, clubs &amp; the night</td><td>The stadium, Blloku, Rruga e Sales</td></tr>
+      <tr><td>Shops &amp; sights</td><td>Markets, museums, the Pyramid</td></tr>
+      <tr><td>A spare day</td><td>Krujë, Berat, Durrës — and some Albanian</td></tr>
+    </table>
+  </div>
+
+  <div>
+    <div class="coverfoot">
+      <span>41°19&#39;21.8&quot;N &nbsp;19°49&#39;43.6&quot;E</span>
+      <span>41.322722, 19.828778</span>
+    </div>
+    <p class="coords" style="margin-top:3mm; text-transform:none; letter-spacing:.02em">Paste those numbers straight into Google Maps and it will take you to the front door.</p>
+  </div>
+</section>
+
+<!-- ============ 2 · ARRIVAL ============ -->
+<section class="page">
+  <p class="eyebrow">Start here</p>
+  <h2>The first five minutes</h2>
+  <div class="rule"></div>
+
+  <table class="kv">
+    <tr>
+      <td class="k">Wi-Fi network</td>
+      <td class="v"><span class="big"><span class="fill">[ network name ]</span></span></td>
+    </tr>
+    <tr>
+      <td class="k">Wi-Fi password</td>
+      <td class="v"><span class="big"><span class="fill">[ password ]</span></span></td>
+    </tr>
+    <tr>
+      <td class="k">Check-out</td>
+      <td class="v">11:00 — leave the keys on the kitchen counter</td>
+    </tr>
+    <tr>
+      <td class="k">Your hosts</td>
+      <td class="v"><span class="fill">[ your name ]</span> · <span class="fill">[ +355 __ ___ ____ ]</span><br><span class="small muted">WhatsApp is fastest. We're nearby — if something's broken, tell us the same day and we'll fix it.</span></td>
+    </tr>
+  </table>
+
+  <h3>Where you actually are</h3>
+  <p>You're just east of the centre, between <strong>Rruga e Elbasanit</strong> and the <strong>Air Albania Stadium</strong> — a residential, lived-in part of Tirana rather than a tourist strip. That's the good news: the tourist strip is eleven minutes away on foot, and you get to sleep.</p>
+  <p>If a taxi driver looks blank at the street name, say <span class="al">“te Stadiumi Air Albania”</span>. Everyone knows it.</p>
+
+  <h3>How long things really take on foot</h3>
+  <table class="walk">
+    <tr><td>Air Albania Stadium &amp; its café strip</td><td>7 min</td></tr>
+    <tr><td>Sheshi Nënë Tereza &amp; the Archaeological Museum</td><td>7 min</td></tr>
+    <tr><td>The Pyramid of Tirana</td><td>10 min</td></tr>
+    <tr><td>Pazari i Ri — the New Bazaar</td><td>11 min</td></tr>
+    <tr><td>Blloku — bars, restaurants, nightlife</td><td>11 min</td></tr>
+    <tr><td>House of Leaves museum</td><td>12 min</td></tr>
+    <tr><td>Grand Park &amp; the Artificial Lake</td><td>13 min</td></tr>
+    <tr><td>Skanderbeg Square</td><td>14 min</td></tr>
+    <tr><td>Rruga e Sales — bar street</td><td>15 min</td></tr>
+    <tr><td>Tirana Airport (TIA, Rinas)</td><td>25–35 min by car</td></tr>
+  </table>
+
+  <div class="panel" style="margin-top:5mm">
+    <h4>Things nobody tells you on day one</h4>
+    <p><strong>Coffee is not a takeaway.</strong> A macchiato costs 100–150 lekë and buys you the table for two hours. Nobody brings the bill until you ask — say <span class="al">“llogarinë, ju lutem”</span>.</p>
+    <p><strong>Prices in “old lek.”</strong> Older Albanians quote ten times higher out of habit — if a coffee sounds like 1,500, they mean 150.</p>
+    <p><strong>Crossing the road</strong> is a negotiation, not a right. Use the lights and make eye contact.</p>
+    <p><strong>Tap water</strong> is fine for teeth and cooking; almost everyone drinks bottled. A 1.5 L bottle is 60–80 lekë at any corner shop.</p>
+  </div>
+
+  <div class="foot"><span>Welcome Home · Tirana</span><span>Arrival</span></div>
+</section>
+
+<!-- ============ 3 · HOUSE RULES ============ -->
+<section class="page">
+  <p class="eyebrow">The short list</p>
+  <h2>House rules</h2>
+  <div class="rule"></div>
+
+  <p class="lede" style="margin-bottom:6mm">There are only a few, and they all exist because of something that actually happened.</p>
+
+  <ol class="rules">
+    <li><strong>Quiet between 22:00 and 08:00.</strong> Albanian buildings are concrete and sound travels. Our neighbours are lovely and they start work early.</li>
+    <li><strong>No parties, and no extra guests overnight</strong> beyond the number on the booking. If friends are in town, meet them out — you're spoilt for choice.</li>
+    <li><strong>No smoking inside.</strong> The balcony is fine; there's an ashtray. Please don't flick anything over the railing.</li>
+    <li><strong>Shoes off inside</strong> if you can manage it. It's the local habit and it saves the floors.</li>
+    <li><strong>Rubbish goes out with you.</strong> Bag it and drop it in the green street container on the corner. Nothing left in the flat on check-out day, please.</li>
+    <li><strong>Air conditioning off when you leave.</strong> Same for the lights and the water heater. It runs hot here and the bills are real.</li>
+    <li><strong>Towels stay in the flat.</strong> If you're heading to the beach, tell us and we'll lend you old ones.</li>
+    <li><strong>Tell us early.</strong> A dripping tap at 9 a.m. is a five-minute fix. A dripping tap discovered in a review is not.</li>
+  </ol>
+
+  <h3>Appliances, briefly</h3>
+  <p><strong>Air conditioning</strong> — the remote's “Cool” mode at 24 °C is the sweet spot; anything lower just costs money and gives you a sore throat. <strong>Hot water</strong> is on a boiler; if it runs out after long showers, give it twenty minutes. <strong>The kitchen</strong> is yours — use what's in the cupboards, replace what you finish if you're feeling generous.</p>
+
+  <div class="panel" style="margin-top:5mm">
+    <h4>Leaving</h4>
+    <p>Check-out is 11:00. Bag the rubbish, put the dishes in the sink or the machine, close the windows, turn off the AC, and leave the keys on the kitchen counter. That's genuinely all — don't strip beds or clean, that's our job.</p>
+    <p>If we got it right, a review means more to us than a tip. If we got something wrong, tell us before you write it and we'll make it right.</p>
+  </div>
+
+  <div class="foot"><span>Welcome Home · Tirana</span><span>House rules</span></div>
+</section>
+
+<!-- ============ 4 · HEALTH ============ -->
+<section class="page">
+  <p class="eyebrow">If something goes wrong</p>
+  <h2>Pharmacies &amp; hospitals</h2>
+  <div class="rule"></div>
+
+  <div class="sos">
+    <div><div class="n">112</div><div class="l">All emergencies</div></div>
+    <div><div class="n">127</div><div class="l">Ambulance</div></div>
+    <div><div class="n">128</div><div class="l">Fire</div></div>
+    <div><div class="n">129</div><div class="l">Police</div></div>
+  </div>
+  <p class="small muted" style="margin-top:-2mm">Operators on 112 generally speak some English. Give the landmark before the street: <span class="al">“afër Stadiumit Air Albania”</span> — near the Air Albania stadium.</p>
+
+  <h3>Pharmacies — Farmaci</h3>
+  <p>Look for the <strong>green cross</strong>. Tirana has one on almost every block and there are several within three or four minutes of the door, along Rruga e Elbasanit and Rruga Pjetër Budi. Most open around 08:00 and close between 21:00 and midnight.</p>
+  <p>Albanian pharmacists are properly trained, usually speak English or Italian, and will deal with a stomach upset, a hangover, sunburn or a chest infection over the counter. Antibiotics officially need a prescription. Bring the packet of anything you take regularly — brand names differ.</p>
+
+  <div class="entry">
+    <span class="nm">Farmaci Ditë e Natë</span><span class="pill far">24 hours · taxi</span>
+    <p>“Day and Night” — a genuine round-the-clock chain with branches across the city, including Rruga e Dibrës. This is the 3 a.m. answer. A taxi there and back is under 800 lekë.</p>
+  </div>
+  <div class="entry">
+    <span class="nm">Wolt &amp; Bolt Food</span><span class="pill">delivery</span>
+    <p>Both deliver pharmacy items — painkillers, tests, plasters, rehydration salts — until late. Usually faster than getting dressed.</p>
+  </div>
+
+  <h3>Hospitals &amp; clinics</h3>
+
+  <div class="entry">
+    <span class="nm">Spitali Amavita</span><span class="pill">closest · few min walk</span>
+    <p>Rruga Pjetër Budi, opposite the Italian Cultural Institute — effectively around the corner. Private, modern, English spoken, 24-hour emergency intake. <strong>This is where we would go first</strong> for anything not life-threatening: a bad cut, a fever that won't shift, a suspected sprain. You'll be seen quickly.</p>
+  </div>
+
+  <div class="entry">
+    <span class="nm">Spitali Amerikan — American Hospital</span><span class="pill far">15 min taxi</span>
+    <p>The largest private network in Albania, out on Rruga Shefqet Ndroqi. The place for anything serious, for scans, or if you want a second opinion with international-standard paperwork for your insurer.</p>
+  </div>
+
+  <div class="entry">
+    <span class="nm">QSUT “Nënë Tereza” — University Hospital</span><span class="pill far">10 min taxi</span>
+    <p>The big public hospital. Free or near-free 24-hour emergency care and capable doctors, but crowded and Albanian-first. Fine in a true emergency; not for a sore throat.</p>
+  </div>
+
+  <div class="panel warn">
+    <h4>Paying for it</h4>
+    <p>Private hospitals want <strong>payment up front</strong> — cards are fine — and will give you an itemised invoice to claim on travel insurance. Ask for it in English at the desk; they do this every day. A consultation at Amavita is in the range of 3,000–6,000 lekë, which is roughly €30–60. Photograph every receipt before you leave the building.</p>
+  </div>
+
+  <div class="foot"><span>Welcome Home · Tirana</span><span>Health</span></div>
+</section>
+
+<!-- ============ 5 · MONEY & MOVING ============ -->
+<section class="page">
+  <p class="eyebrow">Practicalities</p>
+  <h2>Money &amp; getting around</h2>
+  <div class="rule"></div>
+
+  <h3>The lek, briefly</h3>
+  <p>The currency is the <strong>lek</strong> (L, or ALL) — roughly <strong>95–100 lekë to €1</strong>, but check before you change anything. Euros are <em>not</em> generally accepted in shops and cafés. Cards work almost everywhere central; carry cash for corner shops, taxis, the bazaar and tips.</p>
+
+  <h3>Exchange offices — Këmbim Valutor</h3>
+  <p>Exchange offices here are legal, competitive, and give a far better rate than any bank or hotel. Rates go on a board and there's normally no commission. Compare two before you hand anything over, and count the notes at the counter — everybody does.</p>
+
+  <div class="entry">
+    <span class="nm">The counters on Rruga e Elbasanit</span><span class="pill">5–8 min walk</span>
+    <p>Your nearest option: several small windows along Elbasan Street and around Sheshi Nënë Tereza. Typically Mon–Sat 08:00–19:00, shorter or shut on Sunday. Fine rates for a couple of hundred euros.</p>
+  </div>
+  <div class="entry">
+    <span class="nm">The cluster near Skanderbeg Square</span><span class="pill">15 min walk</span>
+    <p>Around Rruga e Barrikadave and behind the Bank of Albania there are a dozen offices within two blocks, plus the freelance changers with satchels and calculators. Both are fine, both give the best rates in the city, and many stay open until 20:00 and on Sundays.</p>
+  </div>
+  <div class="entry">
+    <span class="nm">Tirana Airport exchange</span><span class="pill far">open for every flight</span>
+    <p>The closest thing to round-the-clock: early morning until the last arrivals, well past midnight. <strong>The rate is the worst in the country</strong> — change €20 to get into town, do the rest properly next morning.</p>
+  </div>
+
+  <div class="panel">
+    <h4>Honest answer on 24-hour money</h4>
+    <p>There is <strong>no true 24-hour exchange desk</strong> in central Tirana, whatever a listing says. After about 20:00 it's an ATM, the airport, or morning. <strong>ATMs are everywhere and work all night.</strong> When the machine offers to convert for you, always pick <strong>“continue without conversion”</strong> — accepting costs 5–10%. Bank-branded machines (BKT, Credins, Raiffeisen, Intesa) charge less than standalone Euronet boxes.</p>
+  </div>
+
+  <h3>Taxis &amp; transport</h3>
+  <div class="entry">
+    <span class="nm">Bolt</span><span class="pill">the app everyone uses</span>
+    <p>Download it before you arrive. Rides inside the centre run 300–600 lekë; to the airport around 1,500–2,000. Uber does not operate in Albania.</p>
+  </div>
+  <div class="entry">
+    <span class="nm">Street taxis</span>
+    <p>Agree the fare before you get in — anything within the ring road should be 500–700 lekë. City buses are 40 lekë flat, paid in cash to the conductor.</p>
+  </div>
+  <div class="entry">
+    <span class="nm">Airport — TIA, Rinas</span><span class="pill far">17 km · 25–35 min</span>
+    <p>Fixed-price airport taxis are around 2,500 lekë. The <strong>Rinas Express</strong> bus goes roughly hourly from beside the National History Museum on Skanderbeg Square for about 400 lekë — cheap, slow, fine if you travel light.</p>
+  </div>
+
+  <div class="foot"><span>Welcome Home · Tirana</span><span>Money &amp; transport</span></div>
+</section>
+
+<!-- ============ 6 · COFFEE & BRUNCH ============ -->
+<section class="page">
+  <p class="eyebrow">Mornings</p>
+  <h2>Coffee &amp; brunch</h2>
+  <div class="rule"></div>
+
+  <p class="lede" style="margin-bottom:5mm">Albania drinks more coffee per head than almost anywhere on earth, and none of it in a paper cup. Sitting down is the point.</p>
+
+  <h3>Coffee within a few minutes of the door</h3>
+
+  <div class="entry">
+    <span class="nm">Mulliri i Vjetër</span><span class="pill">close · everyday</span>
+    <p>“The Old Mill” — the local chain that Albanians actually use, and there's a branch minutes from you. Opens early, reliable espresso, glass counter full of byrek, croissants and cream cakes. This is your default: coffee and something warm for under 300 lekë.</p>
+  </div>
+
+  <div class="entry">
+    <span class="nm">Mon Cheri</span><span class="pill">close · slow start</span>
+    <p>Also right nearby, and the nicer place to sit for an hour. Pastry-forward — proper croissants, tarts, a good cappuccino. Where to go when you want the morning to take its time rather than just caffeinating.</p>
+  </div>
+
+  <div class="entry">
+    <span class="nm">D'Anvers</span><span class="pill">close · a treat</span>
+    <p>Belgian chocolate house with a café attached. Come for the hot chocolate — thick, dark, unreasonable — or a coffee with something from the pralines counter. Good for a cold afternoon or a small celebration.</p>
+  </div>
+
+  <div class="panel">
+    <h4>The famous ones are further away</h4>
+    <p>Every guide to Tirana sends you to <strong>Komiteti</strong>, <strong>Radio Bar</strong> or <strong>Nouvelle Vague</strong>. They're all genuinely good, all in or near Blloku, and all a 10–15 minute walk from here. Go one evening — but don't walk twenty minutes for a morning coffee when there's better within four.</p>
+  </div>
+
+  <h3>Brunch</h3>
+
+  <div class="entry">
+    <span class="nm">IN'S</span><span class="pill">8 min walk · the one to book</span>
+    <p>On Rruga Faik Konica, by the Arena — the brunch place in this part of town and the reason a lot of people come to the neighbourhood. Big plates: eggs every way, pancakes, French toast, eggs Benedict, avocado toast, proper coffee, fresh juice. Expect 700–1,400 lekë a head.</p>
+    <p><strong>Go before 11:00 at the weekend</strong> or plan on waiting — Saturday and Sunday it's full of Tirana twenty-somethings and their sunglasses. Weekday mornings you'll walk straight in.</p>
+  </div>
+
+  <div class="entry">
+    <span class="nm">Byrek, the Albanian answer</span><span class="pill">2 min · 50–100 lekë</span>
+    <p>Find any window with <span class="al">BYREK</span> written on it — there are several within two minutes. Flaky pastry with spinach, cheese or minced meat, sold by the slice, eaten standing up. Best before 10:00 while the trays are still coming out of the oven. Get the spinach one.</p>
+  </div>
+
+  <div class="foot"><span>Welcome Home · Tirana</span><span>Coffee &amp; brunch</span></div>
+</section>
+
+<!-- ============ 7 · EATING ============ -->
+<section class="page">
+  <p class="eyebrow">Eating</p>
+  <h2>Where we actually eat</h2>
+  <div class="rule"></div>
+
+  <h3>Closest to the door</h3>
+
+  <div class="entry">
+    <span class="nm">Fishop</span><span class="pill">5 min · our default</span>
+    <p>Fish and seafood done plainly and done well — pick what looks good, they cook it, you eat it. Counter-service energy, honest prices, nothing dressed up. This is where we go when we can't be bothered to cook, which is often. Sea bass, grilled prawns, a plate of fried small fish and a beer.</p>
+  </div>
+
+  <div class="entry">
+    <span class="nm">Padam</span><span class="pill">10 min · a nicer evening</span>
+    <p>A boutique hotel with a walled garden restaurant hidden behind it. Mediterranean cooking, good wine, candles, very quiet. The obvious choice for a date or the one nice dinner of the trip without crossing town. Book at the weekend.</p>
+  </div>
+
+  <div class="entry">
+    <span class="nm">Mullixhiu</span><span class="pill">13 min · book ahead</span>
+    <p>By the gate of the Grand Park, in a converted mill. Modern Albanian cooking done seriously — old mountain recipes, house-milled flour, tasting menus, the best bread in the city. If you eat one properly Albanian meal while you're here, make it this one. Reserve a few days out.</p>
+  </div>
+
+  <h3>Worth the walk</h3>
+
+  <div class="entry">
+    <span class="nm">Era</span><span class="pill">12 min</span>
+    <p>The Tirana institution. Albanian and Mediterranean, a menu as long as your arm, always busy, never bad. Grilled meats, stuffed peppers, fërgesë, tavë kosi. Where to take people who don't know what they want.</p>
+  </div>
+
+  <div class="entry">
+    <span class="nm">Artigiano</span><span class="pill">12 min</span>
+    <p>Italian, and taken seriously — real pasta, proper Neapolitan pizza, a wine list that isn't an afterthought. Albania's relationship with Italy runs deep and this is the good end of it.</p>
+  </div>
+
+  <div class="entry">
+    <span class="nm">Morsi</span><span class="pill">12 min</span>
+    <p>Small plates, cocktails, low light, young crowd. More about a good three hours than any single dish. Start the evening here.</p>
+  </div>
+
+  <div class="entry">
+    <span class="nm">Salt</span><span class="pill">14 min · reserve</span>
+    <p>Tirana's cool-kid restaurant and still one of the best. Inventive, seasonal, well-run. You will not get a table on a Friday by walking in — book.</p>
+  </div>
+
+  <div class="panel">
+    <h4>Order these at least once</h4>
+    <p><strong>Fërgesë</strong> — peppers, tomato and cottage cheese baked in a clay dish, eaten with bread. <strong>Tavë kosi</strong> — lamb baked under yoghurt and egg; the national dish. <strong>Speca me gjizë</strong> — stuffed peppers. <strong>Qofte</strong> — grilled meatballs. <strong>Raki</strong> — the homemade grape spirit that arrives free at the end of the meal. Say yes once.</p>
+  </div>
+
+  <p class="small muted"><strong>Tipping:</strong> not obligatory and never automatic. Round up, or leave 5–10% if the service was good. <strong>Booking:</strong> most places take reservations by phone or Instagram DM, which is genuinely how Tirana works.</p>
+
+  <div class="foot"><span>Welcome Home · Tirana</span><span>Eating</span></div>
+</section>
+
+<!-- ============ 8 · NIGHT ============ -->
+<section class="page">
+  <p class="eyebrow">After dark</p>
+  <h2>Bars, clubs &amp; where the night goes</h2>
+  <div class="rule"></div>
+
+  <p class="lede" style="margin-bottom:5mm">Tirana starts late. Dinner at nine, bars from eleven, clubs after one. Turning up at ten will feel like you've broken in.</p>
+
+  <h3>Around the Air Albania Stadium — your closest option</h3>
+  <p>Seven minutes from the door, and underrated. The ground floor of the stadium and the streets around it are wall-to-wall <strong>cafés, lounge bars and shisha terraces</strong> — big outdoor seating, open very late, a mostly local crowd, and far less tourist tax than Blloku. There's a cinema, a food court and a rooftop or two in the same complex.</p>
+  <p>This is the right call for a drink you don't have to plan, or a long summer evening outside. Check whether Albania or one of the Tirana clubs is playing while you're here — the whole quarter turns into one enormous party on match nights, and the atmosphere is worth seeing even if you don't go in.</p>
+
+  <h3>Blloku</h3>
+  <p>Eleven minutes on foot. Until 1991 this was the sealed compound where the Party elite lived and ordinary Albanians were not allowed to walk. It is now the densest concentration of bars in the country, which is a joke everyone here has already made.</p>
+
+  <div class="entry">
+    <span class="nm">Puls</span><span class="pill">11 min · loud, late</span>
+    <p>The name people give you first. Big room, commercial and house, packed from one in the morning, keeps going. Dress up a bit.</p>
+  </div>
+
+  <p><strong>Honestly, though — don't plan Blloku.</strong> There are thirty-odd bars inside four blocks and half of them will have changed name by next season. Walk down <strong>Rruga Pjetër Bogdani</strong> or <strong>Rruga Ismail Qemali</strong> after eleven on a Friday or Saturday, listen at the doors, and go into whatever sounds right. That's what everyone who lives here does. Cocktails run 600–1,000 lekë, beer 250–400.</p>
+
+  <h3>Rruga e Sales</h3>
+  <p>Officially Rruga Mustafa Matohiti; nobody calls it that. A narrow street that has quietly become the best strip in the city — wine bars, small restaurants, coffee in the afternoon and drinks until late, the whole thing one long terrace in summer. About 15 minutes on foot, or a 300 lekë taxi.</p>
+
+  <div class="entry">
+    <span class="nm">Patela by Naga</span><span class="pill">15 min · start here</span>
+    <p>The one to head for on that street. Good food, better crowd, the kind of place that works for dinner at nine and is still the right place at one. Then walk the rest of the street.</p>
+  </div>
+
+  <div class="panel">
+    <h4>Two more, for the record</h4>
+    <p><strong>Rooftops</strong> — the revolving bar at the top of Sky Tower is a tourist thing and also genuinely lovely at sunset. <strong>Pazari i Ri</strong> — the New Bazaar quarter is full of small restaurants and bars that fill up after work; a good, calmer alternative to Blloku on a weeknight.</p>
+    <p><strong>Getting home</strong> — Bolt runs all night and a ride back from anywhere in this list is 300–500 lekë. Please be quiet on the stairs.</p>
+  </div>
+
+  <div class="foot"><span>Welcome Home · Tirana</span><span>Nightlife</span></div>
+</section>
+
+<!-- ============ 9 · DAILY NEEDS + SEE & DO ============ -->
+<section class="page">
+  <p class="eyebrow">Day to day</p>
+  <h2>Shops, and things to see</h2>
+  <div class="rule"></div>
+
+  <h3>Groceries &amp; daily bits</h3>
+  <div class="entry">
+    <span class="nm">The corner mini-markets</span><span class="pill">1–3 min</span>
+    <p>There are several within a couple of minutes and they are what you'll actually use: bread, eggs, water, beer, yoghurt, tomatoes, coffee, cleaning things. Open roughly 07:00 to 22:00, seven days. Cash is easiest.</p>
+  </div>
+  <div class="entry">
+    <span class="nm">Pazari i Ri — the New Bazaar</span><span class="pill">11 min · go in the morning</span>
+    <p>The best food shopping in Tirana: fruit and vegetables that taste of something, mountain cheese, honey, olives, spices, homemade raki in reused bottles. Prices are fair, haggling isn't expected, and the surrounding streets are full of good cheap restaurants.</p>
+  </div>
+  <div class="entry">
+    <span class="nm">A full supermarket shop</span><span class="pill far">10–15 min or delivery</span>
+    <p>The bigger chains — Spar, Conad — are a walk or a short taxi away, not around the corner. If you want a proper stock-up, honestly just order it on <strong>Wolt</strong> or <strong>Bolt Food</strong>; both deliver groceries in under an hour and it costs almost nothing.</p>
+  </div>
+
+  <h3>Museums &amp; the obvious sights</h3>
+
+  <div class="entry">
+    <span class="nm">National Archaeological Museum</span><span class="pill">7 min · closest</span>
+    <p>On Sheshi Nënë Tereza, and the nearest museum to your front door. Small, cheap, and a genuinely good hour — Illyrian bronze, Roman mosaics, Butrint finds. The easy option for a hot afternoon or a rainy one.</p>
+  </div>
+
+  <div class="entry">
+    <span class="nm">House of Leaves</span><span class="pill">12 min · do this one</span>
+    <p>The former headquarters of the Sigurimi, the secret police, left much as it was found: bugging equipment, surveillance files, the machinery of watching everybody. Quiet, chilling, beautifully done. If you visit one museum in Tirana, this is it.</p>
+  </div>
+
+  <div class="entry">
+    <span class="nm">Bunk'Art 2</span><span class="pill">13 min</span>
+    <p>A nuclear bunker under the Ministry of Interior, now a museum about the police state and the people it destroyed. Heavy, excellent, about ninety minutes. <span class="muted">(There is a second, much larger Bunk'Art out under Dajti mountain — half a day and a 20-minute taxi each way. Only worth it if this one leaves you wanting more.)</span></p>
+  </div>
+
+  <div class="entry">
+    <span class="nm">The Pyramid of Tirana</span><span class="pill">10 min · free</span>
+    <p>Built as a mausoleum for the dictator, abandoned, graffitied for thirty years, and reborn as a white concrete hill you can walk up. Climb it at sunset — free, and the best short walk in the city.</p>
+  </div>
+
+  <div class="entry">
+    <span class="nm">Skanderbeg Square, Et'hem Bey Mosque &amp; the clock tower</span><span class="pill">14 min</span>
+    <p>The centre. Enormous, car-free, slightly surreal. The mosque's painted interior survived the ban on religion and is worth stepping into — shoes off, shoulders covered.</p>
+  </div>
+
+  <div class="entry">
+    <span class="nm">Grand Park &amp; the Artificial Lake</span><span class="pill">13 min</span>
+    <p>The city's lungs: a running loop around the water, cafés on the bank, families everywhere on Sunday. Best early in the morning.</p>
+  </div>
+
+  <div class="entry">
+    <span class="nm">Dajti Ekspres cable car</span><span class="pill far">20 min taxi + 15 min ride</span>
+    <p>Up the mountain behind the city for the whole valley laid out beneath you. Clear days only — in haze you'll see nothing. Restaurant and walking trails at the top.</p>
+  </div>
+
+  <div class="foot"><span>Welcome Home · Tirana</span><span>Shops &amp; sights</span></div>
+</section>
+
+<!-- ============ 10 · DAY TRIPS + LANGUAGE ============ -->
+<section class="page">
+  <p class="eyebrow">Further out</p>
+  <h2>If you have a spare day</h2>
+  <div class="rule"></div>
+
+  <div class="cols">
+    <div>
+      <div class="entry">
+        <span class="nm">Krujë</span><span class="pill far">1 hour</span>
+        <p>Castle on a cliff, Skanderbeg's museum, and an Ottoman bazaar street that's touristy but beautiful. The easiest half-day from Tirana.</p>
+      </div>
+      <div class="entry">
+        <span class="nm">Durrës</span><span class="pill far">45 min</span>
+        <p>The sea, plus the largest Roman amphitheatre in the Balkans sitting incongruously in the middle of town. Good for a swim and a fish lunch.</p>
+      </div>
+    </div>
+    <div>
+      <div class="entry">
+        <span class="nm">Berat</span><span class="pill far">2 hours</span>
+        <p>“The city of a thousand windows” — UNESCO-listed Ottoman houses stacked up a hillside, castle at the top. Worth an overnight if you can.</p>
+      </div>
+      <div class="entry">
+        <span class="nm">Shkodër &amp; the north</span><span class="pill far">2 hours</span>
+        <p>Gateway to the Albanian Alps, Lake Koman ferry and Theth. Not a day trip — but if you have three days spare, go.</p>
+      </div>
+    </div>
+  </div>
+
+  <p class="small muted">Buses leave from the regional terminals rather than a central station; ask us and we'll point you at the right one, or a driver for the day costs €80–120 and is often the better answer for two or more people.</p>
+
+  <h3 style="margin-top:8mm">Enough Albanian to be liked</h3>
+  <table class="ph">
+    <tr><td class="a">Përshëndetje <span class="say">per-shen-DET-yeh</span></td><td class="b">Hello (formal). <em>Ç'kemi</em> — “chkemi” — is the casual one.</td></tr>
+    <tr><td class="a">Faleminderit <span class="say">fah-leh-min-DEH-rit</span></td><td class="b">Thank you. Worth learning properly; it lands every time.</td></tr>
+    <tr><td class="a">Ju lutem <span class="say">yoo LOO-tem</span></td><td class="b">Please / you're welcome.</td></tr>
+    <tr><td class="a">Po / Jo <span class="say">poh / yoh</span></td><td class="b">Yes / no.</td></tr>
+    <tr><td class="a">Sa kushton? <span class="say">sah koosh-TON</span></td><td class="b">How much is it?</td></tr>
+    <tr><td class="a">Një kafe, ju lutem</td><td class="b">One coffee, please.</td></tr>
+    <tr><td class="a">Llogarinë, ju lutem</td><td class="b">The bill, please. You will always have to ask.</td></tr>
+    <tr><td class="a">Gëzuar! <span class="say">g'-ZOO-ar</span></td><td class="b">Cheers. Said with eye contact.</td></tr>
+    <tr><td class="a">Më falni</td><td class="b">Excuse me / sorry.</td></tr>
+    <tr><td class="a">Mirupafshim</td><td class="b">Goodbye.</td></tr>
+  </table>
+  <p class="small muted" style="margin-top:3mm">A small head shake can mean <em>yes</em> here, and a sharp upward nod with a tut can mean <em>no</em> — the opposite of what you expect. Watch the eyebrows.</p>
+
+  <div class="panel" style="margin-top:6mm">
+    <h4>One last thing</h4>
+    <p>Tirana rewards wandering more than planning. Nothing in this guide is more than a quarter of an hour away, most of it is far closer, and the best things that will happen to you here are not in it.</p>
+    <p style="margin-top:2mm"><strong>Anything at all — message us.</strong> <span class="fill">[ your name ]</span> · <span class="fill">[ +355 __ ___ ____ ]</span></p>
+  </div>
+
+  <div class="foot"><span>Welcome Home · Tirana</span><span>Mirupafshim</span></div>
+</section>
+
+</body>
+</html>
