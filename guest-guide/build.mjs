@@ -31,12 +31,13 @@ const card = (label, ssid, slug) => `
         </div>`;
 
 const LAUNDRY_TILE = `
-      <div class="tile flag"><div class="t">Empty Your Pockets</div><div class="d">Before the washing machine</div></div>`;
+      <div class="tile"><div class="t">Check Your Pockets</div><div class="d">Before the washing machine</div></div>`;
 
 const LAUNDRY_NOTE = `
     <p style="font-size:8pt;color:#7d7268;font-style:italic;margin-top:2.2mm;line-height:1.3">
-      Coins, keys, lighters, sand and hair clips wreck the drum and the pump of the washing machine.
-      Please check every pocket before you load it — damage caused this way will be charged to the guest.
+      One small favour — give your pockets a check before loading the washing machine. Coins, keys and
+      lighters go straight into the pump, and a repair is a cost we'd have to pass on. Two seconds saves
+      us both the hassle. Thank you!
     </p>`;
 
 const versions = [
