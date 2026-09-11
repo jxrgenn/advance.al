@@ -16,7 +16,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import jsQRmod from 'jsqr';
 import { createCanvas, loadImage } from 'canvas';
-import { NETWORKS, payloadFor } from './gen-qr.mjs';
+import { NETWORKS, payloadFor, KNOWN_GOOD } from './gen-qr.mjs';
 
 const jsQR = jsQRmod.default || jsQRmod;
 const dir = path.dirname(fileURLToPath(import.meta.url));
@@ -29,6 +29,23 @@ const EXPECTED = {
 
 let failed = false;
 const SCALE = 3;
+
+// Guard the two networks whose correct payload we actually know, because it was
+// read back out of the QR codes in the original guide. Getting the SSID from a
+// printed label instead of from the code itself is how "Merlin  5GHZ" became
+// "merlin 5GHZ" and stopped connecting.
+for (const [slug, good] of Object.entries(KNOWN_GOOD)) {
+  const net = NETWORKS.find((n) => n.slug === slug);
+  const mine = payloadFor(net);
+  if (mine !== good) {
+    failed = true;
+    console.log(`FAIL  ${slug} payload does not match the known-good code`);
+    console.log(`        known good: ${JSON.stringify(good)}`);
+    console.log(`        generated : ${JSON.stringify(mine)}`);
+  } else {
+    console.log(`PASS  ${slug} matches the known-good code byte for byte`);
+  }
+}
 const VIEW_W = 794;   // 210mm at 96dpi
 const VIEW_H = 1123;  // 297mm at 96dpi — page 1 fills the viewport exactly
 

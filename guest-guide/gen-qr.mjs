@@ -20,9 +20,13 @@ const dir = path.dirname(fileURLToPath(import.meta.url));
 // open network, 'WEP' for WEP. hidden: true is REQUIRED if the router does
 // not broadcast the SSID, otherwise the phone cannot find it and reports
 // "unable to join".
+// NOTE the two spaces in the Merlin names. They are real: they come straight
+// out of the QR codes in the original guide. HTML collapses runs of spaces when
+// displaying, which is how the single-space version got into circulation, so
+// the name is printed with white-space:pre-wrap to keep both of them.
 export const NETWORKS = [
-  { slug: 'merlin-5ghz',  ssid: 'merlin 5GHZ',    pass: '101090ora20', security: 'WPA', hidden: false },
-  { slug: 'merlin-24ghz', ssid: 'merlin 2.4GHZ',  pass: '101090ora20', security: 'WPA', hidden: false },
+  { slug: 'merlin-5ghz',  ssid: 'Merlin  5GHZ',   pass: '101090ora20', security: 'WPA', hidden: false, note: 'two spaces before 5GHZ' },
+  { slug: 'merlin-24ghz', ssid: 'Merlin  2.4GHZ', pass: '101090ora20', security: 'WPA', hidden: false, note: 'two spaces before 2.4GHZ' },
   { slug: 'digicom',      ssid: 'Digicom.AL - 1', pass: 'merlin1990',  security: 'WPA', hidden: false },
 ];
 
@@ -30,13 +34,19 @@ export const NETWORKS = [
 // all be backslash-escaped inside S: and P:. Backslash has to be first.
 const esc = (s) => s.replace(/([\\;,:"])/g, '\\$1');
 
-// Field order follows ZXing's documented form (S, then T, then P). Most
-// parsers are order-agnostic, but this is the order every implementation
-// is known to handle.
+// Byte-for-byte the form used by the QR codes in the original guide, which are
+// known to work on the owner's phone: T, then S, then P. Do not "improve" this.
 export const payloadFor = ({ ssid, pass, security = 'WPA', hidden = false }) =>
   security === 'nopass'
-    ? `WIFI:S:${esc(ssid)};T:nopass;${hidden ? 'H:true;' : ''};`
-    : `WIFI:S:${esc(ssid)};T:${security};P:${esc(pass)};${hidden ? 'H:true;' : ''};`;
+    ? `WIFI:T:nopass;S:${esc(ssid)};${hidden ? 'H:true;' : ''};`
+    : `WIFI:T:${security};S:${esc(ssid)};P:${esc(pass)};${hidden ? 'H:true;' : ''};`;
+
+// Extracted from the QR images inside the original guest guide PDF, which the
+// owner confirmed connect. Treat these as the definition of the two networks.
+export const KNOWN_GOOD = {
+  'merlin-5ghz':  'WIFI:T:WPA;S:Merlin  5GHZ;P:101090ora20;;',
+  'merlin-24ghz': 'WIFI:T:WPA;S:Merlin  2.4GHZ;P:101090ora20;;',
+};
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   fs.mkdirSync(path.join(dir, 'qr'), { recursive: true });

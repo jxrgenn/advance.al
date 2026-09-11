@@ -75,7 +75,15 @@
     font-family:var(--sans); font-size:6.2pt; font-weight:600;
     letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin-bottom:.8mm;
   }
-  .net .ssid{ font-size:12.5pt; font-weight:700; color:var(--ink); letter-spacing:-.01em; }
+  /* pre-wrap so the double space in the network name is not collapsed away */
+  .net .ssid{
+    font-size:12.5pt; font-weight:700; color:var(--ink); letter-spacing:-.01em;
+    white-space:pre-wrap;
+  }
+  .net .ssidnote{
+    font-family:var(--sans); font-size:6.2pt; letter-spacing:.06em;
+    color:#9a3324; margin-top:.8mm;
+  }
   .pwbox{ width:52mm; text-align:center; border-left:.7pt solid var(--line); padding-left:6mm; }
   .pwbox .lbl{
     font-family:var(--sans); font-size:6.2pt; font-weight:600;

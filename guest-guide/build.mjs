@@ -23,11 +23,14 @@ const DIGICOM_PASS = 'merlin1990';
 
 const qrSvg = (slug) => fs.readFileSync(path.join(dir, 'qr', `${slug}.svg`), 'utf8').trim();
 
-const card = (label, ssid, slug) => `
+// ssid is printed inside white-space:pre-wrap so runs of spaces survive; a
+// guest typing the name by hand needs every one of them.
+const card = (label, ssid, slug, note) => `
         <div class="net">
           <div class="qr">${qrSvg(slug)}</div>
           <div class="lbl">${label}</div>
-          <div class="ssid">${ssid}</div>
+          <div class="ssid">${ssid}</div>${note ? `
+          <div class="ssidnote">${note}</div>` : ''}
         </div>`;
 
 const LAUNDRY_TILE = `
@@ -47,8 +50,8 @@ const versions = [
       HOST_PHONE,
       PW_LABEL: 'Password — same for both',
       WIFI_PASS: MERLIN_PASS,
-      WIFI_CARDS: card('Network — fast', 'merlin 5GHZ', 'merlin-5ghz')
-                + card('Network — wide range', 'merlin 2.4GHZ', 'merlin-24ghz'),
+      WIFI_CARDS: card('Network — fast', 'Merlin  5GHZ', 'merlin-5ghz', 'two spaces before 5GHZ')
+                + card('Network — wide range', 'Merlin  2.4GHZ', 'merlin-24ghz', 'two spaces before 2.4GHZ'),
       LAUNDRY_TILE: '',
       LAUNDRY_NOTE: '',
     },
