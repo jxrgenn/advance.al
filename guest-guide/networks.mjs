@@ -40,7 +40,9 @@ export const NETWORKS = [
     security: 'WPA',
     hidden: false,
     label: 'Network',
-    note: 'two spaces at the end',
+    // No printed note: the QR carries the trailing spaces, and the owner did
+    // not want them called out on the page.
+    note: '',
   },
 ];
 
