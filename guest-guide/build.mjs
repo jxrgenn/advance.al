@@ -9,6 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { bySlug } from './networks.mjs';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const template = fs.readFileSync(path.join(dir, 'template.html'), 'utf8');
@@ -16,22 +17,23 @@ const template = fs.readFileSync(path.join(dir, 'template.html'), 'utf8');
 // ---- edit these -----------------------------------------------------------
 const HOST_PHONE = '069 202 5137';
 
-const MERLIN_PASS  = '101090ora20';
-const DIGICOM_SSID = 'Digicom.AL - 1';
-const DIGICOM_PASS = 'merlin1990';
 // ---------------------------------------------------------------------------
 
 const qrSvg = (slug) => fs.readFileSync(path.join(dir, 'qr', `${slug}.svg`), 'utf8').trim();
 
-// ssid is printed inside white-space:pre-wrap so runs of spaces survive; a
-// guest typing the name by hand needs every one of them.
-const card = (label, ssid, slug, note) => `
+// The printed name comes from the same table the QR is encoded from, and sits
+// inside white-space:pre-wrap so runs of spaces survive. A guest typing the
+// name by hand needs every one of them.
+const card = (slug) => {
+  const { ssid, label, note } = bySlug(slug);
+  return `
         <div class="net">
           <div class="qr">${qrSvg(slug)}</div>
           <div class="lbl">${label}</div>
           <div class="ssid">${ssid}</div>${note ? `
           <div class="ssidnote">${note}</div>` : ''}
         </div>`;
+};
 
 const LAUNDRY_TILE = `
       <div class="tile"><div class="t">Washing Machine</div><div class="d">Please check pockets first</div></div>`;
@@ -49,9 +51,8 @@ const versions = [
     vars: {
       HOST_PHONE,
       PW_LABEL: 'Password — same for both',
-      WIFI_PASS: MERLIN_PASS,
-      WIFI_CARDS: card('Network — fast', 'Merlin  5GHZ', 'merlin-5ghz', 'two spaces before 5GHZ')
-                + card('Network — wide range', 'Merlin  2.4GHZ', 'merlin-24ghz', 'two spaces before 2.4GHZ'),
+      WIFI_PASS: bySlug('merlin-5ghz').pass,
+      WIFI_CARDS: card('merlin-5ghz') + card('merlin-24ghz'),
       LAUNDRY_TILE: '',
       LAUNDRY_NOTE: '',
     },
@@ -61,8 +62,8 @@ const versions = [
     vars: {
       HOST_PHONE,
       PW_LABEL: 'Password',
-      WIFI_PASS: DIGICOM_PASS,
-      WIFI_CARDS: card('Network', DIGICOM_SSID, 'digicom'),
+      WIFI_PASS: bySlug('digicom').pass,
+      WIFI_CARDS: card('digicom'),
       LAUNDRY_TILE,
       LAUNDRY_NOTE,
     },

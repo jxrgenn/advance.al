@@ -16,7 +16,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import jsQRmod from 'jsqr';
 import { createCanvas, loadImage } from 'canvas';
-import { NETWORKS, payloadFor, KNOWN_GOOD } from './gen-qr.mjs';
+import { NETWORKS, payloadFor, KNOWN_GOOD } from './networks.mjs';
 
 const jsQR = jsQRmod.default || jsQRmod;
 const dir = path.dirname(fileURLToPath(import.meta.url));

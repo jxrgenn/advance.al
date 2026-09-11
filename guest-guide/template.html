@@ -6,166 +6,166 @@
 <style>
   @page { size: A4; margin: 0; }
 
+  /* Palette recovered from the original guide's PDF. */
   :root{
-    --ink:#221d19;
-    --body:#3d3630;
-    --muted:#7d7268;
-    --brick:#9a3324;
-    --olive:#5c6247;
-    --sand:#faf7f2;
-    --line:#e2d9cb;
+    --bg:#faf8f5;
+    --card:#ffffff;
+    --ink:#1c1917;
+    --body:#78716c;
+    --muted:#a8a29e;
+    --accent:#9a5a3a;
+    --accent-soft:#c9957a;
+    --line:#e7e5e4;
     --serif:"Charter","Bitstream Charter","Iowan Old Style",Georgia,"Liberation Serif",serif;
     --sans:"Inter","Helvetica Neue",Helvetica,Arial,"Liberation Sans",sans-serif;
   }
   *{ box-sizing:border-box; }
   html,body{ margin:0; padding:0; }
   body{
-    font-family:var(--serif); color:var(--body); background:#fff;
-    font-size:9.1pt; line-height:1.30;
+    font-family:var(--serif); color:var(--body); background:var(--bg);
+    font-size:9.9pt; line-height:1.38;
     -webkit-print-color-adjust:exact; print-color-adjust:exact;
   }
   .page{
-    width:210mm; height:297mm; padding:13mm 14mm 10mm;
-    position:relative; overflow:hidden; page-break-after:always; background:#fff;
+    width:210mm; height:297mm; padding:13mm 14mm 11mm;
+    position:relative; overflow:hidden; page-break-after:always; background:var(--bg);
   }
   .page:last-child{ page-break-after:auto; }
 
-  /* ---- masthead ---- */
+  /* ---------------- masthead ---------------- */
   .eyebrow{
-    font-family:var(--sans); font-size:6.8pt; font-weight:600;
-    letter-spacing:.34em; text-transform:uppercase; color:var(--brick);
+    font-family:var(--sans); font-size:7pt; font-weight:600;
+    letter-spacing:.36em; text-transform:uppercase; color:var(--accent);
     text-align:center; margin:0 0 3mm;
   }
+  .eyebrow .d{ color:var(--muted); letter-spacing:.2em; }
   h1{
-    font-family:var(--serif); font-weight:400; font-size:37pt; line-height:1;
-    letter-spacing:-.015em; color:var(--ink); text-align:center; margin:0 0 2.5mm;
+    font-family:var(--serif); font-weight:400; line-height:1;
+    letter-spacing:-.02em; color:var(--ink); text-align:center; margin:0 0 3mm;
   }
+  h1 em{ font-style:normal; color:var(--accent); }
+  .p1 h1{ font-size:43pt; }
+  .p2 h1{ font-size:31pt; }
   .sub{
-    text-align:center; font-size:10.4pt; color:var(--muted);
-    margin:0 0 5mm; font-style:italic;
+    text-align:center; font-size:10.2pt; color:var(--muted);
+    font-style:italic; margin:0 0 6mm;
   }
+
+  /* ---------------- sections ---------------- */
+  .sec{ margin:0 0 3.9mm; }
   h2{
-    font-family:var(--sans); font-size:7.4pt; font-weight:700;
-    letter-spacing:.2em; text-transform:uppercase; color:var(--olive);
-    margin:0 0 2.6mm; padding-bottom:1.2mm;
+    font-family:var(--sans); font-size:7.6pt; font-weight:700;
+    letter-spacing:.22em; text-transform:uppercase; color:var(--body);
+    margin:0 0 2.3mm; padding-bottom:1.2mm;
     border-bottom:.7pt solid var(--line);
     display:flex; justify-content:space-between; align-items:baseline;
   }
   h2 .note{
-    font-size:6.6pt; letter-spacing:.08em; text-transform:none;
-    color:var(--muted); font-weight:400; font-style:italic;
+    font-family:var(--serif); font-size:8.4pt; letter-spacing:0;
+    text-transform:none; color:var(--muted); font-weight:400; font-style:italic;
   }
-  .sec{ margin:0 0 3.3mm; }
   p{ margin:0; }
 
-  /* ---- wifi ---- */
+  /* ---------------- wi-fi ---------------- */
   .wifi{
-    background:var(--sand); border:.7pt solid var(--line); border-radius:2.5mm;
-    padding:5mm 5mm 4mm; display:flex; gap:6mm; align-items:center;
+    background:var(--card); border:.7pt solid var(--line); border-radius:3mm;
+    padding:4.5mm 5mm 4mm; display:flex; gap:6mm; align-items:center;
   }
-  .netgrid{ display:flex; gap:5mm; flex:1; }
-  .net{ flex:1; text-align:center; }
-  .net .qr{
-    /* the SVG carries its own 4-module quiet zone, so no inner padding here */
-    width:32mm; height:32mm; margin:0 auto 2mm; display:block;
-    background:#fff; border:.6pt solid var(--line); border-radius:1.5mm;
-  }
+  .netgrid{ display:flex; gap:6mm; flex:1; justify-content:center; }
+  .net{ text-align:center; }
+  .net .qr{ width:29mm; height:29mm; margin:0 auto 2mm; display:block; background:#fff; }
   .net .qr svg{ display:block; width:100%; height:100%; }
   .net .lbl{
     font-family:var(--sans); font-size:6.2pt; font-weight:600;
-    letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin-bottom:.8mm;
+    letter-spacing:.18em; text-transform:uppercase; color:var(--muted); margin-bottom:1.2mm;
   }
-  /* pre-wrap so the double space in the network name is not collapsed away */
+  /* pre-wrap keeps the double spaces that are really in these network names */
   .net .ssid{
-    font-size:12.5pt; font-weight:700; color:var(--ink); letter-spacing:-.01em;
-    white-space:pre-wrap;
+    font-size:12pt; font-weight:700; color:var(--ink);
+    letter-spacing:-.01em; white-space:pre-wrap;
   }
   .net .ssidnote{
-    font-family:var(--sans); font-size:6.2pt; letter-spacing:.06em;
-    color:#9a3324; margin-top:.8mm;
+    font-family:var(--sans); font-size:6pt; letter-spacing:.04em;
+    color:var(--accent); margin-top:1mm;
   }
-  .pwbox{ width:52mm; text-align:center; border-left:.7pt solid var(--line); padding-left:6mm; }
+  .pwbox{ width:54mm; text-align:center; border-left:.7pt solid var(--line); padding-left:7mm; }
   .pwbox .lbl{
     font-family:var(--sans); font-size:6.2pt; font-weight:600;
-    letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin-bottom:1.5mm;
+    letter-spacing:.18em; text-transform:uppercase; color:var(--muted); margin-bottom:2mm;
   }
   .pwbox .pw{
-    font-family:var(--sans); font-size:16pt; font-weight:700; color:var(--brick);
-    letter-spacing:.02em; word-break:break-all; line-height:1.15;
+    font-family:var(--sans); font-size:16pt; font-weight:700; color:var(--accent);
+    letter-spacing:0; word-break:break-all; line-height:1.1;
   }
-  .pwbox .hint{ font-size:8pt; color:var(--muted); font-style:italic; margin-top:2.5mm; line-height:1.3; }
+  .pwbox .hint{ font-size:8pt; color:var(--muted); font-style:italic; margin-top:2.4mm; line-height:1.35; }
 
-  /* ---- rule tiles ---- */
-  .tiles{ display:flex; gap:3mm; }
+  /* ---------------- tiles ---------------- */
+  .tiles{ display:flex; gap:3.5mm; }
   .tile{
-    flex:1; border:.7pt solid var(--line); border-radius:2mm;
-    padding:2.6mm 3mm; text-align:center;
+    flex:1; background:var(--card); border:.7pt solid var(--line);
+    border-radius:2.5mm; padding:2.6mm 2.5mm; text-align:center;
   }
-  .tile .t{ font-size:9.6pt; font-weight:700; color:var(--ink); line-height:1.15; }
-  .tile .d{ font-size:7.6pt; color:var(--muted); margin-top:1mm; line-height:1.25; }
-  .tile.flag{ background:#fbeeeb; border-color:#e3c7bf; }
-  .tile.flag .t{ color:var(--brick); }
-
-  /* ---- two-column body ---- */
+  .tile .t{ font-size:9.5pt; font-weight:700; color:var(--ink); line-height:1.2; }
+  .tile .d{ font-size:7.4pt; color:var(--muted); margin-top:1mm; line-height:1.3; }
   .checkout{
-    font-size:9pt; color:var(--body); margin-top:2.4mm;
-    padding-top:2.2mm; border-top:.5pt dotted var(--line);
+    font-size:9pt; color:var(--body); margin-top:2.2mm; text-align:center;
   }
+  .checkout strong{ color:var(--ink); }
+  .laundry{
+    font-size:8.4pt; color:var(--muted); font-style:italic;
+    margin:2mm auto 0; text-align:center; line-height:1.35; max-width:145mm;
+  }
+
+  /* ---------------- entries ---------------- */
   .cols{ display:flex; gap:6mm; }
   .cols > *{ flex:1; min-width:0; }
-
-  /* ---- entries ---- */
-  .e{ margin:0 0 2.1mm; }
+  .e{ margin:0 0 2.6mm; }
   .e:last-child{ margin-bottom:0; }
-  .e .n{ font-size:9.8pt; font-weight:700; color:var(--ink); }
-  .e .d{ color:var(--body); }
+  .e .n{ font-size:10.4pt; font-weight:700; color:var(--ink); }
   .e .w{
-    font-family:var(--sans); font-size:6.3pt; font-weight:600;
-    letter-spacing:.1em; text-transform:uppercase; color:#867a6d;
-    margin-left:1.6mm; white-space:nowrap; vertical-align:1.2px;
+    font-family:var(--sans); font-size:6.2pt; font-weight:600;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--muted);
+    margin-left:1.8mm; white-space:nowrap; vertical-align:1.4px;
   }
-  .e .w::before{ content:"· "; color:#c9bfae; }
-  .e .w.g{ color:#867a6d; }
   .e .r{
-    font-family:var(--sans); font-size:6.4pt; font-weight:700;
-    color:var(--olive); margin-left:1.4mm; vertical-align:1.2px;
+    font-family:var(--sans); font-size:6.6pt; font-weight:700;
+    color:var(--accent-soft); margin-left:1.6mm; vertical-align:1.4px;
   }
+  .e .d{ color:var(--body); margin-top:.5mm; }
   .e .a{ color:var(--muted); font-style:italic; }
 
-  /* ---- emergency ---- */
-  .sos{ display:flex; gap:3mm; }
+  /* ---------------- emergency ---------------- */
+  .sos{ display:flex; gap:3.5mm; }
   .sos div{
-    flex:1; text-align:center; border:.7pt solid #e3c7bf; background:#fbeeeb;
-    border-radius:2mm; padding:2.6mm 1mm;
+    flex:1; text-align:center; background:var(--card);
+    border:.7pt solid var(--line); border-radius:2.5mm; padding:2.6mm 1mm;
   }
   .sos .n{
-    font-family:var(--sans); font-size:16pt; font-weight:700; color:var(--brick);
-    line-height:1; height:5.9mm; display:flex; align-items:center; justify-content:center;
+    font-family:var(--sans); font-size:17pt; font-weight:700; color:var(--accent);
+    line-height:1; height:6.2mm; display:flex; align-items:center; justify-content:center;
   }
   .sos .n.sm{ font-size:12.4pt; }
   .sos .l{
-    font-family:var(--sans); font-size:6pt; letter-spacing:.16em;
+    font-family:var(--sans); font-size:6.2pt; letter-spacing:.18em;
     text-transform:uppercase; color:var(--muted); margin-top:1.4mm;
   }
 
-  /* ---- closing ---- */
-  .close{
-    position:absolute; left:14mm; right:14mm; bottom:10mm; text-align:center;
-  }
-  .close .big{ font-size:13pt; color:var(--ink); font-style:italic; }
+  /* ---------------- closing ---------------- */
+  .close{ position:absolute; left:14mm; right:14mm; bottom:10mm; text-align:center; }
+  .close .rule{ width:13mm; height:.8pt; background:var(--accent-soft); margin:0 auto 3mm; }
+  .close .big{ font-size:12.6pt; color:var(--ink); font-style:italic; }
   .close .sm{
-    font-family:var(--sans); font-size:6.6pt; letter-spacing:.2em;
+    font-family:var(--sans); font-size:6.8pt; letter-spacing:.22em;
     text-transform:uppercase; color:var(--muted); margin-top:2mm;
   }
-  .dot{ color:var(--line); }
 </style>
 </head>
 <body>
 
-<!-- ============================ PAGE 1 ============================ -->
-<section class="page">
-  <p class="eyebrow">· · · &nbsp;Your stay in Tirana&nbsp; · · ·</p>
-  <h1>Welcome Home</h1>
+<!-- ======================= PAGE 1 ======================= -->
+<section class="page p1">
+  <p class="eyebrow"><span class="d">· · ·</span> &nbsp;Your stay in Tirana&nbsp; <span class="d">· · ·</span></p>
+  <h1>Welcome <em>Home</em></h1>
   <p class="sub">Everything you need for a wonderful stay</p>
 
   <div class="sec">
@@ -175,7 +175,7 @@
       <div class="pwbox">
         <div class="lbl">{{PW_LABEL}}</div>
         <div class="pw">{{WIFI_PASS}}</div>
-        <div class="hint">Scan a QR code with your phone camera to connect instantly.</div>
+        <div class="hint">Scan with your phone camera to connect instantly.</div>
       </div>
     </div>
   </div>
@@ -196,31 +196,31 @@
     <div class="cols">
       <div>
         <div class="e"><span class="n">Spitali Amavita</span><span class="w">1 minute walk</span>
-          <div class="d">Rruga Pjetër Budi, opposite the Italian Cultural Institute. A private hospital, and by far the closest place to see a doctor. Start here for anything that isn't a 127 emergency.</div></div>
-        <div class="e"><span class="n">Spitali Amerikan</span><span class="w g">by taxi</span>
-          <div class="d">The large private hospital network, further out. Worth the ride for anything serious.</div></div>
+          <div class="d">Rruga Pjetër Budi, opposite the Italian Cultural Institute. Private, and the closest place to see a doctor.</div></div>
+        <div class="e"><span class="n">Spitali Amerikan</span><span class="w">by taxi</span>
+          <div class="d">The large private hospital, for anything serious.</div></div>
       </div>
       <div>
         <div class="e"><span class="n">Farmaci Arena</span><span class="w">Arena Center</span>
-          <div class="d"><span class="a">8 AM to 10 PM.</span> There are more pharmacies within a few minutes in every direction. Look for the green cross.</div></div>
-        <div class="e"><span class="n">Farmaci Ditë e Natë</span><span class="w g">24 hours</span>
-          <div class="d">A round-the-clock chain, for the middle of the night. Wolt and Baboon also deliver late.</div></div>
+          <div class="d"><span class="a">8 AM to 10 PM.</span> More pharmacies within a few minutes: look for the green cross.</div></div>
+        <div class="e"><span class="n">Farmaci Ditë e Natë</span><span class="w">24 hours</span>
+          <div class="d">Round the clock, for the middle of the night.</div></div>
       </div>
     </div>
   </div>
 
   <div class="sec">
-    <h2>Money &amp; Exchange <span class="note">cards work almost everywhere · carry cash for small cafés and taxis</span></h2>
+    <h2>Money &amp; Exchange <span class="note">cards work almost everywhere, cash for cafés and taxis</span></h2>
     <div class="cols">
       <div>
         <div class="e"><span class="n">Nerguti</span><span class="w">closest</span>
-          <div class="d">Right across from Fishop, so about as close as it gets. The rate is on the board and there is normally no commission.</div></div>
-        <div class="e"><span class="n">Around Skanderbeg Square</span><span class="w g">if you want to compare</span>
-          <div class="d">Several more exchange offices sit within a couple of blocks of each other near the square, so it is easy to check two rates before changing anything.</div></div>
+          <div class="d">Right across from Fishop. Rate on the board, no commission.</div></div>
+        <div class="e"><span class="n">Around Skanderbeg Square</span><span class="w">to compare</span>
+          <div class="d">Several offices within two blocks of each other.</div></div>
       </div>
       <div>
-        <div class="e"><span class="n">After hours</span><span class="w g">ATMs</span>
-          <div class="d">Exchange offices keep shop hours, so once they close an ATM is the answer. When the machine offers to convert the amount into your own currency, always choose <strong>“continue without conversion”</strong>: its rate is worse than your bank's. Prefer a bank's own machine over a standalone Euronet box.</div></div>
+        <div class="e"><span class="n">After hours</span><span class="w">ATMs</span>
+          <div class="d">Always choose <strong>“continue without conversion”</strong>: the machine's own rate is worse than your bank's. Prefer a bank's ATM over a Euronet box.</div></div>
       </div>
     </div>
   </div>
@@ -236,35 +236,36 @@
   </div>
 
   <div class="close">
+    <div class="rule"></div>
     <p class="big">Make yourself at home. We're happy to have you here.</p>
     <p class="sm">Tirana, Albania</p>
   </div>
 </section>
 
-<!-- ============================ PAGE 2 ============================ -->
-<section class="page">
-  <p class="eyebrow">· · · &nbsp;Our local picks&nbsp; · · ·</p>
-  <h1>Around the Neighbourhood</h1>
-  <p class="sub">Places we go ourselves. Distances are from your front door.</p>
+<!-- ======================= PAGE 2 ======================= -->
+<section class="page p2">
+  <p class="eyebrow"><span class="d">· · ·</span> &nbsp;Our local picks&nbsp; <span class="d">· · ·</span></p>
+  <h1>Around the <em>Neighbourhood</em></h1>
+  <p class="sub">Places we go ourselves, and how far they really are</p>
 
   <div class="sec">
     <h2>Food &amp; Restaurants</h2>
     <div class="cols">
       <div>
         <div class="e"><span class="n">Fishop</span><span class="w">closest</span>
-          <div class="d">Fish and seafood, simply done. The closest proper dinner to the door, and our default when we cannot be bothered to cook.</div></div>
-        <div class="e"><span class="n">Era Blloku</span><span class="w g">Rruga Ismail Qemali</span><span class="r">4.6</span>
-          <div class="d">Beloved Albanian kitchen. Try the lamb shanks and the rice pudding.</div></div>
-        <div class="e"><span class="n">Morsi Tirana</span><span class="w g">Rruga Abdyl Frashëri</span><span class="r">4.7</span>
-          <div class="d">Italian bar and restaurant in Blloku. Handmade panini, burgers and Pinsa Romana, from breakfast until late.</div></div>
+          <div class="d">Fish and seafood, simply done. The closest proper dinner to the door.</div></div>
+        <div class="e"><span class="n">Era Blloku</span><span class="r">4.6</span>
+          <div class="d">Beloved Albanian kitchen. Try the lamb shanks and the rice pudding. <span class="a">Rruga Ismail Qemali</span></div></div>
+        <div class="e"><span class="n">Morsi Tirana</span><span class="r">4.7</span>
+          <div class="d">Handmade panini, burgers and Pinsa Romana, breakfast until late. <span class="a">Rruga Abdyl Frashëri</span></div></div>
       </div>
       <div>
-        <div class="e"><span class="n">Odas Garden</span><span class="w g">near the New Bazaar</span><span class="r">4.6</span>
-          <div class="d">Traditional Albanian in an atmospheric old-house setting, with live music.</div></div>
-        <div class="e"><span class="n">Artigiano at Vila</span><span class="w g">Rruga Papa Gjon Pali II</span><span class="r">4.7</span>
+        <div class="e"><span class="n">Odas Garden</span><span class="r">4.6</span>
+          <div class="d">Traditional Albanian in an old-house setting, with live music. <span class="a">Near the New Bazaar</span></div></div>
+        <div class="e"><span class="n">Artigiano at Vila</span><span class="r">4.7</span>
           <div class="d">Italian fine dining near the Pyramid. Incredible pasta and desserts.</div></div>
-        <div class="e"><span class="n">Salt Tirana</span><span class="w g">Rruga Pjetër Bogdani</span><span class="r">4.5</span>
-          <div class="d">Upscale fusion and sushi for a special night, with great cocktails.</div></div>
+        <div class="e"><span class="n">Salt Tirana</span><span class="r">4.5</span>
+          <div class="d">Upscale fusion and sushi for a special night. <span class="a">Rruga Pjetër Bogdani</span></div></div>
       </div>
     </div>
   </div>
@@ -274,35 +275,33 @@
     <div class="cols">
       <div>
         <div class="e"><span class="n">Inn's</span><span class="w">brunch</span>
-          <div class="d">Rruga Faik Konica, just by the Arena. This is the brunch: eggs, pancakes, French toast, big plates and proper coffee. Busy at the weekend, so go early.</div></div>
+          <div class="d">Eggs, pancakes, French toast, proper coffee. Busy at weekends, so go early. <span class="a">Rruga Faik Konica</span></div></div>
         <div class="e"><span class="n">Mulliri i Vjetër</span><span class="w">close</span>
-          <div class="d">The local chain Albanians actually use, and one of the closest to you. Opens early, reliable coffee, a counter full of byrek and pastries.</div></div>
+          <div class="d">The local chain Albanians actually use. Opens early, byrek and pastries at the counter.</div></div>
       </div>
       <div>
         <div class="e"><span class="n">Mon Cheri</span><span class="w">close</span>
-          <div class="d">Also right nearby, and the nicer place to sit for an hour over pastries and a coffee.</div></div>
+          <div class="d">The nicer place to sit for an hour over pastries and a coffee.</div></div>
         <div class="e"><span class="n">D'Anvers</span><span class="w">close</span>
-          <div class="d">Coffee and chocolate, a short walk away. The one to go to when you want something sweet with it.</div></div>
+          <div class="d">Coffee and chocolate, for when you want something sweet with it.</div></div>
       </div>
     </div>
   </div>
 
   <div class="sec">
-    <h2>Drinks &amp; Going Out <span class="note">Tirana starts late, so nothing gets going before eleven</span></h2>
+    <h2>Drinks &amp; Going Out <span class="note">nothing gets going before eleven</span></h2>
     <div class="cols">
       <div>
-        <div class="e"><span class="n">Around the Air Albania Stadium</span><span class="w">closest</span>
-          <div class="d">Your nearest night out. The stadium and the streets around it are full of cafés and lounges with big terraces, open late, and it is mostly locals rather than tourists.</div></div>
-        <div class="e"><span class="n">Puls</span><span class="w g">Blloku</span>
-          <div class="d">A club in Blloku, and the one people name first. There are plenty more within a few streets of it.</div></div>
-        <div class="e"><span class="n">Koni Bar</span><span class="w g">Rruga Pasho Hysa</span><span class="r">4.9</span>
-          <div class="d">A cocktail bar, and a local favourite. Good place to end the night.</div></div>
+        <div class="e"><span class="n">Around the Air Albania Stadium</span><span class="w">7 min</span>
+          <div class="d">Cafés and lounges with big terraces, open late, mostly locals. Your nearest night out.</div></div>
+        <div class="e"><span class="n">Puls</span><span class="w">Blloku</span>
+          <div class="d">The club people name first. Plenty more within a few streets of it.</div></div>
       </div>
       <div>
-        <div class="e"><span class="n">Blloku, generally</span><span class="w g">Blloku</span>
-          <div class="d">Do not plan this one. Walk down <strong>Rruga Pjetër Bogdani</strong> or <strong>Rruga Ismail Qemali</strong> after eleven and pick whatever sounds right. Radio Bar and Nouvelle Vague are the reliable ones if you want a name.</div></div>
+        <div class="e"><span class="n">Koni Bar</span><span class="r">4.9</span>
+          <div class="d">A cocktail bar and a local favourite. Good place to end the night. <span class="a">Rruga Pasho Hysa</span></div></div>
         <div class="e"><span class="n">Patala by Naga</span><span class="w">Rruga e Sales</span>
-          <div class="d">On Rruga e Sales, a street lined with bars, cafés and restaurants. Worth going for the street as much as for any one place on it.</div></div>
+          <div class="d">A street lined with bars, cafés and restaurants. Go for the street as much as the place.</div></div>
       </div>
     </div>
   </div>
@@ -312,15 +311,15 @@
     <div class="cols">
       <div>
         <div class="e"><span class="n">National Archaeological Museum</span><span class="w">closest</span>
-          <div class="d">On Sheshi Nënë Tereza, and the closest museum to you. Small, cheap and worth an hour.</div></div>
-        <div class="e"><span class="n">Pyramid of Tirana</span><span class="w g">free</span>
-          <div class="d">Climb the steps for views over the whole city. Free, and best at sunset.</div></div>
+          <div class="d">Sheshi Nënë Tereza. Small, cheap, and worth an hour.</div></div>
+        <div class="e"><span class="n">Pyramid of Tirana</span><span class="w">free</span>
+          <div class="d">Climb the steps for views over the city. Best at sunset.</div></div>
       </div>
       <div>
         <div class="e"><span class="n">House of Leaves</span>
-          <div class="d">Museum of secret surveillance, in the old Sigurimi building. Closed Mondays. 700 lekë.</div></div>
+          <div class="d">Museum of secret surveillance, in the old Sigurimi building. <span class="a">Closed Mondays · 700 lekë</span></div></div>
         <div class="e"><span class="n">Bunk'Art 2</span>
-          <div class="d">Cold War bunker museum near Skanderbeg Square. 900 lekë. <span class="a">(Bunk'Art 1, out under Dajti, is a taxi ride and most of a day.)</span></div></div>
+          <div class="d">Cold War bunker museum near Skanderbeg Square. <span class="a">900 lekë</span></div></div>
       </div>
     </div>
   </div>
@@ -330,14 +329,15 @@
     <div class="tiles">
       <div class="tile"><div class="t">Corner mini-markets</div><div class="d">A couple of minutes away<br>bread, water, beer, basics</div></div>
       <div class="tile"><div class="t">Big Market</div><div class="d">Rruga Dervish Hima<br>until 10 PM</div></div>
-      <div class="tile"><div class="t">Tregu i Fshatarëve</div><div class="d">Along Rruga Vath Koreshi<br>produce straight from the countryside</div></div>
-      <div class="tile"><div class="t">Wolt &amp; Baboon</div><div class="d">Food, groceries and more<br>delivered until late</div></div>
+      <div class="tile"><div class="t">Tregu i Fshatarëve</div><div class="d">Rruga Vath Koreshi<br>produce from the countryside</div></div>
+      <div class="tile"><div class="t">Wolt &amp; Baboon</div><div class="d">Food and groceries<br>delivered until late</div></div>
     </div>
   </div>
 
   <div class="close">
+    <div class="rule"></div>
     <p class="big">Enjoy your time in Tirana. Faleminderit!</p>
-    <p class="sm">For anything else, call your host &nbsp;<span class="dot">·</span>&nbsp; {{HOST_PHONE}}</p>
+    <p class="sm">For anything else, call your host &nbsp;·&nbsp; {{HOST_PHONE}}</p>
   </div>
 </section>
 

@@ -8,8 +8,13 @@ emergency), page 2 is the local picks.
 
 | File | Wi-Fi | Extra rule |
 |---|---|---|
-| `welcome-home-tirana-guide.pdf` | `merlin 5GHZ` + `merlin 2.4GHZ` · `101090ora20` | — |
-| `welcome-home-tirana-guide-digicom.pdf` | `Digicom.AL - 1` · `merlin1990` | empty-your-pockets / washing machine |
+| `welcome-home-tirana-guide.pdf` | `Merlin··5GHZ` + `Merlin··2.4GHZ` · `101090ora20` | — |
+| `welcome-home-tirana-guide-digicom.pdf` | `Digicom.AL - 1··` · `merlin1990` | washing machine / check pockets |
+
+`·` marks a space. Those doubled spaces are real and load-bearing: Wi-Fi names
+are case and space sensitive, and getting them wrong makes the QR codes point
+at a network that does not exist. `networks.mjs` is the only place they are
+written down, and both the printed label and the QR come from it.
 
 Both print fine in black and white.
 
@@ -29,8 +34,8 @@ with Playwright; set `CHROME=` to point at any other Chrome/Chromium binary.
 access. They encode the standard `WIFI:T:WPA;S:<ssid>;P:<pass>;;` payload with
 a full 4-module quiet zone.
 
-Credentials, security type and the hidden-SSID flag live in `NETWORKS` at the
-top of `gen-qr.mjs`. If a network is not broadcast, set `hidden: true` or the
+Credentials, security type and the hidden-SSID flag live in `NETWORKS` in
+`networks.mjs`. If a network is not broadcast, set `hidden: true` or the
 phone will scan the code and then report that it cannot join.
 
 ```sh
