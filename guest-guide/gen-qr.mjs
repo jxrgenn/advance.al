@@ -26,13 +26,17 @@ export const NETWORKS = [
   { slug: 'digicom',      ssid: 'Digicom.AL - 1', pass: 'merlin1990',  security: 'WPA', hidden: false },
 ];
 
-// WIFI: URI scheme — ; , : \ and " must be backslash-escaped inside S: and P:
-const esc = (s) => s.replace(/([\;,:"])/g, '\\$1');
+// WIFI: URI scheme: backslash, semicolon, comma, colon and double quote must
+// all be backslash-escaped inside S: and P:. Backslash has to be first.
+const esc = (s) => s.replace(/([\\;,:"])/g, '\\$1');
 
+// Field order follows ZXing's documented form (S, then T, then P). Most
+// parsers are order-agnostic, but this is the order every implementation
+// is known to handle.
 export const payloadFor = ({ ssid, pass, security = 'WPA', hidden = false }) =>
   security === 'nopass'
-    ? `WIFI:T:nopass;S:${esc(ssid)};${hidden ? 'H:true;' : ''};`
-    : `WIFI:T:${security};S:${esc(ssid)};P:${esc(pass)};${hidden ? 'H:true;' : ''};`;
+    ? `WIFI:S:${esc(ssid)};T:nopass;${hidden ? 'H:true;' : ''};`
+    : `WIFI:S:${esc(ssid)};T:${security};P:${esc(pass)};${hidden ? 'H:true;' : ''};`;
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   fs.mkdirSync(path.join(dir, 'qr'), { recursive: true });
