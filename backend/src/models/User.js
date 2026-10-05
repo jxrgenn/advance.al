@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { normalizeAlbanianPhone } from '../lib/phonePolicy.js';
+import { emailFormatValidator } from '../lib/emailFormat.js';
 
 const { Schema } = mongoose;
 
@@ -359,7 +360,7 @@ const userSchema = new Schema({
     unique: true,
     lowercase: true,
     trim: true,
-    match: [/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/, 'Ju lutemi vendosni një email të vlefshëm']
+    validate: { validator: emailFormatValidator, message: 'Ju lutemi vendosni një email të vlefshëm' }
   },
   password: {
     type: String,
@@ -531,7 +532,10 @@ const userSchema = new Schema({
   // Active refresh tokens (for token revocation)
   refreshTokens: [{
     token: { type: String, required: true },
-    createdAt: { type: Date, default: Date.now, expires: 604800 } // 7 days TTL
+    // No `expires` here: a TTL index on an array field deletes the whole user
+    // document (see lib/dropLegacyIndexes.js). Tokens older than 7 days are
+    // pruned in addRefreshToken and rejected by the JWT expiry anyway.
+    createdAt: { type: Date, default: Date.now }
   }],
 
   // Per-jobseeker 2h digest queue for new-job notifications. New matches push

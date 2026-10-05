@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { cacheDelete } from '../config/redis.js';
 import logger from '../config/logger.js';
+import { emailFormatValidator } from '../lib/emailFormat.js';
 import { JOB_CATEGORIES } from '../constants/jobCategories.js';
 
 const { Schema } = mongoose;
@@ -211,7 +212,7 @@ const jobSchema = new Schema({
     },
     email: {
       type: String,
-      match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,63})+$/, 'Email i pavlefshëm']
+      validate: { validator: emailFormatValidator, message: 'Email i pavlefshëm' }
     },
     enabledMethods: {
       phone: {

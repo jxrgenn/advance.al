@@ -4451,3 +4451,57 @@ intentional design:
 Deferred (Tier 3, follow-up): notification-preferences UI; save-button
 loading/disabled states; roll the inline-field-error pattern out to the
 remaining forms (signup, PostJob, dashboard) once the pilot is approved.
+
+---
+
+## 🔴 Pre-Launch Full Audit & Fix Sprint (started 2026-10-01) — IN PROGRESS
+
+Owner request: test literally everything (every flow, button, edge case), find
+what's broken/slow, fix it all, no regressions, no features removed.
+
+**Method:** isolated live sandboxes (`backend/qa-harness/`, git-excluded) — the
+REAL server.js on an in-memory Mongo replica set, every external service
+stubbed (backend/.env holds the prod Atlas URI + keys; the harness overrides
+every sensitive var before import). Seeded with every role + job/application
+state. Headless Chromium drives the real frontend (Vite) against it. 21 domain
+finder agents → every finding independently re-reproduced + root-caused →
+fix phase → full regression.
+
+**Pre-audit actions (2026-10-01):**
+- ⚠️ Restored `frontend/src/pages/Profile.tsx` — the working tree held an
+  uncommitted copy that was ~byte-identical to commit `588f3ed` (2026-04-28),
+  silently reverting 5 later commits (GDPR export, inline field errors,
+  password visibility toggles, shared phone/password rules, tutorial + salary
+  prefs). Stale copy backed up outside the repo; HEAD version restored.
+- Baseline: backend jest suite cannot complete in one process (V8 heap OOM
+  after ~66/313 files) → running sharded. Frontend `vite build` OK; `tsc
+  --noEmit` = 90 type errors (Vite doesn't type-check; several are real
+  contract bugs); eslint = 509 problems (413 are `no-explicit-any`).
+- Leads carried from an unfixed June 9 audit (seed scripts only, no doc):
+  C-1 payment bypass via PATCH /jobs/:id/status, H-1 Paysera callback replay,
+  H-2 data-retention on hired apps, H-5 admin audit-log gap, M-1 public-profile
+  IDOR after withdraw, M-2 messages on terminal applications, M-3 quickusers
+  NoSQL injection, M-4 matching over-exposure.
+
+### ✅ HOTFIX 2026-10-05 — account deletion via TTL + email-regex ReDoS (shipped ahead of the fix batches)
+Found by the deep-logic code readers, both reproduced live before fixing.
+- **Accounts silently deleted (critical, since 2026-03-16):** `refreshTokens[].createdAt`
+  declared `expires: 604800`. Mongoose turned it into a TTL index on `users`, and MongoDB
+  TTL deletes the *whole document* once the earliest date in the array is 7 days old.
+  Any user idle for a week, or with one stale device token, vanished without cascade
+  hooks (orphaned jobs/applications). Prod holds only test data (owner), so no recovery is needed.
+  Fix: removed `expires` (stale tokens are already pruned in `addRefreshToken` and rejected
+  by the JWT expiry); `lib/dropLegacyIndexes.js` drops `users.refreshTokens.createdAt_1`
+  inside `connectDB()` right after connecting (Mongoose autoIndex never drops indexes).
+  Verified: real `connectDB()` against a DB holding the legacy index drops it; a user with
+  an 8-day-old token survives 4 TTL-monitor passes (with a positive TTL control).
+- **One anonymous request froze the API (critical):** the QuickUser/Job email pattern
+  `/^\w+([\.-]?\w+)*@.../` backtracked exponentially. Live: POST /api/quickusers with a
+  34-char local part blocked /health for 46 s (≈4× per 2 chars). It also rejected every
+  `+` address with a 500. Fix: shared `lib/emailFormat.js` (no nested quantifiers,
+  254-char RFC cap) used by User, QuickUser and Job.contactOverrides. Live after: 28 chars →
+  201 in 67 ms; 62 chars → 201; 302 chars → 400.
+- Tests: `tests/unit/email-format-and-legacy-ttl.test.js` (9 pass; the TTL test fails on the
+  old schema). 74 related suites: 803 pass; `quickusers-cv-pipeline` 3 failures are
+  pre-existing (identical on the old code; stub vector 1024 vs 1536), and one timing-budget
+  flake in performance-baselines passes on rerun.
