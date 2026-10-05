@@ -38,24 +38,24 @@ describe('Phase 2 — Input Attacks', () => {
   });
 
   describe('NoSQL injection', () => {
-    it('login with email object {$gt: ""} → 400 (validation rejects non-string email)', async () => {
+    it('login with email object {$gt: ""} → 400 (O-68 operator guard)', async () => {
       await createJobseeker({ email: 'victim@example.com' });
       const response = await request(app)
         .post('/api/auth/login')
         .send({ email: { $gt: '' }, password: 'whatever' });
-      // express-validator's .isEmail() rejects non-strings — should be 400 not 200
-      // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
-      expect([400, 401]).toContain(response.status);
-      expect(response.body.success).toBe(false);
+      // O-68: the global rejectMongoOperators guard refuses any body carrying
+      // a `$`-prefixed key before the route (or its validators) runs.
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ success: false, message: 'Kërkesa përmban fusha të palejuara.' });
     });
 
-    it('login with password object {$ne: null} → 400/401, never 200', async () => {
+    it('login with password object {$ne: null} → 400 (O-68 operator guard)', async () => {
       await createJobseeker({ email: 'victim2@example.com' });
       const response = await request(app)
         .post('/api/auth/login')
         .send({ email: 'victim2@example.com', password: { $ne: null } });
-      // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
-      expect([400, 401]).toContain(response.status);
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ success: false, message: 'Kërkesa përmban fusha të palejuara.' });
     });
 
     it('jobs search with city parameter as object → 400/empty result, no crash', async () => {

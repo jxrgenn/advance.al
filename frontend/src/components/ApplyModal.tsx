@@ -32,6 +32,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Job, applicationsApi, usersApi } from '@/lib/api';
 import { getProfileCompleteness } from '@/lib/profileUtils';
+import { markCVParsingStarted, clearCVParsingMarker } from '@/lib/cvParsingMarker';
 
 interface ApplyModalProps {
   job: Job | null;
@@ -40,44 +41,105 @@ interface ApplyModalProps {
   onSuccess: () => void;
 }
 
+const normKey = (s?: string) => (s || '').toLowerCase().trim();
+
 /**
- * Uploads CV, parses it with AI, and auto-fills profile in the background.
- * Sets localStorage flag so Profile page shows a loading state.
+ * "Po, ruaje edhe në profil": stores the CV as the PROFILE CV and AI-fills the
+ * profile in the background. (The CV itself already went to the employer with
+ * the application — O-42 — so nothing here affects the application.)
+ *
+ * O-44: the user never reviews this data, so it must not clobber anything
+ * they wrote: only EMPTY title/bio/experience/skills are filled, and
+ * work/education entries already on the profile (same company+position /
+ * institution+degree) are not added again.
+ *
+ * O-43: the Profile overlay marker is timestamped and cleared on every exit
+ * path (and when this page unloads mid-job).
  */
 async function backgroundCVSaveAndParse(
   cvFile: File,
   refreshUser: () => Promise<void>,
   showToast: (opts: any) => void
 ) {
-  localStorage.setItem('cv-parsing-in-progress', 'true');
+  markCVParsingStarted();
   try {
-    // Step 1: Upload + parse CV with AI
+    // Step 1: store as profile CV + parse with AI
     const formData = new FormData();
     formData.append('resume', cvFile);
-    const response = await usersApi.parseResume(formData);
 
-    if (!response.success || !response.data?.parsedData) {
-      // Parsing failed but file was uploaded — still useful
+    let parsed: any = null;
+    try {
+      const response = await usersApi.parseResume(formData);
+      parsed = response.success ? response.data?.parsedData ?? null : null;
+    } catch {
+      // AI parsing unavailable (feature off, hourly limit, ...): parse-resume
+      // then stored nothing. The user asked for the CV on their profile, so
+      // store it the plain way.
+      try {
+        await usersApi.uploadResume(formData);
+        await refreshUser();
+        showToast({
+          title: 'CV-ja u ruajt në profil',
+          description: 'Plotësimi automatik i profilit nuk ishte i disponueshëm tani.',
+          duration: 5000
+        });
+      } catch {
+        showToast({
+          title: 'CV-ja nuk u ruajt në profil',
+          description: 'Aplikimi u dërgua me CV-në, por ruajtja në profil dështoi. Mund ta ngarkoni nga faqja e profilit.',
+          variant: 'destructive',
+          duration: 6000
+        });
+      }
+      return;
+    }
+
+    if (!parsed) {
+      // Stored, but nothing could be extracted — still useful.
+      await refreshUser();
+      showToast({
+        title: 'CV-ja u ruajt në profil',
+        description: 'CV-ja nuk mund të analizohej automatikisht — profili nuk u ndryshua.',
+        duration: 5000
+      });
+      return;
+    }
+
+    // Step 2: read the CURRENT profile (it may have changed since the modal
+    // opened) — without it we can't tell what is empty, so change nothing.
+    let current: any;
+    try {
+      const fresh = await usersApi.getProfile();
+      current = fresh.data?.user?.profile?.jobSeekerProfile || {};
+    } catch {
       await refreshUser();
       return;
     }
 
-    const parsed = response.data.parsedData;
+    // Step 3: fill only empty profile fields
+    const profileUpdate: Record<string, unknown> = {};
+    if (parsed.title && !current.title?.trim()) profileUpdate.title = parsed.title;
+    if (parsed.bio && !current.bio?.trim()) profileUpdate.bio = parsed.bio;
+    if (parsed.experience && !current.experience) profileUpdate.experience = parsed.experience;
+    if (parsed.skills?.length > 0 && !(current.skills?.length > 0)) profileUpdate.skills = parsed.skills;
 
-    // Step 2: Auto-apply parsed profile fields
-    const profileUpdate: any = {};
-    if (parsed.title) profileUpdate.title = parsed.title;
-    if (parsed.bio) profileUpdate.bio = parsed.bio;
-    if (parsed.experience) profileUpdate.experience = parsed.experience;
-    if (parsed.skills?.length > 0) profileUpdate.skills = parsed.skills;
-
+    let filled = 0;
     if (Object.keys(profileUpdate).length > 0) {
-      await usersApi.updateProfile({ jobSeekerProfile: profileUpdate });
+      try {
+        await usersApi.updateProfile({ jobSeekerProfile: profileUpdate });
+        filled += Object.keys(profileUpdate).length;
+      } catch { /* keep going with the entries */ }
     }
 
-    // Step 3: Add work experience entries
+    // Step 4: add work experience entries that aren't on the profile yet
+    const workSeen = new Set<string>(
+      (current.workHistory || []).map((w: any) => `${normKey(w.company)}|${normKey(w.position)}`)
+    );
     for (const work of (parsed.workExperience || [])) {
       if (!work.position || !work.company) continue;
+      const key = `${normKey(work.company)}|${normKey(work.position)}`;
+      if (workSeen.has(key)) continue;
+      workSeen.add(key);
       try {
         await usersApi.addWorkExperience({
           position: work.position,
@@ -89,12 +151,19 @@ async function backgroundCVSaveAndParse(
           description: work.description || '',
           achievements: work.achievements || ''
         });
+        filled += 1;
       } catch { /* continue on error */ }
     }
 
-    // Step 4: Add education entries
+    // Step 5: add education entries that aren't on the profile yet
+    const eduSeen = new Set<string>(
+      (current.education || []).map((e: any) => `${normKey(e.institution || e.school)}|${normKey(e.degree)}`)
+    );
     for (const edu of (parsed.education || [])) {
       if (!edu.degree || !edu.institution) continue;
+      const key = `${normKey(edu.institution)}|${normKey(edu.degree)}`;
+      if (eduSeen.has(key)) continue;
+      eduSeen.add(key);
       try {
         await usersApi.addEducation({
           degree: edu.degree,
@@ -107,19 +176,26 @@ async function backgroundCVSaveAndParse(
           gpa: edu.gpa || '',
           description: edu.description || ''
         });
+        filled += 1;
       } catch { /* continue on error */ }
     }
 
     await refreshUser();
-    showToast({
-      title: 'Profili u plotësua automatikisht!',
-      description: 'CV-ja u analizua dhe profili u përditësua me sukses.',
-      duration: 5000
-    });
+    showToast(filled > 0
+      ? {
+          title: 'Profili u plotësua automatikisht!',
+          description: 'CV-ja u ruajt në profil. U plotësuan vetëm fushat bosh — të dhënat tuaja ekzistuese nuk u ndryshuan.',
+          duration: 6000
+        }
+      : {
+          title: 'CV-ja u ruajt në profil',
+          description: 'Profili juaj ishte tashmë i plotësuar — asgjë nuk u ndryshua.',
+          duration: 5000
+        });
   } catch (error) {
     console.error('Background CV parse error:', error);
   } finally {
-    localStorage.removeItem('cv-parsing-in-progress');
+    clearCVParsingMarker();
   }
 }
 
@@ -253,12 +329,17 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
         }));
       }
 
-      await applicationsApi.apply(applicationData);
+      // O-42: an attached CV always travels WITH the application, so the
+      // employer gets it whatever the applicant answers to "save to profile".
+      const attachedCV = !userHasCV && cvFile ? cvFile : undefined;
+      await applicationsApi.apply(applicationData, attachedCV);
 
       toast({
         title: 'Aplikimi u dërgua!',
-        description: saveToProfile
-          ? 'Aplikimi u dërgua. CV-ja po ruhet dhe profili po plotësohet automatikisht...'
+        description: attachedCV
+          ? (saveToProfile
+            ? 'Aplikimi u dërgua bashkë me CV-në. CV-ja po ruhet edhe në profil dhe profili po plotësohet...'
+            : 'Aplikimi u dërgua bashkë me CV-në tuaj. CV-ja nuk u ruajt në profil.')
           : 'Aplikimi juaj u dërgua me sukses. Do të kontaktoheni së shpejti.',
         duration: 5000
       });
@@ -266,9 +347,9 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
       onSuccess();
       onClose();
 
-      // Fire-and-forget: save CV + parse + auto-fill profile in background
-      if (saveToProfile && cvFile) {
-        backgroundCVSaveAndParse(cvFile, refreshUser, toast);
+      // Fire-and-forget: also save the CV to the profile + auto-fill empty fields
+      if (saveToProfile && attachedCV) {
+        backgroundCVSaveAndParse(attachedCV, refreshUser, toast);
       }
     } catch (error: any) {
       console.error('Error applying for job:', error);
@@ -572,10 +653,10 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
           <DialogHeader className="space-y-2">
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5 text-primary" />
-              Ruaj CV-në në profil?
+              Ruaj CV-në edhe në profil?
             </DialogTitle>
             <DialogDescription>
-              CV-ja do të analizohet me AI dhe profili do të plotësohet automatikisht. Kjo ndodh në sfond — nuk do të prisni.
+              CV-ja i dërgohet punëdhënësit me këtë aplikim në çdo rast. Nëse e ruani edhe në profil, do të përdoret për aplikimet e ardhshme dhe AI do të plotësojë fushat bosh të profilit (të dhënat ekzistuese nuk ndryshohen). Kjo ndodh në sfond — nuk do të prisni.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-2">
@@ -585,7 +666,7 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
               disabled={isSubmitting}
               className="w-full sm:w-auto"
             >
-              Jo, vetëm apliko
+              Jo, vetëm për këtë aplikim
             </Button>
             <Button
               onClick={() => submitApplication(true)}
@@ -598,7 +679,7 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
                   Duke dërguar...
                 </>
               ) : (
-                'Po, ruaj dhe apliko'
+                'Po, ruaje edhe në profil'
               )}
             </Button>
           </DialogFooter>

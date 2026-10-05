@@ -15,7 +15,8 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { parseUserProfileCV } from '../services/cvParsingService.js';
 import { fireEmbedding } from '../services/embeddingTrigger.js';
 import { isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE } from '../lib/phonePolicy.js';
-import { publicJobseekerProfile } from '../lib/serializers.js';
+import { publicJobseekerProfile, publicJob } from '../lib/serializers.js';
+import { toStoredCloudinaryUrl, swapProfileResume, deleteStoredResume, newResumePublicId } from '../lib/resumeStorage.js';
 
 const router = express.Router();
 
@@ -699,11 +700,10 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
 
     let resumeUrl;
 
-    // Clean up old Cloudinary file if exists
+    // The old CV is deleted only AFTER the new one is stored and attached
+    // (swapProfileResume below) — deleting it first left the profile pointing
+    // at a deleted file whenever the upload then failed.
     const oldResumeUrl = user.profile.jobSeekerProfile?.resume;
-    if (oldResumeUrl) {
-      await cleanupOldCloudinaryFile(oldResumeUrl, 'raw');
-    }
 
     // Try Cloudinary upload first, fall back to local storage
     if (isCloudinaryConfigured() && req.file.buffer) {
@@ -714,9 +714,9 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
           // Round O-B: resumes are private. Bare URL returns 401; backend
           // mints short-lived signed URLs via POST /api/users/resume/sign.
           type: 'authenticated',
-          public_id: `resume-${req.user._id}-${Date.now()}`,
+          public_id: newResumePublicId(req.user._id),
         });
-        resumeUrl = cloudResult.secure_url;
+        resumeUrl = toStoredCloudinaryUrl(cloudResult.secure_url); // never persist the permanent s--sig-- delivery URL
         logger.info('Resume uploaded to Cloudinary', { userId: req.user._id, url: resumeUrl });
       } catch (cloudError) {
         logger.error('Cloudinary resume upload failed', { error: cloudError.message });
@@ -738,23 +738,22 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
 
     // Update user profile with resume URL + detected format. resumeType
     // drives whether the frontend offers the in-browser "Shiko CV" action.
-    if (!user.profile.jobSeekerProfile) {
-      user.profile.jobSeekerProfile = {};
-    }
-    user.profile.jobSeekerProfile.resume = resumeUrl;
+    // Race-free swap that deletes the replaced CV (review #7).
     const detectedFormat = detectResumeFormat(req.file.buffer);
-    if (detectedFormat) {
-      user.profile.jobSeekerProfile.resumeType = detectedFormat;
+    try {
+      await swapProfileResume(req.user._id, resumeUrl, { resumeType: detectedFormat, expectedUrl: oldResumeUrl });
+    } catch (swapError) {
+      await deleteStoredResume(resumeUrl);
+      throw swapError;
     }
-
-    await user.save();
+    const updatedUser = await User.findById(req.user._id);
 
     res.json({
       success: true,
       message: 'CV u ngarkua me sukses',
       data: {
         resumeUrl: resumeUrl,
-        user: user
+        user: updatedUser
       }
     });
 
@@ -843,7 +842,7 @@ const resumeSignLimiter = rateLimit({
   max: process.env.NODE_ENV === 'development' ? 1000 : 30,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?._id?.toString() || ipKeyGenerator(req),
+  keyGenerator: (req) => req.user?._id?.toString() || ipKeyGenerator(req.ip),
   skip: () =>
     process.env.NODE_ENV !== 'production' &&
     process.env.SKIP_RATE_LIMIT === 'true',
@@ -871,8 +870,11 @@ function ownerIdFromResumeUrl(url) {
 //          Replaces the public-by-default upload model — `type: 'authenticated'`
 //          resumes return 401 on a bare GET. Backend does the authz check then
 //          gives back a 5-min URL only authorized callers can use.
-// @access  Private (resume owner, admin, or employer with an active application
-//          from the owner). Rate-limited per user (30/hr).
+// @access  Private (resume owner, admin, or an employer the CV was actually
+//          shared with: the owner's CURRENT profile CV when the owner has an
+//          active application to that employer, or a CV attached to an active
+//          application addressed to that employer — O-42). Rate-limited per
+//          user (30/hr).
 router.post('/resume/sign', authenticate, resumeSignLimiter, async (req, res) => {
   try {
     const { resumeUrl } = req.body || {};
@@ -891,11 +893,16 @@ router.post('/resume/sign', authenticate, resumeSignLimiter, async (req, res) =>
     } else if (req.user.userType === 'admin') {
       authorized = true;
     } else if (req.user.userType === 'employer') {
-      const { Application } = await import('../models/index.js');
+      // Bind the grant to THIS url. Applicants can attach a different CV to
+      // each application (O-42); a relationship with employer A must not
+      // unlock the CV the applicant sent only to employer B.
+      const owner = await User.findById(ownerId).select('profile.jobSeekerProfile.resume').lean();
+      const isCurrentProfileCv = owner?.profile?.jobSeekerProfile?.resume === resumeUrl;
       const hasApplication = await Application.exists({
         jobSeekerId: ownerId,
         employerId: req.user._id,
         withdrawn: false,
+        ...(!isCurrentProfileCv && { resumeUrl }),
       });
       if (hasApplication) authorized = true;
     }
@@ -928,7 +935,7 @@ const parseResumeLimiter = rateLimit({
   // Fallback to per-IP via ipKeyGenerator (proper IPv6 handling) instead of a
   // shared 'anonymous' bucket — that bucket would let one attacker DoS all
   // anonymous traffic through this endpoint.
-  keyGenerator: (req) => req.user?._id?.toString() || ipKeyGenerator(req),
+  keyGenerator: (req) => req.user?._id?.toString() || ipKeyGenerator(req.ip),
   message: {
     success: false,
     message: 'Keni arritur limitin e analizimit të CV. Provoni përsëri pas 1 ore.'
@@ -986,20 +993,21 @@ router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter,
     // --- Step 1: Upload file (same as upload-resume) ---
     let resumeUrl;
 
-    // Clean up old Cloudinary file if exists
+    // Old CV deleted only after the new one is attached (swapProfileResume).
     const oldResumeUrl = user.profile.jobSeekerProfile?.resume;
-    if (oldResumeUrl) {
-      await cleanupOldCloudinaryFile(oldResumeUrl, 'raw');
-    }
 
     if (isCloudinaryConfigured() && req.file.buffer) {
       try {
         const cloudResult = await uploadToCloudinary(req.file.buffer, {
           folder: 'advance-al/cvs',
           resource_type: 'raw',
-          public_id: `resume-${req.user._id}-${Date.now()}`,
+          // Round O-B: private like /upload-resume — without this the parse
+          // path stored PUBLIC CVs that /resume/sign (type 'authenticated')
+          // could not sign either.
+          type: 'authenticated',
+          public_id: newResumePublicId(req.user._id),
         });
-        resumeUrl = cloudResult.secure_url;
+        resumeUrl = toStoredCloudinaryUrl(cloudResult.secure_url); // never persist the permanent s--sig-- delivery URL
         logger.info('Resume uploaded to Cloudinary (parse-resume)', { userId: req.user._id, url: resumeUrl });
       } catch (cloudError) {
         logger.error('Cloudinary resume upload failed', { error: cloudError.message });
@@ -1018,16 +1026,15 @@ router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter,
       });
     }
 
-    // Update user profile with resume URL + detected format
-    if (!user.profile.jobSeekerProfile) {
-      user.profile.jobSeekerProfile = {};
-    }
-    user.profile.jobSeekerProfile.resume = resumeUrl;
+    // Update user profile with resume URL + detected format (race-free swap
+    // that deletes the replaced CV — review #7)
     const detectedParseFormat = detectResumeFormat(req.file.buffer);
-    if (detectedParseFormat) {
-      user.profile.jobSeekerProfile.resumeType = detectedParseFormat;
+    try {
+      await swapProfileResume(req.user._id, resumeUrl, { resumeType: detectedParseFormat, expectedUrl: oldResumeUrl });
+    } catch (swapError) {
+      await deleteStoredResume(resumeUrl);
+      throw swapError;
     }
-    await user.save();
 
     // --- Step 2: Parse CV with AI ---
     let parsedData = null;
@@ -1066,7 +1073,7 @@ router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter,
       data: {
         resumeUrl,
         parsedData,
-        user
+        user: await User.findById(req.user._id)
       }
     });
 
@@ -1979,7 +1986,9 @@ router.get('/saved-jobs', authenticate, requireJobSeeker, async (req, res) => {
     res.json({
       success: true,
       data: {
-        jobs: savedJobs,
+        // Public job shape (lib/serializers.js): no payment internals,
+        // embeddings / similarity cache, or numbers of a hidden salary.
+        jobs: savedJobs.map(j => publicJob(j.toJSON(), { viewer: req.user })),
         pagination: {
           currentPage,
           totalPages,
@@ -2149,7 +2158,7 @@ router.get('/export', authenticate, async (req, res) => {
         withdrawn: false
       })
         .populate('jobId', 'title location category')
-        .select('status appliedAt applicationMethod coverLetter customAnswers viewedAt respondedAt messages')
+        .select('status appliedAt applicationMethod coverLetter customAnswers viewedAt respondedAt messages resumeUrl resumeType')
         .sort({ appliedAt: -1 })
         .lean();
 
@@ -2162,6 +2171,9 @@ router.get('/export', authenticate, async (req, res) => {
         applicationMethod: app.applicationMethod,
         coverLetter: app.coverLetter,
         customAnswers: app.customAnswers,
+        // CV sent with this application only (O-42) — same convention as the
+        // profile CV above (review #8).
+        attachedCv: app.resumeUrl ? { file: '(file on record)', fileType: app.resumeType || null } : null,
         viewedAt: app.viewedAt,
         respondedAt: app.respondedAt,
         messageCount: app.messages?.length || 0

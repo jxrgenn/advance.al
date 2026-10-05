@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { authApi, User, getCurrentUserFromStorage, isAuthenticated } from '@/lib/api';
 
 // Auth State Types
@@ -282,13 +282,16 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   allowedUserTypes,
 }) => {
   const { isAuthenticated, user, isLoading } = useAuth();
+  const location = useLocation();
 
   if (isLoading) {
     return <div className="flex items-center justify-center min-h-screen">Duke ngarkuar...</div>;
   }
 
   if (!isAuthenticated || !user) {
-    return <Navigate to="/login" replace />;
+    // O-73: remember where the user was headed (e.g. an email deep link to
+    // /payment/job/:id) so Login can send them back after signing in.
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
   if (allowedUserTypes && !allowedUserTypes.includes(user.userType)) {

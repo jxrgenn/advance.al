@@ -14,7 +14,8 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, jest } from '@jest/globals';
 import crypto from 'crypto';
 import request from 'supertest';
-import app from '../../server.js';
+// O-69: the router is no longer mounted by server.js — test it in isolation.
+import app from '../helpers/verificationApp.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
 import { seedLocations } from '../fixtures/locations.fixture.js';
 

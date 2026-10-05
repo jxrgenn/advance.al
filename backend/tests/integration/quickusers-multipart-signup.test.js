@@ -12,6 +12,8 @@ import app from '../../server.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
 import { seedLocations } from '../fixtures/locations.fixture.js';
 import QuickUser from '../../src/models/QuickUser.js';
+import { ALBANIAN_PHONE_MESSAGE } from '../../src/lib/phonePolicy.js';
+import { deleteFromCloudinary, extractCloudinaryPublicId } from '../../src/config/cloudinary.js';
 
 const VALID_PDF = Buffer.concat([
   Buffer.from('%PDF-1.4\n', 'utf8'),
@@ -60,11 +62,60 @@ describe('quickusers.js — multipart signup path', () => {
     expect(r.body.data.email).toBe('mp-pdf@example.com');
 
     const dbUser = await QuickUser.findOne({ email: 'mp-pdf@example.com' });
-    expect(dbUser).toBeTruthy();
-    expect(dbUser.resume).toBeTruthy(); // Cloudinary URL persisted
+    expect(dbUser.email).toBe('mp-pdf@example.com');
     // Custom interest parsed from JSON
     expect(dbUser.customInterests).toEqual(expect.arrayContaining(['React']));
+
+    // Real Cloudinary upload (CLOUDINARY_* set in .env.test): the stored URL
+    // is the private authenticated asset WITHOUT the permanent s--<sig>--
+    // delivery segment (toStoredCloudinaryUrl) — with it, anyone holding the
+    // link could download the CV forever.
+    const publicId = `advance-al/quickuser-cvs/quickuser-resume-${dbUser._id}-`;
+    expect(dbUser.resume).toMatch(new RegExp(
+      `^https://res\\.cloudinary\\.com/${process.env.CLOUDINARY_CLOUD_NAME}/raw/authenticated/v\\d+/${publicId}\\d+$`
+    ));
+    expect(dbUser.resume).not.toMatch(/\/s--[^/]+--\//);
+    expect(r.body.data.resume).toBe(dbUser.resume);
+    try {
+      const anonymous = await fetch(dbUser.resume);
+      expect(anonymous.status).toBe(401); // private: no download without a signed URL
+    } finally {
+      await deleteFromCloudinary(extractCloudinaryPublicId(dbUser.resume), 'raw', 'authenticated');
+    }
   }, 30000);
+
+  // Review follow-up (O-68 class): multer turns `field[a]` into a
+  // null-prototype object; the validators' .trim() then threw "Cannot convert
+  // object to primitive value" → 500. Each text field is now type-checked
+  // (with .bail()) first → 400 with the field's message, nothing stored.
+  it.each([
+    ['firstName', 'Emri duhet të ketë midis 2-50 karaktere'],
+    ['lastName', 'Mbiemri duhet të ketë midis 2-50 karaktere'],
+    ['email', 'Email i pavlefshëm'],
+    ['location', 'Qyteti duhet të ketë midis 2-50 karaktere'],
+    ['phone', ALBANIAN_PHONE_MESSAGE],
+  ])('multipart %s[a]=x (object via bracket parsing) → 400, not 500', async (field, message) => {
+    const values = { firstName: 'Multi', lastName: 'Part', email: 'mp-obj@example.com', location: 'Tiranë' };
+    const req = request(app).post('/api/quickusers');
+    for (const [k, v] of Object.entries(values)) {
+      if (k !== field) req.field(k, v);
+    }
+    req.field(`${field}[a]`, 'x').field('interests', JSON.stringify(['Teknologji']));
+    const r = await req;
+    expect(r.status).toBe(400);
+    expect(r.body.success).toBe(false);
+    expect(r.body.errors).toContainEqual({ field, message });
+    expect(await QuickUser.countDocuments({})).toBe(0);
+  });
+
+  it('JSON body with object-valued names → 400 (no longer stored as "[object Object]")', async () => {
+    const r = await request(app).post('/api/quickusers').send({
+      firstName: { a: 'x' }, lastName: ['Part'], email: 'json-obj@example.com', location: 'Tiranë', interests: ['Teknologji'],
+    });
+    expect(r.status).toBe(400);
+    expect(r.body.errors.map((e) => e.field)).toEqual(expect.arrayContaining(['firstName', 'lastName']));
+    expect(await QuickUser.countDocuments({})).toBe(0);
+  });
 
   it('rejects multipart signup with mimetype-spoofed PDF (magic-byte check)', async () => {
     const r = await request(app)

@@ -4,6 +4,7 @@ import Job from '../models/Job.js';
 import jobEmbeddingService from './jobEmbeddingService.js';
 import { escapeRegex } from '../utils/sanitize.js';
 import { isValidEmbeddingVector } from '../utils/embeddingConfig.js';
+import { jobSalaryMonthlyIn } from '../lib/salary.js';
 
 /**
  * User Embedding Service
@@ -804,11 +805,15 @@ class UserEmbeddingService {
       breakdown.location = 0.10;
     }
 
-    // 4. Salary fit — both ranges set, same currency, ranges overlap
+    // 4. Salary fit — both ranges set and overlapping. The desired salary is
+    // MONTHLY while job salaries are stored ANNUAL, so the job range is
+    // compared per month, converted (approximately) into the seeker's
+    // currency for EUR <-> ALL; other currency pairs never match.
     const us = profile.desiredSalary;
     const js = job.salary;
-    if (us && js && us.min != null && us.max != null && js.min != null && js.max != null && us.currency === js.currency) {
-      if (js.max >= us.min && js.min <= us.max) breakdown.salary = 0.05;
+    if (us && js && us.min != null && us.max != null && js.min != null && js.max != null) {
+      const jobMonthly = jobSalaryMonthlyIn(js, us.currency || js.currency);
+      if (jobMonthly && jobMonthly.max >= us.min && jobMonthly.min <= us.max) breakdown.salary = 0.05;
     }
 
     // 5. Recency — posted in last 7 days

@@ -138,15 +138,18 @@ describe('GET /api/jobs/recommendations — embedding path (PR-B)', () => {
     await setUserEmbedding(js._id, spikedVector(11));
 
     const { user: emp } = await createVerifiedEmployer();
-    const tiranaJob = await createJob(emp, { title: 'Same-City Job', city: 'Tiranë' });
-    const vloreJob = await createJob(emp, { title: 'Other-City Job', city: 'Vlorë' });
-    // Use partially-aligned vectors so cosine isn't 1.0 (would clamp the score).
-    // The location boost is +0.10 (tuned by commit ca720e0) but float-precision
-    // drift from sparse-vector cosine at 1024d vs 1536d makes the observed
-    // delta sometimes ~0.067 — we just need to verify city match adds a
-    // meaningful positive boost vs non-match.
-    await setJobEmbedding(tiranaJob._id, nearVector(11, 0.7));
-    await setJobEmbedding(vloreJob._id, nearVector(11, 0.7));
+    // Every other boosted attribute is pinned EQUAL on both jobs (the factory
+    // randomizes seniority / category / tags per job, which made the delta
+    // flaky: e.g. a seniority match on only the Vlorë job cut it to 0.05).
+    const same = { seniority: 'mid', category: 'Tjetër', tags: ['qa-none'] };
+    const tiranaJob = await createJob(emp, { title: 'Same-City Job', city: 'Tiranë', ...same });
+    const vloreJob = await createJob(emp, { title: 'Other-City Job', city: 'Vlorë', ...same });
+    // Partially-aligned vectors (cosine 0.5) keep every possible score below
+    // the 1.0 clamp, so the city match shows up as the full location boost
+    // (+0.10, tuned by commit ca720e0). We just need it to be a meaningful
+    // positive boost vs non-match.
+    await setJobEmbedding(tiranaJob._id, nearVector(11, 0.5));
+    await setJobEmbedding(vloreJob._id, nearVector(11, 0.5));
 
     const r = await request(app)
       .get('/api/jobs/recommendations')

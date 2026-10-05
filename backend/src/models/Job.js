@@ -3,6 +3,8 @@ import { cacheDelete } from '../config/redis.js';
 import logger from '../config/logger.js';
 import { emailFormatValidator } from '../lib/emailFormat.js';
 import { JOB_CATEGORIES } from '../constants/jobCategories.js';
+import { formatSalary } from '../lib/salary.js';
+import { diacriticInsensitivePattern } from '../lib/searchRegex.js';
 
 const { Schema } = mongoose;
 
@@ -440,13 +442,13 @@ jobSchema.index(
   { unique: true, partialFilterExpression: { paymentId: { $type: 'string' } } }
 );
 
-// Virtual for formatted salary
+// Virtual for formatted salary. Stored salaries are ANNUAL; this renders the
+// monthly view ("800-1,500 EUR/muaj") through the shared lib/salary.js helper.
+// It is serialized on every toJSON/toObject, so a hidden salary
+// (showPublic === false) must NOT leak through it: hidden → null.
 jobSchema.virtual('formattedSalary').get(function() {
-  if (!this.salary.min && !this.salary.max) return 'Pagë për t\'u negociuar';
-  if (this.salary.min === this.salary.max) return `${this.salary.min} ${this.salary.currency}`;
-  if (this.salary.min && this.salary.max) return `${this.salary.min}-${this.salary.max} ${this.salary.currency}`;
-  if (this.salary.min) return `Nga ${this.salary.min} ${this.salary.currency}`;
-  if (this.salary.max) return `Deri në ${this.salary.max} ${this.salary.currency}`;
+  if (this.salary?.showPublic === false) return null;
+  return formatSalary(this.salary, 'monthly') ?? 'Pagë për t\'u negociuar';
 });
 
 // Virtual for time since posted
@@ -565,16 +567,18 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
     expiresAt: { $gt: new Date() }
   };
 
-  // Search: try $text first for full-word matches, fall back to regex for partial/substring
-  if (searchQuery) {
-    // Use regex for partial matching — searches title, description, category, and company-related fields
-    const escaped = searchQuery.replace(/\0/g, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Search: case- AND diacritic-insensitive substring match (e↔ë, c↔ç) over
+  // title, description, category, city and tags, so "Tirane"/"Korce"/
+  // "kuzhinier" find "Tiranë"/"Korçë"/"kuzhinierë". The input is regex-escaped
+  // inside diacriticInsensitivePattern before the letter classes are added.
+  const pattern = diacriticInsensitivePattern(searchQuery);
+  if (pattern) {
     query.$or = [
-      { title: { $regex: escaped, $options: 'i' } },
-      { description: { $regex: escaped, $options: 'i' } },
-      { category: { $regex: escaped, $options: 'i' } },
-      { 'location.city': { $regex: escaped, $options: 'i' } },
-      { tags: { $regex: escaped, $options: 'i' } }
+      { title: { $regex: pattern, $options: 'i' } },
+      { description: { $regex: pattern, $options: 'i' } },
+      { category: { $regex: pattern, $options: 'i' } },
+      { 'location.city': { $regex: pattern, $options: 'i' } },
+      { tags: { $regex: pattern, $options: 'i' } }
     ];
   }
 
@@ -627,8 +631,8 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
     query['location.remote'] = true;
   }
 
-  // Posted after date filter
-  if (filters.postedAfter) {
+  // Posted after date filter (an Invalid Date is ignored, never queried)
+  if (filters.postedAfter instanceof Date && !Number.isNaN(filters.postedAfter.getTime())) {
     query.postedAt = { $gte: filters.postedAfter };
   }
 
@@ -637,11 +641,19 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
     query.tier = filters.tier;
   }
 
-  // Salary range filter
-  if (filters.minSalary || filters.maxSalary) {
+  // Salary range filter. minSalary/maxSalary are in STORED units (ANNUAL) —
+  // GET /api/jobs converts the monthly slider values ×12 before calling this.
+  // Range-overlap semantics: a job matches when its [min,max] overlaps the
+  // requested range. A salary filter only makes sense within one currency
+  // (ALL amounts are ~100× EUR), so it always pins salary.currency (EUR when
+  // the caller gave none) and skips hidden salaries — otherwise repeated
+  // filtering would reveal the range an employer chose not to publish.
+  const hasMinSalary = Number.isFinite(filters.minSalary) && filters.minSalary > 0;
+  const hasMaxSalary = Number.isFinite(filters.maxSalary) && filters.maxSalary > 0;
+  if (hasMinSalary || hasMaxSalary) {
     if (!query.$and) query.$and = [];
 
-    if (filters.minSalary) {
+    if (hasMinSalary) {
       query.$and.push({
         $or: [
           { 'salary.min': { $gte: filters.minSalary } },
@@ -650,7 +662,7 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
       });
     }
 
-    if (filters.maxSalary) {
+    if (hasMaxSalary) {
       query.$and.push({
         $or: [
           { 'salary.min': { $lte: filters.maxSalary } },
@@ -658,10 +670,11 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
         ]
       });
     }
-  }
 
-  // Currency filter
-  if (filters.currency) {
+    query['salary.currency'] = filters.currency || 'EUR';
+    query['salary.showPublic'] = { $ne: false };
+  } else if (filters.currency) {
+    // Currency filter on its own
     query['salary.currency'] = filters.currency;
   }
 

@@ -25,11 +25,19 @@ if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && proce
  *     → 'advance-al/cvs/resume-abc-456'
  *   .../image/upload/v123/advance-al/logos/logo-xxx.jpg
  *     → 'advance-al/logos/logo-xxx'
+ *   .../raw/authenticated/s--AbC123xy--/v123/advance-al/cvs/resume-abc-456
+ *     → 'advance-al/cvs/resume-abc-456'
+ *
+ * The optional `s--<signature>--/` segment is what Cloudinary embeds in the
+ * `secure_url` of an authenticated upload. Without skipping it the "public
+ * id" came out as 's--…--/v123/advance-al/…', so resume/sign minted download
+ * URLs that 404 and destroy() silently missed the asset (verified against the
+ * real API, fix batch C).
  */
 export function extractCloudinaryPublicId(url) {
   if (!url || typeof url !== 'string' || !url.includes('cloudinary.com')) return null;
   try {
-    const m = url.match(/\/(?:upload|authenticated|private)\/(?:v\d+\/)?(.+?)(?:\.[^./]+)?$/);
+    const m = url.match(/\/(?:upload|authenticated|private)\/(?:s--[^/]+--\/)?(?:v\d+\/)?(.+?)(?:\.[^./]+)?$/);
     return m ? m[1] : null;
   } catch {
     return null;
@@ -95,11 +103,18 @@ export async function uploadToCloudinary(fileBuffer, options = {}) {
 // resumes uploaded with resource_type:'raw') won't be destroyed by an
 // image-type destroy() call. The Round O-B GDPR purge path passes 'raw'
 // for resumes — must thread through to the SDK or the bytes leak forever.
+//
+// invalidate:true also purges the CDN copies. Without it a deleted file's
+// delivery URL keeps answering 200 from the CDN cache (max-age 30 days) —
+// verified on the dev cloud: 200 for 15s+ without, 404 within 5s with
+// (fix batch C review #2). Applies to every caller: CVs, logos, photos,
+// and the GDPR account purge.
 export async function deleteFromCloudinary(publicId, resourceType = 'image', type = 'upload') {
   try {
     return await cloudinary.uploader.destroy(publicId, {
       resource_type: resourceType,
       type,
+      invalidate: true,
     });
   /* istanbul ignore next — defensive catch on a live Cloudinary network call; the SDK returns {result:'not found'} for missing IDs rather than throwing, so this branch only fires on transport failure */
   } catch (error) {

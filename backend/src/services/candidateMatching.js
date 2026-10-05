@@ -2,6 +2,7 @@ import { User, Job, CandidateMatch } from '../models/index.js';
 import jobEmbeddingService from './jobEmbeddingService.js';
 import logger from '../config/logger.js';
 import { isValidEmbeddingVector } from '../utils/embeddingConfig.js';
+import { jobSalaryMonthlyIn } from '../lib/salary.js';
 
 /**
  * Candidate Matching Service
@@ -192,17 +193,24 @@ class CandidateMatchingService {
    * Compare candidate expected salary with job offering
    */
   calculateSalaryMatch(candidate, job) {
-    const candidateSalaryMin = candidate.profile?.jobSeekerProfile?.desiredSalary?.min || 0;
-    const candidateSalaryMax = candidate.profile?.jobSeekerProfile?.desiredSalary?.max || 0;
+    const desired = candidate.profile?.jobSeekerProfile?.desiredSalary;
+    const candidateSalaryMin = desired?.min || 0;
+    const candidateSalaryMax = desired?.max || 0;
     const candidateSalary = candidateSalaryMax || candidateSalaryMin || 0;
 
-    const jobSalaryMin = job.salary?.min || 0;
-    const jobSalaryMax = job.salary?.max || 0;
+    // Units: the desired salary is MONTHLY (Profile "Paga e Dëshiruar
+    // (mujore)") while job salaries are stored ANNUAL — compare the job's
+    // monthly range, converted (approximately) into the candidate's currency
+    // when it differs (EUR <-> ALL). Missing / unsupported currency on either
+    // side → neutral, like an unspecified salary.
+    const jobMonthly = jobSalaryMonthlyIn(job.salary, desired?.currency || job.salary?.currency);
 
     // If either doesn't specify salary, give neutral points
-    if (candidateSalary === 0 || (jobSalaryMin === 0 && jobSalaryMax === 0)) {
+    if (candidateSalary === 0 || !jobMonthly) {
       return 5;
     }
+    const jobSalaryMin = jobMonthly.min;
+    const jobSalaryMax = jobMonthly.max;
 
     // Candidate expectation within job range - perfect
     if (candidateSalary >= jobSalaryMin && candidateSalary <= jobSalaryMax) {

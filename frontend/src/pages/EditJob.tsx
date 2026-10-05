@@ -34,6 +34,23 @@ import Footer from "@/components/Footer";
 import { validateForm, postJobRules, formatValidationErrors } from "@/lib/formValidation";
 import { TextAreaWithCounter, InputWithCounter } from "@/components/CharacterCounter";
 import { JOB_CATEGORY_OPTIONS } from "@/constants/jobCategories";
+import { annualToMonthly, monthlyToAnnual } from "@/lib/salary";
+
+// Listing lifetime policy (backend models/Job.js JOB_TTL_DAYS): expiresAt is
+// clamped server-side to postedAt + 21 days; the date picker mirrors it.
+const JOB_TTL_DAYS = 21;
+
+// YYYY-MM-DD in the browser's local time zone (what <input type="date"> uses).
+const toLocalDateInput = (d: Date): string => {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+// Salary as loaded from the API. Salaries are STORED ANNUAL; the form edits
+// MONTHLY amounts (like PostJob's default). Keeping the raw annual values lets
+// an untouched field round-trip exactly (12,500/yr shows as 1,042/muaj, and
+// re-saving it unchanged must not turn it into 12,504).
+type LoadedSalary = { minMonthly: string; maxMonthly: string; minAnnual?: number; maxAnnual?: number };
 
 const EditJob = () => {
   const navigate = useNavigate();
@@ -54,6 +71,9 @@ const EditJob = () => {
   const [benefits, setBenefits] = useState<string[]>(['']);
   const [tags, setTags] = useState<string[]>(['']);
   const [customQuestions, setCustomQuestions] = useState<Array<{ question: string; required: boolean; type: string }>>([]);
+  const [loadedSalary, setLoadedSalary] = useState<LoadedSalary>({ minMonthly: '', maxMonthly: '' });
+  const [loadedExpiresAt, setLoadedExpiresAt] = useState('');
+  const [maxExpiresAt, setMaxExpiresAt] = useState('');
 
   const [formData, setFormData] = useState({
     title: '',
@@ -67,9 +87,6 @@ const EditJob = () => {
     salaryMax: '',
     salaryCurrency: 'EUR',
     showSalary: false,
-    applicationMethod: 'one_click',
-    externalApplicationUrl: '',
-    applicationEmail: '',
     expiresAt: '',
     platformCategories: {
       diaspora: false,
@@ -127,31 +144,40 @@ const EditJob = () => {
           return mapping[seniority] || 'mid';
         };
 
-        const mapApplicationMethodFromBackend = (method: string) => {
-          const mapping: { [key: string]: string } = {
-            'internal': 'one_click',
-            'email': 'email',
-            'external_link': 'external'
-          };
-          return mapping[method] || 'one_click';
+        // Stored annual → monthly for the form (see LoadedSalary).
+        const hasMin = typeof job.salary?.min === 'number' && job.salary.min > 0;
+        const hasMax = typeof job.salary?.max === 'number' && job.salary.max > 0;
+        const salaryAsLoaded: LoadedSalary = {
+          minMonthly: hasMin ? String(annualToMonthly(job.salary.min as number)) : '',
+          maxMonthly: hasMax ? String(annualToMonthly(job.salary.max as number)) : '',
+          minAnnual: hasMin ? job.salary.min : undefined,
+          maxAnnual: hasMax ? job.salary.max : undefined,
         };
+        setLoadedSalary(salaryAsLoaded);
+
+        const expiresDate = job.expiresAt ? toLocalDateInput(new Date(job.expiresAt)) : '';
+        setLoadedExpiresAt(expiresDate);
+        if (job.postedAt) {
+          setMaxExpiresAt(toLocalDateInput(new Date(new Date(job.postedAt).getTime() + JOB_TTL_DAYS * 24 * 60 * 60 * 1000)));
+        }
 
         setFormData({
           title: job.title || '',
           description: job.description || '',
           category: mapCategoryFromBackend(job.category),
-          jobType: job.location?.remote ? 'Remote' : mapJobTypeFromBackend(job.jobType),
+          // jobType is always one of full-time / part-time / internship. (A
+          // remote job used to load as 'Remote', which is not a valid option
+          // and made every save of a remote job fail with a 400.)
+          jobType: mapJobTypeFromBackend(job.jobType),
           experienceLevel: mapSeniorityFromBackend(job.seniority),
           city: job.location?.city || '',
           region: job.location?.region || '',
-          salaryMin: job.salary?.min?.toString() || '',
-          salaryMax: job.salary?.max?.toString() || '',
-          salaryCurrency: job.salary?.currency || 'EUR',
+          salaryMin: salaryAsLoaded.minMonthly,
+          salaryMax: salaryAsLoaded.maxMonthly,
+          // The schema only accepts EUR / ALL.
+          salaryCurrency: job.salary?.currency === 'ALL' ? 'ALL' : 'EUR',
           showSalary: job.salary?.showPublic !== false,
-          applicationMethod: mapApplicationMethodFromBackend(job.applicationMethod),
-          externalApplicationUrl: job.externalApplicationUrl || '',
-          applicationEmail: job.applicationEmail || '',
-          expiresAt: job.expiresAt ? new Date(job.expiresAt).toISOString().split('T')[0] : '',
+          expiresAt: expiresDate,
           platformCategories: {
             diaspora: job.platformCategories?.diaspora || false,
             ngaShtepia: job.platformCategories?.ngaShtepia || false,
@@ -315,23 +341,30 @@ const EditJob = () => {
       return;
     }
 
-    // Validate application method fields
-    if (formData.applicationMethod === 'external' && !formData.externalApplicationUrl?.trim()) {
+    // Monthly amounts: whole, non-negative numbers with min <= max.
+    const monthlyMin = hasMin ? Number(formData.salaryMin) : null;
+    const monthlyMax = hasMax ? Number(formData.salaryMax) : null;
+    if (
+      (monthlyMin !== null && (!Number.isFinite(monthlyMin) || monthlyMin < 0)) ||
+      (monthlyMax !== null && (!Number.isFinite(monthlyMax) || monthlyMax < 0))
+    ) {
       notifications.show({
-        title: 'Gabim',
-        message: 'URL e aplikimit të jashtëm është e detyrueshme kur zgjidhni këtë metodë.',
-        color: 'red',
+        title: 'Paga e pavlefshme',
+        message: 'Paga duhet të jetë një numër pozitiv.',
+        color: 'orange',
         autoClose: 6000,
       });
+      setCurrentStep(2);
       return;
     }
-    if (formData.applicationMethod === 'email' && !formData.applicationEmail?.trim()) {
+    if (monthlyMin !== null && monthlyMax !== null && monthlyMin > monthlyMax) {
       notifications.show({
-        title: 'Gabim',
-        message: 'Email-i për aplikime është i detyrueshëm kur zgjidhni këtë metodë.',
-        color: 'red',
+        title: 'Paga e pavlefshme',
+        message: 'Paga minimale nuk mund të jetë më e lartë se paga maksimale.',
+        color: 'orange',
         autoClose: 6000,
       });
+      setCurrentStep(2);
       return;
     }
 
@@ -341,14 +374,12 @@ const EditJob = () => {
       const mapJobType = (type: string) => type;
       const mapCategory = (category: string) => category;
 
-      const mapApplicationMethod = (method: string) => {
-        const mapping: { [key: string]: string } = {
-          'one_click': 'internal',
-          'email': 'email',
-          'external': 'external_link'
-        };
-        return mapping[method] || 'internal';
-      };
+      // Monthly form value → stored annual amount. An untouched field keeps
+      // its exact stored value (no ÷12/×12 rounding drift).
+      const toStoredAnnual = (monthlyText: string, loadedMonthlyText: string, loadedAnnual?: number) =>
+        monthlyText === loadedMonthlyText && loadedAnnual !== undefined
+          ? loadedAnnual
+          : monthlyToAnnual(Number(monthlyText));
 
       const mapSeniority = (level: string) => {
         const mapping: { [key: string]: string } = {
@@ -367,26 +398,33 @@ const EditJob = () => {
         category: mapCategory(formData.category),
         jobType: mapJobType(formData.jobType),
         seniority: mapSeniority(formData.experienceLevel),
+        // Only the city is edited here; the server takes the region from the
+        // Location record and keeps the stored remote flags (location merge).
         location: {
           city: formData.city,
-          region: formData.region || '',
-          remote: formData.jobType === 'Remote',
-          remoteType: formData.jobType === 'Remote' ? 'full' : 'none'
         },
-        applicationMethod: mapApplicationMethod(formData.applicationMethod),
-        ...(formData.applicationMethod === 'external' && formData.externalApplicationUrl && { externalApplicationUrl: formData.externalApplicationUrl }),
-        ...(formData.applicationMethod === 'email' && formData.applicationEmail && { applicationEmail: formData.applicationEmail }),
+        // Applications always go through the platform (owner ruling) — the
+        // email / external-link methods were removed.
         requirements: requirements.filter(r => r.trim()),
         benefits: benefits.filter(b => b.trim()),
         tags: tags.filter(t => t.trim()),
-        salary: (formData.salaryMin && formData.salaryMax) ? {
-          min: parseInt(formData.salaryMin),
-          max: parseInt(formData.salaryMax),
+        // Both bounds set → monthly form values converted to the stored
+        // ANNUAL unit; both empty → clear the range (null).
+        salary: (hasMin && hasMax) ? {
+          min: toStoredAnnual(formData.salaryMin, loadedSalary.minMonthly, loadedSalary.minAnnual),
+          max: toStoredAnnual(formData.salaryMax, loadedSalary.maxMonthly, loadedSalary.maxAnnual),
           currency: formData.salaryCurrency,
           showPublic: formData.showSalary,
           negotiable: false
-        } : undefined,
-        expiresAt: formData.expiresAt,
+        } : {
+          min: null,
+          max: null,
+          currency: formData.salaryCurrency,
+          showPublic: formData.showSalary,
+        },
+        // Send the expiry only when it was changed (a bare date = end of that
+        // day in Tirana server-side; capped at postedAt + 21 days).
+        ...(formData.expiresAt && formData.expiresAt !== loadedExpiresAt && { expiresAt: formData.expiresAt }),
         platformCategories: formData.platformCategories,
         customQuestions: customQuestions.filter(q => q.question.trim()).length > 0
           ? customQuestions.filter(q => q.question.trim())
@@ -413,9 +451,9 @@ const EditJob = () => {
 
       let errorMessage = "Nuk mund të përditësohet puna. Ju lutemi provoni përsëri.";
 
-      if (error.response && error.response.errors) {
+      if (error.response && Array.isArray(error.response.errors) && error.response.errors.length > 0) {
         const firstError = error.response.errors[0];
-        errorMessage = `${firstError.field}: ${firstError.message}`;
+        errorMessage = firstError.message || error.message || errorMessage;
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -548,22 +586,28 @@ const EditJob = () => {
                   Punët me pagë të specifikuar zakonisht marrin më shumë aplikime
                 </Text>
 
-                <SimpleGrid cols={3} spacing="md">
+                <Text size="sm" fw={500}>
+                  Shumat jepen në muaj (pagë mujore), si te publikimi i punës.
+                </Text>
+
+                <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
                   <TextInput
-                    label="Paga Minimale"
+                    label="Paga Minimale (/muaj)"
                     placeholder="800"
                     type="number"
+                    min={0}
                     value={formData.salaryMin}
                     onChange={(e) => handleInputChange('salaryMin', e.target.value)}
-                    description="P.sh: 800-1200"
+                    description="P.sh: 800-1200 në muaj"
                   />
                   <TextInput
-                    label="Paga Maksimale"
+                    label="Paga Maksimale (/muaj)"
                     placeholder="1200"
                     type="number"
+                    min={0}
                     value={formData.salaryMax}
                     onChange={(e) => handleInputChange('salaryMax', e.target.value)}
-                    description="Paga maksimale për pozicionin"
+                    description="Paga maksimale mujore"
                   />
                   <Select
                     label="Monedha"
@@ -571,7 +615,6 @@ const EditJob = () => {
                     onChange={(value) => handleInputChange('salaryCurrency', value || 'EUR')}
                     data={[
                       { value: 'EUR', label: 'EUR' },
-                      { value: 'USD', label: 'USD' },
                       { value: 'ALL', label: 'ALL (Lek)' }
                     ]}
                   />
@@ -795,55 +838,22 @@ const EditJob = () => {
 
             <Divider my="lg" />
 
-            {/* Application Method & Expiry */}
+            {/* Expiry (applications always go through the platform) */}
             <Box>
-              <Title order={4} mb="xs">Aplikimi & Skadimi</Title>
-              <Text size="sm" c="dimmed" mb="md">Si aplikojnë kandidatët dhe kur skadon listimi</Text>
+              <Title order={4} mb="xs">Skadimi i Listimit</Title>
+              <Text size="sm" c="dimmed" mb="md">
+                Kandidatët aplikojnë gjithmonë përmes platformës. Një listim qëndron aktiv deri në {JOB_TTL_DAYS} ditë nga publikimi.
+              </Text>
 
-              <SimpleGrid cols={2} spacing="md">
-                <Select
-                  label="Metoda e Aplikimit"
-                  value={formData.applicationMethod}
-                  onChange={(value) => handleInputChange('applicationMethod', value || 'one_click')}
-                  data={[
-                    { value: 'one_click', label: 'Platformës (One-click)' },
-                    { value: 'email', label: 'Email-it' },
-                    { value: 'external', label: 'Link-ut të jashtëm' }
-                  ]}
-                  required
-                />
-                <TextInput
-                  label="Data e Skadimit"
-                  type="date"
-                  value={formData.expiresAt}
-                  onChange={(e) => handleInputChange('expiresAt', e.target.value)}
-                  required
-                />
-              </SimpleGrid>
-
-              {formData.applicationMethod === 'external' && (
-                <TextInput
-                  label="URL e aplikimit të jashtëm"
-                  type="url"
-                  placeholder="https://example.com/apply"
-                  value={formData.externalApplicationUrl}
-                  onChange={(e) => handleInputChange('externalApplicationUrl', e.target.value)}
-                  mt="md"
-                  required
-                />
-              )}
-
-              {formData.applicationMethod === 'email' && (
-                <TextInput
-                  label="Email-i për aplikime"
-                  type="email"
-                  placeholder="hr@company.com"
-                  value={formData.applicationEmail}
-                  onChange={(e) => handleInputChange('applicationEmail', e.target.value)}
-                  mt="md"
-                  required
-                />
-              )}
+              <TextInput
+                label="Data e Skadimit"
+                type="date"
+                value={formData.expiresAt}
+                min={toLocalDateInput(new Date())}
+                max={maxExpiresAt || undefined}
+                onChange={(e) => handleInputChange('expiresAt', e.target.value)}
+                maw={260}
+              />
             </Box>
           </Stack>
         );

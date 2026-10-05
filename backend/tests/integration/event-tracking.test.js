@@ -25,10 +25,16 @@ import { createJob } from '../factories/job.factory.js';
 import { createAuthHeaders } from '../helpers/auth.helper.js';
 import Event from '../../src/models/Event.js';
 
+// Views are only logged for real browsers (routes/jobs.js isBotUserAgent, O-32).
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
+
 async function flushImmediate() {
   for (let i = 0; i < 8; i++) {
     await new Promise(r => setImmediate(() => setImmediate(r)));
   }
+  // logEvent's setImmediate callback does real Mongo I/O (dedup findOne +
+  // create); a few event-loop turns are not always enough for it to land.
+  await new Promise(r => setTimeout(r, 150));
 }
 
 // Wait until at least `count` matching events exist (or the timeout passes).
@@ -63,7 +69,7 @@ describe('Engagement event tracking', () => {
 
       const r = await request(app)
         .get(`/api/jobs/${job._id}`)
-        .set(createAuthHeaders(js));
+        .set(createAuthHeaders(js)).set('User-Agent', BROWSER_UA);
 
       expect(r.status).toBe(200);
       await waitForEvents({ userId: js._id, jobId: job._id }, 1);
@@ -80,9 +86,9 @@ describe('Engagement event tracking', () => {
       const job = await createJob(emp);
       const { user: js } = await createJobseeker();
 
-      await request(app).get(`/api/jobs/${job._id}`).set(createAuthHeaders(js));
+      await request(app).get(`/api/jobs/${job._id}`).set(createAuthHeaders(js)).set('User-Agent', BROWSER_UA);
       await waitForEvents({ userId: js._id, jobId: job._id, type: 'view' }, 1);
-      await request(app).get(`/api/jobs/${job._id}`).set(createAuthHeaders(js));
+      await request(app).get(`/api/jobs/${job._id}`).set(createAuthHeaders(js)).set('User-Agent', BROWSER_UA);
       await settle();
 
       const events = await Event.find({ userId: js._id, jobId: job._id, type: 'view' });
@@ -95,7 +101,7 @@ describe('Engagement event tracking', () => {
       const { user: js } = await createJobseeker();
 
       // First view — must be written before we back-date it
-      await request(app).get(`/api/jobs/${job._id}`).set(createAuthHeaders(js));
+      await request(app).get(`/api/jobs/${job._id}`).set(createAuthHeaders(js)).set('User-Agent', BROWSER_UA);
       expect(await waitForEvents({ userId: js._id, jobId: job._id, type: 'view' }, 1)).toBe(1);
 
       // Back-date that event so the next view passes the 10-min dedup
@@ -105,7 +111,7 @@ describe('Engagement event tracking', () => {
       );
 
       // Second view — should be logged
-      await request(app).get(`/api/jobs/${job._id}`).set(createAuthHeaders(js));
+      await request(app).get(`/api/jobs/${job._id}`).set(createAuthHeaders(js)).set('User-Agent', BROWSER_UA);
       await waitForEvents({ userId: js._id, jobId: job._id, type: 'view' }, 2);
 
       const events = await Event.find({ userId: js._id, jobId: job._id, type: 'view' });
@@ -119,7 +125,7 @@ describe('Engagement event tracking', () => {
 
       await request(app)
         .get(`/api/jobs/${job._id}?ref=recommendation`)
-        .set(createAuthHeaders(js));
+        .set(createAuthHeaders(js)).set('User-Agent', BROWSER_UA);
       await waitForEvents({ userId: js._id, jobId: job._id, type: 'view' }, 1);
 
       const ev = await Event.findOne({ userId: js._id, jobId: job._id, type: 'view' });
@@ -130,7 +136,7 @@ describe('Engagement event tracking', () => {
       const { user: emp } = await createEmployer();
       const job = await createJob(emp);
 
-      await request(app).get(`/api/jobs/${job._id}`).set(createAuthHeaders(emp));
+      await request(app).get(`/api/jobs/${job._id}`).set(createAuthHeaders(emp)).set('User-Agent', BROWSER_UA);
       await settle();
 
       const events = await Event.find({ jobId: job._id, type: 'view' });
@@ -146,7 +152,7 @@ describe('Engagement event tracking', () => {
 
       const r = await request(app)
         .post(`/api/users/saved-jobs/${job._id}`)
-        .set(createAuthHeaders(js));
+        .set(createAuthHeaders(js)).set('User-Agent', BROWSER_UA);
 
       expect(r.status).toBe(200);
       await waitForEvents({ userId: js._id, jobId: job._id, type: 'save' }, 1);
@@ -160,10 +166,10 @@ describe('Engagement event tracking', () => {
       const job = await createJob(emp);
       const { user: js } = await createJobseeker();
 
-      await request(app).post(`/api/users/saved-jobs/${job._id}`).set(createAuthHeaders(js));
+      await request(app).post(`/api/users/saved-jobs/${job._id}`).set(createAuthHeaders(js)).set('User-Agent', BROWSER_UA);
       await waitForEvents({ userId: js._id, jobId: job._id, type: 'save' }, 1);
 
-      await request(app).delete(`/api/users/saved-jobs/${job._id}`).set(createAuthHeaders(js));
+      await request(app).delete(`/api/users/saved-jobs/${job._id}`).set(createAuthHeaders(js)).set('User-Agent', BROWSER_UA);
       await waitForEvents({ userId: js._id, jobId: job._id, type: 'unsave' }, 1);
 
       const ev = await Event.findOne({ userId: js._id, jobId: job._id, type: 'unsave' });

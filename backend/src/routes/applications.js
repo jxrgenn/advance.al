@@ -1,7 +1,8 @@
 import express from 'express';
+import multer from 'multer';
 import { body, validationResult } from 'express-validator';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
-import { Application, Job, User, Notification } from '../models/index.js';
+import { Application, Job, User, Notification, SystemConfiguration } from '../models/index.js';
 import { authenticate, requireJobSeeker, requireEmployer } from '../middleware/auth.js';
 import resendEmailService from '../lib/resendEmailService.js';
 import { cacheDelete } from '../config/redis.js';
@@ -9,8 +10,83 @@ import mongoose from 'mongoose';
 import { sanitizeLimit, validateObjectId, stripHtml, isObjectIdString } from '../utils/sanitize.js';
 import logger from '../config/logger.js';
 import { notifyDiscord, deriveRequestSignals } from '../services/discordNotifier.js';
+import { findUnsafeKey, UNSAFE_KEY_MESSAGE } from '../middleware/rejectMongoOperators.js';
+import {
+  RESUME_ALLOWED_MIME_TYPES,
+  RESUME_TYPE_ERROR_MESSAGE,
+  ResumeStorageUnavailableError,
+  isResumeStorageAvailable,
+  validateResumeMagicBytes,
+  storeResumeBuffer,
+  deleteStoredResume,
+} from '../lib/resumeStorage.js';
 
 const router = express.Router();
+
+// O-27: hard cap on a single custom-question answer.
+const MAX_CUSTOM_ANSWER_LENGTH = 2000;
+
+// Employer account states whose jobs must not accept applications (O-28).
+const EMPLOYER_BLOCKED_STATUSES = ['suspended', 'banned', 'deleted'];
+
+const CV_UPLOAD_UNAVAILABLE_MESSAGE =
+  'Ngarkimi i CV-së nuk është i disponueshëm momentalisht. Provoni përsëri më vonë ose aplikoni pa CV.';
+
+// O-42: /apply optionally accepts multipart/form-data carrying the CV the
+// applicant attached in the apply modal. Memory storage — the buffer is
+// magic-byte checked and only stored (lib/resumeStorage.js) after every other
+// validation passed, so a rejected application never leaves an orphan file.
+const applyResumeUpload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: (req, file, cb) => {
+    if (RESUME_ALLOWED_MIME_TYPES.includes(file.mimetype)) return cb(null, true);
+    return cb(new Error(RESUME_TYPE_ERROR_MESSAGE), false);
+  },
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+});
+
+// JSON clients are untouched; multipart clients send the same fields as text
+// parts (customAnswers JSON-encoded) plus an optional `resume` file part.
+const MULTIPART_TEXT_FIELDS = ['jobId', 'applicationMethod', 'coverLetter', 'customAnswers', 'source'];
+const handleApplyMultipart = (req, res, next) => {
+  if (!req.is('multipart/form-data')) return next();
+  applyResumeUpload.single('resume')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ success: false, message: 'Skedari është shumë i madh. Madhësia maksimale është 5MB' });
+      }
+      if (err.message === RESUME_TYPE_ERROR_MESSAGE) {
+        return res.status(400).json({ success: false, message: RESUME_TYPE_ERROR_MESSAGE });
+      }
+      return res.status(400).json({ success: false, message: 'Gabim në ngarkimin e skedarit' });
+    }
+    // Text parts must be plain strings. Multer turns bracketed names
+    // (`jobId[$ne]=x`) and repeated names into null-prototype objects /
+    // arrays, which made validators/sanitizers throw → 500 (review #3).
+    for (const field of MULTIPART_TEXT_FIELDS) {
+      if (req.body[field] !== undefined && typeof req.body[field] !== 'string') {
+        return res.status(400).json({
+          success: false,
+          message: 'Gabime në validim',
+          errors: [{ field, message: 'Vlerë e pavlefshme' }],
+        });
+      }
+    }
+    if (typeof req.body.customAnswers === 'string') {
+      // Unparseable JSON stays a string → the isArray() validator rejects it.
+      try { req.body.customAnswers = JSON.parse(req.body.customAnswers); } catch { /* left as-is */ }
+    }
+    // The global rejectMongoOperators guard ran before multer parsed this
+    // body — apply the same $-key / dotted-key rule here (incl. inside the
+    // JSON-decoded answers).
+    const unsafeKey = findUnsafeKey(req.body);
+    if (unsafeKey !== null) {
+      logger.warn('Rejected multipart apply with operator/dotted key', { key: unsafeKey.slice(0, 64) });
+      return res.status(400).json({ success: false, message: UNSAFE_KEY_MESSAGE });
+    }
+    next();
+  });
+};
 
 // M-LOW: status enum allowlist for the 3 listing routes below.
 // Drop garbage values instead of letting them flow into Mongoose and
@@ -24,7 +100,7 @@ const applyLimiter = rateLimit({
   max: 15,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req),
+  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req.ip),
   skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
   message: {
     success: false,
@@ -38,7 +114,7 @@ const messageLimiter = rateLimit({
   max: 60, // 1 message/min average
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req),
+  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req.ip),
   skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
   message: {
     success: false,
@@ -70,6 +146,7 @@ const handleValidationErrors = (req, res, next) => {
 const applyValidation = [
   body('jobId')
     .isString().withMessage('ID e punës është e pavlefshme')
+    .bail()
     .trim()
     .isLength({ min: 1, max: 200 }).withMessage('ID e punës është e pavlefshme'),
   body('applicationMethod')
@@ -79,11 +156,17 @@ const applyValidation = [
     .optional()
     .isArray()
     .withMessage('Përgjigjet duhet të jenë një listë'),
+  // Only strings are answers: stripHtml(String(obj)) used to turn an object
+  // answer into the literal "[object Object]". Non-strings are left as-is and
+  // treated as blank by the handler (→ "required" 400 when the question is).
   body('customAnswers.*.answer')
     .optional()
-    .customSanitizer(v => stripHtml(v)),
+    .customSanitizer(v => (typeof v === 'string' ? stripHtml(v) : v)),
   body('coverLetter')
-    .optional()
+    .optional({ values: 'null' })
+    .isString()
+    .withMessage('Letra e shoqërimit duhet të jetë tekst')
+    .bail()
     .isLength({ max: 2000 })
     .withMessage('Letra e shoqërimit nuk mund të ketë më shumë se 2000 karaktere')
     .customSanitizer(v => stripHtml(v))
@@ -92,9 +175,11 @@ const applyValidation = [
 // @route   POST /api/applications/apply
 // @desc    Apply for a job
 // @access  Private (Job Seekers only)
-router.post('/apply', authenticate, requireJobSeeker, applyLimiter, applyValidation, handleValidationErrors, async (req, res) => {
+router.post('/apply', authenticate, requireJobSeeker, applyLimiter, handleApplyMultipart, applyValidation, handleValidationErrors, async (req, res) => {
+  let storedResume = null;
   try {
     let { jobId, applicationMethod, customAnswers = [], coverLetter = '' } = req.body;
+    if (coverLetter === null) coverLetter = ''; // optional({ values: 'null' }) skips the sanitizer
 
     // Soft gate: require verified email to apply
     if (!req.user.emailVerified) {
@@ -102,6 +187,31 @@ router.post('/apply', authenticate, requireJobSeeker, applyLimiter, applyValidat
         success: false,
         message: 'Ju duhet të verifikoni emailin tuaj përpara se të aplikoni. Shkoni te profili juaj për të dërguar kodin e verifikimit.'
       });
+    }
+
+    // O-42: validate an attached CV up front (cheap, no DB). Stored later,
+    // only once the application itself is known to be valid.
+    if (req.file) {
+      try {
+        const maxSizeMB = await SystemConfiguration.getSettingValue('max_cv_file_size') || 5;
+        if (req.file.size > maxSizeMB * 1024 * 1024) {
+          return res.status(400).json({
+            success: false,
+            message: `Skedari është shumë i madh. Madhësia maksimale: ${maxSizeMB}MB`
+          });
+        }
+      } catch { /* config unavailable → multer's 5MB limit still applies */ }
+
+      if (!validateResumeMagicBytes(req.file.buffer)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Skedari nuk është një PDF ose Word i vlefshëm.'
+        });
+      }
+
+      if (!isResumeStorageAvailable()) {
+        return res.status(503).json({ success: false, message: CV_UPLOAD_UNAVAILABLE_MESSAGE });
+      }
     }
 
     // Dual-lookup: jobId may be a 24-char hex ObjectId OR a slug (Phase B SEO).
@@ -117,7 +227,11 @@ router.post('/apply', authenticate, requireJobSeeker, applyLimiter, applyValidat
       expiresAt: { $gt: new Date() }
     }).populate('employerId');
 
-    if (!job) {
+    // O-28: a job whose employer account is gone/suspended/banned is not
+    // open for applications even if its status was never flipped (e.g. a
+    // report-flow suspension does not close jobs). Same 404 as an inactive job.
+    const employer = job?.employerId;
+    if (!job || !employer || employer.isDeleted || EMPLOYER_BLOCKED_STATUSES.includes(employer.status)) {
       return res.status(404).json({
         success: false,
         message: 'Puna nuk u gjet ose nuk është më aktive'
@@ -143,30 +257,66 @@ router.post('/apply', authenticate, requireJobSeeker, applyLimiter, applyValidat
       });
     }
 
-    // Validate job seeker has at least first+last name to apply
-    if (applicationMethod === 'one_click') {
-      const user = req.user;
-
-      if (!user.profile?.firstName || !user.profile?.lastName) {
-        return res.status(400).json({
-          success: false,
-          message: 'Për të aplikuar duhet të keni emrin dhe mbiemrin në profil'
-        });
-      }
+    // Validate job seeker has at least first+last name to apply.
+    // applicationMethod is client-chosen, so it must not gate server-side
+    // validation (same bug class as O-27) — enforced for every method.
+    if (!req.user.profile?.firstName || !req.user.profile?.lastName) {
+      return res.status(400).json({
+        success: false,
+        message: 'Për të aplikuar duhet të keni emrin dhe mbiemrin në profil'
+      });
     }
 
-    // Validate custom form answers if required
-    if (applicationMethod === 'custom_form' && job.customQuestions.length > 0) {
-      const requiredQuestions = job.customQuestions.filter(q => q.required);
-      const providedAnswers = customAnswers.map(a => a.question);
+    // O-27: the job's own questions are the source of truth, whatever
+    // applicationMethod the client sent. Answers to questions the job does not
+    // have are dropped; required questions need a non-blank answer; answers
+    // are length-capped. Stored in the job's question order.
+    // Matching: the answer at the question's own position wins when its text
+    // matches (the apply modal sends one answer per question, in order — so
+    // two questions with identical text each get their own answer, review
+    // #4); otherwise the first not-yet-used answer with the same text. Each
+    // client answer is used at most once.
+    const clientAnswers = (Array.isArray(customAnswers) ? customAnswers : [])
+      .map((a) => (a && typeof a === 'object' && typeof a.question === 'string' ? a : null));
+    const usedAnswers = new Set();
+    const takeAnswer = (question, index) => {
+      let k = clientAnswers[index]?.question === question && !usedAnswers.has(index) ? index : -1;
+      if (k === -1) k = clientAnswers.findIndex((a, i) => a && a.question === question && !usedAnswers.has(i));
+      if (k === -1) return null;
+      usedAnswers.add(k);
+      return typeof clientAnswers[k].answer === 'string' ? clientAnswers[k].answer.trim() : '';
+    };
+    const normalizedAnswers = [];
+    const jobQuestions = Array.isArray(job.customQuestions) ? job.customQuestions : [];
+    for (const [index, q] of jobQuestions.entries()) {
+      const taken = takeAnswer(q.question, index);
+      const provided = taken !== null;
+      const answer = provided ? taken : '';
+      if (answer.length > MAX_CUSTOM_ANSWER_LENGTH) {
+        return res.status(400).json({
+          success: false,
+          message: `Përgjigja për pyetjen "${q.question}" nuk mund të ketë më shumë se ${MAX_CUSTOM_ANSWER_LENGTH} karaktere`
+        });
+      }
+      if (q.required && !answer) {
+        return res.status(400).json({
+          success: false,
+          message: `Përgjigja për pyetjen "${q.question}" është e detyrueshme`
+        });
+      }
+      if (provided) normalizedAnswers.push({ question: q.question, answer });
+    }
 
-      for (const question of requiredQuestions) {
-        if (!providedAnswers.includes(question.question)) {
-          return res.status(400).json({
-            success: false,
-            message: `Përgjigja për pyetjen "${question.question}" është e detyrueshme`
-          });
-        }
+    // O-42: store the attached CV now that the application is valid.
+    if (req.file) {
+      try {
+        storedResume = await storeResumeBuffer(req.file.buffer, req.user._id);
+      } catch (storeError) {
+        logger.error('Application CV storage failed', {
+          error: storeError.message,
+          unavailable: storeError instanceof ResumeStorageUnavailableError,
+        });
+        return res.status(503).json({ success: false, message: CV_UPLOAD_UNAVAILABLE_MESSAGE });
       }
     }
 
@@ -174,13 +324,18 @@ router.post('/apply', authenticate, requireJobSeeker, applyLimiter, applyValidat
     const application = new Application({
       jobId,
       jobSeekerId: req.user._id,
-      employerId: job.employerId._id,
+      employerId: employer._id,
       applicationMethod,
-      customAnswers,
-      coverLetter
+      customAnswers: normalizedAnswers,
+      coverLetter,
+      ...(storedResume && {
+        resumeUrl: storedResume.url,
+        ...(storedResume.format && { resumeType: storedResume.format }),
+      }),
     });
 
     await application.save();
+    storedResume = null; // now owned by the application — keep it on later errors
 
     // Engagement event — fire-and-forget
     const { logEvent } = await import('../services/eventLogger.js');
@@ -266,7 +421,12 @@ router.post('/apply', authenticate, requireJobSeeker, applyLimiter, applyValidat
 
   } catch (error) {
     logger.error('Apply for job error:', error.message);
-    
+
+    // The application was not created → don't leave its CV behind.
+    if (storedResume) {
+      deleteStoredResume(storedResume.url).catch(() => {});
+    }
+
     // Handle duplicate application error
     if (error.code === 11000) {
       return res.status(400).json({
@@ -831,6 +991,17 @@ router.delete('/:id', validateObjectId('id'), authenticate, requireJobSeeker, as
     }
 
     await application.withdraw(reason);
+
+    // Review #8 (GDPR): the CV attached to this application was only for
+    // this employer — once withdrawn nobody may open it (resume/sign already
+    // refuses withdrawn applications), so delete it now instead of keeping it
+    // until the account purge. Reference cleared first so nothing ever points
+    // at a deleted file.
+    if (application.resumeUrl) {
+      const attachedCv = application.resumeUrl;
+      await Application.updateOne({ _id: application._id }, { $unset: { resumeUrl: 1, resumeType: 1 } });
+      await deleteStoredResume(attachedCv);
+    }
 
     // F-10 fix: invalidate admin:dashboard cache on withdraw
     cacheDelete('admin:dashboard').catch(() => {});

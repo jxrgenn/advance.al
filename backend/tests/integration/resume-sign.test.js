@@ -9,7 +9,9 @@
  *   - owner can sign their own resume URL (200, signed URL contains
  *     /authenticated/ marker)
  *   - admin can sign any resume URL (200)
- *   - employer WITH an active application from the owner can sign (200)
+ *   - employer WITH an active application from the owner can sign the owner's
+ *     current profile CV (200) — application-attached CVs are covered in
+ *     applications-apply-cv-and-answers.test.js
  *   - employer WITHOUT an application from the owner cannot sign (403)
  *   - another jobseeker cannot sign someone else's resume URL (403)
  *   - garbage / non-Cloudinary URL → 400
@@ -27,6 +29,7 @@ import { createJobseeker, createVerifiedEmployer, createAdmin } from '../factori
 import { createJob } from '../factories/job.factory.js';
 import { createAuthHeaders } from '../helpers/auth.helper.js';
 import Application from '../../src/models/Application.js';
+import User from '../../src/models/User.js';
 
 // Build a Cloudinary authenticated-type resume URL where the filename encodes
 // the owner's userId. The resume-sign endpoint validates this pattern.
@@ -107,7 +110,7 @@ describe('POST /api/users/resume/sign — Round O-B', () => {
     expect(res.body.data.url).toContain('cloudinary.com');
   });
 
-  it('employer WITH an active application from the owner can sign → 200', async () => {
+  it('employer WITH an active application from the owner can sign the owner\'s profile CV → 200', async () => {
     const { user: owner } = await createJobseeker();
     const { user: emp } = await createVerifiedEmployer();
     const job = await createJob(emp);
@@ -121,6 +124,10 @@ describe('POST /api/users/resume/sign — Round O-B', () => {
       withdrawn: false,
     });
     const url = buildResumeUrl(owner._id.toString());
+    // Fix batch C (O-42): an employer's grant is bound to a CV actually shared
+    // with them — the owner's CURRENT profile CV, or a CV attached to an
+    // application addressed to them. This URL is the profile CV.
+    await User.updateOne({ _id: owner._id }, { $set: { 'profile.jobSeekerProfile.resume': url } });
 
     const res = await request(app)
       .post('/api/users/resume/sign')

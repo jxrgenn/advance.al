@@ -11,6 +11,24 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import SEO from "@/components/SEO";
 
+// O-73: only follow `from` when it is an in-app path. Router state can't be
+// set from a URL, but validate anyway: a relative path starting with a
+// single "/" (not "//" or "/\\", which browsers resolve to another host), with
+// no whitespace/control characters (the URL parser strips tab/CR/LF, so
+// "/\t/evil.com" would become "//evil.com"), and not the auth pages.
+const UNSAFE_REDIRECT_CHARS = /[\s\\\u0000-\u001f\u007f]/;
+const getPostLoginRedirect = (from: unknown): string | null => {
+  if (!from || typeof from !== 'object') return null;
+  const { pathname, search } = from as { pathname?: unknown; search?: unknown };
+  if (typeof pathname !== 'string' || !pathname.startsWith('/')) return null;
+  if (pathname.startsWith('//') || UNSAFE_REDIRECT_CHARS.test(pathname)) return null;
+  if (pathname === '/login' || pathname === '/register') return null;
+  const query = typeof search === 'string' && search.startsWith('?') && !UNSAFE_REDIRECT_CHARS.test(search)
+    ? search
+    : '';
+  return pathname + query;
+};
+
 const Login = () => {
   const [formData, setFormData] = useState({
     email: '',
@@ -30,7 +48,7 @@ const Login = () => {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated && user) {
-      const from = location.state?.from?.pathname ||
+      const from = getPostLoginRedirect(location.state?.from) ||
                    (user.userType === 'admin' ? '/admin' :
                     user.userType === 'employer' ? '/employer-dashboard' : '/profile');
       navigate(from, { replace: true });

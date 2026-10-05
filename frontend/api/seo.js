@@ -60,7 +60,9 @@ async function safeFetch(url) {
   try {
     const res = await fetch(url, {
       signal: controller.signal,
-      headers: { Accept: 'application/json' },
+      // Identifies the prerender to the API: GET /api/jobs/:id does not count
+      // bot / prerender fetches as job views (routes/jobs.js BOT_UA_RE).
+      headers: { Accept: 'application/json', 'User-Agent': 'AdvanceSEOPrerender/1.0 (bot)' },
     });
     if (!res.ok) return null;
     return await res.json();
@@ -73,6 +75,9 @@ async function safeFetch(url) {
 
 async function fetchJob(idOrSlug) {
   // Backend GET /api/jobs/:id dual-lookups (Phase B): ObjectId OR slug both work.
+  // Anonymous callers only ever get public states (active / expired / closed,
+  // tagged with `jobState`); drafts, unpaid, pending and rejected jobs are a
+  // 404 → handled as "not found" below.
   const body = await safeFetch(`${API_BASE}/jobs/${encodeURIComponent(idOrSlug)}`);
   return body?.data?.job || null;
 }
@@ -84,6 +89,7 @@ async function fetchActiveJobs(limit = 20) {
 
 function renderJobBody(job) {
   const slug = job.slug || job._id;
+  const isOpen = !job.jobState || job.jobState === 'active';
   const employerProfile = job.employerId?.profile?.employerProfile || {};
   const company = employerProfile.companyName || 'Punëdhënës i verifikuar';
   // Strip HTML from description; cap at 2000 chars to keep body bounded.
@@ -105,7 +111,9 @@ function renderJobBody(job) {
       </section>
       ${requirements.length ? `<section><h2>Kërkesa</h2><ul>${requirements.map((r) => `<li>${escapeHtml(r)}</li>`).join('')}</ul></section>` : ''}
       ${benefits.length ? `<section><h2>Përfitime</h2><ul>${benefits.map((b) => `<li>${escapeHtml(b)}</li>`).join('')}</ul></section>` : ''}
-      <p><a href="${SITE_URL}/jobs/${escapeHtml(slug)}">Apliko për këtë pozicion në Advance.al</a></p>
+      ${isOpen
+        ? `<p><a href="${SITE_URL}/jobs/${escapeHtml(slug)}">Apliko për këtë pozicion në Advance.al</a></p>`
+        : `<p>${job.jobState === 'expired' ? 'Ky pozicion ka skaduar' : 'Ky pozicion është mbyllur'} dhe nuk pranon më aplikime. <a href="${SITE_URL}/jobs">Shiko punët aktive</a>.</p>`}
     </article>`;
 }
 
@@ -230,7 +238,10 @@ async function handleRoute(req) {
     const slug = job.slug || job._id;
     const employerProfile = job.employerId?.profile?.employerProfile || {};
     const company = employerProfile.companyName || '';
-    const title = `${job.title}${company ? ` — ${company}` : ''}`;
+    // Expired / closed listings stay reachable (shared links) but carry no
+    // JobPosting markup and say so in the title.
+    const isOpen = !job.jobState || job.jobState === 'active';
+    const title = `${job.title}${company ? ` — ${company}` : ''}${isOpen ? '' : (job.jobState === 'expired' ? ' (skaduar)' : ' (mbyllur)')}`;
     const description =
       String(job.description || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160) ||
       `${job.title}${company ? ` në ${company}` : ''}${job.location?.city ? `, ${job.location.city}` : ''}`;
@@ -243,7 +254,7 @@ async function handleRoute(req) {
         canonical: `${SITE_URL}/jobs/${slug}`,
         imageUrl: employerProfile.logo || undefined,
         bodyContent: renderJobBody(job),
-        jsonLdBlocks: [jobPostingJsonLd(job)],
+        jsonLdBlocks: isOpen ? [jobPostingJsonLd(job)] : [],
       }),
     };
   }

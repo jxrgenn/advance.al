@@ -17,6 +17,25 @@ function openaiClient() { return _clientOverride || _openai; }
 export function _setOpenAIClient(client) { _clientOverride = client; }
 
 /**
+ * Failure of extractCVDataFromText.
+ *   reason:             'api_error' | 'refusal' | 'truncated' | 'invalid_output'
+ *   completionReceived: true when OpenAI returned (= billed) a completion we
+ *                       could not use, or may have (client-side timeout: the
+ *                       generation can finish and bill after we gave up).
+ *                       Callers use it to decide whether the attempt counts
+ *                       against the user's quotas (fix batch C review #1).
+ */
+export class CVExtractionError extends Error {
+  constructor(message, { reason, completionReceived, cause } = {}) {
+    super(message);
+    this.name = 'CVExtractionError';
+    this.reason = reason;
+    this.completionReceived = completionReceived;
+    if (cause) this.cause = cause;
+  }
+}
+
+/**
  * Extract CV data from natural language text using OpenAI GPT-4o with world-class prompt engineering
  * @param {string} naturalLanguageText - The user's natural language CV input
  * @param {string} targetLanguage - Target language for CV generation ('sq' or 'en')
@@ -205,9 +224,27 @@ Now, read the user's input 3 times, understand their intent deeply, and craft an
       // Note: temperature parameter not supported with structured outputs for gpt-4o-mini
     }));
 
+    // From here on OpenAI has returned (and billed) a completion. Every way it
+    // can be unusable is a CVExtractionError with completionReceived: true.
+    const choice = completion?.choices?.[0];
+    const message = choice?.message;
+    if (message?.refusal || choice?.finish_reason === 'content_filter') {
+      throw new CVExtractionError('Failed to extract CV data: the model refused the input', { reason: 'refusal', completionReceived: true });
+    }
+    if (choice?.finish_reason === 'length') {
+      throw new CVExtractionError('Failed to extract CV data: output truncated at the token limit', { reason: 'truncated', completionReceived: true });
+    }
+
     // Parse the response - with structured outputs, the response will be in parsed form
-    const messageContent = completion.choices[0].message.content;
-    const cvData = JSON.parse(messageContent);
+    let cvData;
+    try {
+      cvData = JSON.parse(message?.content);
+    } catch (parseError) {
+      throw new CVExtractionError(`Failed to extract CV data: ${parseError.message}`, { reason: 'invalid_output', completionReceived: true, cause: parseError });
+    }
+    if (!cvData || typeof cvData !== 'object' || Array.isArray(cvData)) {
+      throw new CVExtractionError('Failed to extract CV data: empty or non-object output', { reason: 'invalid_output', completionReceived: true });
+    }
 
     // Ensure language is set correctly
     cvData.language = targetLanguage;
@@ -219,6 +256,16 @@ Now, read the user's input 3 times, understand their intent deeply, and craft an
     };
   } catch (error) {
     logger.error('OpenAI API Error:', error.message);
-    throw new Error(`Failed to extract CV data: ${error.message}`);
+    if (error instanceof CVExtractionError) throw error;
+    // The API call itself failed (withRetry gave up): no usable completion.
+    // A client-side timeout is the exception — OpenAI may still finish (and
+    // bill) the generation, and long outputs are input-controlled, so it must
+    // count like a received completion.
+    const timedOut = error instanceof OpenAI.APIConnectionTimeoutError;
+    throw new CVExtractionError(`Failed to extract CV data: ${error.message}`, {
+      reason: 'api_error',
+      completionReceived: timedOut,
+      cause: error,
+    });
   }
 }

@@ -30,7 +30,7 @@ import logger from '../config/logger.js';
 
 const router = express.Router();
 
-const userKey = (req) => (req.user?._id ? `user:${req.user._id}` : `ip:${ipKeyGenerator(req)}`);
+const userKey = (req) => (req.user?._id ? `user:${req.user._id}` : `ip:${ipKeyGenerator(req.ip)}`);
 const skipRateLimit = () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true';
 
 // Checkout: 20 per hour per employer. Mounted AFTER authenticate so the key

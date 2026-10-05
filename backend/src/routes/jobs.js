@@ -21,6 +21,8 @@ import { notifyDiscord, deriveRequestSignals } from '../services/discordNotifier
 import { publicJob } from '../lib/serializers.js';
 import { getListingPrices, isEmployerFree } from '../lib/pricing.js';
 import { cancelOpenOrdersForJob, recordRevenue } from '../services/payments/orderService.js';
+import { SALARY_CURRENCIES, APPROX_ALL_PER_EUR, monthlyToAnnual } from '../lib/salary.js';
+import { diacriticInsensitivePattern } from '../lib/searchRegex.js';
 
 const router = express.Router();
 
@@ -138,13 +140,14 @@ const updateJobValidation = [
     .withMessage('Qyteti është i detyrueshëm')
     .isLength({ max: 100 })
     .withMessage('Qyteti nuk mund të ketë më shumë se 100 karaktere'),
+  // null clears a bound on update (EditJob sends null when both are emptied)
   body('salary.min')
-    .optional()
+    .optional({ values: 'null' })
     .isNumeric()
     .isFloat({ min: 0 })
     .withMessage('Paga minimale duhet të jetë numër pozitiv'),
   body('salary.max')
-    .optional()
+    .optional({ values: 'null' })
     .isNumeric()
     .isFloat({ min: 0 })
     .withMessage('Paga maksimale duhet të jetë numër pozitiv'),
@@ -182,6 +185,15 @@ const updateJobValidation = [
     .withMessage('Sezonale duhet të jetë true ose false')
 ];
 
+// Fields a listing never sends (publicJob strips them) that are heavy enough
+// to break the sort: a blocking sort holds (skip + limit) whole documents, and
+// with 1536-float embedding vectors (~20 KB each) page ~500 of an 8k-job
+// collection exceeds MongoDB's 100 MB in-memory sort limit — and Atlas shared
+// tiers allow no disk spill → QueryExceededMemoryLimitNoDiskUseAllowed (500).
+// A find() projection is applied only AFTER the sort, so the listing reads
+// pages with an aggregate that projects these out BEFORE $sort.
+const LISTING_HEAVY_FIELDS = { embedding: 0, similarJobs: 0, similarityMetadata: 0 };
+
 // @route   GET /api/jobs
 // @desc    Get all jobs with search and filters
 // @access  Public
@@ -216,8 +228,9 @@ router.get('/', optionalAuth, async (req, res) => {
 
     const safeLimit = sanitizeLimit(limit, 50, 10);
     const safePage = Math.max(1, parseInt(page) || 1);
-    // Strip null bytes from search to prevent MongoDB regex crash
-    const safeSearch = search ? search.replace(/\0/g, '') : '';
+    // Strip null bytes from search to prevent MongoDB regex crash. A repeated
+    // ?search=a&search=b arrives as an array — treat as no search, never 500.
+    const safeSearch = typeof search === 'string' ? search.replace(/\0/g, '') : '';
 
     // A personalizable request (logged-in jobseeker, page 1, default sort) gets
     // a per-user embedding re-rank further down. It must BYPASS the shared 60s
@@ -227,8 +240,14 @@ router.get('/', optionalAuth, async (req, res) => {
     const isPersonalizable = req.user?.userType === 'jobseeker'
       && safePage === 1 && sortBy === 'postedAt' && sortOrder !== 'asc';
 
-    // Redis cache — 60s TTL for public job search results
+    // Redis cache — 60s TTL for public job search results.
+    // `viewer` is part of the key: publicJob() attaches viewer-only fields
+    // (contactOverrides, employer contact details) for authenticated callers,
+    // so an authenticated payload must never be served to an anonymous caller
+    // (and vice versa). publicJob only distinguishes "logged in" vs "not", so
+    // two buckets are enough — no per-user keys.
     const cacheKey = `jobs:search:${crypto.createHash('md5').update(JSON.stringify({
+      viewer: req.user ? 'auth' : 'anon',
       search: safeSearch, city, category, categories, jobType, minSalary, maxSalary,
       currency, company, experience, seniority, remote, tier, postedAfter,
       page: safePage, limit: safeLimit, sortBy, sortOrder,
@@ -283,17 +302,44 @@ router.get('/', optionalAuth, async (req, res) => {
       }
     }
 
-    if (minSalary) filters.minSalary = parseInt(minSalary);
-    if (maxSalary) filters.maxSalary = parseInt(maxSalary);
-    if (currency && ['EUR', 'ALL'].includes(currency)) filters.currency = currency;
+    // Salary filter CONTRACT (see frontend/src/lib/api.ts jobsApi.getJobs):
+    // minSalary / maxSalary are MONTHLY amounts in `currency` (EUR | ALL,
+    // default EUR). Stored salaries are ANNUAL, so they are converted ×12
+    // here; Job.searchJobs then pins salary.currency to the requested one.
+    // Non-numeric / negative values are ignored rather than 500ing.
+    const parseMonthly = (v) => {
+      if (typeof v !== 'string' || v.trim() === '') return null;
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    const minMonthly = parseMonthly(minSalary);
+    const maxMonthly = parseMonthly(maxSalary);
+    if (minMonthly !== null) filters.minSalary = monthlyToAnnual(minMonthly);
+    if (maxMonthly !== null) filters.maxSalary = monthlyToAnnual(maxMonthly);
+    if (typeof currency === 'string' && SALARY_CURRENCIES.includes(currency)) filters.currency = currency;
+
+    // Echo of the applied filters (salary echoed in the MONTHLY units the
+    // caller sent). Shared by every response shape below.
+    const echoedFilters = {
+      search: stripHtml(safeSearch || ''),
+      city,
+      category,
+      jobType,
+      minSalary: minMonthly,
+      maxSalary: maxMonthly,
+    };
+
     // Company filter: the UI sends a free-text company NAME (not an ObjectId).
-    // An ObjectId is used directly; a name is resolved to matching employer IDs.
-    if (company && mongoose.Types.ObjectId.isValid(company)) {
-      filters.employerId = company;
-    } else if (company && typeof company === 'string' && company.trim()) {
-      const escaped = company.trim().replace(/\0/g, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // A 24-hex ObjectId is used directly; a name is resolved to matching
+    // employer IDs. (mongoose's ObjectId.isValid also accepts ANY 12-char
+    // string, which turned 12-letter company names into a bogus id lookup.)
+    // Diacritic-insensitive (e↔ë, c↔ç) so "Kompania Korce" finds "Korçë".
+    const companyPattern = isObjectIdString(company) ? '' : diacriticInsensitivePattern(company);
+    if (isObjectIdString(company)) {
+      filters.employerId = new mongoose.Types.ObjectId(company);
+    } else if (companyPattern) {
       const matchingEmployers = await User.find(
-        { userType: 'employer', 'profile.employerProfile.companyName': { $regex: escaped, $options: 'i' } },
+        { userType: 'employer', 'profile.employerProfile.companyName': { $regex: companyPattern, $options: 'i' } },
         '_id'
       ).limit(50).lean();
 
@@ -310,14 +356,7 @@ router.get('/', optionalAuth, async (req, res) => {
               hasNextPage: false,
               hasPrevPage: false
             },
-            filters: {
-              search: stripHtml(safeSearch || ''),
-              city,
-              category,
-              jobType,
-              minSalary: minSalary ? parseInt(minSalary) : null,
-              maxSalary: maxSalary ? parseInt(maxSalary) : null
-            }
+            filters: echoedFilters
           }
         });
       }
@@ -325,8 +364,10 @@ router.get('/', optionalAuth, async (req, res) => {
       filters.employerId = { $in: matchingEmployers.map(e => e._id) };
     }
 
-    // Experience/Seniority filter - map experience to seniority
-    if (experience) {
+    // Experience/Seniority filter - map experience to seniority. Strings only:
+    // the page is read with an aggregate (no Mongoose casting), so a repeated
+    // ?experience=a&experience=b array must not reach the $match.
+    if (typeof experience === 'string' && experience) {
       // Map frontend experience values to backend seniority values
       const experienceMap = {
         'entry': 'junior',
@@ -335,7 +376,7 @@ router.get('/', optionalAuth, async (req, res) => {
         'lead': 'lead'
       };
       filters.seniority = experienceMap[experience] || experience;
-    } else if (seniority) {
+    } else if (typeof seniority === 'string' && seniority) {
       filters.seniority = seniority;
     }
 
@@ -344,9 +385,11 @@ router.get('/', optionalAuth, async (req, res) => {
       filters.remote = true;
     }
 
-    // Posted after date filter
-    if (postedAfter) {
-      filters.postedAfter = new Date(postedAfter);
+    // Posted after date filter — unparseable values are ignored (an Invalid
+    // Date must never reach the query).
+    if (typeof postedAfter === 'string' && postedAfter) {
+      const postedAfterDate = new Date(postedAfter);
+      if (!Number.isNaN(postedAfterDate.getTime())) filters.postedAfter = postedAfterDate;
     }
 
     // Add platform category filters
@@ -410,14 +453,7 @@ router.get('/', optionalAuth, async (req, res) => {
                 hasNextPage: 1 < totalPages,
                 hasPrevPage: false,
               },
-              filters: {
-                search: stripHtml(safeSearch || ''),
-                city,
-                category,
-                jobType,
-                minSalary: minSalary ? parseInt(minSalary) : null,
-                maxSalary: maxSalary ? parseInt(maxSalary) : null,
-              },
+              filters: echoedFilters,
               personalized: true,
             }
           });
@@ -425,41 +461,69 @@ router.get('/', optionalAuth, async (req, res) => {
       }
     }
 
-    // Execute search
-    let query = Job.searchJobs(safeSearch, filters);
+    // Execute search. searchJobs builds the filter; the page itself is read
+    // with an aggregate (see LISTING_HEAVY_FIELDS) and populated afterwards.
+    const countFilter = Job.searchJobs(safeSearch, filters).getFilter();
 
     // Apply sorting — premium jobs are highlighted in PremiumJobsCarousel, not in main listing sort.
-    // searchJobs no longer pre-sorts, so this is the only sort on the query.
-    const sortOptions = {};
     const dir = sortOrder === 'desc' ? -1 : 1;
-    if (sortBy === 'postedAt') {
-      sortOptions.postedAt = dir;
-    } else if (sortBy === 'salary') {
-      sortOptions['salary.max'] = dir;
-    } else {
-      // Whitelist allowed sort fields to prevent injection
-      const allowedSorts = ['createdAt', 'postedAt', 'salary.min', 'salary.max', 'viewCount', 'applicationCount', 'title'];
-      const safeSortBy = allowedSorts.includes(sortBy) ? sortBy : 'postedAt';
-      sortOptions[safeSortBy] = dir;
-    }
-    // Deterministic tiebreaker — keeps order stable when the primary key ties
-    // (e.g. salary sort where many jobs share / lack salary.max) and prevents
-    // pagination flicker.
-    sortOptions._id = -1;
+    const isSalarySort = sortBy === 'salary' || sortBy === 'salary.max' || sortBy === 'salary.min';
 
     // Pagination
     const skip = (safePage - 1) * safeLimit;
 
-    query = query.sort(sortOptions).skip(skip).limit(safeLimit);
+    let preSortStages = [];
+    let sortStage;
+    let postProjection = null;
+    if (isSalarySort) {
+      // Salary sort must not compare raw numbers across currencies (150,000
+      // ALL is ~1,500 EUR, not "more" than 3,000 EUR) and must not reveal the
+      // order of HIDDEN salaries. Sort on a computed EUR-equivalent key
+      // (APPROX_ALL_PER_EUR, see lib/salary.js); hidden / missing salaries get
+      // no key and always sort LAST, whichever direction was requested.
+      const amount = { $ifNull: [sortBy === 'salary.min' ? '$salary.min' : '$salary.max', sortBy === 'salary.min' ? '$salary.max' : '$salary.min'] };
+      preSortStages = [
+        { $addFields: {
+          _salarySortKey: {
+            $cond: [
+              { $or: [{ $eq: ['$salary.showPublic', false] }, { $not: [{ $gt: [amount, 0] }] }] },
+              null,
+              { $cond: [{ $eq: ['$salary.currency', 'ALL'] }, { $divide: [amount, APPROX_ALL_PER_EUR] }, amount] },
+            ],
+          },
+        } },
+        { $addFields: { _hasSalarySortKey: { $cond: [{ $eq: ['$_salarySortKey', null] }, 0, 1] } } },
+      ];
+      sortStage = { _hasSalarySortKey: -1, _salarySortKey: dir, _id: -1 };
+      postProjection = { _salarySortKey: 0, _hasSalarySortKey: 0 };
+    } else {
+      // Whitelist allowed sort fields to prevent injection
+      const allowedSorts = ['createdAt', 'postedAt', 'viewCount', 'applicationCount', 'title'];
+      const safeSortBy = allowedSorts.includes(sortBy) ? sortBy : 'postedAt';
+      // Deterministic tiebreaker — keeps order stable when the primary key ties
+      // and prevents pagination flicker.
+      sortStage = { [safeSortBy]: dir, _id: -1 };
+    }
 
-    // Build count query using the same filter as searchJobs (reuse query conditions)
-    const countFilter = query.getFilter();
+    const pipeline = [
+      { $match: countFilter },
+      { $project: LISTING_HEAVY_FIELDS },
+      ...preSortStages,
+      { $sort: sortStage },
+      { $skip: skip },
+      { $limit: safeLimit },
+      ...(postProjection ? [{ $project: postProjection }] : []),
+    ];
 
-    // Execute find + count in parallel for ~2x speedup
-    const [jobs, totalJobs] = await Promise.all([
-      query.lean().exec(),
-      Job.countDocuments(countFilter)
+    // Page + count in parallel
+    const [rawJobs, totalJobs] = await Promise.all([
+      Job.aggregate(pipeline),
+      Job.countDocuments(countFilter),
     ]);
+    const jobs = await Job.populate(rawJobs, {
+      path: 'employerId',
+      select: 'profile.employerProfile.companyName profile.employerProfile.logo profile.location',
+    });
 
     const totalPages = Math.ceil(totalJobs / safeLimit);
 
@@ -478,14 +542,7 @@ router.get('/', optionalAuth, async (req, res) => {
           hasNextPage: safePage < totalPages,
           hasPrevPage: safePage > 1
         },
-        filters: {
-          search: stripHtml(safeSearch || ''),
-          city,
-          category,
-          jobType,
-          minSalary: minSalary ? parseInt(minSalary) : null,
-          maxSalary: maxSalary ? parseInt(maxSalary) : null
-        }
+        filters: echoedFilters
       }
     };
 
@@ -559,9 +616,10 @@ router.get('/recommendations', authenticate, async (req, res) => {
       const wideSlice = reranked.slice(0, Math.max(limit * 2, 20));
       const { ranked: rerankedFinal, mode: rerankMode } = await recommendationReranker.rerank(userWithEmb, wideSlice);
 
+      // publicJob: drops embeddings / similarity cache / payment internals
+      // and the numbers of a salary the employer hid (showPublic === false).
       const recommendations = rerankedFinal.slice(0, limit).map(({ job, finalScore }) => {
-        const obj = job.toObject ? job.toObject() : { ...job };
-        delete obj.embedding;
+        const obj = publicJob(job.toObject ? job.toObject() : { ...job }, { viewer: req.user });
         obj.score = Number(finalScore.toFixed(4));
         return obj;
       });
@@ -751,7 +809,9 @@ router.get('/recommendations', authenticate, async (req, res) => {
     res.json({
       success: true,
       data: {
-        recommendations,
+        // Same public serialization as every other job read (hidden salaries,
+        // embeddings, payment internals never leave the API).
+        recommendations: recommendations.map(j => publicJob(j, { viewer: req.user })),
         total: recommendations.length,
         personalized: savedJobs.length > 0 || preferredCategories.length > 0,
         scoringMode: 'heuristic'
@@ -835,9 +895,41 @@ router.get('/employer/my-jobs', authenticate, requireEmployer, async (req, res) 
   }
 });
 
+// Lifecycle state of a single job as the public sees it:
+//   'active'  — status active and not past expiresAt (open for applications)
+//   'expired' — status expired, OR still 'active' but past expiresAt (the
+//               hourly expiry cron hasn't flipped it yet)
+//   any other status verbatim ('closed', 'draft', 'pending_payment', …)
+const computeJobState = (job, now = new Date()) => {
+  if (job.status === 'active') {
+    return job.expiresAt && new Date(job.expiresAt) <= now ? 'expired' : 'active';
+  }
+  return job.status;
+};
+const PUBLIC_JOB_STATES = new Set(['active', 'expired', 'closed']);
+
+// "Not found" for a single-job read. When the caller PRESENTED a token that
+// optionalAuth rejected (typically an access token that expired a minute ago)
+// the honest answer is "your session lapsed", not "no such job": the owner of
+// a draft / unpaid job would otherwise be bounced away from /edit-job and
+// /payment/job links (payment-reminder emails) instead of refreshing. 401
+// makes the frontend refresh the session and retry. It is returned for
+// missing AND hidden jobs alike, so it never reveals that a hidden job exists.
+const jobNotFound = (req, res) => (req.authTokenRejected
+  ? res.status(401).json({ success: false, message: 'Sesioni ka skaduar, ju lutemi kyçuni përsëri' })
+  : res.status(404).json({ success: false, message: 'Puna nuk u gjet' }));
+
+// Crawlers, link-preview fetchers, HTTP libraries and our own SEO prerender
+// (frontend/api/seo.js sends "AdvanceSEOPrerender/1.0 (bot)"). An absent UA
+// is treated as a bot too. Kept deliberately cheap: one regex test.
+// (Telegram/Discord/Slack previewers contain "bot"; WhatsApp's previewer is
+// "WhatsApp/x.y" — in-app browsers on phones use the system browser's UA.)
+const BOT_UA_RE = /bot|crawl|spider|slurp|scrap|preview|facebookexternalhit|embedly|^whatsapp\/|headless|lighthouse|curl|wget|python|java\/|go-http|okhttp|axios|node-fetch|undici|^node$/i;
+const isBotUserAgent = (ua) => !ua || BOT_UA_RE.test(ua);
+
 // @route   GET /api/jobs/:idOrSlug
 // @desc    Get single job by ObjectId or SEO slug (slug-friendly URLs for crawlers)
-// @access  Public
+// @access  Public (non-public states: owner + admin only)
 router.get('/:id', optionalAuth, async (req, res) => {
   try {
     // Public single-job detail. The response is run through `publicJob`
@@ -861,14 +953,33 @@ router.get('/:id', optionalAuth, async (req, res) => {
       .lean();
 
     if (!job) {
-      return res.status(404).json({
-        success: false,
-        message: 'Puna nuk u gjet'
-      });
+      return jobNotFound(req, res);
     }
 
-    // Increment view count fire-and-forget (don't block response)
-    if (!req.user || !req.user._id.equals(job.employerId._id)) {
+    // Visibility. Public = active (incl. past-expiry, shown as 'expired') and
+    // closed/expired listings — those stay reachable for SEO and shared links,
+    // tagged with `jobState` so the UI renders them as no longer open.
+    // draft / pending_payment / pending_approval / rejected / paused are
+    // visible only to the owning employer and admins; everyone else gets the
+    // same 404 as a non-existent job (existence is not revealed).
+    // employerId can be null when the employer document is gone — null-safe.
+    const employerObjId = job.employerId?._id ?? null;
+    const isOwner = !!(req.user && employerObjId && String(employerObjId) === String(req.user._id));
+    const isAdmin = req.user?.userType === 'admin';
+    const jobState = computeJobState(job);
+    if (!PUBLIC_JOB_STATES.has(jobState) && !isOwner && !isAdmin) {
+      return jobNotFound(req, res);
+    }
+
+    // Increment view count fire-and-forget (don't block response). Not
+    // counted: the owner, admins, crawlers/link-preview bots and our own
+    // bot-prerender (frontend/api/seo.js), and background fetches that are
+    // not a page view (?view=0 — e.g. the "recently viewed" widget refreshing
+    // its cards) — they inflate the employer-facing view count. Reloads
+    // within the event-log window are still counted by viewCount (cheap;
+    // logEvent dedups separately).
+    const isPageView = req.query.view !== '0';
+    if (isPageView && !isOwner && !isAdmin && !isBotUserAgent(req.get('user-agent'))) {
       Job.updateOne({ _id: job._id }, { $inc: { viewCount: 1 } }).catch(() => {});
       // Log structured view event (deduplicated 10-min window per user+job).
       // `source` derived from optional ?ref= query param so the frontend can
@@ -884,9 +995,15 @@ router.get('/:id', optionalAuth, async (req, res) => {
       });
     }
 
+    const out = publicJob(job, { viewer: req.user });
+    out.jobState = jobState;
+    // The owner (EditJob loads this endpoint) and admins need the real
+    // numbers even when the salary is hidden from the public.
+    if ((isOwner || isAdmin) && job.salary) out.salary = job.salary;
+
     res.json({
       success: true,
-      data: { job: publicJob(job, { viewer: req.user }) }
+      data: { job: out }
     });
 
   } catch (error) {
@@ -901,7 +1018,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
 // @route   GET /api/jobs/:idOrSlug/similar
 // @desc    Get similar jobs for a job (accepts ObjectId or slug — Phase B SEO)
 // @access  Public
-router.get('/:id/similar', async (req, res) => {
+router.get('/:id/similar', optionalAuth, async (req, res) => {
   try {
     const param = req.params.id;
     const limit = sanitizeLimit(req.query.limit, 20, 10);
@@ -912,22 +1029,28 @@ router.get('/:id/similar', async (req, res) => {
       : { slug: param };
     const job = await Job.findOne(jobQuery);
 
-    if (!job || job.isDeleted) {
-      return res.status(404).json({
-        success: false,
-        message: 'Puna nuk u gjet'
-      });
+    // Same visibility rule as GET /:id — a draft / unpaid / pending / rejected
+    // job must not be confirmed to exist via this endpoint either (owner and
+    // admins excepted; a rejected token → 401 so the client can refresh).
+    const isOwnerOrAdmin = !!req.user && !!job
+      && (req.user.userType === 'admin' || String(job.employerId) === String(req.user._id));
+    if (!job || job.isDeleted || (!PUBLIC_JOB_STATES.has(computeJobState(job)) && !isOwnerOrAdmin)) {
+      return jobNotFound(req, res);
     }
     const jobId = job._id;
+    const now = new Date();
 
     // Check if similar jobs are already computed
     if (job.similarJobs && job.similarJobs.length > 0) {
-      // Return cached similar jobs
+      // Return cached similar jobs. The cache can be up to 7 days old, so
+      // re-check liveness here: active status alone is not enough — a job
+      // past expiresAt stays 'active' until the hourly expiry cron runs.
       const similarJobIds = job.similarJobs.map(s => s.jobId);
       const similarJobs = await Job.find({
         _id: { $in: similarJobIds },
         isDeleted: false,
-        status: 'active'
+        status: 'active',
+        expiresAt: { $gt: now }
       })
         .populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.firstName profile.lastName profile.location')
         .lean();
@@ -967,10 +1090,30 @@ router.get('/:id/similar', async (req, res) => {
       });
     }
 
-    // If embeddings are being processed, use fallback
-    const fallbackJobs = (await jobEmbeddingService.getSimilarJobsFallback(jobId))
-      .slice(0, limit)
-      .map(f => ({ ...f, job: publicJob(f.job, { viewer: req.user }) }));
+    // No embedding cache yet → keyword fallback: same category or same city.
+    // Done here (not via jobEmbeddingService.getSimilarJobsFallback) so the
+    // candidates get the same liveness filter as the cached path
+    // (expiresAt > now) and carry the employer + salary fields the cards
+    // render. Response shape is unchanged: { job, score: null, cached: false }.
+    const fallbackCandidates = await Job.find({
+      _id: { $ne: jobId },
+      isDeleted: false,
+      status: 'active',
+      expiresAt: { $gt: now },
+      $or: [
+        { category: job.category },
+        { 'location.city': job.location?.city }
+      ]
+    })
+      .sort({ postedAt: -1, _id: -1 })
+      .limit(limit)
+      .populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.location')
+      .lean();
+    const fallbackJobs = fallbackCandidates.map(j => ({
+      job: publicJob(j, { viewer: req.user }),
+      score: null,
+      cached: false,
+    }));
 
     res.json({
       success: true,
@@ -1191,6 +1334,164 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
   }
 });
 
+// --- PUT /api/jobs/:id field validation ------------------------------------
+// The update body used to be copied straight onto the document: an invalid
+// enum (e.g. currency 'USD') became a Mongoose ValidationError → 500, and a
+// partial `location` replaced the stored one wholesale (region wiped). These
+// checks return an Albanian 400 message and MERGE nested objects instead.
+
+const CUSTOM_QUESTION_TYPES = ['text', 'email', 'phone', 'file'];
+const MAX_CUSTOM_QUESTIONS = 10;
+const MAX_CUSTOM_QUESTION_LENGTH = 500;
+// Upper bound for a stored (ANNUAL) amount — far above any real salary in
+// either currency, low enough to reject garbage like 1e308.
+const MAX_ANNUAL_SALARY = 1_000_000_000;
+
+const toOptionalAmount = (v) => {
+  if (v === null || v === undefined || v === '') return { value: null };
+  const n = typeof v === 'number' ? v : (typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN);
+  if (!Number.isFinite(n) || n < 0 || n > MAX_ANNUAL_SALARY) return { error: true };
+  return { value: n };
+};
+
+const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * Validate + normalize the nested / enum fields of a job update.
+ * @returns {Promise<{error: string} | {updates: object}>}
+ */
+async function validateJobUpdateFields(body, job) {
+  const updates = {};
+
+  // Salary — numbers ≥ 0 in STORED (annual) units, min ≤ max, EUR|ALL.
+  // null / '' clears a bound. Omitted keys keep their stored values.
+  if (body.salary !== undefined) {
+    if (!isPlainObject(body.salary)) return { error: 'Paga nuk është në formatin e duhur' };
+    const current = job.salary?.toObject ? job.salary.toObject() : (job.salary || {});
+    const next = {
+      min: current.min ?? null,
+      max: current.max ?? null,
+      currency: current.currency || 'EUR',
+      negotiable: current.negotiable ?? true,
+      showPublic: current.showPublic ?? true,
+    };
+    if ('min' in body.salary) {
+      const r = toOptionalAmount(body.salary.min);
+      if (r.error) return { error: 'Paga minimale duhet të jetë një numër pozitiv' };
+      next.min = r.value;
+    }
+    if ('max' in body.salary) {
+      const r = toOptionalAmount(body.salary.max);
+      if (r.error) return { error: 'Paga maksimale duhet të jetë një numër pozitiv' };
+      next.max = r.value;
+    }
+    if (next.min !== null && next.max !== null && next.min > next.max) {
+      return { error: 'Paga minimale nuk mund të jetë më e lartë se paga maksimale' };
+    }
+    if (body.salary.currency !== undefined) {
+      if (!SALARY_CURRENCIES.includes(body.salary.currency)) {
+        return { error: 'Monedha e pagës duhet të jetë EUR ose ALL' };
+      }
+      next.currency = body.salary.currency;
+    }
+    for (const flag of ['negotiable', 'showPublic']) {
+      if (body.salary[flag] !== undefined) {
+        if (typeof body.salary[flag] !== 'boolean') return { error: 'Paga nuk është në formatin e duhur' };
+        next[flag] = body.salary[flag];
+      }
+    }
+    updates.salary = next;
+  }
+
+  // Location — city must be an ACTIVE Location; region always comes from the
+  // Location record (never from the client); remote flags merged.
+  if (body.location !== undefined) {
+    if (!isPlainObject(body.location)) return { error: 'Vendndodhja nuk është në formatin e duhur' };
+    const current = job.location?.toObject ? job.location.toObject() : (job.location || {});
+    const next = {
+      city: current.city,
+      region: current.region,
+      remote: current.remote ?? false,
+      remoteType: current.remoteType || 'none',
+    };
+    if (body.location.city !== undefined) {
+      const city = typeof body.location.city === 'string' ? body.location.city.trim() : '';
+      if (!city) return { error: 'Qyteti është i detyrueshëm' };
+      // Unchanged city → keep the stored city + region as they are. (EditJob
+      // always resends the city; a Location deactivated after the job was
+      // posted must not make every later edit of that job fail.)
+      if (city !== current.city) {
+        const loc = await Location.findOne({ city, isActive: true }).lean();
+        if (!loc) return { error: 'Qyteti i zgjedhur nuk është i vlefshëm' };
+        next.city = loc.city;
+        next.region = loc.region;
+      }
+    }
+    if (body.location.remote !== undefined) {
+      if (typeof body.location.remote !== 'boolean') return { error: 'Fusha "remote" duhet të jetë true ose false' };
+      next.remote = body.location.remote;
+    }
+    if (body.location.remoteType !== undefined) {
+      if (!['full', 'hybrid', 'none'].includes(body.location.remoteType)) {
+        return { error: 'Lloji i punës në distancë nuk është i vlefshëm' };
+      }
+      next.remoteType = body.location.remoteType;
+    }
+    updates.location = next;
+  }
+
+  // Custom questions — ≤10, each a non-empty question ≤500 chars, a known
+  // type and a boolean `required`. Editing them while applications exist is
+  // safe: every Application stores its answers together with the question
+  // TEXT (Application.customAnswers[].question), not an index into this list.
+  if (body.customQuestions !== undefined) {
+    if (!Array.isArray(body.customQuestions)) return { error: 'Pyetjet duhet të jenë një listë' };
+    if (body.customQuestions.length > MAX_CUSTOM_QUESTIONS) {
+      return { error: `Mund të shtoni deri në ${MAX_CUSTOM_QUESTIONS} pyetje` };
+    }
+    const questions = [];
+    for (const q of body.customQuestions) {
+      if (!isPlainObject(q) || typeof q.question !== 'string') return { error: 'Çdo pyetje duhet të ketë tekst' };
+      const text = normalizeOneLine(stripHtml(q.question)).trim();
+      if (!text) return { error: 'Pyetja nuk mund të jetë bosh' };
+      if (text.length > MAX_CUSTOM_QUESTION_LENGTH) {
+        return { error: `Pyetja nuk mund të ketë më shumë se ${MAX_CUSTOM_QUESTION_LENGTH} karaktere` };
+      }
+      if (q.required !== undefined && typeof q.required !== 'boolean') {
+        return { error: 'Fusha "e detyrueshme" e pyetjes duhet të jetë true ose false' };
+      }
+      const type = q.type === undefined ? 'text' : q.type;
+      if (!CUSTOM_QUESTION_TYPES.includes(type)) return { error: 'Lloji i pyetjes nuk është i vlefshëm' };
+      questions.push({ question: text, required: q.required === true, type });
+    }
+    updates.customQuestions = questions;
+  }
+
+  // Application method — only the platform flow exists now (owner ruling:
+  // the email / external-link options were removed).
+  if (body.applicationMethod !== undefined && body.applicationMethod !== 'internal') {
+    return { error: 'Metoda e aplikimit nuk është e vlefshme — të gjitha aplikimet bëhen përmes platformës' };
+  }
+
+  // Expiry date — must parse and lie in the future. A bare date
+  // ("YYYY-MM-DD" from <input type="date">) means the END of that day in
+  // Tirana (21:59:59Z is 22:59/23:59 local), not UTC midnight. The schema's
+  // pre-save hook still clamps it to postedAt + JOB_TTL_DAYS.
+  if (body.expiresAt !== undefined) {
+    let d = null;
+    if (typeof body.expiresAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.expiresAt)) {
+      d = new Date(`${body.expiresAt}T21:59:59.999Z`);
+    } else if (typeof body.expiresAt === 'string' || typeof body.expiresAt === 'number') {
+      d = new Date(body.expiresAt);
+    }
+    if (!d || Number.isNaN(d.getTime())) return { error: 'Data e skadimit nuk është e vlefshme' };
+    if (d <= new Date()) return { error: 'Data e skadimit duhet të jetë në të ardhmen' };
+    updates.expiresAt = d;
+  }
+
+  return { updates };
+}
+
 // @route   PUT /api/jobs/:id
 // @desc    Update job posting
 // @access  Private (Job owner only)
@@ -1222,26 +1523,23 @@ router.put('/:id', validateObjectId('id'), authenticate, requireEmployer, requir
       description,
       requirements,
       benefits,
-      location,
       jobType,
       category,
       seniority,
-      salary,
-      customQuestions,
       tags,
-      expiresAt,
-      applicationMethod,
-      externalApplicationUrl,
-      applicationEmail,
       platformCategories
     } = req.body;
-    // Note: `status` intentionally NOT destructured — status changes only via PATCH /api/jobs/:id/status
-
-    // Validate salary range
-    if (salary && salary.min != null && salary.max != null && salary.min > salary.max) {
+    // Note: `status` intentionally NOT destructured — status changes only via PATCH /api/jobs/:id/status.
+    // salary / location / customQuestions / applicationMethod / expiresAt go
+    // through validateJobUpdateFields (400 with an Albanian message on bad
+    // input; nested objects are MERGED into the stored values, not replaced).
+    // externalApplicationUrl / applicationEmail are no longer accepted: every
+    // application goes through the platform (owner ruling).
+    const validated = await validateJobUpdateFields(req.body, job);
+    if (validated.error) {
       return res.status(400).json({
         success: false,
-        message: 'Paga minimale nuk mund të jetë më e lartë se paga maksimale'
+        message: validated.error
       });
     }
 
@@ -1251,26 +1549,35 @@ router.put('/:id', validateObjectId('id'), authenticate, requireEmployer, requir
       ...(description !== undefined && { description }),
       ...(requirements !== undefined && { requirements }),
       ...(benefits !== undefined && { benefits }),
-      ...(location !== undefined && { location }),
       ...(jobType !== undefined && { jobType }),
       ...(category !== undefined && { category }),
       ...(seniority !== undefined && { seniority }),
-      ...(salary !== undefined && { salary }),
-      ...(customQuestions !== undefined && { customQuestions }),
       ...(tags !== undefined && { tags: tags.slice(0, 10) }),
-      ...(expiresAt !== undefined && { expiresAt }),
-      ...(applicationMethod !== undefined && { applicationMethod }),
-      ...(externalApplicationUrl !== undefined && { externalApplicationUrl }),
-      ...(applicationEmail !== undefined && { applicationEmail }),
+      ...validated.updates,
       ...(platformCategories !== undefined && {
         platformCategories: {
-          ...platformCategories,
+          // Merge onto the stored flags — a partial object must not wipe the
+          // others (they are required:true booleans on the schema).
+          diaspora: job.platformCategories?.diaspora ?? false,
+          ngaShtepia: job.platformCategories?.ngaShtepia ?? false,
+          partTime: job.platformCategories?.partTime ?? false,
+          sezonale: job.platformCategories?.sezonale ?? false,
+          ...(platformCategories && typeof platformCategories === 'object' ? {
+            ...(platformCategories.diaspora !== undefined && { diaspora: platformCategories.diaspora === true || platformCategories.diaspora === 'true' }),
+            ...(platformCategories.ngaShtepia !== undefined && { ngaShtepia: platformCategories.ngaShtepia === true || platformCategories.ngaShtepia === 'true' }),
+            ...(platformCategories.partTime !== undefined && { partTime: platformCategories.partTime === true || platformCategories.partTime === 'true' }),
+            ...(platformCategories.sezonale !== undefined && { sezonale: platformCategories.sezonale === true || platformCategories.sezonale === 'true' }),
+          } : {}),
           // Server-side enforcement: non-administrata employers cannot set administrata flag
           administrata: req.user.profile?.employerProfile?.isAdministrataAccount
             ? true
             : false
         }
       }),
+      // Email / external-link application methods were removed (owner
+      // ruling): any edit normalizes a legacy job to the internal flow.
+      applicationMethod: 'internal',
+      externalApplicationUrl: undefined,
       updatedAt: new Date()
     };
     Object.assign(job, updates);
@@ -1303,6 +1610,20 @@ router.put('/:id', validateObjectId('id'), authenticate, requireEmployer, requir
     });
 
   } catch (error) {
+    // Anything the explicit checks above didn't catch (e.g. an enum value,
+    // a 500+ char requirement, a non-string array item) surfaces as a
+    // Mongoose ValidationError / CastError — that is bad INPUT, not a server
+    // fault: answer 400, never 500.
+    if (error?.name === 'ValidationError' || error?.name === 'CastError') {
+      const fields = error.name === 'ValidationError'
+        ? Object.keys(error.errors || {})
+        : [error.path].filter(Boolean);
+      return res.status(400).json({
+        success: false,
+        message: 'Të dhënat e punës nuk janë të vlefshme',
+        errors: fields.map(field => ({ field, message: 'Vlerë e pavlefshme' }))
+      });
+    }
     logger.error('Update job error:', error.message);
     res.status(500).json({
       success: false,

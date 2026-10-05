@@ -39,6 +39,14 @@ async function purgeDeletedAccounts() {
     try {
       const userId = user._id;
 
+      // CVs attached to individual applications (O-42) die with those
+      // applications: the ones this user sent, and — for an employer — the
+      // ones sent to them. Collected before the transaction deletes the docs.
+      const applicationCvs = await Application.find({
+        $or: [{ jobSeekerId: userId }, { employerId: userId }],
+        resumeUrl: { $type: 'string' },
+      }).select('resumeUrl').lean();
+
       await session.withTransaction(async () => {
         // 1. Delete their applications (as job seeker)
         const appResult = await Application.deleteMany({ jobSeekerId: userId }, { session });
@@ -97,6 +105,9 @@ async function purgeDeletedAccounts() {
       await deleteUserAsset(user.profile?.jobSeekerProfile?.resume, 'raw');
       await deleteUserAsset(user.profile?.jobSeekerProfile?.profilePhoto, 'image');
       await deleteUserAsset(user.profile?.employerProfile?.logo, 'image');
+      for (const app of applicationCvs) {
+        await deleteUserAsset(app.resumeUrl, 'raw');
+      }
 
     } catch (error) {
       logger.error('Account cleanup: failed to purge user', {

@@ -97,6 +97,32 @@ export async function incrementAndCheck(key, max) {
 }
 
 /**
+ * Give back one unit reserved by incrementAndCheck() when the guarded
+ * operation then FAILED (O-71: a failed CV generation must not burn the
+ * user's daily quota). Reserve-then-refund keeps the atomic up-front check
+ * (concurrent requests can't overshoot the cap) while only successful calls
+ * end up counted. Never goes below zero. Best-effort — never throws.
+ */
+export async function refund(key) {
+  if (!key) return;
+  const fullKey = `${KEY_PREFIX}:${key}:${utcDateString()}`;
+  /* istanbul ignore next — Redis-backed branch; tests run with Redis disabled */
+  if (redis) {
+    try {
+      const count = await redis.decr(fullKey);
+      if (count < 0) await redis.set(fullKey, 0, { ex: TTL_SECONDS });
+    } catch (err) {
+      logger.warn('dailyQuota: Redis DECR failed; refund skipped', { key, error: err.message });
+    }
+    return;
+  }
+  const entry = memoryStore.get(fullKey);
+  if (entry && entry.expiresAt > Date.now() && entry.count > 0) {
+    entry.count -= 1;
+  }
+}
+
+/**
  * Read-only check — does NOT increment. Used by /admin status endpoints
  * (future use). Returns the current count or 0 if unknown.
  */

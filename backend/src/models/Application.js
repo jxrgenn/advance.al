@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import logger from '../config/logger.js';
+import { stripHiddenSalary } from '../lib/salary.js';
 
 const { Schema } = mongoose;
 
@@ -48,6 +49,20 @@ const applicationSchema = new Schema({
     }
   }],
   
+  // CV attached to THIS application in the apply modal (O-42). Stored like
+  // profile resumes (lib/resumeStorage.js — Cloudinary authenticated,
+  // public_id resume-<jobSeekerId>-<ms>) so POST /api/users/resume/sign can
+  // authorize the employer this application is addressed to. Employer views
+  // show it instead of the applicant's profile CV when present.
+  resumeUrl: {
+    type: String,
+    maxlength: 1000
+  },
+  resumeType: {
+    type: String,
+    enum: ['pdf', 'docx', 'doc']
+  },
+
   // Additional Files beyond CV
   additionalFiles: [{
     type: Schema.Types.ObjectId,
@@ -270,6 +285,12 @@ applicationSchema.statics.getJobSeekerApplications = function(jobSeekerId, filte
       populate: {
         path: 'employerId',
         select: 'email profile.employerProfile.companyName profile.employerProfile.phone profile.employerProfile.whatsapp profile.employerProfile.contactPreferences'
+      },
+      // The seeker's view: a salary the employer hid (showPublic === false)
+      // keeps only its flags, never the numbers (lib/salary.js).
+      transform: (job) => {
+        if (job?.salary?.showPublic === false) job.salary = stripHiddenSalary(job.salary);
+        return job;
       }
     })
     .sort({ appliedAt: -1 });

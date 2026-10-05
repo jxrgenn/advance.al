@@ -2,9 +2,11 @@
  * token-refresh.spec.ts — refresh token rotation and expiry.
  *
  * 6 tests: rotation works, stale token rejected, missing body, change-password
- * invalidates all tokens, logout removes one token.
+ * invalidates every other session (O-14: the calling device gets a fresh
+ * pair), logout removes one token.
  */
 
+import { createHash } from 'node:crypto';
 import { test } from '@playwright/test';
 import { dbClear, dbFindOne } from '../../../real-backend/db-helpers';
 import { makeJobseeker, authHeaders, API } from '../../../real-backend/factory-helpers';
@@ -41,13 +43,15 @@ test.describe('Auth / token refresh', () => {
     expect(r.status).toBe(401);
   });
 
-  test('TR.3 refresh with no body → 400', async () => {
+  test('TR.3 refresh with no body → 401', async () => {
     const r = await fetch(`${API}/auth/refresh`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({}),
     });
-    // Empty refreshToken body — validator rejects with 400.
-    expect(r.status).toBe(400);
+    // No cookie and no body token: the route answers 401 (it has never had a
+    // 400 validator — the old "→ 400" expectation was wrong).
+    expect(r.status).toBe(401);
+    expect((await r.json()).message).toBe('Refresh token është i detyrueshëm');
   });
 
   test('TR.4 logout removes refresh token from user.refreshTokens', async () => {
@@ -74,30 +78,43 @@ test.describe('Auth / token refresh', () => {
     expect(afterCount, 'logout should remove the specific refresh token').toBeLessThan(beforeCount);
   });
 
-  test('TR.5 change-password invalidates ALL refresh tokens', async () => {
+  test('TR.5 change-password revokes every other session, keeps this one', async () => {
     const js = await makeJobseeker();
     // Login twice to seed multiple refresh tokens
-    await fetch(`${API}/auth/login`, {
+    const other = await (await fetch(`${API}/auth/login`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: js.email, password: 'StrongPass123!' }),
-    });
+    })).json();
     const lr = await fetch(`${API}/auth/login`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: js.email, password: 'StrongPass123!' }),
     });
     const lb = await lr.json();
 
+    // The route is PUT (the old POST here hit a 404 and the assertions were
+    // skipped).
     const cr = await fetch(`${API}/auth/change-password`, {
-      method: 'POST', headers: authHeaders(lb.data.token),
+      method: 'PUT', headers: authHeaders(lb.data.token),
       body: JSON.stringify({
         currentPassword: 'StrongPass123!',
         newPassword: 'BrandNewStrongPass456!'
       }),
     });
-    if ([200, 204].includes(cr.status)) {
-      const after = await dbFindOne('users', { email: js.email });
-      const tokens = after.refreshTokens || [];
-      expect(tokens.length, 'change-password should clear all refresh tokens').toBe(0);
+    expect(cr.status).toBe(200);
+    const cb = await cr.json();
+    const sha256 = (t: string) => createHash('sha256').update(t).digest('hex');
+
+    // O-14: only the fresh token issued to this device remains.
+    const after = await dbFindOne('users', { email: js.email });
+    const tokens = (after.refreshTokens || []).map((t: { token: string }) => t.token);
+    expect(tokens).toEqual([sha256(cb.data.refreshToken)]);
+
+    for (const old of [other.data.refreshToken, lb.data.refreshToken]) {
+      const rr = await fetch(`${API}/auth/refresh`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ refreshToken: old }),
+      });
+      expect(rr.status).toBe(401);
     }
   });
 

@@ -7,6 +7,10 @@ import { escapeRegex, sanitizeLimit, validateObjectId, stripHtml } from '../util
 import { errorDetail } from '../utils/errors.js';
 import logger from '../config/logger.js';
 import { notifyDiscord, deriveRequestSignals } from '../services/discordNotifier.js';
+import { closeJobsForSanctionedEmployer } from '../lib/employerSanctions.js';
+
+// Report actions that sanction the reported ACCOUNT (need a reportedUser).
+const USER_ACCOUNT_ACTIONS = ['warning', 'temporary_suspension', 'permanent_suspension', 'account_termination'];
 
 const router = express.Router();
 
@@ -23,7 +27,7 @@ const reportSubmissionLimit = rateLimit({
   skip: (req) => req.user?.userType === 'admin', // Skip for admins
   keyGenerator: (req) => {
     // Use authenticated user ID if available, otherwise use ipKeyGenerator for proper IPv6 handling
-    return req.user?.id || ipKeyGenerator(req);
+    return req.user?.id || ipKeyGenerator(req.ip);
   }
 });
 
@@ -124,8 +128,9 @@ const handleValidationErrors = (req, res, next) => {
 // @desc    Submit a new user report
 // @access  Private (authenticated users only)
 router.post('/',
-  reportSubmissionLimit,
+  // authenticate first: the limiter keys on req.user (5 per user) and skips admins.
   authenticate,
+  reportSubmissionLimit,
   reportValidation,
   handleValidationErrors,
   async (req, res) => {
@@ -742,8 +747,40 @@ router.post('/admin/:id/action',
         });
       }
 
+      // Review #6: warning/suspension/ban act on the reported ACCOUNT. A
+      // job-only report has none — it used to answer "Veprimi … u mor me
+      // sukses" and write a user_suspended audit record while sanctioning
+      // nobody. Only "no_action" can close such a report.
+      if (!report.reportedUser && USER_ACCOUNT_ACTIONS.includes(action)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Ky raportim i përket një pune, jo një përdoruesi. Paralajmërimi, pezullimi dhe mbyllja e llogarisë zbatohen vetëm ndaj përdoruesve — mbyllni raportimin me "Asnjë veprim" dhe menaxhoni punën ose punëdhënësin nga paneli i administratorit.'
+        });
+      }
+
+      // O-51 (same rule as PATCH /api/admin/users/:id/manage): a report
+      // against an admin cannot be used to suspend/ban that admin.
+      if (report.reportedUser?.userType === 'admin' &&
+          ['temporary_suspension', 'permanent_suspension', 'account_termination'].includes(action)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Nuk mund të pezulloni ose ndaloni administratorë të tjerë'
+        });
+      }
+
       // Resolve the report
       await report.resolve(action, reason, adminId, duration);
+
+      // Review #5: a sanctioned EMPLOYER's jobs are closed exactly like the
+      // admin manage route does (shared helper) — otherwise they kept listing
+      // as active and seekers only hit the apply 404.
+      if (report.reportedUser?.userType === 'employer') {
+        if (action === 'temporary_suspension') {
+          await closeJobsForSanctionedEmployer(report.reportedUser._id, 'suspend');
+        } else if (action === 'permanent_suspension' || action === 'account_termination') {
+          await closeJobsForSanctionedEmployer(report.reportedUser._id, 'ban');
+        }
+      }
 
       // Create detailed action record
       const reportAction = new ReportAction({
@@ -752,7 +789,8 @@ router.post('/admin/:id/action',
                    action === 'warning' ? 'user_warned' :
                    action.includes('suspension') ? 'user_suspended' : 'user_banned',
         performedBy: adminId,
-        targetUser: report.reportedUser._id,
+        // Job-only reports have no reportedUser.
+        targetUser: report.reportedUser?._id,
         actionDetails: {
           actionData: {
             reason,

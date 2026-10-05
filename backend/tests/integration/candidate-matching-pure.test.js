@@ -143,10 +143,11 @@ describe('candidateMatching.calculateLocationMatch (L135-153)', () => {
 });
 
 describe('candidateMatching.calculateSalaryMatch (L193-223)', () => {
+  // Job fixtures are ANNUAL (stored convention): 12000-24000/yr = 1000-2000/muaj.
   it('returns 5 (neutral) when candidate salary is 0', () => {
     expect(candidateMatching.calculateSalaryMatch(
       candidate({}),
-      job({ salary: { min: 1000, max: 2000 } })
+      job({ salary: { min: 12000, max: 24000 } })
     )).toBe(5);
   });
 
@@ -160,42 +161,42 @@ describe('candidateMatching.calculateSalaryMatch (L193-223)', () => {
   it('returns 10 (perfect) when candidate within range (L207-208)', () => {
     expect(candidateMatching.calculateSalaryMatch(
       candidate({ desiredSalary: { min: 1500, max: 1500 } }),
-      job({ salary: { min: 1000, max: 2000 } })
+      job({ salary: { min: 12000, max: 24000 } })
     )).toBe(10);
   });
 
   it('returns 8 when candidate expects less (L212-213)', () => {
     expect(candidateMatching.calculateSalaryMatch(
       candidate({ desiredSalary: { max: 800 } }),
-      job({ salary: { min: 1000, max: 2000 } })
+      job({ salary: { min: 12000, max: 24000 } })
     )).toBe(8);
   });
 
   it('returns 6 when candidate expects 10% more than max (L220)', () => {
     expect(candidateMatching.calculateSalaryMatch(
       candidate({ desiredSalary: { max: 2200 } }), // 10% over 2000
-      job({ salary: { min: 1000, max: 2000 } })
+      job({ salary: { min: 12000, max: 24000 } })
     )).toBe(6);
   });
 
   it('returns 4 when candidate expects ~20% more than max (L221)', () => {
     expect(candidateMatching.calculateSalaryMatch(
       candidate({ desiredSalary: { max: 2400 } }), // 20% over
-      job({ salary: { min: 1000, max: 2000 } })
+      job({ salary: { min: 12000, max: 24000 } })
     )).toBe(4);
   });
 
   it('returns 2 when candidate expects ~30% more than max (L222)', () => {
     expect(candidateMatching.calculateSalaryMatch(
       candidate({ desiredSalary: { max: 2600 } }), // 30%
-      job({ salary: { min: 1000, max: 2000 } })
+      job({ salary: { min: 12000, max: 24000 } })
     )).toBe(2);
   });
 
   it('returns 0 when candidate expects way too much (L223)', () => {
     expect(candidateMatching.calculateSalaryMatch(
       candidate({ desiredSalary: { max: 5000 } }), // 150% over
-      job({ salary: { min: 1000, max: 2000 } })
+      job({ salary: { min: 12000, max: 24000 } })
     )).toBe(0);
   });
 });

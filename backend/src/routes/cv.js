@@ -3,14 +3,15 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import mammoth from 'mammoth';
 import { authenticate, requireJobSeeker } from '../middleware/auth.js';
 import { validateObjectId, stripHtml } from '../utils/sanitize.js';
-import { extractCVDataFromText } from '../services/openaiService.js';
+import { extractCVDataFromText, CVExtractionError } from '../services/openaiService.js';
 import { generateCVDocument } from '../services/cvDocumentService.js';
 import { generateCVPdf } from '../services/cvPdfService.js';
 import User from '../models/User.js';
 import File from '../models/File.js';
 import logger from '../config/logger.js';
 import { fireEmbedding } from '../services/embeddingTrigger.js';
-import { incrementAndCheck } from '../lib/dailyQuota.js';
+import { incrementAndCheck, refund } from '../lib/dailyQuota.js';
+import { storeResumeBuffer, deleteStoredResume, swapProfileResume } from '../lib/resumeStorage.js';
 
 // Cost-cap for CV generation. CV gen uses gpt-4o (~$0.018/CV at typical token usage).
 // Two layers:
@@ -33,16 +34,39 @@ const cvGenerateLimiter = rateLimit({
   max: CV_HOURLY_CAP,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req),
+  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req.ip),
   skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
+  // O-71: requests that never got an OpenAI completion (bad input, feature
+  // off, API/connection error) don't burn one of the user's 2/hr. Everything
+  // that got a completion counts — even if it was then unusable (refusal,
+  // truncated, bad JSON): OpenAI billed it (review #1). A client abort is
+  // un-counted by the library itself; the daily cap below still holds then.
+  skipFailedRequests: true,
+  requestWasSuccessful: (req, res) => res.statusCode < 400 || req.cvCompletionReceived === true,
   message: {
     success: false,
     message: `Keni arritur limitin e gjenerimit të CV (${CV_HOURLY_CAP}/orë). Provoni përsëri pas 1 ore.`
   }
 });
 
+// Bounds Cloudinary uploads from POST /use-as-profile (O-70).
+const useAsProfileLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req.ip),
+  skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
+  message: {
+    success: false,
+    message: 'Shumë kërkesa. Provoni përsëri pas 1 ore.'
+  }
+});
+
 // POST /api/cv/generate - Generate CV from natural language
 router.post('/generate', authenticate, requireJobSeeker, cvGenerateLimiter, async (req, res) => {
+  // Daily-quota key reserved below; refunded if generation fails (O-71).
+  let reservedQuotaKey = null;
   try {
     // Fail fast with 503 (not 500) when OpenAI isn't configured.
     // Without this guard, every request would 500 deep inside the OpenAI
@@ -83,8 +107,11 @@ router.post('/generate', authenticate, requireJobSeeker, cvGenerateLimiter, asyn
 
     // Pre-deploy audit (O-D): daily quota check. Admins bypass.
     if (req.user.userType !== 'admin') {
-      const { allowed, count, remaining } = await incrementAndCheck(`cv:${req.user._id}`, CV_DAILY_CAP);
+      const quotaKey = `cv:${req.user._id}`;
+      const { allowed, count, remaining } = await incrementAndCheck(quotaKey, CV_DAILY_CAP);
       if (!allowed) {
+        // The over-cap attempt itself must not keep the counter climbing.
+        await refund(quotaKey);
         logger.info('cv/generate daily cap hit', { userId: String(req.user._id), count, cap: CV_DAILY_CAP });
         return res.status(429).json({
           success: false,
@@ -92,10 +119,19 @@ router.post('/generate', authenticate, requireJobSeeker, cvGenerateLimiter, asyn
           data: { remaining, cap: CV_DAILY_CAP },
         });
       }
+      reservedQuotaKey = quotaKey;
     }
+
+    // Current AI CV pair — replaced (and deleted) once the new pair is saved (O-71).
+    const previous = await User.findById(req.user._id)
+      .select('profile.jobSeekerProfile.cvFile profile.jobSeekerProfile.cvPdfFile')
+      .lean();
 
     // Extract structured data using OpenAI with target language
     const extractionResult = await extractCVDataFromText(sanitizedInput, targetLanguage);
+    // A billed completion exists from here on: this attempt counts against
+    // both caps whatever happens next.
+    req.cvCompletionReceived = true;
     const cvData = extractionResult.data;
 
     // Render the SAME cvData as both a Word doc and a PDF. The expensive
@@ -128,14 +164,51 @@ router.post('/generate', authenticate, requireJobSeeker, cvGenerateLimiter, asyn
     });
     await Promise.all([docxFile.save(), pdfFile.save()]);
 
-    // Update user profile with CV data + both file references
-    await User.findByIdAndUpdate(req.user._id, {
-      'profile.jobSeekerProfile.aiGeneratedCV': cvData,
-      'profile.jobSeekerProfile.cvFile': docxFile._id,
-      'profile.jobSeekerProfile.cvPdfFile': pdfFile._id,
-      'profile.jobSeekerProfile.cvGeneratedAt': new Date(),
-      'profile.jobSeekerProfile.cvLastUpdatedAt': new Date()
-    });
+    // Point the profile at the new pair. Compare-and-swap on the pair we
+    // expect to replace so concurrent generations can't orphan File docs
+    // (review #7): whoever displaces a pair deletes it; on a lost race we
+    // re-read and displace the winner's pair instead (last writer wins).
+    // O-71: deleting displaced pairs keeps the binary-in-Mongo files from
+    // growing unboundedly. Safe even if a displaced PDF was set as the profile
+    // CV: POST /use-as-profile stores its own copy of the bytes.
+    let expected = previous?.profile?.jobSeekerProfile || {};
+    let swapped = false;
+    for (let attempt = 0; attempt < 5 && !swapped; attempt++) {
+      const result = await User.updateOne(
+        { _id: req.user._id, 'profile.jobSeekerProfile.cvPdfFile': expected.cvPdfFile ?? null },
+        { $set: {
+          'profile.jobSeekerProfile.aiGeneratedCV': cvData,
+          'profile.jobSeekerProfile.cvFile': docxFile._id,
+          'profile.jobSeekerProfile.cvPdfFile': pdfFile._id,
+          'profile.jobSeekerProfile.cvGeneratedAt': new Date(),
+          'profile.jobSeekerProfile.cvLastUpdatedAt': new Date()
+        } }
+      );
+      if (result.matchedCount === 1) {
+        swapped = true;
+        const displaced = [expected.cvFile, expected.cvPdfFile].filter(Boolean);
+        if (displaced.length > 0) {
+          try {
+            await File.deleteMany({ _id: { $in: displaced }, uploadedBy: req.user._id });
+          } catch (cleanupError) {
+            logger.warn('cv/generate: failed to delete previous CV files (non-fatal)', { error: cleanupError.message });
+          }
+        }
+      } else {
+        const current = await User.findById(req.user._id)
+          .select('profile.jobSeekerProfile.cvFile profile.jobSeekerProfile.cvPdfFile')
+          .lean();
+        expected = current?.profile?.jobSeekerProfile || {};
+      }
+    }
+    if (!swapped) {
+      // Pathological contention: don't leave our pair behind unreferenced.
+      await File.deleteMany({ _id: { $in: [docxFile._id, pdfFile._id] } }).catch(() => {});
+      throw new Error('cv/generate: could not attach the generated CV (concurrent updates)');
+    }
+
+    // Generation succeeded — the reserved daily-quota unit is now spent.
+    reservedQuotaKey = null;
 
     // Re-generate embedding with rich AI CV data (skills, summary, certs, languages)
     fireEmbedding({ kind: 'jobseeker', id: req.user._id, reason: 'cv-generate' });
@@ -161,10 +234,103 @@ router.post('/generate', authenticate, requireJobSeeker, cvGenerateLimiter, asyn
 
   } catch (error) {
     logger.error('CV generation error:', error.message);
+    if (error instanceof CVExtractionError && error.completionReceived) {
+      req.cvCompletionReceived = true;
+    }
+    // O-71: only an attempt that never got an OpenAI completion gives the
+    // reserved daily-quota unit back (review #1: refusals/truncations/bad JSON
+    // are billed, so refunding them allowed unlimited paid calls).
+    if (reservedQuotaKey && !req.cvCompletionReceived) await refund(reservedQuotaKey);
+
+    if (error instanceof CVExtractionError && error.reason === 'refusal') {
+      return res.status(422).json({
+        success: false,
+        message: 'AI nuk mund ta përpunojë këtë tekst. Përdorni vetëm informacion profesional për veten (përvojë, arsim, aftësi) dhe provoni përsëri.'
+      });
+    }
+    if (error instanceof CVExtractionError && error.reason === 'truncated') {
+      return res.status(422).json({
+        success: false,
+        message: 'CV-ja doli shumë e gjatë për t\'u gjeneruar. Shkurtoni tekstin dhe provoni përsëri.'
+      });
+    }
     res.status(500).json({
       success: false,
       message: 'Gabim në gjenerimin e CV'
     });
+  }
+});
+
+// POST /api/cv/use-as-profile - Set the latest AI-generated PDF as the profile CV (O-70)
+// Owner ruling: never automatic — only when the jobseeker clicks
+// "Përdore si CV-në time". The PDF bytes are COPIED into resume storage the
+// same way uploads are stored (lib/resumeStorage.js → Cloudinary authenticated,
+// public_id resume-<userId>-<ms>), so employers with an application open it
+// through the existing POST /api/users/resume/sign flow, and later
+// regenerations (which delete the old File docs) can't break it.
+router.post('/use-as-profile', authenticate, requireJobSeeker, useAsProfileLimiter, async (req, res) => {
+  let stored = null;
+  try {
+    const user = await User.findById(req.user._id)
+      .select('profile.jobSeekerProfile.cvPdfFile profile.jobSeekerProfile.resume')
+      .lean();
+    const pdfFileId = user?.profile?.jobSeekerProfile?.cvPdfFile;
+    if (!pdfFileId) {
+      return res.status(404).json({
+        success: false,
+        message: 'Nuk keni një CV të gjeneruar me AI. Gjeneroni një CV fillimisht.'
+      });
+    }
+
+    // Stale-tab guard: the client names the PDF it is showing; if the user
+    // regenerated elsewhere since, don't silently attach a different CV.
+    const { fileId } = req.body || {};
+    if (fileId !== undefined && String(fileId) !== String(pdfFileId)) {
+      return res.status(409).json({
+        success: false,
+        message: 'Kjo CV është zëvendësuar nga një gjenerim më i ri. Rifreskoni faqen dhe provoni përsëri.'
+      });
+    }
+
+    const file = await File.findOne({ _id: pdfFileId, uploadedBy: req.user._id });
+    if (!file || !file.fileData) {
+      return res.status(404).json({
+        success: false,
+        message: 'Nuk keni një CV të gjeneruar me AI. Gjeneroni një CV fillimisht.'
+      });
+    }
+    const pdfBuffer = Buffer.isBuffer(file.fileData) ? file.fileData : Buffer.from(file.fileData);
+
+    try {
+      stored = await storeResumeBuffer(pdfBuffer, req.user._id);
+    } catch (storeError) {
+      logger.error('cv/use-as-profile: storage failed', { error: storeError.message });
+      return res.status(503).json({
+        success: false,
+        message: 'Ruajtja e CV-së nuk është e disponueshme momentalisht. Provoni përsëri më vonë.'
+      });
+    }
+
+    // $set only the two paths (not user.save()) so unrelated legacy profile
+    // data can't fail validation and strand the freshly stored file. The swap
+    // is compare-and-set and deletes the CV it replaces (same as a
+    // re-upload), so parallel clicks can't orphan stored copies (review #7).
+    const { displacedUrl: previousResumeUrl } = await swapProfileResume(req.user._id, stored.url, {
+      resumeType: 'pdf',
+      expectedUrl: user.profile.jobSeekerProfile.resume,
+    });
+    const resumeUrl = stored.url;
+    stored = null; // now referenced by the profile
+
+    return res.json({
+      success: true,
+      message: 'CV-ja e gjeneruar u vendos si CV-ja juaj në profil',
+      data: { resumeUrl, resumeType: 'pdf', replacedExisting: !!previousResumeUrl }
+    });
+  } catch (error) {
+    logger.error('cv/use-as-profile error:', error.message);
+    if (stored) await deleteStoredResume(stored.url);
+    return res.status(500).json({ success: false, message: 'Gabim në vendosjen e CV-së në profil' });
   }
 });
 

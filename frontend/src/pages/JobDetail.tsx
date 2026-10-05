@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import SEO from "@/components/SEO";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
@@ -12,13 +12,14 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { MapPin, Clock, Euro, Building, ArrowLeft, CheckCircle, Users, Calendar, Loader2, Zap, MessageCircle, Phone, Mail, Lightbulb, X, Wifi, Bookmark } from "lucide-react";
+import { MapPin, Clock, Euro, Building, ArrowLeft, CheckCircle, Users, Calendar, Loader2, Zap, MessageCircle, Phone, Mail, Lightbulb, X, Wifi, Bookmark, CalendarX, Ban } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { jobsApi, applicationsApi, usersApi, Job } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import useRecentlyViewed from "@/hooks/useRecentlyViewed";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
-import { formatSalary } from "@/lib/salary";
+import { formatSalary, jobPostingBaseSalary } from "@/lib/salary";
+import { formatAlbanianDate } from "@/lib/albanianDate";
 
 const JobDetail = () => {
   const { id } = useParams();
@@ -166,14 +167,22 @@ const JobDetail = () => {
     return `${Math.floor(diffDays / 30)} muaj më parë`;
   };
 
-  const formatExpiresDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('sq-AL', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    });
-  };
+  // Albanian month names spelled out (Chromium has no 'sq' ICU data, so
+  // toLocaleDateString('sq-AL') rendered "September 16, 2026" / "2026 M09 16").
+  const formatExpiresDate = (dateString: string) => formatAlbanianDate(dateString);
+
+  // Lifecycle state (O-57). GET /api/jobs/:id tags every job with `jobState`;
+  // the fallback derives it for an older API response. Only 'active' jobs
+  // accept applications — expired / closed listings stay viewable (shared
+  // links, SEO) and owner-only states (draft, unpaid, pending, rejected)
+  // reach the owning employer / admins only.
+  const jobState: NonNullable<Job['jobState']> = job
+    ? (job.jobState
+      ?? (job.status === 'active' && job.expiresAt && new Date(job.expiresAt) <= new Date()
+        ? 'expired'
+        : (job.status as NonNullable<Job['jobState']>)))
+    : 'active';
+  const isOpenForApplications = jobState === 'active';
 
   // Whether user has a CV/resume uploaded to their profile
   const userHasCV = !!user?.profile?.jobSeekerProfile?.resume;
@@ -182,6 +191,10 @@ const JobDetail = () => {
 
   // Auth guard shared by all apply flows
   const checkApplyEligibility = (): boolean => {
+    if (!isOpenForApplications) {
+      toast({ title: "Aplikimet janë mbyllur", description: "Ky pozicion nuk pranon më aplikime.", variant: "destructive" });
+      return false;
+    }
     if (!isAuthenticated) {
       toast({ title: "Duhet të kyçeni", description: "Ju duhet të kyçeni për të aplikuar për punë.", variant: "destructive" });
       navigate("/login");
@@ -231,6 +244,19 @@ const JobDetail = () => {
     setHasApplied(true);
     setShowApplyModal(false);
   };
+
+  // A listing's quick-apply sends jobs with custom questions here with
+  // state.openApply (lib/quickApply.ts) — open the full apply form once the
+  // job is loaded. The intent is consumed so reload / back doesn't reopen it.
+  const location = useLocation();
+  const openApplyRequested = (location.state as { openApply?: boolean } | null)?.openApply === true;
+  useEffect(() => {
+    if (!openApplyRequested || loading || !job) return;
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    if (hasApplied || !checkApplyEligibility()) return;
+    setShowApplyModal(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openApplyRequested, loading, job?._id]);
 
   // Open contact modal with pre-filled template
   const openContactModal = (method: 'email' | 'phone' | 'whatsapp', contactInfo: string) => {
@@ -759,18 +785,49 @@ const JobDetail = () => {
       name: "Albania",
     };
   }
-  if (job.salary && (job.salary.min || job.salary.max) && job.salary.showPublic !== false) {
-    jobPostingJsonLd.baseSalary = {
-      "@type": "MonetaryAmount",
-      currency: job.salary.currency || "EUR",
-      value: {
-        "@type": "QuantitativeValue",
-        minValue: job.salary.min,
-        maxValue: job.salary.max || job.salary.min,
-        unitText: "MONTH",
-      },
-    };
-  }
+  // Stored salaries are ANNUAL; schema.org gets the MONTHLY range (÷12) with
+  // unitText MONTH — same rule as the bot prerender (api/_lib/seo-templates.js).
+  const baseSalary = jobPostingBaseSalary(job.salary);
+  if (baseSalary) jobPostingJsonLd.baseSalary = baseSalary;
+
+  // JobPosting markup only for an open listing: Google for Jobs must not list
+  // expired / closed postings, and owner-only states must not be indexed.
+  const isPublicState = jobState === 'active' || jobState === 'expired' || jobState === 'closed';
+  const lifecycleBanner: { title: string; text: string; tone: 'gray' | 'amber' | 'red' } | null =
+    jobState === 'expired' ? {
+      title: 'Ky pozicion ka skaduar',
+      text: `Afati i aplikimit përfundoi më ${formatExpiresDate(job.expiresAt)}. Aplikimet nuk pranohen më.`,
+      tone: 'gray',
+    } : jobState === 'closed' ? {
+      title: 'Ky pozicion është mbyllur',
+      text: 'Punëdhënësi nuk pranon më aplikime për këtë pozicion.',
+      tone: 'gray',
+    } : jobState === 'draft' ? {
+      title: 'Ky pozicion nuk është publikuar (draft)',
+      text: 'Vetëm ju (dhe administratorët) mund ta shihni këtë faqe. Kandidatët nuk mund të aplikojnë.',
+      tone: 'amber',
+    } : jobState === 'pending_payment' ? {
+      title: 'Ky pozicion pret pagesën',
+      text: 'Pozicioni do të publikohet pasi të përfundojë pagesa. Deri atëherë nuk është i dukshëm për kandidatët.',
+      tone: 'amber',
+    } : jobState === 'pending_approval' ? {
+      title: 'Ky pozicion pret miratimin',
+      text: 'Pozicioni do të publikohet pasi ta miratojë administratori.',
+      tone: 'amber',
+    } : jobState === 'rejected' ? {
+      title: 'Ky pozicion është refuzuar',
+      text: 'Pozicioni nuk është i dukshëm për kandidatët.',
+      tone: 'red',
+    } : jobState === 'paused' ? {
+      title: 'Ky pozicion është i pezulluar',
+      text: 'Pozicioni nuk pranon aplikime për momentin.',
+      tone: 'amber',
+    } : null;
+  const bannerToneClass = lifecycleBanner?.tone === 'red'
+    ? 'border-red-300 bg-red-50'
+    : lifecycleBanner?.tone === 'amber'
+      ? 'border-amber-300 bg-amber-50'
+      : 'border-slate-300 bg-slate-100';
 
   return (
     <div className="min-h-screen bg-background">
@@ -780,7 +837,8 @@ const JobDetail = () => {
         path={seoPath}
         type="article"
         image={job.employerId?.profile?.employerProfile?.logo || "https://advance.al/logo.jpeg"}
-        jsonLd={jobPostingJsonLd}
+        jsonLd={isOpenForApplications ? jobPostingJsonLd : undefined}
+        noindex={!isPublicState}
       />
       <Navigation />
 
@@ -797,11 +855,39 @@ const JobDetail = () => {
           Kthehu te lista
         </Button>
 
+        {lifecycleBanner && (
+          <div
+            role="status"
+            data-testid="job-state-banner"
+            className={`mb-6 rounded-lg border-2 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 ${bannerToneClass}`}
+          >
+            <div className="flex items-start gap-3 flex-1">
+              {jobState === 'expired'
+                ? <CalendarX className="h-6 w-6 text-slate-600 flex-shrink-0 mt-0.5" />
+                : <Ban className="h-6 w-6 text-slate-600 flex-shrink-0 mt-0.5" />}
+              <div>
+                <p className="font-semibold text-foreground">{lifecycleBanner.title}</p>
+                <p className="text-sm text-muted-foreground mt-0.5">{lifecycleBanner.text}</p>
+              </div>
+            </div>
+            {(jobState === 'expired' || jobState === 'closed') && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-white"
+                onClick={() => navigate(job.category ? `/jobs?category=${encodeURIComponent(job.category)}` : '/jobs')}
+              >
+                Shiko punë të hapura{job.category ? ` në ${job.category}` : ''}
+              </Button>
+            )}
+          </div>
+        )}
+
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
             {/* Tutorial Help Button */}
-            {!showTutorial && user?.preferences?.tutorialsEnabled !== false && (
+            {!showTutorial && isOpenForApplications && user?.preferences?.tutorialsEnabled !== false && (
               <Card className="border-blue-200 bg-blue-50/50">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
@@ -871,7 +957,7 @@ const JobDetail = () => {
                   </div>
                   <div className="flex items-center">
                     <Calendar className="h-4 w-4 mr-1" />
-                    Afat: {formatExpiresDate(job.expiresAt)}
+                    {jobState === 'expired' ? 'Skadoi më' : 'Afat'}: {formatExpiresDate(job.expiresAt)}
                   </div>
                 </div>
 
@@ -932,7 +1018,21 @@ const JobDetail = () => {
               <CardContent className="p-6">
                 <h2 className="text-xl font-semibold text-foreground mb-6">Apliko për këtë pozicion</h2>
 
-                {hasApplied ? (
+                {!isOpenForApplications && !hasApplied ? (
+                  <div className="text-center py-6" data-testid="apply-closed">
+                    <Button size="lg" className="text-lg py-6" disabled>
+                      <Ban className="mr-2 h-5 w-5" />
+                      Aplikimet janë mbyllur
+                    </Button>
+                    <p className="text-sm text-muted-foreground mt-3">
+                      {jobState === 'expired'
+                        ? 'Ky pozicion ka skaduar dhe nuk pranon më aplikime.'
+                        : jobState === 'closed'
+                          ? 'Ky pozicion është mbyllur dhe nuk pranon më aplikime.'
+                          : 'Ky pozicion nuk është publikuar dhe nuk pranon aplikime.'}
+                    </p>
+                  </div>
+                ) : hasApplied ? (
                   <div className="text-center py-6">
                     <Button
                       size="lg"
@@ -1030,7 +1130,8 @@ const JobDetail = () => {
               </CardContent>
             </Card>
 
-            {/* Contact Options Section */}
+            {/* Contact Options Section — only while the listing is open */}
+            {isOpenForApplications && (
             <Card className="border-border/50" data-tutorial="contact-options">
               <CardContent className="p-6">
                 <h2 className="text-xl font-semibold text-foreground mb-4">Ose kontakto direkt:</h2>
@@ -1086,6 +1187,7 @@ const JobDetail = () => {
                 </div>
               </CardContent>
             </Card>
+            )}
 
             {/* Application Details Card */}
             <Card className="border-border/50">
@@ -1095,13 +1197,17 @@ const JobDetail = () => {
                 {/* Application Details */}
                 <div className="grid md:grid-cols-3 gap-4 text-sm">
                   <div>
-                    <span className="font-medium text-foreground">Afati i aplikimit:</span>
+                    <span className="font-medium text-foreground">{jobState === 'expired' ? 'Skadoi më:' : 'Afati i aplikimit:'}</span>
                     <p className="text-muted-foreground">{formatExpiresDate(job.expiresAt)}</p>
                   </div>
                   <div>
                     <span className="font-medium text-foreground">Metoda:</span>
                     <p className="text-muted-foreground">
-                      {job.applicationMethod === 'one_click' ? '1-klik aplikim' : 'Formular i personalizuar'}
+                      {/* Every job applies through the platform ('internal'); a job
+                          with custom questions asks them in the apply form. */}
+                      {hasCustomQuestions
+                        ? 'Përmes platformës — formular me pyetje shtesë'
+                        : 'Përmes platformës (1-klik ose formular)'}
                     </p>
                   </div>
                   <div>
