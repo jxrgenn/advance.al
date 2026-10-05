@@ -1219,6 +1219,46 @@ const EmployerDashboard = () => {
           </div>
         </div>
 
+        {/* O-52 (owner ruling): unverified employers can log in and use the
+            dashboard; publishing stays blocked server-side until an admin
+            verifies the account. Tell them why and what they can do now. */}
+        {user?.userType === 'employer' && !user?.profile?.employerProfile?.verified && (() => {
+          const rejected = user?.profile?.employerProfile?.verificationStatus === 'rejected';
+          return (
+            <div
+              role="status"
+              data-testid="employer-verification-banner"
+              className={`mb-6 flex items-start gap-3 rounded-lg border p-4 ${rejected ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}
+            >
+              {rejected
+                ? <UserX className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+                : <Clock className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />}
+              <div className="space-y-1">
+                <p className={`text-sm font-semibold ${rejected ? 'text-red-900' : 'text-amber-900'}`}>
+                  {rejected
+                    ? 'Llogaria juaj si punëdhënës nuk u aprovua'
+                    : 'Llogaria juaj është në pritje të verifikimit'}
+                </p>
+                <p className={`text-sm ${rejected ? 'text-red-800' : 'text-amber-800'}`}>
+                  {rejected
+                    ? 'Nuk mund të publikoni punë me këtë llogari. Për më shumë informacion na shkruani në info@advance.al.'
+                    : 'Ekipi ynë po verifikon kompaninë tuaj. Do të mund të publikoni punë sapo llogaria të verifikohet — do t\'ju njoftojmë me email. Ndërkohë mund të plotësoni profilin e kompanisë.'}
+                </p>
+                {!rejected && (
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-amber-900 underline"
+                    onClick={() => setCurrentTab('settings')}
+                  >
+                    Plotëso profilin e kompanisë
+                  </Button>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Stats Cards */}
         <div className="grid md:grid-cols-3 gap-6 mb-8">
           <Card>
@@ -2293,9 +2333,14 @@ const EmployerDashboard = () => {
                         );
                       })()}
 
-                      {selectedApplication.jobSeekerId.profile.jobSeekerProfile.resume && (
+                      {/* O-42: a CV attached to THIS application wins over the
+                          applicant's current profile CV. */}
+                      {(selectedApplication.resumeUrl || selectedApplication.jobSeekerId.profile.jobSeekerProfile.resume) && (
                         <div>
                           <Label className="text-xs sm:text-sm font-medium">CV</Label>
+                          <p className="text-xs text-muted-foreground" data-testid="application-cv-source">
+                            {selectedApplication.resumeUrl ? 'Bashkangjitur me këtë aplikim' : 'Nga profili i aplikuesit'}
+                          </p>
                           <div className="flex flex-col sm:flex-row flex-wrap gap-2 mt-1">
                             <Button
                               variant="outline"
@@ -2304,7 +2349,7 @@ const EmployerDashboard = () => {
                               onClick={() => {
                                 const jobSeeker = selectedApplication.jobSeekerId as User;
                                 handleDownloadCV(
-                                  jobSeeker.profile.jobSeekerProfile?.resume || '',
+                                  selectedApplication.resumeUrl || jobSeeker.profile.jobSeekerProfile?.resume || '',
                                   `${jobSeeker.profile.firstName} ${jobSeeker.profile.lastName}`.trim() || 'Aplikues'
                                 );
                               }}
@@ -2319,7 +2364,10 @@ const EmployerDashboard = () => {
                             </Button>
                             {(() => {
                               const jobSeeker = selectedApplication.jobSeekerId as User;
-                              const resumeType = jobSeeker.profile.jobSeekerProfile?.resumeType;
+                              const cvUrl = selectedApplication.resumeUrl || jobSeeker.profile.jobSeekerProfile?.resume || '';
+                              const resumeType = selectedApplication.resumeUrl
+                                ? selectedApplication.resumeType
+                                : jobSeeker.profile.jobSeekerProfile?.resumeType;
                               const viewable = isInlineViewable(resumeType);
                               return (
                                 // title on the wrapper span — a disabled
@@ -2333,7 +2381,7 @@ const EmployerDashboard = () => {
                                     size="sm"
                                     disabled={!viewable}
                                     onClick={() => {
-                                      handleViewCV(jobSeeker.profile.jobSeekerProfile?.resume || '');
+                                      handleViewCV(cvUrl);
                                     }}
                                     className="text-xs"
                                   >

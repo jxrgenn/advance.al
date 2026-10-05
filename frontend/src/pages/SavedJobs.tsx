@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Briefcase, Loader2, Bookmark, ArrowLeft, ChevronDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { usersApi, applicationsApi, Job } from "@/lib/api";
+import { needsApplyForm, applyFormRoute } from "@/lib/quickApply";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 
@@ -128,6 +129,16 @@ const SavedJobs = () => {
   };
 
   const handleApply = async (jobId: string) => {
+    // A job with custom questions (or unknown question info) cannot be
+    // quick-applied — the API rejects skipped required answers. Send the user
+    // to the full apply form on the job page instead (O-27 follow-up).
+    const listedJob = savedJobs.find(j => j._id === jobId);
+    if (needsApplyForm(listedJob)) {
+      const { to, state } = applyFormRoute(listedJob, jobId);
+      navigate(to, { state });
+      return;
+    }
+
     try {
       await applicationsApi.apply({
         jobId,

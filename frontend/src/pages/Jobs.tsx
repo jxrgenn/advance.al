@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import JobCard from "@/components/JobCard";
@@ -19,6 +19,14 @@ import { Slider } from "@/components/ui/slider";
 import { Search, MapPin, Filter, Briefcase, Loader2, Calendar, DollarSign, Clock, Building, Bookmark, GraduationCap, Users, Award } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { jobsApi, locationsApi, applicationsApi, Job, Location } from "@/lib/api";
+import { needsApplyForm, applyFormRoute } from "@/lib/quickApply";
+import {
+  defaultSalaryRange,
+  isSalaryFilterActive,
+  salaryFilterConfig,
+  salaryFilterQuery,
+  formatSalaryFilterLabel,
+} from "@/lib/salary";
 import { useAuth } from "@/contexts/AuthContext";
 import { JOB_CATEGORIES } from "@/constants/jobCategories";
 
@@ -45,7 +53,9 @@ const Jobs = () => {
 
   // Advanced filters state
   const [advancedFilters, setAdvancedFilters] = useState({
-    salaryRange: [0, 2000] as [number, number],
+    // MONTHLY slider in the selected currency — helpers in lib/salary.ts
+    // (same rules as Index.tsx; this page is not routed at the moment).
+    salaryRange: defaultSalaryRange('EUR'),
     currency: 'EUR',
     experience: '',
     company: '',
@@ -66,6 +76,7 @@ const Jobs = () => {
   const { toast } = useToast();
   const { isAuthenticated, user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Initialize filters from URL parameters
   useEffect(() => {
@@ -122,11 +133,7 @@ const Jobs = () => {
       };
 
       // Add advanced filters if they exist
-      if (advancedFilters.salaryRange[0] > 0 || advancedFilters.salaryRange[1] < 2000) {
-        queryParams.minSalary = advancedFilters.salaryRange[0];
-        queryParams.maxSalary = advancedFilters.salaryRange[1];
-        queryParams.currency = advancedFilters.currency;
-      }
+      Object.assign(queryParams, salaryFilterQuery(advancedFilters.salaryRange, advancedFilters.currency));
 
       if (advancedFilters.experience) {
         queryParams.experience = advancedFilters.experience;
@@ -278,7 +285,7 @@ const Jobs = () => {
       advancedFilters.categories.length > 0 ||
       advancedFilters.postedWithin ||
       (advancedFilters.sortBy && advancedFilters.sortBy !== 'newest') ||
-      (advancedFilters.salaryRange[0] > 0 || advancedFilters.salaryRange[1] < 2000);
+      isSalaryFilterActive(advancedFilters.salaryRange, advancedFilters.currency);
 
     if (hasActiveFilters) {
       // When filtering, just mark existing jobs as recommended if they're in recommendations
@@ -316,6 +323,16 @@ const Jobs = () => {
         description: "Vetëm kërkuesit e punës mund të aplikojnë për punë.",
         variant: "destructive"
       });
+      return;
+    }
+
+    // A job with custom questions (or unknown question info) cannot be
+    // quick-applied — the API rejects skipped required answers. Send the user
+    // to the full apply form on the job page instead (O-27 follow-up).
+    const listedJob = [...jobs, ...recommendations, ...premiumJobs].find(j => j._id === jobId);
+    if (needsApplyForm(listedJob)) {
+      const { to, state } = applyFormRoute(listedJob, jobId);
+      navigate(to, { state });
       return;
     }
 
@@ -386,7 +403,7 @@ const Jobs = () => {
 
   const handleResetFilters = async () => {
     setAdvancedFilters({
-      salaryRange: [0, 2000],
+      salaryRange: defaultSalaryRange('EUR'),
       currency: 'EUR',
       experience: '',
       company: '',
@@ -815,7 +832,9 @@ const Jobs = () => {
                   <Label>Monedha</Label>
                   <Select
                     value={advancedFilters.currency}
-                    onValueChange={(value) => setAdvancedFilters(prev => ({ ...prev, currency: value }))}
+                    onValueChange={(value) => setAdvancedFilters(prev => (
+                      value === prev.currency ? prev : { ...prev, currency: value, salaryRange: defaultSalaryRange(value) }
+                    ))}
                   >
                     <SelectTrigger aria-label="Zgjidhni monedhën">
                       <SelectValue />
@@ -828,14 +847,14 @@ const Jobs = () => {
                 </div>
                 <div className="space-y-2">
                   <Label>
-                    Paga: {advancedFilters.salaryRange[0]} - {advancedFilters.salaryRange[1]} {advancedFilters.currency}
+                    Paga mujore: {formatSalaryFilterLabel(advancedFilters.salaryRange, advancedFilters.currency)}
                   </Label>
                   <Slider
                     value={advancedFilters.salaryRange}
                     onValueChange={(value) => setAdvancedFilters(prev => ({ ...prev, salaryRange: value as [number, number] }))}
-                    max={5000}
+                    max={salaryFilterConfig(advancedFilters.currency).max}
                     min={0}
-                    step={50}
+                    step={salaryFilterConfig(advancedFilters.currency).step}
                     className="w-full"
                   />
                 </div>

@@ -4,12 +4,12 @@
  * Real backend round-trips for:
  *   - notifications.js: list, unread-count, mark-read, mark-all-read, delete
  *   - bulk-notifications.js: send (immediate + scheduled), list, get, templates
- *   - verification.js: request, verify, resend, status, validate-token
+ *   - verification.js: unmounted (O-69) — every former path answers 404
  *   - quickusers.js: signup, unsubscribe, track-click, find-matches
  */
 
 import { test, expect } from '@playwright/test';
-import { dbClear, dbFind, dbUpdate, waitForVerificationCode } from '../../real-backend/db-helpers';
+import { dbClear, dbFind, dbUpdate } from '../../real-backend/db-helpers';
 import { API, makeJobseeker, makeEmployer, makeAdmin, authHeaders, dbInsert } from '../../real-backend/factory-helpers';
 
 test.describe.configure({ mode: 'serial' });
@@ -231,45 +231,26 @@ test.describe('Phase 22.G — Notifications + Bulk + Verification + QuickUsers',
     expect(body.success).toBe(true);
   });
 
-  // ─── Verification (13-15) ──────────────────────────────────────────────
+  // ─── Verification (13) ─────────────────────────────────────────────────
+  // O-69: /api/verification is no longer mounted (unused by the frontend; a
+  // public code-sending + account-enumeration surface). Signup verification
+  // lives in /api/auth/initiate-registration + /api/auth/register.
 
-  test('G.13 POST /verification/request email + /verify happy: code captured + accepted', async () => {
+  test('G.13 legacy /verification/{request,verify,validate-token} are unmounted → 404', async () => {
     const email = `verify-${Date.now()}@example.com`;
-    const res = await fetch(`${API}/verification/request`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identifier: email, method: 'email' })
-    });
-    expect(res.status).toBe(200);
-    const code = await waitForVerificationCode(email);
-    expect(code).toMatch(/^\d{6}$/);
-    const verifyRes = await fetch(`${API}/verification/verify`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identifier: email, code, method: 'email' })
-    });
-    expect(verifyRes.status).toBe(200);
-    const body = await verifyRes.json();
-    expect(body.success).toBe(true);
-  });
-
-  test('G.14 POST /verification/verify wrong code → 400', async () => {
-    const email = `verify-bad-${Date.now()}@example.com`;
-    await fetch(`${API}/verification/request`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identifier: email, method: 'email' })
-    });
-    const res = await fetch(`${API}/verification/verify`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identifier: email, code: '000000', method: 'email' })
-    });
-    expect(res.status).toBe(400);
-  });
-
-  test('G.15 POST /verification/validate-token: missing token → 400', async () => {
-    const res = await fetch(`${API}/verification/validate-token`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({})
-    });
-    expect(res.status).toBe(400);
+    for (const [path, body] of [
+      ['/verification/request', { identifier: email, method: 'email' }],
+      ['/verification/verify', { identifier: email, code: '000000', method: 'email' }],
+      ['/verification/validate-token', {}],
+    ] as const) {
+      const res = await fetch(`${API}${path}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      expect(res.status, path).toBe(404);
+      const json = await res.json();
+      expect(json.message).toBe('Rruga nuk u gjet');
+    }
   });
 
   // ─── QuickUsers (16-20) ────────────────────────────────────────────────

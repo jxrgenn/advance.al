@@ -1,7 +1,9 @@
 /**
  * Phase 28 — coverage push for auth.js POST /login state branches:
  *   - isDeleted/status='deleted' user → 401 (L586-590)
- *   - employer with status='pending_verification' → 401 (L615-620)
+ *   - employer with status='pending_verification' → 200 (O-52 owner ruling:
+ *     pending employers can log in; publishing stays gated by
+ *     requireVerifiedEmployer — see auth-session-hardening.test.js)
  *   - suspended user with expiresAt date → expiry-text branch (L598-600)
  *
  * Existing auth.test.js covers active/suspended/banned/wrong-password.
@@ -45,15 +47,20 @@ describe('auth.js — POST /login state branches', () => {
     expect(r.body.message).toMatch(/çaktivizuar/i);
   });
 
-  it('rejects unverified employer login with proper message (L615-620)', async () => {
+  it('pending_verification employer CAN log in → 200 with tokens (O-52)', async () => {
     const { user, plainPassword } = await createUnverifiedEmployer({ email: 'unverif-emp@example.com' });
     expect(user.status).toBe('pending_verification');
 
     const r = await request(app)
       .post('/api/auth/login')
       .send({ email: 'unverif-emp@example.com', password: plainPassword });
-    expect(r.status).toBe(401);
-    expect(r.body.message).toMatch(/pritje.*verifikim/i);
+    expect(r.status).toBe(200);
+    expect(r.body.success).toBe(true);
+    expect(r.body.data.user.email).toBe('unverif-emp@example.com');
+    expect(r.body.data.user.status).toBe('pending_verification');
+    expect(r.body.data.user.profile.employerProfile.verified).toBe(false);
+    expect(typeof r.body.data.token).toBe('string');
+    expect(typeof r.body.data.refreshToken).toBe('string');
   });
 
   it('suspended user with expiresAt → message includes expiry date (L598-600)', async () => {

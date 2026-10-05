@@ -27,6 +27,7 @@ import path from 'path';
 import { connectDB } from './src/config/database.js';
 import mongoose from 'mongoose';
 import logger from './src/config/logger.js';
+import { rejectMongoOperators } from './src/middleware/rejectMongoOperators.js';
 
 // Import routes (will create these next)
 import authRoutes from './src/routes/auth.js';
@@ -36,7 +37,8 @@ import applicationRoutes from './src/routes/applications.js';
 import locationRoutes from './src/routes/locations.js';
 import notificationRoutes from './src/routes/notifications.js';
 import statsRoutes from './src/routes/stats.js';
-import verificationRoutes from './src/routes/verification.js';
+// O-69: src/routes/verification.js is intentionally NOT imported/mounted —
+// see the note at the /api route mounts below.
 import quickUserRoutes from './src/routes/quickusers.js';
 import companiesRoutes from './src/routes/companies.js';
 // send-verification route REMOVED — legacy unauthenticated email endpoint (security risk).
@@ -229,6 +231,10 @@ if (process.env.NODE_ENV === 'development') {
 // Body Parser Middleware
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+// O-68: reject any parsed body carrying Mongo operator ($...) or dotted keys
+// before a route can drop it into a query filter. Must stay right after the
+// body parsers.
+app.use(rejectMongoOperators);
 
 // Ensure upload directories exist (dev-only fallback path; production uses
 // Cloudinary). Wrapped in try/catch because Render's container filesystem is
@@ -323,7 +329,12 @@ app.use('/api/applications', applicationRoutes);
 app.use('/api/locations', locationRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/stats', statsRoutes);
-app.use('/api/verification', verificationRoutes);
+// O-69: /api/verification (request/verify/validate-token/resend/status) is
+// NOT mounted. No page uses it — signup verifies via
+// /api/auth/initiate-registration + /api/auth/register — yet, public, it let
+// anyone send codes to any email/phone (mail-bombing from our domain, SMS
+// cost) and revealed whether an identifier belonged to an account. The route
+// file is kept for reference and is still unit-tested in isolation.
 app.use('/api/quickusers', quickUserRoutes);
 app.use('/api/companies', companiesRoutes);
 app.use('/api/matching', matchingRoutes);

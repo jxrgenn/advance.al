@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { usersApi, applicationsApi, authApi } from "@/lib/api";
 import { viewResume, downloadResume, isInlineViewable, DOCX_VIEW_TOOLTIP } from "@/lib/resumeView";
+import { isCVParsingInProgress } from "@/lib/cvParsingMarker";
 import { validateForm, profileValidationRules, formatValidationErrors, validatePassword, cleanAlbanianPhoneInput } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { InputWithCounter, TextAreaWithCounter } from "@/components/CharacterCounter";
@@ -94,20 +95,30 @@ const Profile = () => {
   const [jobAlertsEnabled, setJobAlertsEnabled] = useState(false);
   const [savingJobAlerts, setSavingJobAlerts] = useState(false);
 
-  // Background CV parsing detection (from ApplyModal)
-  const [bgCVParsing, setBgCVParsing] = useState(() => localStorage.getItem('cv-parsing-in-progress') === 'true');
+  // Background CV parsing detection (from ApplyModal). O-43: the marker is
+  // timestamped — a stale/orphaned one (tab closed mid-parse) is ignored and
+  // cleared — and the overlay can be dismissed, so it never blocks the page.
+  const [bgCVParsing, setBgCVParsing] = useState(() => isCVParsingInProgress());
+  const [bgCVOverlayDismissed, setBgCVOverlayDismissed] = useState(false);
 
   useEffect(() => {
     if (!bgCVParsing) return;
-    // Poll localStorage to detect when background parsing finishes
+    // Poll to detect when background parsing finishes (or goes stale). Keeps
+    // running after the overlay is dismissed so the profile still refreshes
+    // when a job running in another tab completes.
     const interval = setInterval(() => {
-      if (localStorage.getItem('cv-parsing-in-progress') !== 'true') {
+      if (!isCVParsingInProgress()) {
         setBgCVParsing(false);
         refreshUser();
       }
     }, 1000);
     return () => clearInterval(interval);
   }, [bgCVParsing]);
+
+  // Hide the overlay and keep using the page; the analysis continues.
+  const dismissBgCVParsing = () => {
+    setBgCVOverlayDismissed(true);
+  };
 
   // CV Parse & Auto-fill state
   const [parsingCV, setParsingCV] = useState(false);
@@ -1564,14 +1575,40 @@ const Profile = () => {
       <TutorialOverlay />
 
       {/* Background CV Parsing Overlay */}
-      {bgCVParsing && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center">
-          <Card className="max-w-sm mx-4 shadow-lg">
+      {bgCVParsing && !bgCVOverlayDismissed && (
+        <div
+          className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="bg-cv-parsing-title"
+          onKeyDown={(e) => { if (e.key === 'Escape') dismissBgCVParsing(); }}
+        >
+          <Card className="max-w-sm mx-4 shadow-lg relative">
+            <button
+              type="button"
+              onClick={dismissBgCVParsing}
+              className="absolute right-2 top-2 rounded-sm p-1 text-muted-foreground hover:text-foreground"
+              aria-label="Mbyll"
+            >
+              <X className="h-4 w-4" />
+            </button>
             <CardContent className="p-6 text-center">
               <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-3" />
-              <h3 className="font-semibold text-lg mb-1">CV-ja po analizohet...</h3>
+              <h3 id="bg-cv-parsing-title" className="font-semibold text-lg mb-1">CV-ja po analizohet...</h3>
               <p className="text-sm text-muted-foreground">
                 Profili juaj po plotësohet automatikisht nga CV-ja. Ju lutem prisni pak.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={dismissBgCVParsing}
+                autoFocus
+              >
+                Vazhdo pa pritur
+              </Button>
+              <p className="text-xs text-muted-foreground mt-2">
+                Analiza vazhdon në sfond — do t'ju njoftojmë kur të përfundojë.
               </p>
             </CardContent>
           </Card>

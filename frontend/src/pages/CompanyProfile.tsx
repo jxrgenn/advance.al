@@ -28,9 +28,11 @@ import {
   Facebook
 } from "lucide-react";
 import { companiesApi } from "@/lib/api";
+import { formatSalary } from "@/lib/salary";
 
 interface Job {
   _id: string;
+  slug?: string;
   title: string;
   category: string;
   jobType: string;
@@ -38,13 +40,17 @@ interface Job {
     city: string;
     remote: boolean;
   };
+  // Stored ANNUAL; hidden salaries arrive without min/max (showPublic=false).
   salary?: {
-    min: number;
-    max: number;
+    min?: number;
+    max?: number;
     currency: string;
+    negotiable?: boolean;
+    showPublic?: boolean;
   };
   postedAt: string;
-  applicationDeadline: string;
+  // The listing deadline (Job has no applicationDeadline field).
+  expiresAt?: string;
   viewCount: number;
   applicationCount: number;
 }
@@ -304,7 +310,7 @@ const CompanyProfile = () => {
                       {company.jobs.slice(0, 5).map((job) => (
                         <Link
                           key={job._id}
-                          to={`/jobs/${(job as any).slug || job._id}`}
+                          to={`/jobs/${job.slug || job._id}`}
                           className="block p-4 border rounded-lg hover:border-primary/50 hover:bg-primary/5 transition-all"
                         >
                           <div className="flex justify-between items-start mb-2">
@@ -320,11 +326,11 @@ const CompanyProfile = () => {
                               <Briefcase className="h-3 w-3 mr-1" />
                               <span>{job.jobType}</span>
                             </div>
-                            {job.salary && (
+                            {job.salary?.showPublic !== false && (job.salary?.min || job.salary?.max) ? (
                               <span className="font-medium">
-                                {job.salary.min}-{job.salary.max} {job.salary.currency}
+                                {formatSalary(job.salary)}
                               </span>
-                            )}
+                            ) : null}
                           </div>
                         </Link>
                       ))}

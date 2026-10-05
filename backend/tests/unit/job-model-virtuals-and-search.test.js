@@ -32,32 +32,42 @@ describe('Job model — formattedSalary virtual branches', () => {
     expect(job.formattedSalary).toMatch(/negociuar/);
   });
 
-  it('returns single value when min === max (L369)', async () => {
+  // Stored salaries are ANNUAL (O-6 / O-46): the virtual renders the MONTHLY
+  // view through lib/salary.js, with a unit suffix and thousands separators.
+  it('returns single monthly value when min === max (12000/yr → 1,000 EUR/muaj)', async () => {
     const { user: emp } = await createVerifiedEmployer();
     const job = await createJob(emp);
-    job.salary = { min: 1000, max: 1000, currency: 'EUR' };
-    expect(job.formattedSalary).toBe('1000 EUR');
+    job.salary = { min: 12000, max: 12000, currency: 'EUR' };
+    expect(job.formattedSalary).toBe('1,000 EUR/muaj');
   });
 
-  it('returns range when both min and max set (L370)', async () => {
+  it('returns monthly range when both min and max set (9600-18000/yr → 800-1,500 EUR/muaj)', async () => {
     const { user: emp } = await createVerifiedEmployer();
     const job = await createJob(emp);
-    job.salary = { min: 800, max: 1500, currency: 'EUR' };
-    expect(job.formattedSalary).toBe('800-1500 EUR');
+    job.salary = { min: 9600, max: 18000, currency: 'EUR' };
+    expect(job.formattedSalary).toBe('800-1,500 EUR/muaj');
   });
 
-  it('returns "Nga X" when only min set (L371)', async () => {
+  it('returns "Nga X" when only min set', async () => {
     const { user: emp } = await createVerifiedEmployer();
     const job = await createJob(emp);
-    job.salary = { min: 800, max: null, currency: 'EUR' };
-    expect(job.formattedSalary).toMatch(/^Nga 800 EUR$/);
+    job.salary = { min: 9600, max: null, currency: 'EUR' };
+    expect(job.formattedSalary).toBe('Nga 800 EUR/muaj');
   });
 
-  it('returns "Deri në X" when only max set (L372)', async () => {
+  it('returns "Deri në X" when only max set (ALL)', async () => {
     const { user: emp } = await createVerifiedEmployer();
     const job = await createJob(emp);
-    job.salary = { min: null, max: 1500, currency: 'EUR' };
-    expect(job.formattedSalary).toMatch(/^Deri në 1500 EUR$/);
+    job.salary = { min: null, max: 1800000, currency: 'ALL' };
+    expect(job.formattedSalary).toBe('Deri në 150,000 ALL/muaj');
+  });
+
+  it('returns null when the employer hid the salary (showPublic=false) — no leak via toJSON', async () => {
+    const { user: emp } = await createVerifiedEmployer();
+    const job = await createJob(emp);
+    job.salary = { min: 30000, max: 42000, currency: 'EUR', showPublic: false };
+    expect(job.formattedSalary).toBeNull();
+    expect(job.toJSON().formattedSalary).toBeNull();
   });
 });
 

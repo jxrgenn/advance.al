@@ -57,7 +57,30 @@ export function websiteJsonLd() {
   };
 }
 
+// schema.org baseSalary for a STORED salary. Job salaries are stored ANNUAL
+// (PostJob multiplies the monthly input ×12), so the JobPosting gets the
+// MONTHLY range (÷12, rounded) with unitText 'MONTH' — the same rule as
+// jobPostingBaseSalary() in src/lib/salary.ts (used by JobDetail.tsx).
+// Returns null when the employer hid the salary or there are no numbers.
+export function jobPostingBaseSalary(salary) {
+  if (!salary || salary.showPublic === false) return null;
+  const hasMin = typeof salary.min === 'number' && salary.min > 0;
+  const hasMax = typeof salary.max === 'number' && salary.max > 0;
+  if (!hasMin && !hasMax) return null;
+  const minValue = Math.round((hasMin ? salary.min : salary.max) / 12);
+  const maxValue = Math.round((hasMax ? salary.max : salary.min) / 12);
+  return {
+    '@type': 'MonetaryAmount',
+    currency: salary.currency || 'EUR',
+    value: { '@type': 'QuantitativeValue', minValue, maxValue, unitText: 'MONTH' },
+  };
+}
+
+// JobPosting markup for an OPEN listing only. GET /api/jobs/:id tags each job
+// with `jobState`; anything but 'active' (expired / closed) must not be
+// marked up for Google for Jobs → null (buildBotHtml drops falsy blocks).
 export function jobPostingJsonLd(job) {
+  if (job?.jobState && job.jobState !== 'active') return null;
   const jobTypeMap = {
     'full-time': 'FULL_TIME',
     'part-time': 'PART_TIME',
@@ -110,19 +133,8 @@ export function jobPostingJsonLd(job) {
     ld.jobLocationType = 'TELECOMMUTE';
     ld.applicantLocationRequirements = { '@type': 'Country', name: 'Albania' };
   }
-  const salary = job?.salary;
-  if (salary && (salary.min || salary.max) && salary.showPublic !== false) {
-    ld.baseSalary = {
-      '@type': 'MonetaryAmount',
-      currency: salary.currency || 'EUR',
-      value: {
-        '@type': 'QuantitativeValue',
-        minValue: salary.min,
-        maxValue: salary.max || salary.min,
-        unitText: 'MONTH',
-      },
-    };
-  }
+  const baseSalary = jobPostingBaseSalary(job?.salary);
+  if (baseSalary) ld.baseSalary = baseSalary;
   return ld;
 }
 

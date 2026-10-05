@@ -1197,9 +1197,9 @@ const PostJob = () => {
                   <Select
                     label="Monedha"
                     {...jobForm.getInputProps('salaryCurrency')}
+                    // EUR / ALL only — the Job schema rejects any other currency.
                     data={[
                       { value: 'EUR', label: 'EUR' },
-                      { value: 'USD', label: 'USD' },
                       { value: 'ALL', label: 'ALL (Lek)' }
                     ]}
                   />

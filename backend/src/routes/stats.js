@@ -2,6 +2,7 @@ import express from 'express';
 import { Job, User, Application } from '../models/index.js';
 import { cacheGet, cacheSet, cacheGetOrSet } from '../config/redis.js';
 import logger from '../config/logger.js';
+import { stripHiddenSalary } from '../lib/salary.js';
 
 const router = express.Router();
 
@@ -38,7 +39,14 @@ router.get('/public', async (req, res) => {
       }
     }
 
-    // Run all queries in parallel for better performance
+    // Run all queries in parallel for better performance.
+    // Public numbers count only what the public can actually see (O-56):
+    //   totalJobs  — listings that were published (active / expired / closed);
+    //                drafts, unpaid, pending-approval and rejected jobs excluded
+    //   activeJobs — open right now (active AND not past expiresAt)
+    //   companies / job seekers — active, non-deleted accounts only
+    //                (no suspended / banned / pending-verification users)
+    const now = new Date();
     const [
       totalJobs,
       activeJobs,
@@ -47,15 +55,15 @@ router.get('/public', async (req, res) => {
       totalApplications,
       recentJobs
     ] = await Promise.all([
-      Job.countDocuments({ isDeleted: false }),
-      Job.countDocuments({ isDeleted: false, status: 'active' }),
-      User.countDocuments({ userType: 'employer', isDeleted: false }),
-      User.countDocuments({ userType: 'jobseeker', isDeleted: false }),
+      Job.countDocuments({ isDeleted: false, status: { $in: ['active', 'expired', 'closed'] } }),
+      Job.countDocuments({ isDeleted: false, status: 'active', expiresAt: { $gt: now } }),
+      User.countDocuments({ userType: 'employer', isDeleted: false, status: 'active' }),
+      User.countDocuments({ userType: 'jobseeker', isDeleted: false, status: 'active' }),
       Application.countDocuments({ withdrawn: false }),
       Job.find({
         isDeleted: false,
         status: 'active',
-        expiresAt: { $gt: new Date() }
+        expiresAt: { $gt: now }
       })
         .populate('employerId', 'profile.employerProfile.companyName')
         .sort({ postedAt: -1 })
@@ -76,7 +84,9 @@ router.get('/public', async (req, res) => {
         company: job.employerId?.profile?.employerProfile?.companyName || 'Kompani',
         location: job.location,
         category: job.category,
-        salary: job.salary,
+        // An employer may hide the salary (showPublic === false) — never ship
+        // the hidden numbers in this public payload.
+        salary: stripHiddenSalary(job.salary),
         postedAt: job.postedAt,
         timeAgo: getTimeAgo(job.postedAt)
       }))

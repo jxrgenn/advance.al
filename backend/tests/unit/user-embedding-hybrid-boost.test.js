@@ -134,20 +134,35 @@ describe('userEmbeddingService.computeHybridBoost', () => {
     expect(userEmbeddingService.computeHybridBoost(u, baseJob({ location: { city: 'Vlorë', remote: true } })).breakdown.location).toBe(0);
   });
 
+  // Job salaries are stored ANNUAL (PostJob ×12); desiredSalary is MONTHLY.
   it('salary fit: +0.05 when ranges overlap and currency matches', () => {
     const u = baseUser({ jsp: { desiredSalary: { min: 1000, max: 1500, currency: 'EUR' } } });
-    // overlap: user [1000,1500] vs job [1200,1800] → max(1500, 1800) >= min(1000, 1200) overlap
-    expect(userEmbeddingService.computeHybridBoost(u, baseJob({ salary: { min: 1200, max: 1800, currency: 'EUR' } })).breakdown.salary).toBe(0.05);
+    // overlap: user [1000,1500]/muaj vs job 14400-21600/yr = [1200,1800]/muaj
+    expect(userEmbeddingService.computeHybridBoost(u, baseJob({ salary: { min: 14400, max: 21600, currency: 'EUR' } })).breakdown.salary).toBe(0.05);
+  });
+
+  it('salary: annual job range is compared per month — raw annual numbers never overlap a monthly wish', () => {
+    // Regression (O-46 consumer): 14400-21600/yr compared raw against
+    // 1000-1500/muaj never overlapped, so the boost could not fire for real jobs.
+    const u = baseUser({ jsp: { desiredSalary: { min: 1000, max: 1500, currency: 'EUR' } } });
+    expect(userEmbeddingService.computeHybridBoost(u, baseJob({ salary: { min: 1200, max: 1800, currency: 'EUR' } })).breakdown.salary).toBe(0);
+  });
+
+  it('salary: EUR job converted to an ALL wish (≈100 ALL/EUR) → +0.05', () => {
+    const u = baseUser({ jsp: { desiredSalary: { min: 100000, max: 150000, currency: 'ALL' } } });
+    // 14400-21600 EUR/yr = 1200-1800 EUR/muaj ≈ 120,000-180,000 ALL/muaj → overlaps
+    expect(userEmbeddingService.computeHybridBoost(u, baseJob({ salary: { min: 14400, max: 21600, currency: 'EUR' } })).breakdown.salary).toBe(0.05);
   });
 
   it('salary: no boost when ranges do not overlap', () => {
     const u = baseUser({ jsp: { desiredSalary: { min: 2000, max: 3000, currency: 'EUR' } } });
-    expect(userEmbeddingService.computeHybridBoost(u, baseJob({ salary: { min: 800, max: 1200, currency: 'EUR' } })).breakdown.salary).toBe(0);
+    // job 9600-14400/yr = 800-1200/muaj, below the 2000-3000/muaj wish
+    expect(userEmbeddingService.computeHybridBoost(u, baseJob({ salary: { min: 9600, max: 14400, currency: 'EUR' } })).breakdown.salary).toBe(0);
   });
 
   it('salary: no boost when currencies differ', () => {
     const u = baseUser({ jsp: { desiredSalary: { min: 1000, max: 1500, currency: 'USD' } } });
-    expect(userEmbeddingService.computeHybridBoost(u, baseJob({ salary: { min: 1000, max: 1500, currency: 'EUR' } })).breakdown.salary).toBe(0);
+    expect(userEmbeddingService.computeHybridBoost(u, baseJob({ salary: { min: 12000, max: 18000, currency: 'EUR' } })).breakdown.salary).toBe(0);
   });
 
   it('salary: no boost when bounds missing', () => {
@@ -186,7 +201,7 @@ describe('userEmbeddingService.computeHybridBoost', () => {
       tags: ['A', 'B', 'C', 'D'],
       seniority: 'senior',
       location: { city: 'Tiranë', remote: false },
-      salary: { min: 1500, max: 2500, currency: 'EUR' },
+      salary: { min: 18000, max: 30000, currency: 'EUR' }, // 1500-2500/muaj (stored annual)
       postedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
       tier: 'premium',
     });

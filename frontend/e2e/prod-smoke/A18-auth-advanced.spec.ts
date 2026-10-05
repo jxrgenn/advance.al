@@ -2,7 +2,7 @@
  * A18 — Authentication advanced.
  *
  * What we CAN test (no real auth needed):
- *   - 6-digit OTP brute-force is rate-limited
+ *   - legacy OTP endpoint (/verification) is gone (O-69)
  *   - Reset-password / verify-email with bogus tokens — uniform 4xx
  *   - Login timing variance (≥30 samples)
  *   - Privilege escalation via register payload
@@ -23,23 +23,18 @@ test.describe('Phase A.18 — Auth advanced (chromium-desktop only)', () => {
 
   // ---------- 6-digit OTP brute-force ----------
 
-  test('A18.OTP.1 /verification/verify rate-limits before exhausting 1M codes', async () => {
-    const email = `otp-brute-${Date.now()}@invalid.invalid`;
-    let saw429 = false;
-    for (let i = 0; i < 30; i++) {
-      const r = await fetch(`${API}/verification/verify`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email, code: String(100000 + i).padStart(6, '0') }),
-      });
-      if (r.status === 429) {
-        saw429 = true;
-        console.log(`[A18.OTP.1] rate limit fired after ${i + 1} attempts`);
-        break;
-      }
-    }
-    // Must rate-limit FAR before 1M attempts (10/15min is reasonable for OTP)
-    expect(saw429, 'OTP verify must rate-limit within first 30 attempts').toBe(true);
+  test('A18.OTP.1 legacy /verification/verify is unmounted (O-69) → 404', async () => {
+    // The public /api/verification router was removed: it let anyone send
+    // codes to any address and probe which identifiers have accounts. The
+    // signup OTP (/auth/register) caps wrong attempts at 5 per issued code
+    // and sits behind authLimiter — covered by backend
+    // tests/integration/registration-hardening.test.js.
+    const r = await fetch(`${API}/verification/verify`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: `otp-${Date.now()}@invalid.invalid`, code: '100000' }),
+    });
+    expect(r.status).toBe(404);
   });
 
   test('A18.OTP.2 /auth/verify-email rate-limits', async () => {
@@ -286,16 +281,14 @@ test.describe('Phase A.18 — Auth advanced (chromium-desktop only)', () => {
 
   // ---------- Verification request ----------
 
-  test('A18.req.1 /verification/request without auth → 401 or rate-limited public flow', async () => {
+  test('A18.req.1 legacy /verification/request is unmounted (O-69) → 404', async () => {
+    // Was a public code-sending endpoint (mail-bombing + account enumeration).
+    // Signup now verifies through /auth/initiate-registration.
     const r = await fetch(`${API}/verification/request`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ identifier: `check-${Date.now()}@invalid.invalid`, type: 'email' }),
     });
-    // Public request endpoint (some flows) — must rate-limit
-    expectNot5xx(r.status, 'verification request');
-    // JUSTIFIED: public verification request — 200 (accepted, will email), 400/422 (validator),
-    // 401 (auth-gated variant), 429 (per-email or per-IP limit).
-    expect([200, 400, 401, 422, 429]).toContain(r.status);
+    expect(r.status).toBe(404);
   });
 });

@@ -23,6 +23,14 @@ import { useToast } from "@/hooks/use-toast";
 import { jobsApi, locationsApi, applicationsApi, usersApi, Job, Location } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { JOB_CATEGORIES } from "@/constants/jobCategories";
+import { needsApplyForm, applyFormRoute } from "@/lib/quickApply";
+import {
+  defaultSalaryRange,
+  isSalaryFilterActive,
+  salaryFilterConfig,
+  salaryFilterQuery,
+  formatSalaryFilterLabel,
+} from "@/lib/salary";
 
 const Index = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -46,16 +54,25 @@ const Index = () => {
     sezonale: false
   });
 
-  // Advanced filters state
-  const [advancedFilters, setAdvancedFilters] = useState({
-    salaryRange: [0, 2000] as [number, number],
-    currency: 'EUR',
-    experience: '',
-    company: '',
-    remote: false,
-    categories: [] as string[],
-    postedWithin: '',
-    sortBy: 'newest'
+  // Advanced filters state. The salary slider is MONTHLY in the selected
+  // currency; the untouched slider (whole range) means "no salary filter" —
+  // see lib/salary.ts for the single active-rule / query / label helpers.
+  // ?company= / ?category= deep links (company profile "see all jobs", the
+  // "Shiko punë të hapura në …" button on an expired job) are read in the
+  // initializer — setting them from an effect came too late: the first
+  // listing request had already gone out without them.
+  const [advancedFilters, setAdvancedFilters] = useState(() => {
+    const sp = new URLSearchParams(window.location.search);
+    return {
+      salaryRange: defaultSalaryRange('EUR'),
+      currency: 'EUR',
+      experience: '',
+      company: sp.get('company') || '',
+      remote: false,
+      categories: (sp.get('category') || '').split(',').map(c => c.trim()).filter(Boolean),
+      postedWithin: '',
+      sortBy: 'newest'
+    };
   });
 
   // Filter UI state
@@ -101,22 +118,19 @@ const Index = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Initialize filters from URL parameters
+  // Initialize the remaining filters from URL parameters (company / category
+  // are read in the advancedFilters initializer above)
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
 
-    const companyParam = sp.get('company');
     const searchParam = sp.get('search');
     const pageParam = sp.get('page');
     const jobTypeParam = sp.get('jobType');
-    const categoryParam = sp.get('category');
     const cityParam = sp.get('city');
 
-    if (companyParam) setAdvancedFilters(prev => ({ ...prev, company: companyParam }));
     if (searchParam) setSearchQuery(searchParam);
     if (pageParam) setPagination(prev => ({ ...prev, currentPage: parseInt(pageParam) || 1 }));
     if (jobTypeParam) setSelectedType(jobTypeParam);
-    if (categoryParam) setAdvancedFilters(prev => ({ ...prev, categories: categoryParam.split(',') }));
     if (cityParam) setSelectedLocations(cityParam.split(','));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -175,12 +189,10 @@ const Index = () => {
       };
 
       // Add advanced filters if they exist
-      // Salary range - only send if user has moved slider away from defaults (0-2000)
-      if (activeAdvancedFilters.salaryRange[0] > 0 || activeAdvancedFilters.salaryRange[1] < 2000) {
-        queryParams.minSalary = activeAdvancedFilters.salaryRange[0];
-        queryParams.maxSalary = activeAdvancedFilters.salaryRange[1];
-        queryParams.currency = activeAdvancedFilters.currency;
-      }
+      // Salary range — MONTHLY bounds + currency, only when the user moved the
+      // slider off its full range (the backend converts ×12 to the stored
+      // annual unit and matches the same currency only).
+      Object.assign(queryParams, salaryFilterQuery(activeAdvancedFilters.salaryRange, activeAdvancedFilters.currency));
 
       if (activeAdvancedFilters.company) {
         queryParams.company = activeAdvancedFilters.company;
@@ -368,6 +380,16 @@ const Index = () => {
       return;
     }
 
+    // A job with custom questions (or unknown question info) cannot be
+    // quick-applied — the API rejects skipped required answers. Send the user
+    // to the full apply form on the job page instead (O-27 follow-up).
+    const listedJob = [...jobs, ...recommendations, ...premiumJobs].find(j => j._id === jobId);
+    if (needsApplyForm(listedJob)) {
+      const { to, state } = applyFormRoute(listedJob, jobId);
+      navigate(to, { state });
+      return;
+    }
+
     setApplyingJobId(jobId);
     try {
       await applicationsApi.apply({
@@ -472,7 +494,7 @@ const Index = () => {
   const handleResetFilters = async () => {
     // Reset both active and pending filters
     const defaultAdvancedFilters = {
-      salaryRange: [0, 2000] as [number, number],
+      salaryRange: defaultSalaryRange('EUR'),
       currency: 'EUR',
       experience: '',
       company: '',
@@ -537,7 +559,7 @@ const Index = () => {
         updatedPendingFilters.postedWithin = '';
         break;
       case 'salaryRange':
-        updatedPendingFilters.salaryRange = [0, 5000];
+        updatedPendingFilters.salaryRange = defaultSalaryRange(updatedPendingFilters.currency);
         break;
       case 'category':
         if (value) {
@@ -552,7 +574,9 @@ const Index = () => {
     setPendingCoreFilters(updatedCoreFilters);
     setCoreFilters(updatedCoreFilters);
     setPagination(prev => ({ ...prev, currentPage: 1 }));
-    await loadJobs(1, false);
+    // Pass the updated filters explicitly — setState is async, so reading
+    // state inside loadJobs would still see the removed filter.
+    await loadJobs(1, false, { advancedFilters: updatedPendingFilters, coreFilters: updatedCoreFilters });
   };
 
   // Merge recommendations with regular jobs intelligently.
@@ -571,7 +595,7 @@ const Index = () => {
       advancedFilters.categories.length > 0 ||
       advancedFilters.postedWithin ||
       (advancedFilters.sortBy && advancedFilters.sortBy !== 'newest') ||
-      (advancedFilters.salaryRange[0] > 0 || advancedFilters.salaryRange[1] < 2000);
+      isSalaryFilterActive(advancedFilters.salaryRange, advancedFilters.currency);
 
     if (hasActiveFilters) {
       return jobs.map(job => ({ ...job, isRecommended: recommendationIds.has(job._id) }));
@@ -726,7 +750,7 @@ const Index = () => {
                 <div className="border-t border-b py-4 bg-background mt-4 shadow-sm">
                 <div className="w-full">
                   {/* Active Filters Display */}
-                  {(pendingAdvancedFilters.categories.length > 0 || pendingAdvancedFilters.experience || pendingAdvancedFilters.company || pendingAdvancedFilters.remote || pendingAdvancedFilters.postedWithin || (pendingAdvancedFilters.salaryRange[0] > 0 || pendingAdvancedFilters.salaryRange[1] < 5000)) && (
+                  {(pendingAdvancedFilters.categories.length > 0 || pendingAdvancedFilters.experience || pendingAdvancedFilters.company || pendingAdvancedFilters.remote || pendingAdvancedFilters.postedWithin || isSalaryFilterActive(pendingAdvancedFilters.salaryRange, pendingAdvancedFilters.currency)) && (
                     <div className="mb-4">
                       <div className="flex flex-wrap gap-2 items-center">
                         <span className="text-sm font-medium text-muted-foreground">Filtrat aktive:</span>
@@ -781,9 +805,9 @@ const Index = () => {
                             </button>
                           </Badge>
                         )}
-                        {(pendingAdvancedFilters.salaryRange[0] > 0 || pendingAdvancedFilters.salaryRange[1] < 5000) && (
-                          <Badge variant="secondary" className="gap-1">
-                            Paga: {pendingAdvancedFilters.salaryRange[0]}-{pendingAdvancedFilters.salaryRange[1]} {pendingAdvancedFilters.currency}
+                        {isSalaryFilterActive(pendingAdvancedFilters.salaryRange, pendingAdvancedFilters.currency) && (
+                          <Badge variant="secondary" className="gap-1" data-testid="salary-filter-chip">
+                            Paga: {formatSalaryFilterLabel(pendingAdvancedFilters.salaryRange, pendingAdvancedFilters.currency)}
                             <button
                               onClick={() => handleRemoveFilter('salaryRange')}
                               className="ml-1 hover:bg-muted rounded-full p-0.5"
@@ -822,12 +846,18 @@ const Index = () => {
                       </button>
                       {expandedCategory === 'salary' && (
                         <div className="px-3 pb-3 space-y-3">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {/* Stacked: this panel lives in the narrow lg sidebar,
+                              where two columns squeezed the slider to ~80px. */}
+                          <div className="grid grid-cols-1 gap-3">
                             <div className="space-y-1.5">
                               <Label className="text-xs">Monedha</Label>
                               <Select
                                 value={pendingAdvancedFilters.currency}
-                                onValueChange={(value) => setPendingAdvancedFilters(prev => ({ ...prev, currency: value }))}
+                                // ALL amounts are ~100× EUR: switching currency
+                                // resets the slider to that currency's full range.
+                                onValueChange={(value) => setPendingAdvancedFilters(prev => (
+                                  value === prev.currency ? prev : { ...prev, currency: value, salaryRange: defaultSalaryRange(value) }
+                                ))}
                               >
                                 <SelectTrigger aria-label="Zgjidhni monedhën">
                                   <SelectValue />
@@ -840,15 +870,16 @@ const Index = () => {
                             </div>
                             <div className="space-y-1.5">
                               <Label className="text-xs">
-                                Paga: {pendingAdvancedFilters.salaryRange[0]} - {pendingAdvancedFilters.salaryRange[1]} {pendingAdvancedFilters.currency}
+                                Paga mujore: {formatSalaryFilterLabel(pendingAdvancedFilters.salaryRange, pendingAdvancedFilters.currency)}
                               </Label>
                               <Slider
                                 value={pendingAdvancedFilters.salaryRange}
                                 onValueChange={(value) => setPendingAdvancedFilters(prev => ({ ...prev, salaryRange: value as [number, number] }))}
-                                max={5000}
+                                max={salaryFilterConfig(pendingAdvancedFilters.currency).max}
                                 min={0}
-                                step={50}
+                                step={salaryFilterConfig(pendingAdvancedFilters.currency).step}
                                 className="w-full"
+                                aria-label="Diapazoni i pagës mujore"
                               />
                             </div>
                           </div>

@@ -497,9 +497,11 @@ describe('Jobs API - Integration Tests', () => {
       const job = await createJob(employer);
       expect(job.viewCount).toBe(0);
 
-      // Act
-      await request(app).get(`/api/jobs/${job._id}`).set(createPublicHeaders());
-      await request(app).get(`/api/jobs/${job._id}`).set(createPublicHeaders());
+      // Act — real browser UA: crawler / script / UA-less fetches are not
+      // counted as views (routes/jobs.js isBotUserAgent, O-32).
+      const browser = { ...createPublicHeaders(), 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36' };
+      await request(app).get(`/api/jobs/${job._id}`).set(browser);
+      await request(app).get(`/api/jobs/${job._id}`).set(browser);
 
       // Assert
       const updatedJob = await Job.findById(job._id);
@@ -666,10 +668,11 @@ describe('Jobs API - Integration Tests', () => {
       expect(response.body.data.pagination.totalJobs).toBe(0);
     });
 
-    it('filters by minSalary', async () => {
+    it('filters by minSalary (MONTHLY bound vs stored ANNUAL salaries)', async () => {
       const { user: emp } = await createVerifiedEmployer();
-      await createJob(emp, { title: 'Low', salary: { min: 500, max: 800 } });
-      await createJob(emp, { title: 'High', salary: { min: 2000, max: 3000 } });
+      // Stored annual: 6000-9600/yr = 500-800/muaj; 24000-36000/yr = 2000-3000/muaj
+      await createJob(emp, { title: 'Low', salary: { min: 6000, max: 9600 } });
+      await createJob(emp, { title: 'High', salary: { min: 24000, max: 36000 } });
 
       const response = await request(app).get('/api/jobs?minSalary=1500');
       expect(response.status).toBe(200);

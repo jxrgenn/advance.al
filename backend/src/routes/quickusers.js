@@ -10,7 +10,9 @@ import notificationService from '../lib/notificationService.js';
 import resendEmailService from '../lib/resendEmailService.js';
 import userEmbeddingService from '../services/userEmbeddingService.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { findUnsafeKey, UNSAFE_KEY_MESSAGE } from '../middleware/rejectMongoOperators.js';
 import { uploadToCloudinary } from '../config/cloudinary.js';
+import { toStoredCloudinaryUrl, newResumePublicId } from '../lib/resumeStorage.js';
 import { parseQuickUserCV } from '../services/cvParsingService.js';
 import { stripHtml, validateObjectId } from '../utils/sanitize.js';
 import { isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE } from '../lib/phonePolicy.js';
@@ -87,23 +89,32 @@ const quickUserLimiter = rateLimit({
 });
 
 // Validation for quick user creation
+// Each text field is type-checked (with .bail()) BEFORE any sanitizer: a
+// multipart field named `firstName[a]` arrives as a null-prototype object
+// (multer's bracket parsing), which made .trim() throw "Cannot convert object
+// to primitive value" → 500. JSON objects were stringified to
+// "[object Object]" and accepted.
 const quickUserValidation = [
   body('firstName')
+    .isString().withMessage('Emri duhet të ketë midis 2-50 karaktere').bail()
     .trim()
     .customSanitizer(v => stripHtml(v))
     .isLength({ min: 2, max: 50 })
     .withMessage('Emri duhet të ketë midis 2-50 karaktere'),
   body('lastName')
+    .isString().withMessage('Mbiemri duhet të ketë midis 2-50 karaktere').bail()
     .trim()
     .customSanitizer(v => stripHtml(v))
     .isLength({ min: 2, max: 50 })
     .withMessage('Mbiemri duhet të ketë midis 2-50 karaktere'),
   body('email')
+    .isString().withMessage('Email i pavlefshëm').bail()
     .trim()
     .isEmail()
     .normalizeEmail()
     .withMessage('Email i pavlefshëm'),
   body('location')
+    .isString().withMessage('Qyteti duhet të ketë midis 2-50 karaktere').bail()
     .trim()
     .customSanitizer(v => stripHtml(v))
     .isLength({ min: 2, max: 50 })
@@ -116,6 +127,7 @@ const quickUserValidation = [
     .withMessage('Interesi i zgjedhur nuk është i vlefshëm'),
   body('phone')
     .optional({ checkFalsy: true })
+    .isString().withMessage(ALBANIAN_PHONE_MESSAGE).bail()
     .custom(v => isValidAlbanianPhone(v))
     .withMessage(ALBANIAN_PHONE_MESSAGE),
   body('customInterests')
@@ -124,6 +136,7 @@ const quickUserValidation = [
     .withMessage('Interesat e personalizuara duhet të jenë një listë'),
   body('customInterests.*')
     .optional()
+    .isString().withMessage('Çdo interes i personalizuar duhet të jetë më pak se 50 karaktere').bail()
     .isLength({ max: 50 })
     .withMessage('Çdo interes i personalizuar duhet të jetë më pak se 50 karaktere')
     .customSanitizer(v => stripHtml(v)),
@@ -195,6 +208,12 @@ const handleMultipart = (req, res, next) => {
       // Parse nested preferences object
       if (typeof req.body.preferences === 'string') {
         try { req.body.preferences = JSON.parse(req.body.preferences); } catch { /* leave as-is */ }
+      }
+      // O-68: multipart bodies are parsed here, after the global
+      // rejectMongoOperators guard ran, so re-check them (multer's
+      // `a[b]` field names and the JSON.parse'd fields can both nest).
+      if (findUnsafeKey(req.body) !== null) {
+        return res.status(400).json({ success: false, message: UNSAFE_KEY_MESSAGE });
       }
       next();
     });
@@ -279,9 +298,15 @@ router.post('/', quickUserLimiter, handleMultipart, quickUserValidation, handleV
             // via the sign endpoint (QuickUsers aren't full accounts that
             // can log in, so only admins ever view these resumes).
             type: 'authenticated',
-            public_id: `quickuser-resume-${quickUser._id}-${Date.now()}`,
+            // Collision-safe digits (shared helper). The `quickuser-` prefix
+            // keeps these out of /users/resume/sign's ^resume-<userId>-\d+$
+            // owner pattern — a QuickUser id is not a User id.
+            public_id: `quickuser-${newResumePublicId(quickUser._id)}`,
           });
-          resumeUrl = cloudResult.secure_url;
+          // Never persist the permanent s--<sig>-- delivery URL: it lets
+          // anyone holding it download the CV. The stored URL 401s; access
+          // goes through short-lived signed URLs built from the public id.
+          resumeUrl = toStoredCloudinaryUrl(cloudResult.secure_url);
           logger.info('QuickUser resume uploaded to Cloudinary', { quickUserId: quickUser._id });
         } catch (cloudError) {
           logger.error('Cloudinary upload failed', { error: cloudError.message });
@@ -374,7 +399,9 @@ router.post('/unsubscribe', async (req, res) => {
   try {
     const token = req.body?.token || req.query?.token;
 
-    if (!token) {
+    // O-68: the token goes straight into a findOne filter — only a plain
+    // string may reach it ({"$ne": null} would match an arbitrary subscriber).
+    if (typeof token !== 'string' || !token) {
       return res.status(400).json({
         success: false,
         message: 'Token i çregjistrimit është i detyrueshëm'
@@ -420,9 +447,10 @@ router.post('/unsubscribe', async (req, res) => {
 // @access  Public
 router.post('/track-click', async (req, res) => {
   try {
-    const { token } = req.body;
+    const { token } = req.body ?? {};
 
-    if (!token) {
+    // O-68: string-only — this value is used directly as a findOne filter.
+    if (typeof token !== 'string' || !token) {
       return res.status(400).json({
         success: false,
         message: 'Token është i detyrueshëm'

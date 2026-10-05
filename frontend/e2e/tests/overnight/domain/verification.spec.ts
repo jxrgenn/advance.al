@@ -1,122 +1,54 @@
 /**
- * verification.spec.ts — POST /api/verification/{request,verify,validate-token,resend}
- * + GET /api/verification/status/:identifier
+ * verification.spec.ts — the legacy /api/verification router is UNMOUNTED (O-69).
  *
- * 8 tests covering email-verification code lifecycle independent of registration.
+ * POST /api/verification/{request,verify,validate-token,resend} and
+ * GET /api/verification/status/:identifier were public, unused by the
+ * frontend, and let anyone send codes to any email/phone (mail-bombing from
+ * our domain, SMS cost) and probe which identifiers have accounts. Signup
+ * verifies through /api/auth/initiate-registration + /api/auth/register (see
+ * auth/register-*.spec.ts). Every former path must now answer the generic 404
+ * and send nothing.
  */
 
 import { test } from '@playwright/test';
 import { dbClear, dbFind } from '../../../real-backend/db-helpers';
-import { waitForVerificationCode } from '../../../real-backend/db-helpers';
 import { API } from '../../../real-backend/factory-helpers';
 import { expect } from '@playwright/test';
 
-test.describe('Domain / verification', () => {
+const LEGACY_CALLS: Array<{ id: string; method: 'POST' | 'GET'; path: string; body?: Record<string, unknown> }> = [
+  { id: 'V.1', method: 'POST', path: '/verification/request', body: { identifier: 'verify-legacy@example.com', method: 'email', userType: 'jobseeker' } },
+  { id: 'V.2', method: 'POST', path: '/verification/request', body: { identifier: '+355691112233', method: 'sms' } },
+  { id: 'V.3', method: 'POST', path: '/verification/verify', body: { identifier: 'verify-legacy@example.com', code: '000000', method: 'email' } },
+  { id: 'V.4', method: 'POST', path: '/verification/resend', body: { identifier: 'verify-legacy@example.com', method: 'email' } },
+  { id: 'V.5', method: 'POST', path: '/verification/validate-token', body: { verificationToken: 'invalid-token-string' } },
+  { id: 'V.6', method: 'GET', path: '/verification/status/verify-legacy%40example.com' },
+];
+
+test.describe('Domain / verification (legacy router unmounted)', () => {
   test.beforeEach(async () => { await dbClear(); });
 
-  test('V.1 POST /request with valid email returns 200 and logs code', async () => {
-    const email = `verify-${Date.now()}@example.com`;
-    const r = await fetch(`${API}/verification/request`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identifier: email, method: 'email', userType: 'jobseeker' }),
-    });
-    expect(r.status).toBe(200);
-    const body = await r.json();
-    expect(body.success).toBe(true);
-
-    const code = await waitForVerificationCode(email, 5000);
-    expect(code).toMatch(/^\d{6}$/);
-  });
-
-  test('V.2 POST /request with invalid email format → 400', async () => {
-    const r = await fetch(`${API}/verification/request`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identifier: 'not-an-email', method: 'email' }),
-    });
-    expect(r.status).toBe(400);
-    const body = await r.json();
-    expect(body.success).toBe(false);
-  });
-
-  test('V.3 POST /request with invalid phone format → 400', async () => {
-    const r = await fetch(`${API}/verification/request`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identifier: '12345', method: 'sms' }),
-    });
-    expect(r.status).toBe(400);
-  });
-
-  test('V.4 POST /verify with correct code → 200', async () => {
-    const email = `verify-ok-${Date.now()}@example.com`;
-    await fetch(`${API}/verification/request`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identifier: email, method: 'email' }),
-    });
-    const code = await waitForVerificationCode(email, 5000);
-
-    const r = await fetch(`${API}/verification/verify`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identifier: email, code, method: 'email' }),
-    });
-    expect(r.status).toBe(200);
-    const body = await r.json();
-    expect(body.success).toBe(true);
-  });
-
-  test('V.5 POST /verify with wrong code → 400', async () => {
-    const email = `verify-bad-${Date.now()}@example.com`;
-    await fetch(`${API}/verification/request`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identifier: email, method: 'email' }),
-    });
-    await waitForVerificationCode(email, 5000);
-
-    const r = await fetch(`${API}/verification/verify`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identifier: email, code: '000000', method: 'email' }),
-    });
-    expect(r.status).toBe(400);
-    const body = await r.json();
-    expect(body.success).toBe(false);
-  });
-
-  test('V.6 POST /resend after request → new code generated', async () => {
-    const email = `verify-resend-${Date.now()}@example.com`;
-    await fetch(`${API}/verification/request`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identifier: email, method: 'email' }),
-    });
-    const firstCode = await waitForVerificationCode(email, 5000);
-    expect(firstCode).toBeTruthy();
-
-    // Brief wait so timestamps differ
-    await new Promise(r => setTimeout(r, 1100));
-
-    const r = await fetch(`${API}/verification/resend`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identifier: email, method: 'email' }),
-    });
-    expect([200, 400, 429]).toContain(r.status);
-  });
-
-  test('V.7 POST /validate-token with garbage token → 400/401', async () => {
-    const r = await fetch(`${API}/verification/validate-token`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ token: 'invalid-token-string' }),
-    });
-    // JUSTIFIED: Endpoint may parse-fail (400) or run auth-first (401). Both legit.
-    expect([400, 401]).toContain(r.status);
-  });
-
-  test('V.8 GET /status/:identifier returns boolean', async () => {
-    const email = `verify-status-${Date.now()}@example.com`;
-    const r = await fetch(`${API}/verification/status/${encodeURIComponent(email)}`);
-    // Either 200 with status or 404 if not found — both valid
-    // JUSTIFIED: Lookup endpoint — returns 200 if resource exists, 404 if not. Both legit.
-    expect([200, 404]).toContain(r.status);
-    if (r.status === 200) {
+  for (const call of LEGACY_CALLS) {
+    test(`${call.id} ${call.method} ${call.path} → 404 "Rruga nuk u gjet"`, async () => {
+      const r = await fetch(`${API}${call.path}`, {
+        method: call.method,
+        headers: { 'content-type': 'application/json' },
+        ...(call.body ? { body: JSON.stringify(call.body) } : {}),
+      });
+      expect(r.status).toBe(404);
       const body = await r.json();
-      expect(body.success).toBe(true);
+      expect(body.success).toBe(false);
+      expect(body.message).toBe('Rruga nuk u gjet');
+    });
+  }
+
+  test('V.7 no account or verification record is created by the legacy calls', async () => {
+    for (const call of LEGACY_CALLS) {
+      await fetch(`${API}${call.path}`, {
+        method: call.method,
+        headers: { 'content-type': 'application/json' },
+        ...(call.body ? { body: JSON.stringify(call.body) } : {}),
+      });
     }
+    expect(await dbFind('users', { email: 'verify-legacy@example.com' })).toEqual([]);
   });
 });

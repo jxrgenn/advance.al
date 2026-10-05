@@ -226,9 +226,12 @@ describe('calculateEducationMatch', () => {
 });
 
 describe('calculateSalaryMatch', () => {
+  // Job salaries are stored ANNUAL (PostJob ×12); desiredSalary is MONTHLY.
+  // The fixtures below are annual job ranges: 12000-24000/yr = 1000-2000/muaj,
+  // 9600-12000/yr = 800-1000/muaj.
   it('returns 5 (neutral) when candidate salary unspecified', () => {
     const c = mkCandidate({ desiredSalary: { min: 0, max: 0 } });
-    const j = mkJob({ salary: { min: 1000, max: 2000 } });
+    const j = mkJob({ salary: { min: 12000, max: 24000 } });
     expect(service.calculateSalaryMatch(c, j)).toBe(5);
   });
 
@@ -240,39 +243,59 @@ describe('calculateSalaryMatch', () => {
 
   it('returns 10 when candidate expectation falls inside job range', () => {
     const c = mkCandidate({ desiredSalary: { min: 1200, max: 1500 } });
-    const j = mkJob({ salary: { min: 1000, max: 2000 } });
+    const j = mkJob({ salary: { min: 12000, max: 24000 } });
     expect(service.calculateSalaryMatch(c, j)).toBe(10);
   });
 
   it('returns 8 when candidate expects less than job offers (employer wins)', () => {
     const c = mkCandidate({ desiredSalary: { min: 500, max: 800 } });
-    const j = mkJob({ salary: { min: 1000, max: 2000 } });
+    const j = mkJob({ salary: { min: 12000, max: 24000 } });
     expect(service.calculateSalaryMatch(c, j)).toBe(8);
   });
 
   it('returns 6 when candidate expects ≤10% above job max', () => {
     // job max 1000, candidate 1100 (10% over) → 6
     const c = mkCandidate({ desiredSalary: { min: 1100, max: 1100 } });
-    const j = mkJob({ salary: { min: 800, max: 1000 } });
+    const j = mkJob({ salary: { min: 9600, max: 12000 } });
     expect(service.calculateSalaryMatch(c, j)).toBe(6);
   });
 
   it('returns 4 when candidate expects 10-20% above job max', () => {
     const c = mkCandidate({ desiredSalary: { min: 1200, max: 1200 } });
-    const j = mkJob({ salary: { min: 800, max: 1000 } });
+    const j = mkJob({ salary: { min: 9600, max: 12000 } });
     expect(service.calculateSalaryMatch(c, j)).toBe(4);
   });
 
   it('returns 2 when candidate expects 20-30% above job max', () => {
     const c = mkCandidate({ desiredSalary: { min: 1300, max: 1300 } });
-    const j = mkJob({ salary: { min: 800, max: 1000 } });
+    const j = mkJob({ salary: { min: 9600, max: 12000 } });
     expect(service.calculateSalaryMatch(c, j)).toBe(2);
   });
 
   it('returns 0 when candidate expects >30% above job max', () => {
     const c = mkCandidate({ desiredSalary: { min: 5000, max: 5000 } });
-    const j = mkJob({ salary: { min: 800, max: 1000 } });
+    const j = mkJob({ salary: { min: 9600, max: 12000 } });
     expect(service.calculateSalaryMatch(c, j)).toBe(0);
+  });
+
+  it('compares the ANNUAL job salary per month: 1,500/muaj desired inside 12,000-24,000/yr → 10', () => {
+    // Regression (O-46 consumer): the annual numbers used to be compared raw
+    // against the monthly expectation, so every candidate scored 8 ("expects less").
+    const c = mkCandidate({ desiredSalary: { min: 1500, max: 1500, currency: 'EUR' } });
+    const j = mkJob({ salary: { min: 12000, max: 24000, currency: 'EUR' } });
+    expect(service.calculateSalaryMatch(c, j)).toBe(10);
+  });
+
+  it('converts EUR job → ALL desired (≈100 ALL/EUR): 150,000 ALL/muaj inside 1,000-2,000 EUR/muaj → 10', () => {
+    const c = mkCandidate({ desiredSalary: { min: 150000, max: 150000, currency: 'ALL' } });
+    const j = mkJob({ salary: { min: 12000, max: 24000, currency: 'EUR' } });
+    expect(service.calculateSalaryMatch(c, j)).toBe(10);
+  });
+
+  it('unsupported currency pair (legacy USD) is neutral → 5', () => {
+    const c = mkCandidate({ desiredSalary: { min: 1500, max: 1500, currency: 'USD' } });
+    const j = mkJob({ salary: { min: 12000, max: 24000, currency: 'EUR' } });
+    expect(service.calculateSalaryMatch(c, j)).toBe(5);
   });
 });
 
@@ -335,7 +358,7 @@ describe('calculateMatchScore — aggregator', () => {
       city: 'Tiranë',
       requirements: ['React', 'Node'],
       experience: '2-5 vjet',
-      salary: { min: 1000, max: 2000 },
+      salary: { min: 12000, max: 24000 },
     });
     const r = service.calculateMatchScore(c, j);
     // Perfect match across all dims:

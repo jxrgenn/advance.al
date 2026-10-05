@@ -58,7 +58,8 @@ const RecentlyViewedJobs = ({
         .slice(0, limit)
         .map(async (item) => {
           try {
-            const response = await jobsApi.getJob(item.jobId);
+            // Refreshing a card is not a page view — don't inflate viewCount.
+            const response = await jobsApi.getJob(item.jobId, { countView: false });
             if (response.success && response.data) {
               return response.data.job;
             }

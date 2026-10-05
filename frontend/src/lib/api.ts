@@ -109,6 +109,14 @@ export interface Job {
     showPublic: boolean;
   };
   status: string;
+  /**
+   * Lifecycle state computed by GET /api/jobs/:id (single-job endpoint only):
+   * 'active' = open for applications; 'expired' also covers an 'active' job
+   * past expiresAt. The public only ever receives active / expired / closed;
+   * draft / pending_payment / pending_approval / rejected / paused reach the
+   * owning employer and admins only.
+   */
+  jobState?: 'active' | 'expired' | 'closed' | 'draft' | 'pending_payment' | 'pending_approval' | 'rejected' | 'paused';
   tier: string;
   postedAt: string;
   expiresAt: string;
@@ -122,6 +130,13 @@ export interface Job {
   applicationCount: number;
   tags: string[];
   slug: string;
+  platformCategories?: {
+    diaspora: boolean;
+    ngaShtepia: boolean;
+    partTime: boolean;
+    administrata: boolean;
+    sezonale: boolean;
+  };
   employerId: {
     _id: string;
     email: string;
@@ -132,6 +147,9 @@ export interface Job {
         logo?: string;
         description?: string;
         website?: string;
+        // Contact details — sent to authenticated viewers only (publicEmployer).
+        phone?: string;
+        whatsapp?: string;
       };
       location: {
         city: string;
@@ -156,6 +174,11 @@ export interface Application {
     answer: string;
   }>;
   coverLetter?: string;
+  // CV attached to THIS application in the apply modal (O-42). When present,
+  // employers see it instead of the applicant's profile CV. Opened through
+  // the same resumeView helper (POST /users/resume/sign).
+  resumeUrl?: string;
+  resumeType?: 'pdf' | 'docx' | 'doc';
   messages: Array<{
     from: string;
     message: string;
@@ -246,28 +269,99 @@ const removeAuthToken = (): void => {
   localStorage.removeItem('user');
 };
 
-let isRefreshing = false;
-let refreshPromise: Promise<boolean> | null = null;
+// Outcome of a session refresh:
+//   'refreshed'   — a new token pair is in localStorage (and in the cookies);
+//   'rejected'    — the session is over (revoked / expired): log out;
+//   'unavailable' — rate limited, server error or offline: the session may
+//                   still be fine, so keep it and try again later.
+type RefreshOutcome = 'refreshed' | 'rejected' | 'unavailable';
 
-const attemptTokenRefresh = async (): Promise<boolean> => {
+let isRefreshing = false;
+let refreshPromise: Promise<RefreshOutcome> | null = null;
+// While the refresh endpoint is unavailable (429 / 5xx / offline), don't
+// retry it on every request.
+let refreshUnavailableUntil = 0;
+const REFRESH_COOLDOWN_MS = 30_000;
+const OTHER_TAB_WAIT_MS = 2_000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Refresh tokens are single-use (the server rotates them atomically), and all
+// tabs share one localStorage + cookie jar. When two tabs refresh at once, the
+// loser gets 401 for a token the winner just rotated. Give the winner a moment
+// to store the new pair, then adopt it instead of logging every tab out.
+const adoptPairFromOtherTab = async (sentRefreshToken: string | null): Promise<boolean> => {
+  const deadline = Date.now() + OTHER_TAB_WAIT_MS;
+  for (;;) {
+    const current = localStorage.getItem('refreshToken');
+    if (current && current !== sentRefreshToken) return true;
+    if (Date.now() >= deadline) return false;
+    await sleep(150);
+  }
+};
+
+const attemptTokenRefresh = async (): Promise<RefreshOutcome> => {
   const refreshToken = localStorage.getItem('refreshToken');
-  if (!refreshToken) return false;
+  // Only refresh when this browser holds a session. Anonymous 401s must not
+  // spend the refresh rate-limit budget.
+  if (!refreshToken && !localStorage.getItem('user')) return 'rejected';
+  if (Date.now() < refreshUnavailableUntil) return 'unavailable';
+
+  let refreshResponse: Response;
   try {
-    const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
+    // O-40: credentials:'include' is required cross-origin (advance.al →
+    // api.advance.al). Without it the browser neither sends the httpOnly
+    // refresh_token cookie nor stores the rotated cookie pair from the
+    // response, so the cookie session silently decayed to localStorage
+    // tokens after the first refresh. The body copy stays as the rollback
+    // path; the backend accepts whichever copy is still live.
+    refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
+      credentials: 'include',
+      body: JSON.stringify(refreshToken ? { refreshToken } : {}),
     });
-    const refreshData = await refreshResponse.json();
-    if (refreshResponse.ok && refreshData.success) {
-      setAuthToken(refreshData.data.token);
-      localStorage.setItem('refreshToken', refreshData.data.refreshToken);
-      return true;
-    }
   } catch {
-    // Refresh failed
+    // Offline / network error: nothing says the session is over.
+    refreshUnavailableUntil = Date.now() + REFRESH_COOLDOWN_MS;
+    return 'unavailable';
   }
-  return false;
+
+  if (refreshResponse.status === 429 || refreshResponse.status >= 500) {
+    // Rate limited (e.g. many users behind one NAT) or server trouble: keep
+    // the session and retry after a pause instead of logging the user out.
+    refreshUnavailableUntil = Date.now() + REFRESH_COOLDOWN_MS;
+    return 'unavailable';
+  }
+
+  let refreshData: { success?: boolean; data?: { token: string; refreshToken: string } } | null = null;
+  try {
+    refreshData = await refreshResponse.json();
+  } catch {
+    refreshData = null;
+  }
+  if (refreshResponse.ok && refreshData?.success && refreshData.data) {
+    setAuthToken(refreshData.data.token);
+    localStorage.setItem('refreshToken', refreshData.data.refreshToken);
+    return 'refreshed';
+  }
+  if (refreshResponse.status === 401 && await adoptPairFromOtherTab(refreshToken)) {
+    return 'refreshed';
+  }
+  return 'rejected';
+};
+
+// One refresh at a time: concurrent 401s all wait for the same attempt, so a
+// rotated-out refresh token is never presented twice.
+const refreshTokensOnce = (): Promise<RefreshOutcome> => {
+  if (!isRefreshing || !refreshPromise) {
+    isRefreshing = true;
+    refreshPromise = attemptTokenRefresh().finally(() => {
+      isRefreshing = false;
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
 };
 
 const apiRequest = async <T>(
@@ -326,19 +420,19 @@ const apiRequest = async <T>(
       // On 401, try to refresh the token before giving up
       if (response.status === 401 && !options._isRetry && endpoint !== '/auth/refresh' && endpoint !== '/auth/login') {
         // Use a shared promise so concurrent 401s all wait for the same refresh
-        if (!isRefreshing) {
-          isRefreshing = true;
-          refreshPromise = attemptTokenRefresh().finally(() => {
-            isRefreshing = false;
-            refreshPromise = null;
-          });
-        }
-        const refreshed = await refreshPromise;
-        if (refreshed) {
+        const outcome = await refreshTokensOnce();
+        if (outcome === 'refreshed') {
           // Retry the original request with the new token
           return apiRequest<T>(endpoint, { ...options, _isRetry: true });
         }
-        // Refresh failed — clear tokens and notify React
+        if (outcome === 'unavailable') {
+          // Keep the session: a later request retries the refresh.
+          throw new ApiError({
+            success: false,
+            message: 'Sesioni nuk u rinovua dot për momentin. Ju lutemi provoni përsëri pas pak.'
+          }, 429);
+        }
+        // Session over — clear tokens and notify React
         removeAuthToken();
         window.dispatchEvent(new Event('auth:logout'));
       } else if (response.status === 401) {
@@ -457,8 +551,31 @@ export const authApi = {
 
   // Logout
   logout: async (): Promise<void> => {
+    // O-40: send the localStorage refresh token too — the backend revokes
+    // every copy it receives (body + httpOnly cookie), so neither survives
+    // logout. The request is rebuilt per attempt: when the access token has
+    // expired, the refresh in between rotates the refresh token, and the
+    // retry must revoke the rotated token rather than the one read before.
+    const sendLogout = () => {
+      const accessToken = getAuthToken();
+      const refreshToken = localStorage.getItem('refreshToken');
+      return fetch(`${API_BASE_URL}/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify(refreshToken ? { refreshToken } : {}),
+      });
+    };
     try {
-      await apiRequest('/auth/logout', { method: 'POST' });
+      const response = await sendLogout();
+      if (response.status === 401 && (await refreshTokensOnce()) === 'refreshed') {
+        await sendLogout();
+      }
+    } catch {
+      // Network failure: the local session is still ended below.
     } finally {
       removeAuthToken();
     }
@@ -481,17 +598,36 @@ export const authApi = {
   },
 
   // Change password (authenticated)
-  changePassword: async (currentPassword: string, newPassword: string): Promise<ApiResponse<any>> => {
-    return apiRequest('/auth/change-password', {
+  changePassword: async (currentPassword: string, newPassword: string): Promise<ApiResponse<{ token: string; refreshToken: string }>> => {
+    const response = await apiRequest<{ token: string; refreshToken: string }>('/auth/change-password', {
       method: 'PUT',
       body: JSON.stringify({ currentPassword, newPassword }),
     });
+
+    // O-14: the backend revokes every session and issues this device a fresh
+    // pair (also set as cookies). Store it, or the next refresh would present
+    // a revoked token and log the user out.
+    if (response.success && response.data?.token && response.data?.refreshToken) {
+      setAuthToken(response.data.token);
+      localStorage.setItem('refreshToken', response.data.refreshToken);
+    }
+
+    return response;
   },
 };
 
 // Jobs API
 export const jobsApi = {
-  // Get all jobs with filters
+  // Get all jobs with filters.
+  //
+  // Salary filter CONTRACT (backend routes/jobs.js GET /):
+  //   minSalary / maxSalary are MONTHLY amounts in `currency` ('EUR' | 'ALL',
+  //   default EUR). Job salaries are STORED ANNUAL, so the backend multiplies
+  //   the bounds ×12 before matching, and an active salary filter only matches
+  //   jobs in that same currency whose salary is public. Either bound may be
+  //   omitted (open-ended range). Build these params with salaryFilterQuery()
+  //   from lib/salary.ts. sortBy=salary orders by an approximate
+  //   EUR-equivalent; hidden / missing salaries always sort last.
   getJobs: async (params: {
     search?: string;
     city?: string;
@@ -539,9 +675,11 @@ export const jobsApi = {
     return apiRequest<any>(endpoint);
   },
 
-  // Get single job
-  getJob: async (id: string): Promise<ApiResponse<{ job: Job }>> => {
-    return apiRequest<{ job: Job }>(`/jobs/${id}`);
+  // Get single job. `countView: false` for background fetches that are not a
+  // page view (e.g. the recently-viewed widget) — the backend then leaves the
+  // employer-facing view count alone.
+  getJob: async (id: string, opts: { countView?: boolean } = {}): Promise<ApiResponse<{ job: Job }>> => {
+    return apiRequest<{ job: Job }>(`/jobs/${id}${opts.countView === false ? '?view=0' : ''}`);
   },
 
   // Get personalized job recommendations
@@ -664,7 +802,10 @@ export const jobsApi = {
 
 // Applications API
 export const applicationsApi = {
-  // Apply for job
+  // Apply for job. With `resumeFile` the request is multipart/form-data and
+  // the file is stored as THIS application's CV (O-42) — it reaches the
+  // employer whether or not the applicant also saves it to their profile.
+  // customAnswers travel as a JSON string part in that case.
   apply: async (applicationData: {
     jobId: string;
     applicationMethod: 'one_click' | 'custom_form';
@@ -673,7 +814,24 @@ export const applicationsApi = {
       answer: string;
     }>;
     coverLetter?: string;
-  }): Promise<ApiResponse<{ application: Application }>> => {
+  }, resumeFile?: File): Promise<ApiResponse<{ application: Application }>> => {
+    if (resumeFile) {
+      const formData = new FormData();
+      formData.append('jobId', applicationData.jobId);
+      formData.append('applicationMethod', applicationData.applicationMethod);
+      if (applicationData.coverLetter !== undefined) {
+        formData.append('coverLetter', applicationData.coverLetter);
+      }
+      if (applicationData.customAnswers !== undefined) {
+        formData.append('customAnswers', JSON.stringify(applicationData.customAnswers));
+      }
+      formData.append('resume', resumeFile);
+      return apiRequest<{ application: Application }>('/applications/apply', {
+        method: 'POST',
+        body: formData,
+        isFormData: true,
+      });
+    }
     return apiRequest<{ application: Application }>('/applications/apply', {
       method: 'POST',
       body: JSON.stringify(applicationData),
@@ -1178,33 +1336,6 @@ export const notificationsApi = {
   deleteNotification: async (id: string): Promise<ApiResponse<any>> => {
     return apiRequest(`/notifications/${id}`, {
       method: 'DELETE',
-    });
-  }
-};
-
-// Verification API
-export const verificationApi = {
-  // Request verification code
-  requestCode: async (data: {
-    identifier: string;
-    method: 'email' | 'sms';
-    userType?: 'employer' | 'jobseeker';
-  }): Promise<ApiResponse<{ message: string }>> => {
-    return apiRequest<{ message: string }>('/verification/request', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  },
-
-  // Verify code
-  verifyCode: async (data: {
-    identifier: string;
-    code: string;
-    method: 'email' | 'sms';
-  }): Promise<ApiResponse<{ verified: boolean; message: string }>> => {
-    return apiRequest<{ verified: boolean; message: string }>('/verification/verify', {
-      method: 'POST',
-      body: JSON.stringify(data),
     });
   }
 };
@@ -2148,6 +2279,23 @@ export const cvApi = {
     lastUpdatedAt: string;
   }>> => {
     return apiRequest('/cv/my-cv');
+  },
+
+  /**
+   * O-70: set the latest AI-generated PDF as the profile CV ("Përdore si
+   * CV-në time"). Only called on an explicit click. `pdfFileId` is the PDF the
+   * page is showing — the backend answers 409 if a newer generation replaced
+   * it meanwhile. Replaces (and deletes) any existing profile CV.
+   */
+  useAsProfile: async (pdfFileId: string): Promise<ApiResponse<{
+    resumeUrl: string;
+    resumeType: 'pdf';
+    replacedExisting: boolean;
+  }>> => {
+    return apiRequest('/cv/use-as-profile', {
+      method: 'POST',
+      body: JSON.stringify({ fileId: pdfFileId }),
+    });
   }
 };
 

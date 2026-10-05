@@ -125,7 +125,7 @@ describe('Phase 11 — Exhaustive Concurrency', () => {
       const job = await createJob(emp);
 
       await Promise.all(
-        Array.from({ length: 10 }, () => request(app).get(`/api/jobs/${job._id}`))
+        Array.from({ length: 10 }, () => request(app).get(`/api/jobs/${job._id}`).set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'))
       );
 
       // Allow async incrementViewCount to settle

@@ -467,6 +467,13 @@ const userSchema = new Schema({
   emailVerificationExpires: Date,
   passwordResetToken: String,
   passwordResetExpires: Date,
+  // O-14: session generation. Embedded as `tv` in every access and refresh
+  // token; /auth/change-password and /auth/reset-password increment it, and
+  // authenticate / optionalAuth / /auth/refresh reject tokens carrying another
+  // value — every other session ends at once (no 1-second iat window).
+  // Missing field = 0 (tokens minted before this field existed carry no tv).
+  // select:false — not part of any user payload.
+  tokenVersion: { type: Number, select: false },
   lastLoginAt: Date,
   privacySettings: {
     // NOTE (QA Round 2): profileVisible / showInSearch are deprecated. The

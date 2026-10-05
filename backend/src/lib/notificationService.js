@@ -4,6 +4,23 @@ import emailService from './emailService.js'; // kept for SMS only
 import userEmbeddingService from '../services/userEmbeddingService.js';
 import { escapeHtml, safeSubject } from '../utils/sanitize.js';
 import logger from '../config/logger.js';
+import { formatSalary } from './salary.js';
+
+// Salary line for job-alert emails. Stored salaries are ANNUAL; formatSalary
+// converts to a monthly "800-1,500 EUR/muaj" string and returns null when the
+// employer hid the salary or no numbers exist — callers then omit the line.
+// Output is built only from numbers + the EUR/ALL enum, so it is HTML-safe.
+const jobSalaryText = (job) => formatSalary(job?.salary, 'monthly');
+
+// "Afati" (deadline) = the listing's expiresAt, rendered as an Albanian date in
+// Tirana time. Returns null for a missing/invalid date so the line is omitted
+// instead of printing "Invalid Date" (Job has no applicationDeadline field).
+const jobDeadlineText = (job) => {
+  if (!job?.expiresAt) return null;
+  const d = new Date(job.expiresAt);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('sq-AL', { timeZone: 'Europe/Tirane', day: 'numeric', month: 'long', year: 'numeric' });
+};
 
 class NotificationService {
   constructor() {
@@ -38,6 +55,8 @@ class NotificationService {
     const safeDescription = escapeHtml(job.description?.substring(0, 300));
     const safeCategory = escapeHtml(job.category);
     const safeInterests = user.allInterests ? user.allInterests.map(i => escapeHtml(i)).join(', ') : '';
+    const salaryText = jobSalaryText(job);
+    const deadlineText = jobDeadlineText(job);
 
     const subject = safeSubject(`Punë e re: ${job.title || ''} në ${job.location?.city || ''}`);
 
@@ -49,9 +68,7 @@ Një punë e re që përputhet me interesat tuaja është publikuar:
 📋 Pozicioni: ${job.title}
 🏢 Kompania: ${companyName}
 📍 Vendndodhja: ${job.location.city}${job.location.remote ? ' (Punë në distancë)' : ''}
-💰 Paga: ${job.salary ? `${job.salary.min}-${job.salary.max} ${job.salary.currency}` : 'Nuk është specifikuar'}
-📅 Afati: ${new Date(job.applicationDeadline).toLocaleDateString('sq-AL')}
-
+${salaryText ? `💰 Paga: ${salaryText}\n` : ''}${deadlineText ? `📅 Afati: ${deadlineText}\n` : ''}
 📝 Përshkrimi:
 ${job.description.substring(0, 200)}...
 
@@ -85,8 +102,8 @@ advance.al - Platforma #1 e Punës në Shqipëri
         <div style="font-size: 20px; font-weight: bold; color: #667eea; margin-bottom: 10px;">${safeJobTitle}</div>
         <div style="margin: 8px 0;"><strong style="color: #333;">🏢 Kompania:</strong> ${safeCompanyName}</div>
         <div style="margin: 8px 0;"><strong style="color: #333;">📍 Vendndodhja:</strong> ${safeCity}${job.location.remote ? ' <span style="color: #28a745;">(Punë në distancë)</span>' : ''}</div>
-        ${job.salary ? `<div style="margin: 8px 0;"><strong style="color: #333;">💰 Paga:</strong> ${job.salary.min}-${job.salary.max} ${job.salary.currency}</div>` : ''}
-        <div style="margin: 8px 0;"><strong style="color: #333;">📅 Afati:</strong> ${new Date(job.applicationDeadline).toLocaleDateString('sq-AL')}</div>
+        ${salaryText ? `<div style="margin: 8px 0;"><strong style="color: #333;">💰 Paga:</strong> ${salaryText}</div>` : ''}
+        ${deadlineText ? `<div style="margin: 8px 0;"><strong style="color: #333;">📅 Afati:</strong> ${deadlineText}</div>` : ''}
         <div style="margin: 8px 0;"><strong style="color: #333;">🎯 Kategoria:</strong> ${safeCategory}</div>
       </div>
 
@@ -143,6 +160,8 @@ advance.al - Platforma #1 e Punës në Shqipëri
     const safeCity = escapeHtml(job.location?.city);
     const safeDescription = escapeHtml(job.description?.substring(0, 300));
     const safeCategory = escapeHtml(job.category);
+    const salaryText = jobSalaryText(job);
+    const deadlineText = jobDeadlineText(job);
 
     const subject = safeSubject(`Punë e re: ${job.title || ''} në ${job.location?.city || ''}`);
 
@@ -154,9 +173,7 @@ Një punë e re që përputhet me profilin tuaj është publikuar:
 📋 Pozicioni: ${job.title}
 🏢 Kompania: ${companyName}
 📍 Vendndodhja: ${job.location.city}${job.location.remote ? ' (Punë në distancë)' : ''}
-💰 Paga: ${job.salary ? `${job.salary.min}-${job.salary.max} ${job.salary.currency}` : 'Nuk është specifikuar'}
-📅 Afati: ${new Date(job.applicationDeadline).toLocaleDateString('sq-AL')}
-
+${salaryText ? `💰 Paga: ${salaryText}\n` : ''}${deadlineText ? `📅 Afati: ${deadlineText}\n` : ''}
 📝 Përshkrimi:
 ${job.description.substring(0, 200)}...
 
@@ -187,8 +204,8 @@ advance.al - Platforma #1 e Punës në Shqipëri
         <div style="font-size: 20px; font-weight: bold; color: #667eea; margin-bottom: 10px;">${safeJobTitle}</div>
         <div style="margin: 8px 0;"><strong>🏢 Kompania:</strong> ${safeCompanyName}</div>
         <div style="margin: 8px 0;"><strong>📍 Vendndodhja:</strong> ${safeCity}${job.location.remote ? ' <span style="color:#28a745;">(Punë në distancë)</span>' : ''}</div>
-        ${job.salary ? `<div style="margin: 8px 0;"><strong>💰 Paga:</strong> ${job.salary.min}-${job.salary.max} ${job.salary.currency}</div>` : ''}
-        <div style="margin: 8px 0;"><strong>📅 Afati:</strong> ${new Date(job.applicationDeadline).toLocaleDateString('sq-AL')}</div>
+        ${salaryText ? `<div style="margin: 8px 0;"><strong>💰 Paga:</strong> ${salaryText}</div>` : ''}
+        ${deadlineText ? `<div style="margin: 8px 0;"><strong>📅 Afati:</strong> ${deadlineText}</div>` : ''}
         <div style="margin: 8px 0;"><strong>🎯 Kategoria:</strong> ${safeCategory}</div>
       </div>
       <p><strong>📝 Përshkrimi i shkurtër:</strong></p>
@@ -238,7 +255,8 @@ advance.al - Platforma #1 e Punës në Shqipëri
 
     const textJobLines = jobs.map((job, i) => {
       const company = job.employerId?.profile?.employerProfile?.companyName || 'Kompani';
-      const salary = job.salary ? ` — ${job.salary.min}-${job.salary.max} ${job.salary.currency}` : '';
+      const salaryText = jobSalaryText(job);
+      const salary = salaryText ? ` — ${salaryText}` : '';
       return `${i + 1}. ${job.title} — ${company} (${job.location?.city || ''})${salary}\n   https://advance.al/jobs/${job.slug || job._id}`;
     }).join('\n\n');
 
@@ -261,8 +279,9 @@ advance.al - Platforma #1 e Punës në Shqipëri
       const safeCompany = escapeHtml(company);
       const safeCity = escapeHtml(job.location?.city || '');
       const safeCategory = escapeHtml(job.category || '');
-      const salaryLine = job.salary
-        ? `<div style="margin: 4px 0; font-size: 13px;"><strong>💰</strong> ${job.salary.min}-${job.salary.max} ${job.salary.currency}</div>`
+      const salaryText = jobSalaryText(job);
+      const salaryLine = salaryText
+        ? `<div style="margin: 4px 0; font-size: 13px;"><strong>💰</strong> ${salaryText}</div>`
         : '';
       return `
         <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin: 12px 0; border-left: 4px solid #667eea;">
@@ -584,7 +603,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
         const safeTitle = escapeHtml(job.title);
         const safeCompany = escapeHtml(job.employerId?.profile?.employerProfile?.companyName || 'Kompani');
         const safeCity = escapeHtml(job.location?.city || '');
-        const salaryText = job.salary ? `${job.salary.min}-${job.salary.max} ${job.salary.currency}` : '';
+        const salaryText = jobSalaryText(job) || '';
         return `
           <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 10px 0; border-left: 4px solid #667eea;">
             <div style="font-weight: bold; color: #333; margin-bottom: 5px;">${safeTitle}</div>

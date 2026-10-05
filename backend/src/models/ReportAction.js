@@ -419,17 +419,17 @@ reportActionSchema.pre('save', async function(next) {
   next();
 });
 
-// Post-save middleware for notifications and side effects
+// Post-save side effects.
+// O-7: this hook used to import a `notifyRelevantParties` export that
+// lib/notificationService.js never had, so every action logged an error and
+// notified nobody. Notifications are owned by the Report model instead:
+//   - admins: Report post('save') → notificationService.notifyAdmins('new_report')
+//   - reported user: Report#resolve() → in-app account-action notification +
+//     resendEmailService.sendAccountActionEmail (warning/suspension/ban)
+//   - reported user on reopen: Report#reopen() → 'account_restored' notification
+// ReportAction is the audit trail only; notifying here would double-send.
 reportActionSchema.post('save', async function(doc) {
   if (doc.isNew || doc.wasNew) {
-    try {
-      // Import notification service
-      const { notifyRelevantParties } = await import('../lib/notificationService.js');
-      await notifyRelevantParties('report_action', doc);
-    } catch (error) {
-      logger.error('Failed to send notifications for report action:', error.message);
-    }
-
     // Update report status if needed
     if (doc.actionType === 'report_resolved' && doc.report) {
       try {

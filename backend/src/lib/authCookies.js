@@ -15,6 +15,8 @@
  * `cookie OR header` reader logic.
  */
 
+import jwt from 'jsonwebtoken';
+
 const isProd = () => process.env.NODE_ENV === 'production';
 
 // In prod, scope cookies to the registrable domain (`.advance.al`) so
@@ -23,10 +25,25 @@ const isProd = () => process.env.NODE_ENV === 'production';
 // 127.0.0.1, etc.).
 const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || (isProd() ? '.advance.al' : undefined);
 
-// Token lifetimes — match the JWT generators in middleware/auth.js so the
-// cookie expires roughly when the JWT does.
-const AUTH_COOKIE_MAX_AGE_MS = 15 * 60 * 1000;          // 15 min
-const REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+// Fallback lifetimes, used only when a token carries no `exp` claim. They
+// mirror the defaults of the JWT generators in middleware/auth.js.
+const AUTH_COOKIE_FALLBACK_MAX_AGE_MS = 15 * 60 * 1000;          // 15 min
+const REFRESH_COOKIE_FALLBACK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// O-41: a cookie must die exactly when its JWT does. The previous hard-coded
+// 15m/7d drifted from JWT_EXPIRES_IN / JWT_REFRESH_EXPIRES_IN — with a
+// shorter JWT the cookie outlived it and, because the cookie wins over the
+// Authorization header, an expired cookie shadowed the fresh header token.
+// Reading the token's own `exp` claim is the one source of truth: it already
+// reflects whatever expiresIn jsonwebtoken applied (including its quirk that
+// a bare numeric string such as "900" means milliseconds).
+function cookieMaxAgeFor(token, fallbackMs) {
+  const decoded = jwt.decode(token);
+  if (decoded && typeof decoded.exp === 'number') {
+    return Math.max(0, decoded.exp * 1000 - Date.now());
+  }
+  return fallbackMs;
+}
 
 // SameSite=Lax means the browser will NOT attach the auth cookie to a
 // cross-origin POST/PUT/DELETE triggered by a malicious site — that's our
@@ -45,7 +62,7 @@ export function setAuthCookies(res, { token, refreshToken }) {
     res.cookie('auth_token', token, {
       ...baseCookieOptions(),
       path: '/',
-      maxAge: AUTH_COOKIE_MAX_AGE_MS,
+      maxAge: cookieMaxAgeFor(token, AUTH_COOKIE_FALLBACK_MAX_AGE_MS),
     });
   }
   if (refreshToken) {
@@ -55,7 +72,7 @@ export function setAuthCookies(res, { token, refreshToken }) {
       // accidentally see it; tightens the blast radius if a downstream
       // route logs req.cookies.
       path: '/api/auth',
-      maxAge: REFRESH_COOKIE_MAX_AGE_MS,
+      maxAge: cookieMaxAgeFor(refreshToken, REFRESH_COOKIE_FALLBACK_MAX_AGE_MS),
     });
   }
 }

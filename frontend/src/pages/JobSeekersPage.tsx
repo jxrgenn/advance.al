@@ -52,7 +52,7 @@ import { useEmailAvailability } from "@/hooks/useEmailAvailability";
 const JobSeekersPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, user, register } = useAuth();
+  const { isAuthenticated, user, register, refreshUser } = useAuth();
   const [showQuickForm, setShowQuickForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -146,6 +146,11 @@ const JobSeekersPage = () => {
   const [cvInput, setCvInput] = useState('');
   const [generating, setGenerating] = useState(false);
   const [generatedCV, setGeneratedCV] = useState<any>(null);
+  // O-70 (owner ruling: ask each time) — the generated CV only becomes the
+  // profile CV when the user clicks "Përdore si CV-në time".
+  const [usingAsProfileCV, setUsingAsProfileCV] = useState(false);
+  const [usedAsProfileCV, setUsedAsProfileCV] = useState(false);
+  const [confirmReplaceCVOpen, setConfirmReplaceCVOpen] = useState(false);
   const [useTemplate, setUseTemplate] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<'sq' | 'en'>('sq');
 
@@ -600,6 +605,7 @@ CERTIFIKATA (opsionale)
 
       if (response.success && response.data) {
         setGeneratedCV(response.data);
+        setUsedAsProfileCV(false);
         notifications.show({
           title: "CV u gjenerua me sukses!",
           message: `CV-ja juaj është gati për shkarkim (${response.data.language === 'sq' ? 'Shqip' : 'Anglisht'})`,
@@ -623,6 +629,43 @@ CERTIFIKATA (opsionale)
     } finally {
       setGenerating(false);
     }
+  };
+
+  // O-70: copy the generated PDF into the profile CV slot (employers then see
+  // it on applications). Never automatic; replacing an existing CV is confirmed.
+  const handleUseGeneratedCVAsProfile = async () => {
+    const pdfId = generatedCV?.files?.pdf?.fileId;
+    setConfirmReplaceCVOpen(false);
+    if (!pdfId) return;
+    try {
+      setUsingAsProfileCV(true);
+      const response = await cvApi.useAsProfile(pdfId);
+      if (response.success) {
+        setUsedAsProfileCV(true);
+        await refreshUser();
+        notifications.show({
+          title: "CV-ja u vendos në profil",
+          message: "Kjo CV tani u dërgohet punëdhënësve kur aplikoni.",
+          color: "green"
+        });
+      }
+    } catch (error: any) {
+      notifications.show({
+        title: "Gabim",
+        message: error.message || "CV-ja nuk u vendos në profil. Provoni përsëri.",
+        color: "red"
+      });
+    } finally {
+      setUsingAsProfileCV(false);
+    }
+  };
+
+  const requestUseGeneratedCVAsProfile = () => {
+    if (user?.profile?.jobSeekerProfile?.resume) {
+      setConfirmReplaceCVOpen(true);
+      return;
+    }
+    handleUseGeneratedCVAsProfile();
   };
 
   // Tutorial management functions
@@ -1665,7 +1708,23 @@ CERTIFIKATA (opsionale)
                     >
                       Shkarko Word
                     </Button>
+                    <Button
+                      onClick={requestUseGeneratedCVAsProfile}
+                      loading={usingAsProfileCV}
+                      disabled={usedAsProfileCV || !generatedCV.files?.pdf?.fileId}
+                      variant={usedAsProfileCV ? 'light' : 'filled'}
+                      color="blue"
+                      leftSection={usedAsProfileCV ? <CheckCircle size={18} /> : <Upload size={18} />}
+                      data-testid="use-generated-cv-as-profile"
+                    >
+                      {usedAsProfileCV ? 'Kjo është CV-ja juaj në profil' : 'Përdore si CV-në time'}
+                    </Button>
                   </Group>
+                  <Text size="xs" c="dimmed" mt="sm">
+                    {usedAsProfileCV
+                      ? 'Punëdhënësit do ta shohin këtë CV (PDF) në aplikimet tuaja.'
+                      : 'CV-ja e gjeneruar u dërgohet punëdhënësve vetëm nëse e vendosni si CV-në tuaj në profil.'}
+                  </Text>
                 </Card>
               </Grid.Col>
             )}
@@ -1678,6 +1737,27 @@ CERTIFIKATA (opsionale)
       <RotatingContact />
 
       <Footer />
+
+      {/* O-70: confirm before the generated CV replaces an existing profile CV */}
+      <Modal
+        opened={confirmReplaceCVOpen}
+        onClose={() => setConfirmReplaceCVOpen(false)}
+        title="Të zëvendësohet CV-ja në profil?"
+        centered
+        size="sm"
+      >
+        <Text size="sm">
+          Keni tashmë një CV në profil. Nëse vazhdoni, ajo do të zëvendësohet me CV-në e gjeneruar (PDF) dhe CV-ja e mëparshme do të hiqet nga profili.
+        </Text>
+        <Group justify="flex-end" mt="lg">
+          <Button variant="default" onClick={() => setConfirmReplaceCVOpen(false)}>
+            Anulo
+          </Button>
+          <Button color="blue" onClick={handleUseGeneratedCVAsProfile} data-testid="confirm-replace-profile-cv">
+            Po, zëvendësoje
+          </Button>
+        </Group>
+      </Modal>
 
       {/* Email Verification Modal */}
       <Modal

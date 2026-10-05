@@ -32,22 +32,23 @@ describe('security — deep fuzz', () => {
   afterAll(async () => { await closeTestDB(); });
 
   describe('NoSQL operator injection', () => {
-    it('login with email = {$ne: null} does not authenticate as any user', async () => {
+    it('login with email = {$ne: null} → 400 operator guard, does not authenticate', async () => {
       await createJobseeker({ email: 'real@example.com', password: 'RealPassword!1' });
       const r = await request(app)
         .post('/api/auth/login')
         .send({ email: { $ne: null }, password: { $ne: null } });
-      expect(r.status).not.toBe(200);
-      expect(r.body.success).not.toBe(true);
-      expect(r.body.token).toBeUndefined();
+      // O-68: rejected by the global operator guard before the route runs.
+      expect(r.status).toBe(400);
+      expect(r.body).toEqual({ success: false, message: 'Kërkesa përmban fusha të palejuara.' });
     });
 
-    it('login with email = {$gt: ""} does not bypass password check', async () => {
+    it('login with email = {$gt: ""} → 400 operator guard, does not bypass password check', async () => {
       await createJobseeker({ email: 'gt@example.com', password: 'RealPassword!1' });
       const r = await request(app)
         .post('/api/auth/login')
         .send({ email: { $gt: '' }, password: 'WrongPassword!1' });
-      expect(r.status).not.toBe(200);
+      expect(r.status).toBe(400);
+      expect(r.body).toEqual({ success: false, message: 'Kërkesa përmban fusha të palejuara.' });
     });
 
     it('GET /api/jobs?status[$ne]=closed does not return all statuses', async () => {

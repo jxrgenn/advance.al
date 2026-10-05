@@ -1,8 +1,10 @@
 import express from 'express';
 import { User, Job } from '../models/index.js';
 import { authenticate, optionalAuth } from '../middleware/auth.js';
-import { escapeRegex, sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
+import { sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
 import logger from '../config/logger.js';
+import { stripHiddenSalary } from '../lib/salary.js';
+import { diacriticInsensitivePattern } from '../lib/searchRegex.js';
 
 const router = express.Router();
 
@@ -34,12 +36,13 @@ router.get('/', optionalAuth, async (req, res) => {
       matchQuery['profile.employerProfile.verified'] = true;
     }
 
-    // Add search filters
-    if (search) {
-      const safeSearch = escapeRegex(search);
+    // Add search filters — escaped + diacritic-insensitive (e↔ë, c↔ç), so
+    // "Korce" finds "Korçë" (same helper as the job search, O-11).
+    const searchPattern = diacriticInsensitivePattern(search);
+    if (searchPattern) {
       matchQuery.$or = [
-        { 'profile.employerProfile.companyName': { $regex: safeSearch, $options: 'i' } },
-        { 'profile.employerProfile.description': { $regex: safeSearch, $options: 'i' } }
+        { 'profile.employerProfile.companyName': { $regex: searchPattern, $options: 'i' } },
+        { 'profile.employerProfile.description': { $regex: searchPattern, $options: 'i' } }
       ];
     }
 
@@ -205,12 +208,14 @@ router.get('/:id', validateObjectId('id'), optionalAuth, async (req, res) => {
 
     const [jobs, jobStats] = await Promise.all([
       Job.find(jobFilter)
-        .select('title category jobType location salary postedAt applicationDeadline viewCount applicationCount')
+        .select('title slug category jobType location salary postedAt expiresAt viewCount applicationCount')
         .sort({ postedAt: -1 })
         .limit(20)
         .lean(),
+      // Public profile → public numbers: only published listings count
+      // (drafts / unpaid / pending / rejected jobs are not public).
       Job.aggregate([
-        { $match: { employerId: company._id, isDeleted: false } },
+        { $match: { employerId: company._id, isDeleted: false, status: { $in: ['active', 'expired', 'closed'] } } },
         {
           $group: {
             _id: null,
@@ -256,9 +261,12 @@ router.get('/:id', validateObjectId('id'), optionalAuth, async (req, res) => {
         category: job.category,
         jobType: job.jobType,
         location: job.location,
-        salary: job.salary,
+        // Hidden salaries (showPublic === false) keep only the flags.
+        salary: stripHiddenSalary(job.salary),
         postedAt: job.postedAt,
-        applicationDeadline: job.applicationDeadline,
+        // The listing's deadline is expiresAt (Job has no applicationDeadline).
+        expiresAt: job.expiresAt,
+        slug: job.slug,
         viewCount: job.viewCount,
         applicationCount: job.applicationCount
       }))
@@ -299,12 +307,22 @@ router.get('/:id/jobs', validateObjectId('id'), optionalAuth, async (req, res) =
 
     // M-LOW: allowlist Job statuses (excluding 'all' which is the unfiltered branch).
     // Garbage values previously flowed into Mongoose and 500'd with CastError.
+    // Visibility (same rule as GET /api/jobs/:id): the public may list only
+    // published states — active, expired, closed. Drafts, unpaid, pending
+    // approval, rejected and paused jobs are listed only for the company
+    // itself or an admin; anyone else asking for them gets an empty page.
     const ALLOWED_JOB_STATUSES = ['active', 'paused', 'closed', 'draft', 'expired', 'pending_payment', 'rejected', 'pending_approval'];
+    const PUBLIC_JOB_STATUSES = ['active', 'expired', 'closed'];
+    const canSeeAllStates = !!req.user
+      && (req.user.userType === 'admin' || String(req.user._id) === String(req.params.id));
+    const visibleStatuses = canSeeAllStates ? ALLOWED_JOB_STATUSES : PUBLIC_JOB_STATUSES;
     if (status !== 'all' && ALLOWED_JOB_STATUSES.includes(status)) {
-      jobQuery.status = status;
+      jobQuery.status = visibleStatuses.includes(status) ? status : { $in: [] };
       if (status === 'active') {
         jobQuery.expiresAt = { $gt: new Date() };
       }
+    } else if (!canSeeAllStates) {
+      jobQuery.status = { $in: PUBLIC_JOB_STATUSES };
     }
 
     // Build sort options with whitelist
@@ -327,7 +345,7 @@ router.get('/:id/jobs', validateObjectId('id'), optionalAuth, async (req, res) =
         isDeleted: false
       }).select('profile.employerProfile.companyName profile.employerProfile.logo').lean(),
       Job.find(jobQuery)
-        .select('title category jobType location salary postedAt applicationDeadline viewCount applicationCount')
+        .select('title slug status category jobType location salary postedAt expiresAt viewCount applicationCount')
         .sort(sortOptions)
         .skip(skip)
         .limit(sanitizedLimit)
@@ -346,7 +364,9 @@ router.get('/:id/jobs', validateObjectId('id'), optionalAuth, async (req, res) =
     res.json({
       success: true,
       data: {
-        jobs,
+        // Hidden salaries (showPublic === false) keep only the flags —
+        // except for the company itself / an admin.
+        jobs: canSeeAllStates ? jobs : jobs.map(j => ({ ...j, salary: stripHiddenSalary(j.salary) })),
         company: {
           _id: company._id,
           name: company.profile.employerProfile.companyName,

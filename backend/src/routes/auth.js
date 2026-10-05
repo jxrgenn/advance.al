@@ -13,12 +13,12 @@ import validator from 'validator';
 // bug_004.
 function emailRateLimitKey(req, prefix, fallbackPrefix) {
   const raw = (req.body?.email || '').toString().trim();
-  if (!raw) return `${fallbackPrefix}:${ipKeyGenerator(req)}`;
+  if (!raw) return `${fallbackPrefix}:${ipKeyGenerator(req.ip)}`;
   const canonical = validator.normalizeEmail(raw) || raw.toLowerCase();
   return `${prefix}:${canonical}`;
 }
-import { User, QuickUser } from '../models/index.js';
-import { generateToken, generateRefreshToken, verifyToken, authenticate } from '../middleware/auth.js';
+import { User, QuickUser, Location } from '../models/index.js';
+import { generateToken, generateRefreshToken, verifyToken, authenticate, currentTokenVersion, isStaleTokenVersion } from '../middleware/auth.js';
 import { setAuthCookies, clearAuthCookies } from '../lib/authCookies.js';
 import { stripHtml } from '../utils/sanitize.js';
 import resendEmailService from '../lib/resendEmailService.js';
@@ -35,18 +35,73 @@ const router = express.Router();
 const pendingRegistrationsMap = new Map();
 const PENDING_REG_MAX_SIZE = 10000;
 const PENDING_REG_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
+const PENDING_REG_TTL_SECONDS = 600; // 10 minutes — the lifetime of a verification code
+const MAX_VERIFICATION_ATTEMPTS = 5;
+
+// O-54: wrong-code attempts are counted OUTSIDE the cached registration
+// blob, with an atomic increment taken BEFORE the code is compared. The old
+// read-modify-write on the blob let N parallel guesses all read attempts=0,
+// so the 5-attempt cap never held. Redis INCR is atomic across instances;
+// the Map fallback is updated synchronously (no await between read and
+// write), which is atomic within this single-threaded process.
+const verificationAttemptsMap = new Map(); // email -> { count, expiresAt }
 
 // Periodic cleanup of expired entries from in-memory map
 /* istanbul ignore next — 5-minute interval, never fires during a test run */
 setInterval(() => {
-  if (pendingRegistrationsMap.size === 0) return;
   const now = Date.now();
   for (const [key, entry] of pendingRegistrationsMap) {
     if (entry.expiresAt < now) {
       pendingRegistrationsMap.delete(key);
     }
   }
+  for (const [key, entry] of verificationAttemptsMap) {
+    if (entry.expiresAt < now) {
+      verificationAttemptsMap.delete(key);
+    }
+  }
 }, PENDING_REG_CLEANUP_INTERVAL).unref();
+
+const verificationAttemptsKey = (email) => `pending_reg_attempts:${email}`;
+
+function incrementAttemptsInMemory(email) {
+  const now = Date.now();
+  const entry = verificationAttemptsMap.get(email);
+  if (!entry || entry.expiresAt < now) {
+    verificationAttemptsMap.set(email, { count: 1, expiresAt: now + PENDING_REG_TTL_SECONDS * 1000 });
+    return 1;
+  }
+  entry.count += 1;
+  return entry.count;
+}
+
+// Records one verification attempt for `email` and returns its 1-based
+// ordinal. Callers must reject (without comparing the code) when the
+// ordinal exceeds MAX_VERIFICATION_ATTEMPTS.
+async function recordVerificationAttempt(email) {
+  /* istanbul ignore if — Redis not configured in test env; in-memory counter below is exercised */
+  if (redis) {
+    try {
+      const count = await redis.incr(verificationAttemptsKey(email));
+      if (count === 1) {
+        await redis.expire(verificationAttemptsKey(email), PENDING_REG_TTL_SECONDS);
+      }
+      return count;
+    } catch (err) {
+      // Redis hiccup: keep counting in this process rather than failing open.
+      logger.warn('Verification attempt INCR failed; counting in memory', { error: err.message });
+    }
+  }
+  return incrementAttemptsInMemory(email);
+}
+
+async function resetVerificationAttempts(email) {
+  /* istanbul ignore if — Redis not configured in test env */
+  if (redis) {
+    await cacheDelete(verificationAttemptsKey(email));
+  }
+  verificationAttemptsMap.delete(email);
+}
 
 async function getPendingRegistration(email) {
   // Try Redis first
@@ -107,7 +162,21 @@ async function deletePendingRegistration(email) {
     await cacheDelete(`pending_reg:${email}`);
   }
   pendingRegistrationsMap.delete(email);
+  // The attempt counter is deliberately NOT reset here: requests already in
+  // flight may still hold the deleted entry, and a reset would hand them a
+  // fresh attempt budget. It is reset only when a new code is issued
+  // (initiate-registration) or the account is created; otherwise it
+  // expires with the code.
 }
+
+// Test-only access to the pending-registration store (same convention as
+// dailyQuota.__resetMemoryForTests): tests assert what initiate-registration
+// caches (O-53: a bcrypt hash, never the plaintext) and plant entries in the
+// shape a previous release cached. Not reachable over HTTP.
+export const __pendingRegistrationsForTests = {
+  get: getPendingRegistration,
+  set: setPendingRegistration,
+};
 
 // Helper: send verification code email (standalone, no user object needed)
 async function sendVerificationCodeEmail(email, firstName, code) {
@@ -168,6 +237,68 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   validate: { trustProxy: false, xForwardedForHeader: false },
 });
+
+// /auth/refresh used to share authLimiter (15 per 15 min per IP) with login.
+// Every signed-in browser refreshes about every 15 minutes, so more than ~15
+// active users behind one office / mobile-carrier NAT got 429 on refresh and
+// were logged out. Refresh has its own budget, keyed per USER when a
+// presented refresh token carries a valid signature (an attacker can only
+// spend their own bucket — forging another user's key needs the secret),
+// and per IP otherwise. Login / brute-force limits are unchanged.
+const REFRESH_LIMIT_PER_USER = 60;  // ~1 refresh / 15 min per device is normal
+const REFRESH_LIMIT_PER_IP = 300;   // tokenless / invalid: a JWT verify, no DB work
+function refreshRateLimitKey(req) {
+  if (req.refreshRateLimitKey) return req.refreshRateLimitKey;
+  let key = null;
+  for (const token of presentedRefreshTokens(req)) {
+    try {
+      const decoded = verifyToken(token, process.env.JWT_REFRESH_SECRET);
+      if (decoded?.id) { key = `refresh-user:${decoded.id}`; break; }
+    } catch { /* expired / forged → try the next copy, then fall back to IP */ }
+  }
+  req.refreshRateLimitKey = key || `refresh-ip:${ipKeyGenerator(req.ip)}`;
+  return req.refreshRateLimitKey;
+}
+const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: (req) => {
+    if (process.env.NODE_ENV === 'development') return 10000;
+    return refreshRateLimitKey(req).startsWith('refresh-user:') ? REFRESH_LIMIT_PER_USER : REFRESH_LIMIT_PER_IP;
+  },
+  keyGenerator: refreshRateLimitKey,
+  skip: () =>
+    process.env.NODE_ENV !== 'production' &&
+    process.env.SKIP_RATE_LIMIT === 'true',
+  message: {
+    success: false,
+    message: 'Shumë kërkesa për rinovimin e sesionit. Provoni përsëri pas pak minutash.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false, xForwardedForHeader: false },
+});
+
+// /auth/check-email (signup forms, on blur) also had to stop spending the
+// login budget. It answers "is this email registered", so it stays per-IP.
+const checkEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: process.env.NODE_ENV === 'development' ? 10000 : 30,
+  skip: () =>
+    process.env.NODE_ENV !== 'production' &&
+    process.env.SKIP_RATE_LIMIT === 'true',
+  message: {
+    success: false,
+    message: 'Shumë kërkesa, ju lutemi provoni përsëri pas 15 minutash.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false, xForwardedForHeader: false },
+});
+
+// bcrypt cost used by the User model's pre-save hook (models/User.js:
+// bcrypt.genSalt(12)). initiate-registration pre-hashes with the same cost so
+// the stored hash is indistinguishable from one the hook would produce.
+const USER_PASSWORD_BCRYPT_ROUNDS = 12;
 
 // Constant-time decoy hash used in the login handler when the requested email
 // does not exist. Without this, an attacker can enumerate registered emails by
@@ -246,7 +377,7 @@ const changePasswordLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?._id ? `change-pw-user:${req.user._id}` : `change-pw-ip:${ipKeyGenerator(req)}`,
+  keyGenerator: (req) => req.user?._id ? `change-pw-user:${req.user._id}` : `change-pw-ip:${ipKeyGenerator(req.ip)}`,
   skip: () =>
     process.env.NODE_ENV !== 'production' &&
     process.env.SKIP_RATE_LIMIT === 'true',
@@ -265,6 +396,9 @@ const registerValidation = [
     .normalizeEmail()
     .withMessage('Email i pavlefshëm'),
   body('password')
+    .isString()
+    .withMessage('Fjalëkalimi duhet të jetë tekst')
+    .bail()
     .isLength({ min: 8 })
     .withMessage('Fjalëkalimi duhet të ketë të paktën 8 karaktere')
     .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
@@ -272,22 +406,52 @@ const registerValidation = [
   body('userType')
     .isIn(['jobseeker', 'employer'])
     .withMessage('Lloji i përdoruesit duhet të jetë jobseeker ose employer'),
+  // Type check (and .bail()) before the sanitizers: an object would
+  // otherwise be stringified to "[object Object]" and accepted.
   body('firstName')
+    .isString().withMessage('Emri duhet të ketë midis 2-50 karaktere').bail()
     .trim()
     .customSanitizer(v => stripHtml(v))
     .isLength({ min: 2, max: 50 })
     .withMessage('Emri duhet të ketë midis 2-50 karaktere'),
   body('lastName')
+    .isString().withMessage('Mbiemri duhet të ketë midis 2-50 karaktere').bail()
     .trim()
     .customSanitizer(v => stripHtml(v))
     .isLength({ min: 2, max: 50 })
     .withMessage('Mbiemri duhet të ketë midis 2-50 karaktere'),
+  // Length limits below mirror models/User.js. Anything the schema would
+  // reject must be rejected HERE: /register only runs the schema validators
+  // after the user has typed the emailed code, where a mismatch used to
+  // surface as a 500 (O-55 class).
   body('city')
+    .isString()
+    .withMessage('Qyteti është i detyrueshëm')
+    .bail()
     .trim()
     .notEmpty()
     .withMessage('Qyteti është i detyrueshëm')
+    .isLength({ max: 50 })
+    .withMessage('Qyteti nuk mund të ketë më shumë se 50 karaktere'),
+  body('companyName')
+    .optional({ checkFalsy: true })
+    .isString().withMessage('Emri i kompanisë nuk mund të ketë më shumë se 100 karaktere').bail()
+    .trim()
     .isLength({ max: 100 })
-    .withMessage('Qyteti nuk mund të ketë më shumë se 100 karaktere'),
+    .withMessage('Emri i kompanisë nuk mund të ketë më shumë se 100 karaktere'),
+  body('industry')
+    .optional({ checkFalsy: true })
+    .isString().withMessage('Industria nuk mund të ketë më shumë se 50 karaktere').bail()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage('Industria nuk mund të ketë më shumë se 50 karaktere'),
+  body('website')
+    .optional({ checkFalsy: true })
+    .isString().withMessage('Faqja e internetit nuk mund të ketë më shumë se 190 karaktere').bail()
+    .trim()
+    // 190, not 200: a bare domain gets "https://" (8 chars) prepended.
+    .isLength({ max: 190 })
+    .withMessage('Faqja e internetit nuk mund të ketë më shumë se 190 karaktere'),
   body('phone')
     .optional({ checkFalsy: true })
     .custom(v => isValidAlbanianPhone(v))
@@ -338,7 +502,7 @@ const handleValidationErrors = (req, res, next) => {
 //          frontend signup forms to surface "already registered" inline
 //          on blur (no need to wait for full submit). Rate-limited.
 // @access  Public
-router.get('/check-email', authLimiter, async (req, res) => {
+router.get('/check-email', checkEmailLimiter, async (req, res) => {
   const raw = req.query.email;
   if (typeof raw !== 'string' || !/^\S+@\S+\.\S+$/.test(raw)) {
     return res.json({ available: true });  // do not leak validity info on invalid input
@@ -416,12 +580,18 @@ router.post('/initiate-registration', authLimiter, initiateRegistrationByEmailLi
     const safeIndustry = industry ? stripHtml(String(industry)).trim() : industry;
     const safeDescription = description ? stripHtml(String(description)).trim() : description;
 
-    // Cache registration data with 10-minute TTL
+    // O-53: never cache the plaintext password — the pending store may be
+    // Upstash Redis (a third party) and lives for 10 minutes. Hash it now
+    // with the User model's cost; /register stores this hash as-is.
+    const passwordHash = await bcrypt.hash(password, USER_PASSWORD_BCRYPT_ROUNDS);
+
+    // Cache registration data with 10-minute TTL. A fresh code starts a
+    // fresh wrong-attempt budget.
     await setPendingRegistration(email, {
-      data: { email, password, userType, firstName, lastName, city, phone, companyName: safeCompanyName, industry: safeIndustry, companySize, description: safeDescription, website: normalizedWebsite },
-      hashedCode,
-      attempts: 0
+      data: { email, passwordHash, userType, firstName, lastName, city, phone, companyName: safeCompanyName, industry: safeIndustry, companySize, description: safeDescription, website: normalizedWebsite },
+      hashedCode
     });
+    await resetVerificationAttempts(email);
 
     // Send verification code via the chosen channel (don't fail registration
     // if delivery fails — the code is cached and can be resent).
@@ -470,6 +640,22 @@ router.post('/register', authLimiter, async (req, res) => {
       });
     }
 
+    // O-55: a non-string email/code (number, array, object) used to reach
+    // String#trim / crypto.update and surface as a 500. Issued codes are
+    // always 6 digits (crypto.randomInt(100000, 999999)).
+    if (typeof email !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Email i pavlefshëm'
+      });
+    }
+    if (typeof verificationCode !== 'string' || !/^\d{6}$/.test(verificationCode)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Kodi i verifikimit duhet të jetë 6 shifra'
+      });
+    }
+
     const normalizedEmail = email.trim().toLowerCase();
 
     // Look up pending registration
@@ -481,22 +667,31 @@ router.post('/register', authLimiter, async (req, res) => {
       });
     }
 
+    // O-54: claim an attempt slot BEFORE comparing, so at most
+    // MAX_VERIFICATION_ATTEMPTS comparisons ever run per issued code, no
+    // matter how many requests arrive in parallel.
+    const attempt = await recordVerificationAttempt(normalizedEmail);
+    if (attempt > MAX_VERIFICATION_ATTEMPTS) {
+      await deletePendingRegistration(normalizedEmail);
+      return res.status(400).json({
+        success: false,
+        message: 'Shumë tentativa të gabuara. Ju lutemi filloni regjistrimin përsëri.'
+      });
+    }
+
     // Verify code (constant-time comparison to prevent timing attacks)
     const hashedInput = crypto.createHash('sha256').update(verificationCode).digest('hex');
     if (!crypto.timingSafeEqual(Buffer.from(hashedInput, 'hex'), Buffer.from(pending.hashedCode, 'hex'))) {
-      pending.attempts = (pending.attempts || 0) + 1;
-      if (pending.attempts >= 5) {
+      if (attempt >= MAX_VERIFICATION_ATTEMPTS) {
         await deletePendingRegistration(normalizedEmail);
         return res.status(400).json({
           success: false,
           message: 'Shumë tentativa të gabuara. Ju lutemi filloni regjistrimin përsëri.'
         });
       }
-      // Save updated attempts count
-      await setPendingRegistration(normalizedEmail, pending);
       return res.status(400).json({
         success: false,
-        message: `Kodi i gabuar. Ju kanë mbetur ${5 - pending.attempts} tentativa.`
+        message: `Kodi i gabuar. Ju kanë mbetur ${MAX_VERIFICATION_ATTEMPTS - attempt} tentativa.`
       });
     }
 
@@ -513,10 +708,20 @@ router.post('/register', authLimiter, async (req, res) => {
       });
     }
 
-    // Build user object
+    // Build user object. `passwordHash` is the O-53 shape; `password`
+    // (plaintext) can only come from a registration cached by the previous
+    // release within the last 10 minutes — the pre-save hook hashes it.
+    const preHashed = typeof data.passwordHash === 'string';
+
+    // O-55: the region comes from the Location table (Kamëz → Tiranë,
+    // Krujë → Durrës, ...). A city typed freely that isn't a known Location
+    // keeps the previous behaviour (region = city).
+    const knownLocation = await Location.findOne({ city: data.city }).select('region').lean();
+    const region = knownLocation?.region || data.city;
+
     const userData = {
       email: data.email,
-      password: data.password,
+      password: preHashed ? data.passwordHash : data.password,
       userType: data.userType,
       emailVerified: true, // Already verified via code
       consentTracking: {
@@ -529,7 +734,7 @@ router.post('/register', authLimiter, async (req, res) => {
       profile: {
         firstName: data.firstName,
         lastName: data.lastName,
-        location: { city: data.city, region: data.city }
+        location: { city: data.city, region }
       }
     };
 
@@ -553,6 +758,13 @@ router.post('/register', authLimiter, async (req, res) => {
     }
 
     const user = new User(userData);
+    if (preHashed) {
+      // The User pre-save hook hashes whenever `password` is modified, and on
+      // a new document every set path counts as modified. Unmarking keeps
+      // the bcrypt hash from being hashed a second time; validators and the
+      // insert itself still include the field.
+      user.unmarkModified('password');
+    }
     try {
       await user.save();
     } catch (saveError) {
@@ -563,12 +775,25 @@ router.post('/register', authLimiter, async (req, res) => {
           message: 'Një përdorues me këtë email tashmë ekziston'
         });
       }
+      if (saveError.name === 'ValidationError') {
+        // initiate-registration mirrors the schema limits, so this should
+        // only be reachable with a registration cached before those checks
+        // existed or a schema rule they don't cover yet. The cached data can
+        // never become valid — make the user restart instead of a 500.
+        logger.warn('Registration data failed schema validation', { fields: Object.keys(saveError.errors || {}) });
+        await deletePendingRegistration(normalizedEmail);
+        return res.status(400).json({
+          success: false,
+          message: 'Disa të dhëna të regjistrimit nuk janë të vlefshme. Ju lutemi filloni regjistrimin përsëri.'
+        });
+      }
       throw saveError;
     }
     await deletePendingRegistration(normalizedEmail);
+    await resetVerificationAttempts(normalizedEmail);
 
     // Generate tokens
-    const payload = { id: user._id, email: user.email, userType: user.userType };
+    const payload = { id: user._id, email: user.email, userType: user.userType, tv: currentTokenVersion(user) };
     const token = generateToken(payload);
     const refreshToken = generateRefreshToken(payload);
 
@@ -670,7 +895,7 @@ router.post('/login', authLimiter, loginByEmailLimiter, loginValidation, handleV
     const { email, password } = req.body;
 
     // Find user and include password for comparison
-    const user = await User.findOne({ email }).select('+password');
+    const user = await User.findOne({ email }).select('+password +tokenVersion');
 
     if (!user) {
       // Constant-time defense: run bcrypt against a decoy hash so the response
@@ -724,18 +949,16 @@ router.post('/login', authLimiter, loginByEmailLimiter, loginValidation, handleV
       });
     }
 
-    if (user.userType === 'employer' && user.status === 'pending_verification') {
-      return res.status(401).json({
-        success: false,
-        message: 'Llogaria juaj si punëdhënës është në pritje të verifikimit nga administratori'
-      });
-    }
+    // O-52 (owner ruling): employers in status 'pending_verification' CAN log
+    // in — /register already signs them in and authenticate/refresh accept
+    // the status. Publishing stays gated by requireVerifiedEmployer.
 
-    // Generate tokens
+    // Generate tokens (tv = session generation, O-14)
     const payload = {
       id: user._id,
       email: user.email,
-      userType: user.userType
+      userType: user.userType,
+      tv: currentTokenVersion(user)
     };
 
     const token = generateToken(payload);
@@ -747,6 +970,7 @@ router.post('/login', authLimiter, loginByEmailLimiter, loginValidation, handleV
 
     // Use toJSON() which strips password, tokens, and other sensitive fields
     const userResponse = user.toJSON();
+    delete userResponse.tokenVersion; // selected above only to mint the tokens
 
     // Round O-F: set httpOnly cookies in parallel with the JSON body.
     setAuthCookies(res, { token, refreshToken });
@@ -770,59 +994,107 @@ router.post('/login', authLimiter, loginByEmailLimiter, loginValidation, handleV
   }
 });
 
+// Distinct, string-typed refresh tokens presented on this request (cookie
+// first, then body).
+function presentedRefreshTokens(req) {
+  const tokens = [req.cookies?.refresh_token, req.body?.refreshToken]
+    .filter((t) => typeof t === 'string' && t.length > 0);
+  return [...new Set(tokens)];
+}
+
+const sha256Hex = (value) => crypto.createHash('sha256').update(value).digest('hex');
+
+// O-14: invalidates every session of a user atomically — increments the
+// session generation embedded in tokens as `tv` and clears the refresh-token
+// allow-list in the same update. Returns the new generation, for minting the
+// one session that should survive (change-password's own device).
+async function endAllSessions(userId) {
+  const updated = await User.findOneAndUpdate(
+    { _id: userId },
+    { $inc: { tokenVersion: 1 }, $set: { refreshTokens: [] } },
+    { new: true }
+  ).select('+tokenVersion').lean();
+  return currentTokenVersion(updated);
+}
+
+// Exchanges one raw refresh token for a new pair. Returns { user, token,
+// refreshToken } on success, { message } for a rejection, or { error } for a
+// JWT failure the caller maps to its expired/invalid responses.
+//
+// The rotation is ONE conditional update: the presented token's hash is
+// replaced in place only if it is still on the allow-list. Two requests
+// presenting the same token can therefore never both succeed (no forking),
+// and a refresh racing a password change/reset either finds the list already
+// cleared (→ 401) or mints tokens of the old session generation (tv), which
+// authenticate rejects once the change has bumped it (O-14).
+async function rotateRefreshToken(rawToken) {
+  let decoded;
+  try {
+    decoded = verifyToken(rawToken, process.env.JWT_REFRESH_SECRET);
+  } catch (error) {
+    return { error };
+  }
+  const user = await User.findById(decoded.id).select('+tokenVersion');
+  if (!user || user.isDeleted || user.status === 'deleted') {
+    return { message: 'Përdoruesi nuk u gjet' };
+  }
+  if (isStaleTokenVersion(decoded, user)) {
+    return { message: 'Refresh token i revokuar' };
+  }
+
+  const payload = { id: user._id, email: user.email, userType: user.userType, tv: currentTokenVersion(user) };
+  const token = generateToken(payload);
+  const refreshToken = generateRefreshToken(payload);
+  const rotated = await User.updateOne(
+    { _id: user._id, 'refreshTokens.token': sha256Hex(rawToken) },
+    { $set: { 'refreshTokens.$': { token: sha256Hex(refreshToken), createdAt: new Date() } } }
+  );
+  if (rotated.matchedCount !== 1) {
+    return { message: 'Refresh token i revokuar' };
+  }
+  return { user, token, refreshToken };
+}
+
 // @route   POST /api/auth/refresh
 // @desc    Refresh access token using refresh token
 // @access  Public
-router.post('/refresh', authLimiter, async (req, res) => {
+router.post('/refresh', refreshLimiter, async (req, res) => {
   try {
-    // Round O-F: accept refresh token from EITHER the httpOnly
-    // `refresh_token` cookie OR the request body. Cookie wins when both
-    // are present.
-    const refreshToken = req.cookies?.refresh_token || req.body?.refreshToken;
+    // Round O-F: accept the refresh token from the httpOnly `refresh_token`
+    // cookie and/or the request body. O-40: when both arrive they can differ
+    // — browsers that ran the old frontend (refresh without credentials)
+    // still hold a rotated-out cookie next to the live localStorage token.
+    // Try each distinct candidate, cookie first, so one stale copy cannot end
+    // a live session. Each candidate must still verify and be unrevoked.
+    const candidates = presentedRefreshTokens(req);
 
-    if (!refreshToken) {
+    if (candidates.length === 0) {
       return res.status(401).json({
         success: false,
         message: 'Refresh token është i detyrueshëm'
       });
     }
 
-    // Verify refresh token
-    const decoded = verifyToken(refreshToken, process.env.JWT_REFRESH_SECRET);
+    let rotated = null;
+    let firstFailure = null;
+    for (const candidate of candidates) {
+      const result = await rotateRefreshToken(candidate);
+      if (result.user) {
+        rotated = result;
+        break;
+      }
+      firstFailure = firstFailure || result;
+    }
 
-    // Get user from database
-    const user = await User.findById(decoded.id);
-
-    if (!user || user.isDeleted || user.status === 'deleted') {
+    if (!rotated) {
+      if (firstFailure.error) throw firstFailure.error;
       return res.status(401).json({
         success: false,
-        message: 'Përdoruesi nuk u gjet'
+        message: firstFailure.message
       });
     }
 
-    // Check if this refresh token is still valid (not revoked) — tokens stored as SHA-256 hashes
-    const hashedToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
-    const tokenExists = user.refreshTokens.some(t => t.token === hashedToken);
-    if (!tokenExists) {
-      return res.status(401).json({
-        success: false,
-        message: 'Refresh token i revokuar'
-      });
-    }
-
-    // Generate new tokens
-    const payload = {
-      id: user._id,
-      email: user.email,
-      userType: user.userType
-    };
-
-    const newToken = generateToken(payload);
-    const newRefreshToken = generateRefreshToken(payload);
-
-    // Rotate: remove old, add new
-    await user.removeRefreshToken(refreshToken);
-    await user.addRefreshToken(newRefreshToken);
+    const { token: newToken, refreshToken: newRefreshToken } = rotated;
 
     // Round O-F: update cookies with the rotated pair.
     setAuthCookies(res, { token: newToken, refreshToken: newRefreshToken });
@@ -919,9 +1191,15 @@ function sendPasswordChangedNotice(user) {
 // @access  Private
 router.put('/change-password', authenticate, changePasswordLimiter, [
   body('currentPassword')
+    .isString()
+    .withMessage('Fjalëkalimi aktual është i detyrueshëm')
+    .bail()
     .notEmpty()
     .withMessage('Fjalëkalimi aktual është i detyrueshëm'),
   body('newPassword')
+    .isString()
+    .withMessage('Fjalëkalimi i ri duhet të jetë tekst')
+    .bail()
     .isLength({ min: 8 })
     .withMessage('Fjalëkalimi i ri duhet të ketë të paktën 8 karaktere')
     .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
@@ -956,15 +1234,30 @@ router.put('/change-password', authenticate, changePasswordLimiter, [
     user.password = newPassword;
     await user.save();
 
-    // F-21 fix: invalidate all refresh tokens after password change.
-    // Forces re-login on every device — defense against stolen tokens.
-    await user.removeAllRefreshTokens();
+    // F-21 / O-14: end every session, on every device, in ONE atomic step —
+    // bump the session generation (all access and refresh tokens carrying the
+    // old `tv` stop verifying, with no 1-second window) and drop every stored
+    // refresh token (a refresh racing this finds its token gone → 401).
+    const sessionTv = await endAllSessions(user._id);
+
+    // O-14: the device that changed the password must keep its session.
+    // Without a fresh pair it was silently logged out when its access token
+    // expired (its refresh token had just been revoked above).
+    const payload = { id: user._id, email: user.email, userType: user.userType, tv: sessionTv };
+    const token = generateToken(payload);
+    const refreshToken = generateRefreshToken(payload);
+    await user.addRefreshToken(refreshToken);
+    setAuthCookies(res, { token, refreshToken });
 
     sendPasswordChangedNotice(user);
 
     res.json({
       success: true,
-      message: 'Fjalëkalimi u ndryshua me sukses'
+      message: 'Fjalëkalimi u ndryshua me sukses',
+      data: {
+        token,
+        refreshToken
+      }
     });
   } catch (error) {
     logger.error('Change password error:', error.message);
@@ -1046,8 +1339,11 @@ router.post('/forgot-password', authLimiter, forgotPasswordByEmailLimiter, [
 // @desc    Reset password using token
 // @access  Public
 router.post('/reset-password', authLimiter, [
-  body('token').notEmpty().withMessage('Token-i është i detyrueshëm'),
+  body('token').isString().withMessage('Token-i është i detyrueshëm').bail().notEmpty().withMessage('Token-i është i detyrueshëm'),
   body('password')
+    .isString()
+    .withMessage('Fjalëkalimi duhet të jetë tekst')
+    .bail()
     .isLength({ min: 8 })
     .withMessage('Fjalëkalimi duhet të ketë të paktën 8 karaktere')
     .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
@@ -1076,10 +1372,10 @@ router.post('/reset-password', authLimiter, [
     user.password = password;
     user.passwordResetToken = undefined;
     user.passwordResetExpires = undefined;
-
-    // Invalidate all refresh tokens for security
-    await user.removeAllRefreshTokens();
     await user.save();
+
+    // End every session — refresh tokens AND live access tokens (O-14).
+    await endAllSessions(user._id);
 
     sendPasswordChangedNotice(user);
 
@@ -1124,7 +1420,10 @@ router.post('/send-verification', authenticate, async (req, res) => {
 // @desc    Verify email with code
 // @access  Private
 router.post('/verify-email', authenticate, [
-  body('code').isLength({ min: 6, max: 6 }).isNumeric().withMessage('Kodi duhet të jetë 6 shifra')
+  body('code')
+    .isString().withMessage('Kodi duhet të jetë 6 shifra').bail()
+    .isLength({ min: 6, max: 6 }).withMessage('Kodi duhet të jetë 6 shifra')
+    .isNumeric().withMessage('Kodi duhet të jetë 6 shifra')
 ], handleValidationErrors, async (req, res) => {
   try {
     const { code } = req.body;
@@ -1169,12 +1468,17 @@ router.post('/verify-email', authenticate, [
 // @access  Private
 router.post('/logout', authenticate, async (req, res) => {
   try {
-    // Round O-F: accept refresh token from cookie OR body, matching /refresh.
-    const refreshToken = req.cookies?.refresh_token || req.body?.refreshToken;
+    // Round O-F: refresh tokens may arrive in the cookie and/or the body.
+    // O-40: revoke EVERY copy presented. Preferring the cookie alone revoked
+    // a stale rotated-out cookie while the live localStorage token survived
+    // logout for its full 7-day lifetime.
+    const refreshTokens = presentedRefreshTokens(req);
     const user = await User.findById(req.user._id);
 
-    if (user && refreshToken) {
-      await user.removeRefreshToken(refreshToken);
+    if (user && refreshTokens.length > 0) {
+      for (const token of refreshTokens) {
+        await user.removeRefreshToken(token);
+      }
     } else if (user) {
       // If no specific token provided, revoke all
       await user.removeAllRefreshTokens();

@@ -23,7 +23,7 @@ const configurationLimit = rateLimit({
   skip: (req) => process.env.NODE_ENV === 'development', // Skip in development
   keyGenerator: (req) => {
     // Use authenticated admin ID for rate limiting, otherwise use ipKeyGenerator for proper IPv6 handling
-    return req.user?.id || ipKeyGenerator(req);
+    return req.user?.id || ipKeyGenerator(req.ip);
   }
 });
 

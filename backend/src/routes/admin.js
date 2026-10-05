@@ -10,6 +10,7 @@ import userEmbeddingService from '../services/userEmbeddingService.js';
 import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
 import logger from '../config/logger.js';
 import { pingJob } from '../lib/indexNow.js';
+import { closeJobsForSanctionedEmployer } from '../lib/employerSanctions.js';
 
 const router = express.Router();
 
@@ -607,42 +608,43 @@ router.patch('/users/:userId/manage', async (req, res) => {
       });
     }
 
+    // O-51: admins cannot suspend/ban other admins (same rule as delete) — a
+    // rogue or compromised admin must not be able to lock out the owner.
+    if (user.userType === 'admin' && ['suspend', 'ban'].includes(action)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Nuk mund të pezulloni ose ndaloni administratorë të tjerë'
+      });
+    }
+
     switch (action) {
       case 'suspend':
         await user.suspend(reason || 'Pezulluar nga administratori', req.user._id, duration || null);
-        // Close suspended employer's jobs (cascade decrements Location.jobCount —
-        // updateMany bypasses mongoose middleware, so do it explicitly per
-        // ultrareview bug_001).
+        // Close suspended employer's active jobs (shared with the report
+        // action path — lib/employerSanctions.js).
         if (user.userType === 'employer') {
-          const affected = await Job.find(
-            { employerId: user._id, isDeleted: false, status: 'active' },
-            { 'location.city': 1 }
-          ).lean();
-          await Job.updateMany(
-            { employerId: user._id, isDeleted: false, status: 'active' },
-            { $set: { status: 'closed' } }
-          );
-          await Job.decrementLocationCountsForCities(affected.map(j => j.location?.city));
+          await closeJobsForSanctionedEmployer(user._id, 'suspend');
         }
         cacheDelete('admin:dashboard').catch(() => {});
         return res.json({ success: true, data: { user }, message: 'Përdoruesi u pezullua me sukses' });
       case 'ban':
         await user.ban(reason || 'Ndaluar nga administratori', req.user._id);
-        // Close banned employer's jobs
+        // Close + soft-delete banned employer's jobs (shared helper)
         if (user.userType === 'employer') {
-          const affected = await Job.find(
-            { employerId: user._id, isDeleted: false, status: 'active' },
-            { 'location.city': 1 }
-          ).lean();
-          await Job.updateMany(
-            { employerId: user._id, isDeleted: false },
-            { $set: { isDeleted: true, status: 'closed' } }
-          );
-          await Job.decrementLocationCountsForCities(affected.map(j => j.location?.city));
+          await closeJobsForSanctionedEmployer(user._id, 'ban');
         }
         cacheDelete('admin:dashboard').catch(() => {});
         return res.json({ success: true, data: { user }, message: 'Përdoruesi u ndalua me sukses' });
       case 'activate':
+        // O-50: 'activate' only lifts a suspension/ban. A deleted account
+        // stays deleted (authenticate rejects isDeleted, and the 30-day purge
+        // is still scheduled) — refuse instead of reporting a false success.
+        if (user.isDeleted || user.status === 'deleted') {
+          return res.status(400).json({
+            success: false,
+            message: 'Kjo llogari është fshirë dhe nuk mund të riaktivizohet'
+          });
+        }
         user.status = 'active';
         user.suspensionDetails = undefined;
         break;
