@@ -93,6 +93,45 @@ RERANK_ENABLED=true                              # default true; toggle false to
 
 ---
 
+### Payments (Stripe) — required before paid posting goes live (2026-10)
+
+Full detail: `PAYMENTS.md`. On the Render backend service:
+
+```
+STRIPE_SECRET_KEY=sk_test_…        # test mode first; sk_live_… only at go-live
+STRIPE_WEBHOOK_SECRET=whsec_…      # from the webhook endpoint below (test & live secrets differ)
+PAYMENT_PROVIDERS=stripe           # default; Paysera stays disabled
+ALERT_EMAIL_TO=ops@advance.al      # money alerts (also Discord DISCORD_WEBHOOK_PAYMENTS)
+HEALTHZ_TOKEN=…                    # for GET /healthz/payments monitoring
+```
+
+**Remove from Render** (fake/mock payment switches — ignored in production
+since 2026-10, but each one still logs an ERROR at every boot):
+`PAYSERA_ALLOW_FAKE_SUCCESS`, `ENABLE_MOCK_PAYMENTS`, `PAYMENTS_ALLOW_FAKE`.
+Paysera keys (`PAYSERA_PROJECT_ID`, `PAYSERA_SIGN_PASSWORD`, `PAYSERA_TEST`)
+are unused unless `PAYMENT_PROVIDERS` lists `paysera`.
+
+Stripe dashboard → Developers → Webhooks → **Add endpoint**
+`https://api.advance.al/api/payments/stripe/webhook`, events:
+`checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+`checkout.session.async_payment_failed`, `checkout.session.expired`,
+`charge.refunded`, `charge.dispute.created`. Copy its signing secret into
+`STRIPE_WEBHOOK_SECRET`.
+
+Without both Stripe values and with `payment_enabled=true`, the backend logs
+`PAYMENTS NOT USABLE` at boot, alerts admins, `/healthz/payments` reports
+`blocking: true`, and checkout answers 503 — employers can create jobs but
+cannot publish them. Either configure Stripe or set `payment_enabled=false`
+(Admin → Konfigurimi) before launch.
+
+Smoke after deploy:
+```bash
+curl -s -H "X-Healthz-Token: $HEALTHZ_TOKEN" https://api.advance.al/healthz/payments | jq '.status, .payments'
+# Expected: "healthy", { provider: "stripe", configured: true, mode: "test"|"live", webhookSecretSet: true, blocking: false }
+```
+Then one real test-mode purchase (card 4242 4242 4242 4242) as a test employer
+— see `PAYMENTS.md` → "Test-mode procedure".
+
 ## Step 2 — Verify Render env matches local (sanity)
 
 Optional but reassuring. Compare every non-secret env on Render against `backend/.env` to detect drift accumulated over 297 commits.

@@ -1,7 +1,8 @@
 import express from 'express';
 import { body, query, validationResult } from 'express-validator';
 import mongoose from 'mongoose';
-import { Job, User, Location, PricingRule, BusinessCampaign, RevenueAnalytics, SystemConfiguration } from '../models/index.js';
+import { Job, User, Location, SystemConfiguration } from '../models/index.js';
+import { JOB_TTL_DAYS } from '../models/Job.js';
 import { authenticate, requireEmployer, requireVerifiedEmployer, optionalAuth } from '../middleware/auth.js';
 import notificationService from '../lib/notificationService.js';
 import jobEmbeddingService from '../services/jobEmbeddingService.js';
@@ -18,6 +19,8 @@ import { pingJob } from '../lib/indexNow.js';
 import { JOB_CATEGORIES } from '../constants/jobCategories.js';
 import { notifyDiscord, deriveRequestSignals } from '../services/discordNotifier.js';
 import { publicJob } from '../lib/serializers.js';
+import { getListingPrices, isEmployerFree } from '../lib/pricing.js';
+import { cancelOpenOrdersForJob, recordRevenue } from '../services/payments/orderService.js';
 
 const router = express.Router();
 
@@ -1021,7 +1024,6 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
       salary = {},
       customQuestions = [],
       tags = [],
-      tier = 'basic',
       platformCategories = {
         diaspora: false,
         ngaShtepia: false,
@@ -1031,14 +1033,9 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
       }
     } = req.body;
 
-    // Validate tier against allowed values (prevent client sending arbitrary tiers)
-    const allowedTiers = ['basic', 'premium', 'featured'];
-    if (!allowedTiers.includes(tier)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Tier i pavlefshëm. Vlerat e lejuara: basic, premium, featured'
-      });
-    }
+    // O-60: tier is server-assigned. Every job starts 'basic'; 'premium' only
+    // comes from a paid promoted order, 'featured' only from an admin. A
+    // client-sent `tier` is ignored.
 
     // Server-side enforcement: non-administrata employers cannot set administrata flag
     if (platformCategories.administrata && !req.user.profile?.employerProfile?.isAdministrataAccount) {
@@ -1097,184 +1094,47 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
       },
       customQuestions,
       tags: tags.slice(0, 10), // Limit to 10 tags
-      tier,
+      tier: 'basic',
       status: 'active'
     });
 
-    // Calculate pricing using configurable prices
-    const standardPrice = await SystemConfiguration.getSettingValue('pricing_standard_posting', 28);
-    const promotedPrice = await SystemConfiguration.getSettingValue('pricing_promoted_posting', 45);
-    const basePrice = tier === 'promoted' ? promotedPrice : standardPrice;
-    const jobData = {
-      industry: category,
-      location: job.location,
-      jobType: jobType,
-      tier: tier
-    };
-
-    const employerData = {
-      userType: req.user.userType,
-      accountAge: Math.floor((Date.now() - req.user.createdAt) / (1000 * 60 * 60 * 24)),
-      totalSpent: req.user.totalSpent || 0
-    };
-
-    // Declare outside try block for analytics callback access
-    let pricingResult;
-    let appliedCampaign = null;
-
-    try {
-      // 1. Calculate base pricing using rules
-      pricingResult = await PricingRule.calculateOptimalPrice(basePrice, jobData, employerData);
-      let finalPrice = pricingResult.finalPrice;
-      let totalDiscount = pricingResult.discount;
-
-      // 2. Check for active campaigns that apply to this employer/job
-      const activeCampaigns = await BusinessCampaign.find({
-        isActive: true,
-        status: 'active',
-        'schedule.startDate': { $lte: new Date() },
-        'schedule.endDate': { $gte: new Date() },
-        $expr: { $lt: ['$parameters.currentUses', '$parameters.maxUses'] }
-      }).sort({ 'parameters.discount': -1 }); // Apply highest discount first
-
-      for (const campaign of activeCampaigns) {
-        const canUseCampaign = await checkCampaignEligibility(campaign, req.user, jobData);
-        if (canUseCampaign) {
-          // Apply campaign discount
-          let campaignDiscount = 0;
-          if (campaign.parameters.discountType === 'percentage') {
-            campaignDiscount = finalPrice * (campaign.parameters.discount / 100);
-          } else {
-            campaignDiscount = campaign.parameters.discount;
-          }
-
-          finalPrice = Math.max(0, finalPrice - campaignDiscount);
-          totalDiscount += campaignDiscount;
-          appliedCampaign = campaign._id;
-
-          // Track campaign usage
-          campaign.parameters.currentUses += 1;
-          await campaign.trackConversion(campaignDiscount, req.user.createdAt > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
-
-          break; // Apply only one campaign
-        }
-      }
-
-      job.pricing = {
-        basePrice: pricingResult.originalPrice,
-        finalPrice: Math.round(finalPrice * 100) / 100, // Round to 2 decimals
-        appliedRules: pricingResult.appliedRules,
-        discount: Math.round(totalDiscount * 100) / 100,
-        priceIncrease: pricingResult.priceIncrease,
-        campaignApplied: appliedCampaign
-      };
-    } catch (pricingError) {
-      logger.error('Pricing calculation failed, using default price:', pricingError);
-      job.pricing = {
-        basePrice: basePrice,
-        finalPrice: basePrice,
-        appliedRules: [],
-        discount: 0,
-        priceIncrease: 0,
-        campaignApplied: null
-      };
-    }
-
-    // Helper function to check campaign eligibility
-    async function checkCampaignEligibility(campaign, user, jobData) {
-      switch (campaign.parameters.targetAudience) {
-        case 'new_employers':
-          const userJobCount = await Job.countDocuments({ employerId: user._id });
-          return userJobCount === 0; // First job
-        case 'returning_employers':
-          const returningJobCount = await Job.countDocuments({ employerId: user._id });
-          return returningJobCount > 0;
-        case 'enterprise':
-          return user.profile?.employerProfile?.companySize === 'large';
-        case 'specific_industry':
-          return campaign.parameters.industryFilter?.includes(jobData.industry);
-        case 'all':
-        default:
-          return true;
-      }
-    }
-
-    // Check if employer has free posting privileges
-    const employer = await User.findById(req.user._id);
-    // If no payment system is configured yet, all verified employers post for free
-    const paymentEnabled = await SystemConfiguration.getSettingValue('payment_enabled');
-    const isFreeForEmployer = employer.freePostingEnabled || !paymentEnabled;
-
-    // Check if job approval is required (config-driven)
+    // Fixed list price (owner decision 2026-10-02). The PricingRule /
+    // BusinessCampaign engine no longer influences what is charged (O-61) —
+    // job.pricing is informational; the PaymentOrder created at checkout is
+    // the source of truth for the amount actually charged.
+    const prices = await getListingPrices();
+    const isFreeForEmployer = await isEmployerFree(req.user);
     const requireApproval = await SystemConfiguration.getSettingValue('require_job_approval');
 
-    // Mark job as pending payment initially (unless price is 0 or employer is whitelisted)
-    if (job.pricing.finalPrice > 0 && !isFreeForEmployer) {
+    job.pricing = {
+      basePrice: prices.standard,
+      finalPrice: isFreeForEmployer ? 0 : prices.standard,
+      appliedRules: [],
+      discount: isFreeForEmployer ? prices.standard : 0,
+      priceIncrease: 0,
+      campaignApplied: null
+    };
+
+    if (!isFreeForEmployer && prices.standard > 0) {
+      // Unpaid until a checkout order is paid (POST /api/payments/checkout).
       job.status = 'pending_payment';
-      job.paymentRequired = job.pricing.finalPrice;
+      job.paymentStatus = 'pending';
+      job.paymentRequired = prices.standard;
     } else if (requireApproval) {
       job.status = 'pending_approval';
-      if (isFreeForEmployer) {
-        job.pricing.finalPrice = 0;
-        job.pricing.discount = job.pricing.basePrice;
-      }
     } else {
-      job.status = 'active'; // Free jobs or whitelisted employers go live immediately
-      if (isFreeForEmployer) {
-        job.pricing.finalPrice = 0; // Override price to 0 for whitelisted employers
-        job.pricing.discount = job.pricing.basePrice; // Show full discount
-      }
+      job.status = 'active'; // Free jobs / whitelisted employers go live immediately
     }
 
     await job.save();
 
-    // 3. Track revenue analytics only for active jobs (not pending_payment)
+    // Daily analytics: a free job that goes live counts as a posted job with
+    // 0 revenue. Paid jobs are recorded with their real amount when the
+    // order is fulfilled (services/payments/orderService.js, O-62).
     if (job.status === 'active') {
-      setImmediate(async () => {
-        try {
-          const today = await RevenueAnalytics.getOrCreateDaily();
-
-          // Update daily metrics
-          await today.updateMetrics({
-            totalRevenue: today.metrics.totalRevenue + job.pricing.finalPrice,
-            jobsPosted: today.metrics.jobsPosted + 1,
-            averageJobPrice: (today.metrics.totalRevenue + job.pricing.finalPrice) / (today.metrics.jobsPosted + 1)
-          });
-
-          // Track campaign revenue if applicable
-          if (appliedCampaign) {
-            const campaign = await BusinessCampaign.findById(appliedCampaign);
-            if (campaign) {
-              await today.addCampaignData({
-                campaignId: appliedCampaign,
-                name: campaign.name,
-                revenue: job.pricing.finalPrice,
-                conversions: 1,
-                cost: job.pricing.discount, // Discount given is the cost
-                roi: ((job.pricing.finalPrice - job.pricing.discount) / job.pricing.discount) * 100
-              });
-            }
-          }
-
-          // Track pricing rule revenue
-          if (pricingResult.appliedRules?.length > 0) {
-            for (const ruleId of pricingResult.appliedRules) {
-              const rule = await PricingRule.findById(ruleId);
-              if (rule) {
-                await today.addPricingRuleData({
-                  ruleId: ruleId,
-                  name: rule.name,
-                  revenue: job.pricing.finalPrice,
-                  jobsAffected: 1,
-                  averageImpact: ((job.pricing.finalPrice - job.pricing.basePrice) / job.pricing.basePrice) * 100
-                });
-              }
-            }
-          }
-
-        } catch (analyticsError) {
-          logger.error('Error updating revenue analytics:', analyticsError);
-        }
+      setImmediate(() => {
+        recordRevenue({ amountCents: 0, tier: 'standard' }).catch((err) =>
+          logger.error('Error updating revenue analytics:', err.message));
       });
     }
 
@@ -1451,9 +1311,35 @@ router.put('/:id', validateObjectId('id'), authenticate, requireEmployer, requir
   }
 });
 
+// Statuses whose label we show in employer-facing error messages.
+const STATUS_LABEL_SQ = {
+  active: 'aktive',
+  paused: 'e pezulluar',
+  closed: 'e mbyllur',
+  draft: 'draft',
+  expired: 'e skaduar',
+  pending_payment: 'në pritje të pagesës',
+  rejected: 'e refuzuar',
+  pending_approval: 'në pritje të miratimit',
+};
+
+/**
+ * Retire any open checkout for a job that the employer is closing/deleting.
+ * Returns the re-read job when a checkout turned out to be PAID a moment ago
+ * (the job may now be active) so the caller can stop and tell the employer.
+ */
+async function retireOpenCheckouts(job, reason, source) {
+  const results = await cancelOpenOrdersForJob(job._id, reason, { source });
+  if (!results.some((r) => r.outcome === 'paid')) return null;
+  return Job.findById(job._id);
+}
+
 // @route   DELETE /api/jobs/:id
 // @desc    Delete job posting (soft delete)
 // @access  Private (Job owner only)
+// NOTE: deliberately NOT behind requireVerifiedEmployer — removing your own
+// content is harmless; a de-verified employer must still be able to take
+// postings down. (Activation/renewal paths ARE verification-gated, O-22.)
 router.delete('/:id', validateObjectId('id'), authenticate, requireEmployer, async (req, res) => {
   try {
     const job = await Job.findOne({
@@ -1469,15 +1355,23 @@ router.delete('/:id', validateObjectId('id'), authenticate, requireEmployer, asy
       });
     }
 
-    // Unpaid jobs are deletable like any other. Per user mental model:
-    // pending_payment is a transient state — if the employer abandons it,
-    // the job is gone. We do mark paymentStatus='failed' before
-    // soft-deleting so any orphaned Paysera callback that later arrives
-    // can be reconciled against the audit log, and the callback handler
-    // refuses to activate isDeleted jobs.
+    // Retire open checkouts first so the employer can't be charged for a
+    // deleted job. If one was paid a moment ago, stop: the job just went live.
+    const paidMeanwhile = await retireOpenCheckouts(job, 'job deleted by employer', 'job-delete');
+    if (paidMeanwhile) {
+      return res.status(409).json({
+        success: false,
+        code: 'PAYMENT_COMPLETED',
+        message: 'Pagesa për këtë punë sapo u krye. Rifreskoni panelin përpara se ta fshini.',
+        data: { job: paidMeanwhile }
+      });
+    }
+
+    // Unpaid jobs are deletable like any other. paymentStatus='failed' marks
+    // the abandoned post for the audit trail; a late provider "paid" for it
+    // lands as activation_skipped → needsRefund (never resurrects the job).
     if (job.status === 'pending_payment') {
       job.paymentStatus = 'failed';
-      await job.save();
     }
 
     await job.softDelete();
@@ -1500,16 +1394,18 @@ router.delete('/:id', validateObjectId('id'), authenticate, requireEmployer, asy
 });
 
 // @route   PATCH /api/jobs/:id/status
-// @desc    Update job status (pause/resume)
-// @access  Private (Job owner only)
-router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmployer, async (req, res) => {
+// @desc    Employer closes a job, or re-opens a job THEY closed (O-18).
+//          'active' is NOT a way to publish: unpaid → checkout, expired →
+//          renew, awaiting moderation → admin. No 'paused' (feature removed).
+// @access  Private (verified job owner)
+router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmployer, requireVerifiedEmployer, async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status } = req.body || {};
 
-    if (!['active', 'paused', 'closed'].includes(status)) {
+    if (status !== 'active' && status !== 'closed') {
       return res.status(400).json({
         success: false,
-        message: 'Statusi duhet të jetë: active, paused, ose closed'
+        message: 'Statusi duhet të jetë: active ose closed'
       });
     }
 
@@ -1526,21 +1422,82 @@ router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmploye
       });
     }
 
-    job.status = status;
+    const fail = (message, code) => res.status(400).json({ success: false, ...(code ? { code } : {}), message });
+
+    if (status === 'closed') {
+      if (job.status === 'closed') return fail('Puna është tashmë e mbyllur.');
+      // 'paused' = legacy documents from before the pause feature was removed.
+      const closable = ['active', 'paused', 'pending_approval', 'draft', 'pending_payment'];
+      if (!closable.includes(job.status)) {
+        return fail(`Një punë ${STATUS_LABEL_SQ[job.status] || job.status} nuk mund të mbyllet.`);
+      }
+      const paidMeanwhile = await retireOpenCheckouts(job, 'job closed by employer', 'job-close');
+      if (paidMeanwhile) {
+        return res.status(409).json({
+          success: false,
+          code: 'PAYMENT_COMPLETED',
+          message: 'Pagesa për këtë punë sapo u krye. Rifreskoni panelin.',
+          data: { job: paidMeanwhile }
+        });
+      }
+      job.closedFromStatus = job.status;
+      job.closedReason = 'employer';
+      job.status = 'closed';
+    } else {
+      // status === 'active' — only re-opening a job the employer closed.
+      if (job.status === 'active') return fail('Puna është tashmë aktive.');
+      if (job.status !== 'closed') {
+        const byState = {
+          pending_payment: ['Kjo punë publikohet pasi të kryhet pagesa.', 'PAYMENT_REQUIRED'],
+          pending_approval: ['Kjo punë pret miratimin e administratorit.', 'AWAITING_APPROVAL'],
+          rejected: ['Kjo punë është refuzuar nga administratori dhe nuk mund të aktivizohet.', 'REJECTED'],
+          expired: ['Kjo punë ka skaduar — ripostojeni për ta publikuar sërish.', 'EXPIRED'],
+          draft: ['Një draft nuk mund të aktivizohet direkt.', 'DRAFT'],
+        };
+        const [msg, code] = byState[job.status] || [`Një punë ${STATUS_LABEL_SQ[job.status] || job.status} nuk mund të aktivizohet.`, 'INVALID_STATE'];
+        return fail(msg, code);
+      }
+      if (job.closedReason && job.closedReason !== 'employer') {
+        const byReason = {
+          suspension: 'Kjo punë u mbyll nga administratori dhe nuk mund të rihapet.',
+          refund: 'Pagesa për këtë punë u rimbursua — ripostojeni me pagesë për ta publikuar.',
+          payment_canceled: 'Kjo punë nuk është paguar — ripostojeni me pagesë për ta publikuar.',
+        };
+        return fail(byReason[job.closedReason] || 'Kjo punë nuk mund të rihapet.', 'CLOSED_BY_SYSTEM');
+      }
+      if (!job.expiresAt || job.expiresAt <= new Date()) {
+        return fail('Afati i kësaj pune ka kaluar — ripostojeni për ta publikuar sërish.', 'EXPIRED');
+      }
+      const from = job.closedFromStatus;
+      if (from === 'draft') return fail('Një draft nuk mund të aktivizohet direkt.', 'DRAFT');
+      const paidOrFree = job.paymentStatus === 'paid' || await isEmployerFree(req.user);
+      if (!paidOrFree) {
+        return fail('Kjo punë nuk është paguar — ripostojeni me pagesë për ta publikuar.', 'PAYMENT_REQUIRED');
+      }
+      // A job closed while it awaited moderation goes back to moderation.
+      job.status = from === 'pending_approval' ? 'pending_approval' : 'active';
+      job.closedReason = undefined;
+      job.closedFromStatus = undefined;
+    }
+
     await job.save();
+
+    if (job.status === 'active') {
+      setImmediate(() => { pingJob(job); });
+    }
 
     // F-10 fix: invalidate admin:dashboard cache on status change
     cacheDelete('admin:dashboard').catch(() => {});
 
     const statusMessages = {
       active: 'Puna u aktivizua me sukses',
-      paused: 'Puna u pezullua me sukses',
+      pending_approval: 'Puna u rihap dhe pret miratimin e administratorit',
       closed: 'Puna u mbyll me sukses'
     };
 
     res.json({
       success: true,
-      message: statusMessages[status],
+      message: statusMessages[job.status],
       data: { job }
     });
 
@@ -1554,9 +1511,13 @@ router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmploye
 });
 
 // @route   POST /api/jobs/:id/renew
-// @desc    Renew/repost an expired or closed job with fresh dates
-// @access  Private (Employer - job owner)
-router.post('/:id/renew', validateObjectId('id'), authenticate, requireEmployer, async (req, res) => {
+// @desc    Re-list an expired or closed job for a fresh JOB_TTL_DAYS period.
+//          Renewal is PAID (owner decision 2026-10-02): paying employers get
+//          402 PAYMENT_REQUIRED and go through POST /api/payments/checkout
+//          with purpose 'job_renewal'. Free employers (freePostingEnabled or
+//          payment_enabled=false) renew here for free (O-19).
+// @access  Private (verified job owner)
+router.post('/:id/renew', validateObjectId('id'), authenticate, requireEmployer, requireVerifiedEmployer, async (req, res) => {
   try {
     const job = await Job.findOne({
       _id: req.params.id,
@@ -1578,24 +1539,36 @@ router.post('/:id/renew', validateObjectId('id'), authenticate, requireEmployer,
       });
     }
 
-    // Check if job approval is required
-    const requireApproval = await SystemConfiguration.getSettingValue('require_job_approval');
+    if (!(await isEmployerFree(req.user))) {
+      return res.status(402).json({
+        success: false,
+        code: 'PAYMENT_REQUIRED',
+        message: 'Ripostimi kërkon pagesë',
+        data: { checkout: { purpose: 'job_renewal', jobId: String(job._id) } }
+      });
+    }
 
+    const requireApproval = await SystemConfiguration.getSettingValue('require_job_approval');
+    const now = new Date();
     job.status = requireApproval ? 'pending_approval' : 'active';
-    job.postedAt = new Date();
-    // expiresAt is set by the Job model's default (postedAt + JOB_TTL_DAYS).
-    // Explicitly recompute here for the repost path since we're reusing an
-    // existing Job document; the model pre-save hook would clamp anything
-    // longer than the policy maximum but recomputing avoids relying on it.
-    const { JOB_TTL_DAYS } = await import('../models/Job.js');
-    job.expiresAt = new Date(Date.now() + JOB_TTL_DAYS * 24 * 60 * 60 * 1000);
+    job.postedAt = now;
+    // postedAt + JOB_TTL_DAYS — the hard listing-length policy (Job.js).
+    job.expiresAt = new Date(now.getTime() + JOB_TTL_DAYS * 24 * 60 * 60 * 1000);
     job.viewCount = 0;
+    // Free renewal never carries a paid placement over.
+    job.tier = 'basic';
+    job.closedReason = undefined;
+    job.closedFromStatus = undefined;
 
     await job.save();
 
     // Re-embed on repost: employers commonly edit description/skills during
     // the closed period; the old vector may no longer match the current text.
     fireEmbedding({ kind: 'job', id: job._id, reason: 'renew' });
+    if (job.status === 'active') {
+      setImmediate(() => { pingJob(job); });
+    }
+    cacheDelete('admin:dashboard').catch(() => {});
 
     res.json({
       success: true,

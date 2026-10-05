@@ -29,6 +29,9 @@ import { Job, User, QuickUser } from '../models/index.js';
 import EmailOutbox from '../models/EmailOutbox.js';
 import { getWorkerStats } from '../services/embeddingRetryWorker.js';
 import { getOutboxStats } from '../services/emailOutboxDrain.js';
+import { PaymentOrder } from '../models/index.js';
+import { paymentsReadiness } from '../services/payments/bootCheck.js';
+import { getReconcileStats } from '../services/payments/reconcileWorker.js';
 import logger from '../config/logger.js';
 
 const router = express.Router();
@@ -148,6 +151,48 @@ router.get('/notifications', async (req, res) => {
     });
   } catch (err) {
     logger.error('healthz/notifications error', { error: err.message });
+    res.status(500).json({ status: 'error', message: 'Internal error' });
+  }
+});
+
+/**
+ * GET /healthz/payments — same auth pattern.
+ * Secret-free provider status + money-safety counters:
+ *   payments: { provider, enabledProviders, configured, mode: live|test|fake|unconfigured,
+ *               webhookSecretSet, paymentEnabled, blocking }
+ *   orders:   { open, openOlderThan60m, needsRefund, paidNotActivated }
+ * status === 'degraded' when blocking (paid posting on, no provider), any
+ * order needs a refund, a paid order was never applied, or checkouts are
+ * piling up open for > 60 min (lost webhooks; a session lives 31 min + one 15-min reconcile tick).
+ */
+router.get('/payments', async (req, res) => {
+  const gate = checkHealthzToken(req);
+  if (!gate.ok) {
+    if (gate.reason === 'unconfigured') {
+      return res.status(503).json({ status: 'error', message: 'Healthz monitoring is not configured' });
+    }
+    return res.status(403).json({ status: 'error', message: 'Forbidden' });
+  }
+  try {
+    const now = Date.now();
+    const [payments, open, openOld, needsRefund, paidNotActivated] = await Promise.all([
+      paymentsReadiness(),
+      PaymentOrder.countDocuments({ status: { $in: ['created', 'pending'] } }),
+      PaymentOrder.countDocuments({ status: { $in: ['created', 'pending'] }, createdAt: { $lt: new Date(now - 60 * 60 * 1000) } }),
+      PaymentOrder.countDocuments({ needsRefund: true }),
+      PaymentOrder.countDocuments({ status: 'paid', 'activation.status': 'not_applied', paidAt: { $lt: new Date(now - 10 * 60 * 1000) } }),
+    ]);
+    const orders = { open, openOlderThan60m: openOld, needsRefund, paidNotActivated };
+    const degraded = payments.blocking || needsRefund > 0 || paidNotActivated > 0 || openOld > 0;
+    res.json({
+      status: degraded ? 'degraded' : 'healthy',
+      checkedAt: new Date().toISOString(),
+      payments,
+      orders,
+      reconcileWorker: getReconcileStats(),
+    });
+  } catch (err) {
+    logger.error('healthz/payments error', { error: err.message });
     res.status(500).json({ status: 'error', message: 'Internal error' });
   }
 });

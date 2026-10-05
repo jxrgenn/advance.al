@@ -7,6 +7,8 @@ import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
 import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
 import { errorDetail } from '../utils/errors.js';
 import logger from '../config/logger.js';
+import { getListingPrices } from '../lib/pricing.js';
+import { resolveCheckoutProvider } from '../services/payments/providerConfig.js';
 
 const router = express.Router();
 
@@ -113,13 +115,16 @@ router.get('/public', async (req, res) => {
     // forms use this to show the "SMS" verification option only when it works.
     const smsEnabled = !!(process.env.TWILIO_ACCOUNT_SID
       && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE);
+    // Card checkout availability — also computed fresh (env-driven). The
+    // payment page disables "Pay" and explains why when this is false.
+    const paymentsAvailable = !!resolveCheckoutProvider().provider;
 
     // Check Redis cache first
     const cached = await cacheGet('config:public');
     if (cached) {
       return res.json({
         success: true,
-        data: { settings: typeof cached === 'string' ? JSON.parse(cached) : cached, smsEnabled }
+        data: { settings: typeof cached === 'string' ? JSON.parse(cached) : cached, smsEnabled, paymentsAvailable }
       });
     }
 
@@ -131,12 +136,18 @@ router.get('/public', async (req, res) => {
       return acc;
     }, {});
 
+    // Prices shown to employers MUST be the prices charged: serve the exact
+    // values the checkout uses (lib/pricing.js — same fallbacks + validation).
+    const prices = await getListingPrices();
+    settingsMap.pricing_standard_posting = prices.standard;
+    settingsMap.pricing_promoted_posting = prices.promoted;
+
     // Cache for 5 minutes
     await cacheSet('config:public', settingsMap, 300);
 
     res.json({
       success: true,
-      data: { settings: settingsMap, smsEnabled }
+      data: { settings: settingsMap, smsEnabled, paymentsAvailable }
     });
 
   } catch (error) {
@@ -154,8 +165,8 @@ router.get('/public', async (req, res) => {
 // @access  Private (Admins only)
 router.get('/pricing', authenticate, requireAdmin, async (req, res) => {
   try {
-    const standardPosting = await SystemConfiguration.getSettingValue('pricing_standard_posting', 28);
-    const promotedPosting = await SystemConfiguration.getSettingValue('pricing_promoted_posting', 45);
+    // Effective prices — exactly what checkout charges (lib/pricing.js).
+    const { standard: standardPosting, promoted: promotedPosting } = await getListingPrices();
     const candidateViewing = await SystemConfiguration.getSettingValue('pricing_candidate_viewing', 15);
     const paymentEnabled = await SystemConfiguration.getSettingValue('payment_enabled', false);
 

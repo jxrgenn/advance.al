@@ -63,6 +63,9 @@ const OMIT_JOB_FIELDS = new Set([
   'paymentMethod', 'paymentInitiatedAt', 'paymentReminderSentAt',
   'paymentReminderLevel', 'paymentTimeoutAlertedAt',
   'isDeleted', 'adminApproved', 'rejectionReason', '__v',
+  // Lifecycle internals (payments rebuild) — closedReason can reveal an
+  // account suspension or a refund.
+  'closedReason', 'closedFromStatus',
 ]);
 
 /**

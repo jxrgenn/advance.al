@@ -1403,7 +1403,7 @@ advance.al`;
   // Paysera callback (status=1) AND on dev fake-success. Fire-and-forget
   // from the caller (any throw here just logs and is swallowed by the
   // route handler — we don't want a Resend hiccup to fail a paid callback).
-  async sendPaymentReceiptEmail({ to, employerName, jobTitle, amountEur, tier, paymentDate, paymentId, attachment }) {
+  async sendPaymentReceiptEmail({ to, employerName, jobTitle, amountEur, tier, paymentDate, paymentId, attachment, jobStatus }) {
     if (!this.enabled) {
       return { success: false, message: 'Email service disabled' };
     }
@@ -1419,6 +1419,15 @@ advance.al`;
       });
 
       const subject = safeSubject(`🧾 Faturë pagesë — advance.al — €${safeAmount}`);
+      // A paid job may land in pending_approval when admin moderation is on —
+      // never tell the employer it is live when it is not.
+      const awaitingApproval = jobStatus === 'pending_approval';
+      const statusLineHtml = awaitingApproval
+        ? 'Faleminderit për pagesën. Puna juaj do të publikohet sapo të miratohet nga ekipi ynë.'
+        : 'Faleminderit për pagesën. Puna juaj është publikuar dhe është tashmë e dukshme për kandidatët.';
+      const statusLineText = awaitingApproval
+        ? `Faleminderit për pagesën. Puna "${jobTitle}" do të publikohet sapo të miratohet.`
+        : `Faleminderit për pagesën. Puna "${jobTitle}" është publikuar.`;
 
       const htmlContent = `
 <!DOCTYPE html>
@@ -1439,7 +1448,7 @@ advance.al`;
         Përshëndetje <strong>${safeName}</strong>,
       </p>
       <p style="color: #166534; line-height: 1.6; font-size: 16px;">
-        Faleminderit për pagesën. Puna juaj është publikuar dhe është tashmë e dukshme për kandidatët.
+        ${statusLineHtml}
       </p>
     </div>
 
@@ -1459,7 +1468,7 @@ advance.al`;
           <td style="padding: 8px 0; text-align: right;">${dateStr}</td>
         </tr>
         <tr>
-          <td style="padding: 8px 0; color: #6b7280;">ID e transaksionit</td>
+          <td style="padding: 8px 0; color: #6b7280;">ID e porosisë</td>
           <td style="padding: 8px 0; text-align: right; font-family: monospace; font-size: 13px;">${safePayId}</td>
         </tr>
         <tr style="border-top: 2px solid #e5e7eb;">
@@ -1477,7 +1486,7 @@ advance.al`;
     </div>
 
     <p style="color: #6b7280; font-size: 13px; line-height: 1.6; padding: 0 8px;">
-      Ruajeni këtë email si dëshmi të pagesës. Për çdo pyetje rreth pagesës, na kontaktoni në support@advance.al duke përmendur ID-në e transaksionit më sipër.
+      Ruajeni këtë email si dëshmi të pagesës. Për çdo pyetje rreth pagesës, na kontaktoni në support@advance.al duke përmendur ID-në e porosisë më sipër.
     </p>
 
     <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
@@ -1491,12 +1500,12 @@ advance.al`;
 
 Përshëndetje ${employerName || 'Punëdhënës'},
 
-Faleminderit për pagesën. Puna "${jobTitle}" është publikuar.
+${statusLineText}
 
 Detajet e faturës
 - Paketa: ${safeTierAl}
 - Data e pagesës: ${dateStr}
-- ID e transaksionit: ${paymentId}
+- ID e porosisë: ${paymentId}
 - Totali: €${safeAmount}
 
 Hap panelin: https://advance.al/employer-dashboard

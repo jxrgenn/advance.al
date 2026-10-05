@@ -1,10 +1,20 @@
 /**
- * Phase 28 — coverage push for routes/jobs.js POST / pricing+campaign branches.
+ * POST /api/jobs — fixed pricing + server-assigned tier (payments rebuild,
+ * owner decision 2026-10-02; findings O-60, O-61, O-63).
  *
- * The job-creation route iterates active campaigns and applies the first one
- * that the employer is eligible for (L943-980). Existing tests never seed an
- * active campaign so this entire path is dead. We seed real campaigns and
- * pricing rules and verify the discount is applied to the created job.
+ * Before the rebuild, job creation ran the PricingRule / BusinessCampaign
+ * engine (and burned campaign uses) while the checkout charged the fixed
+ * list price anyway, and it accepted a client-sent `tier` (free premium
+ * placement). This file used to cover those engine branches; it now pins the
+ * replacement contract:
+ *   - job.pricing = fixed list price (SystemConfiguration, fallback 35 €),
+ *     never touched by campaigns or pricing rules;
+ *   - campaign usage counters are NOT incremented by creating a job;
+ *   - the client `tier` is ignored — every job starts 'basic';
+ *   - paying employers get pending_payment with paymentRequired = list price;
+ *     free employers get finalPrice 0.
+ * (jobs-pricing-campaign-targets.test.js covered only checkCampaignEligibility,
+ * which no longer exists on this path — deleted with the engine.)
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
@@ -36,7 +46,6 @@ async function seedActiveCampaign(adminId, overrides = {}) {
       currentUses: 0,
       maxUses: overrides.maxUses ?? 100,
       targetAudience: overrides.targetAudience || 'all',
-      industryFilter: overrides.industryFilter,
     },
     costs: { totalCost: 0 },
     results: { engagements: 0, conversions: 0, revenue: 0, newSignups: 0, averageOrderValue: 0, roi: 0 },
@@ -46,16 +55,12 @@ async function seedActiveCampaign(adminId, overrides = {}) {
   });
 }
 
-async function disablePayment() {
-  await SystemConfiguration.create({
-    key: 'payment_enabled',
-    name: 'Payment Enabled',
-    category: 'payment',
-    dataType: 'boolean',
-    value: true,
-    description: 'd',
-    lastModifiedBy: null,
-  }).catch(() => {});
+async function setConfig(key, value, dataType) {
+  await SystemConfiguration.findOneAndUpdate(
+    { key },
+    { $set: { key, value, dataType, category: 'payment', description: 'test', isActive: true } },
+    { upsert: true },
+  );
 }
 
 const VALID_JOB_BODY = {
@@ -69,7 +74,6 @@ const VALID_JOB_BODY = {
   seniority: 'mid',
   salary: { min: 800, max: 1500, currency: 'EUR' },
   tags: ['react', 'nodejs'],
-  tier: 'basic',
   platformCategories: {
     diaspora: false,
     ngaShtepia: false,
@@ -79,7 +83,7 @@ const VALID_JOB_BODY = {
   },
 };
 
-describe('jobs.js — POST / pricing+campaign branches', () => {
+describe('POST /api/jobs — fixed pricing, server-assigned tier', () => {
   beforeAll(async () => {
     await connectTestDB();
     await seedLocations();
@@ -94,13 +98,15 @@ describe('jobs.js — POST / pricing+campaign branches', () => {
     await closeTestDB();
   });
 
-  it('rejects invalid tier value', async () => {
+  it.each(['premium', 'featured', 'super_premium'])('ignores client tier=%s → job is created basic', async (tier) => {
     const { user: emp } = await createVerifiedEmployer();
     const r = await request(app)
       .post('/api/jobs')
       .set(createAuthHeaders(emp))
-      .send({ ...VALID_JOB_BODY, tier: 'super_premium' });
-    expect(r.status).toBe(400);
+      .send({ ...VALID_JOB_BODY, tier });
+    expect(r.status).toBe(201);
+    const job = await Job.findById(r.body.data.job._id);
+    expect(job.tier).toBe('basic');
   });
 
   it('rejects when salary min > max', async () => {
@@ -121,108 +127,9 @@ describe('jobs.js — POST / pricing+campaign branches', () => {
     expect(r.status).toBe(400);
   });
 
-  it('applies an active percentage-discount campaign (targetAudience=all)', async () => {
+  it('paying employer: pending_payment at the configured standard price; active campaign + pricing rule are ignored and not consumed', async () => {
     const { user: emp } = await createVerifiedEmployer();
-    await seedActiveCampaign(emp._id, { discount: 50, discountType: 'percentage', targetAudience: 'all' });
-    await disablePayment();
-
-    const r = await request(app)
-      .post('/api/jobs')
-      .set(createAuthHeaders(emp))
-      .send(VALID_JOB_BODY);
-
-    expect(r.status).toBe(201);
-    const job = await Job.findById(r.body.data.job._id);
-    expect(job.pricing.campaignApplied).toBeTruthy();
-    expect(job.pricing.discount).toBeGreaterThan(0);
-  });
-
-  it('applies fixed-amount discount campaign', async () => {
-    const { user: emp } = await createVerifiedEmployer();
-    await seedActiveCampaign(emp._id, { discount: 10, discountType: 'fixed_amount', targetAudience: 'all' });
-    await disablePayment();
-
-    const r = await request(app)
-      .post('/api/jobs')
-      .set(createAuthHeaders(emp))
-      .send(VALID_JOB_BODY);
-
-    expect(r.status).toBe(201);
-    const job = await Job.findById(r.body.data.job._id);
-    expect(job.pricing.campaignApplied).toBeTruthy();
-  });
-
-  it('targetAudience=new_employers matches first-time poster', async () => {
-    const { user: emp } = await createVerifiedEmployer();
-    await seedActiveCampaign(emp._id, { discount: 30, targetAudience: 'new_employers' });
-    await disablePayment();
-
-    // Employer has zero existing jobs → eligible
-    const r = await request(app)
-      .post('/api/jobs')
-      .set(createAuthHeaders(emp))
-      .send(VALID_JOB_BODY);
-
-    expect(r.status).toBe(201);
-    const job = await Job.findById(r.body.data.job._id);
-    expect(job.pricing.campaignApplied).toBeTruthy();
-  });
-
-  it('targetAudience=specific_industry matches industry filter', async () => {
-    const { user: emp } = await createVerifiedEmployer();
-    await seedActiveCampaign(emp._id, {
-      discount: 25,
-      targetAudience: 'specific_industry',
-      industryFilter: ['Teknologji'],
-    });
-    await disablePayment();
-
-    const r = await request(app)
-      .post('/api/jobs')
-      .set(createAuthHeaders(emp))
-      .send(VALID_JOB_BODY); // category=Teknologji matches filter
-
-    expect(r.status).toBe(201);
-    const job = await Job.findById(r.body.data.job._id);
-    expect(job.pricing.campaignApplied).toBeTruthy();
-  });
-
-  it('skips campaign when industry does NOT match filter', async () => {
-    const { user: emp } = await createVerifiedEmployer();
-    await seedActiveCampaign(emp._id, {
-      discount: 25,
-      targetAudience: 'specific_industry',
-      industryFilter: ['Marketing'], // Job is Teknologji → no match
-    });
-    await disablePayment();
-
-    const r = await request(app)
-      .post('/api/jobs')
-      .set(createAuthHeaders(emp))
-      .send(VALID_JOB_BODY);
-
-    expect(r.status).toBe(201);
-    const job = await Job.findById(r.body.data.job._id);
-    expect(job.pricing.campaignApplied).toBeFalsy();
-  });
-
-  it('does not apply campaign when targetAudience=enterprise and employer is not large', async () => {
-    const { user: emp } = await createVerifiedEmployer();
-    await seedActiveCampaign(emp._id, { discount: 40, targetAudience: 'enterprise' });
-    await disablePayment();
-
-    const r = await request(app)
-      .post('/api/jobs')
-      .set(createAuthHeaders(emp))
-      .send(VALID_JOB_BODY);
-
-    expect(r.status).toBe(201);
-    const job = await Job.findById(r.body.data.job._id);
-    expect(job.pricing.campaignApplied).toBeFalsy();
-  });
-
-  it('also applies an active PricingRule + tracks campaign + rule together', async () => {
-    const { user: emp } = await createVerifiedEmployer();
+    const campaign = await seedActiveCampaign(emp._id, { discount: 50, discountType: 'percentage', targetAudience: 'all' });
     await PricingRule.create({
       name: 'Tech Discount',
       description: 'Tech jobs are cheaper',
@@ -237,8 +144,32 @@ describe('jobs.js — POST / pricing+campaign branches', () => {
       priority: 50,
       createdBy: emp._id,
     });
-    await seedActiveCampaign(emp._id, { discount: 20, discountType: 'percentage' });
-    await disablePayment();
+    await setConfig('payment_enabled', true, 'boolean');
+    await setConfig('pricing_standard_posting', 40, 'number');
+
+    const r = await request(app)
+      .post('/api/jobs')
+      .set(createAuthHeaders(emp))
+      .send({ ...VALID_JOB_BODY, tier: 'premium' });
+
+    expect(r.status).toBe(201);
+    const job = await Job.findById(r.body.data.job._id);
+    expect(job.status).toBe('pending_payment');
+    expect(job.tier).toBe('basic');
+    expect(job.paymentRequired).toBe(40);
+    expect(job.pricing.basePrice).toBe(40);
+    expect(job.pricing.finalPrice).toBe(40);
+    expect(job.pricing.discount).toBe(0);
+    expect(job.pricing.appliedRules).toHaveLength(0);
+    expect(job.pricing.campaignApplied ?? null).toBeNull();
+
+    const freshCampaign = await BusinessCampaign.findById(campaign._id).lean();
+    expect(freshCampaign.parameters.currentUses).toBe(0);
+  });
+
+  it('no SystemConfiguration price → falls back to 35 € (single fallback table, O-63)', async () => {
+    const { user: emp } = await createVerifiedEmployer();
+    await setConfig('payment_enabled', true, 'boolean');
 
     const r = await request(app)
       .post('/api/jobs')
@@ -247,7 +178,26 @@ describe('jobs.js — POST / pricing+campaign branches', () => {
 
     expect(r.status).toBe(201);
     const job = await Job.findById(r.body.data.job._id);
-    expect(job.pricing.appliedRules.length).toBeGreaterThan(0);
-    expect(job.pricing.campaignApplied).toBeTruthy();
+    expect(job.status).toBe('pending_payment');
+    expect(job.paymentRequired).toBe(35);
+    expect(job.pricing.finalPrice).toBe(35);
+  });
+
+  it('whitelisted employer (freePostingEnabled): active immediately, finalPrice 0, discount = list price', async () => {
+    const { user: emp } = await createVerifiedEmployer({ freePostingEnabled: true });
+    await setConfig('payment_enabled', true, 'boolean');
+
+    const r = await request(app)
+      .post('/api/jobs')
+      .set(createAuthHeaders(emp))
+      .send({ ...VALID_JOB_BODY, tier: 'featured' });
+
+    expect(r.status).toBe(201);
+    const job = await Job.findById(r.body.data.job._id);
+    expect(job.status).toBe('active');
+    expect(job.tier).toBe('basic');
+    expect(job.pricing.finalPrice).toBe(0);
+    expect(job.pricing.discount).toBe(35);
+    expect(job.paymentRequired).toBe(0);
   });
 });

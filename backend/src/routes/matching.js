@@ -108,8 +108,10 @@ router.post('/jobs/:jobId/purchase', validateObjectId('jobId'), authenticate, re
       });
     }
 
-    // Payment gateway not yet integrated
-    if (process.env.ENABLE_MOCK_PAYMENTS !== 'true') {
+    // Payment gateway not yet integrated. The mock purchase grants paid
+    // access for free, so it is impossible in production whatever
+    // ENABLE_MOCK_PAYMENTS says (fail closed; bootCheck logs the flag).
+    if (process.env.ENABLE_MOCK_PAYMENTS !== 'true' || process.env.NODE_ENV === 'production') {
       return res.status(503).json({
         success: false,
         message: 'Sistemi i pagesave do të jetë i disponueshëm së shpejti'

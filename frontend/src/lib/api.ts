@@ -112,6 +112,10 @@ export interface Job {
   tier: string;
   postedAt: string;
   expiresAt: string;
+  // Payment / lifecycle bookkeeping (employer-facing views)
+  paymentStatus?: 'pending' | 'paid' | 'failed' | 'refunded';
+  // Why a 'closed' job was closed — only 'employer' closes can be re-opened.
+  closedReason?: 'employer' | 'suspension' | 'refund' | 'payment_canceled';
   applicationMethod: string;
   customQuestions: Array<{
     question: string;
@@ -225,7 +229,7 @@ export interface PlatformStats {
 }
 
 // API Helper Functions
-class ApiError extends Error {
+export class ApiError extends Error {
   constructor(public response: any, public status: number) {
     super(response.message || 'API Error');
     this.name = 'ApiError';
@@ -653,11 +657,22 @@ export const jobsApi = {
     return apiRequest<any>(endpoint);
   },
 
-  // Update job status
-  updateJobStatus: async (id: string, status: string): Promise<ApiResponse<{ job: Job }>> => {
+  // Close a job ('closed') or re-open a job the employer closed ('active').
+  // Publishing is NOT done here: unpaid → checkout, expired → renewJob.
+  updateJobStatus: async (id: string, status: 'active' | 'closed'): Promise<ApiResponse<{ job: Job }>> => {
     return apiRequest<{ job: Job }>(`/jobs/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
+    });
+  },
+
+  // Re-list an expired/closed job. Free employers get a fresh period here;
+  // paying employers get HTTP 402 { code: 'PAYMENT_REQUIRED' } (thrown as
+  // ApiError) and must go through paymentsApi.createCheckout with
+  // purpose 'job_renewal'.
+  renewJob: async (id: string): Promise<ApiResponse<{ job: Job }>> => {
+    return apiRequest<{ job: Job }>(`/jobs/${id}/renew`, {
+      method: 'POST',
     });
   }
 };
@@ -1220,9 +1235,16 @@ export const statsApi = {
 // Public runtime configuration (no auth). `smsEnabled` reflects whether
 // Twilio is configured on the backend — the signup forms use it to decide
 // whether to offer SMS verification.
+export type PublicConfig = {
+  settings: Record<string, unknown>;
+  smsEnabled: boolean;
+  // Card checkout usable right now (provider configured, or dev-fake in dev).
+  paymentsAvailable?: boolean;
+};
+
 export const configApi = {
-  getPublic: async (): Promise<ApiResponse<{ settings: Record<string, unknown>; smsEnabled: boolean }>> => {
-    return apiRequest<{ settings: Record<string, unknown>; smsEnabled: boolean }>('/configuration/public');
+  getPublic: async (): Promise<ApiResponse<PublicConfig>> => {
+    return apiRequest<PublicConfig>('/configuration/public');
   }
 };
 
@@ -1239,6 +1261,48 @@ export type AdminPayment = {
   paymentInitiatedAt?: string;
   paidAt?: string;
   tier: string;
+  employer: { _id: string; email: string; name: string };
+  latestOrder: {
+    orderId: string;
+    status: PaymentOrderStatus;
+    provider: PaymentProvider;
+    purpose: PaymentPurpose;
+    tier: CheckoutTier;
+    amountEur: number;
+    needsRefund: boolean;
+    createdAt: string;
+    paidAt: string | null;
+  } | null;
+};
+
+export type CheckoutTier = 'standard' | 'promoted';
+export type PaymentPurpose = 'job_post' | 'job_renewal';
+export type PaymentProvider = 'stripe' | 'paysera' | 'admin' | 'dev-fake';
+export type PaymentOrderStatus =
+  | 'created' | 'pending' | 'paid' | 'failed' | 'canceled' | 'expired'
+  | 'refunded' | 'partially_refunded' | 'disputed';
+
+export type AdminPaymentOrder = {
+  orderId: string;
+  status: PaymentOrderStatus;
+  purpose: PaymentPurpose;
+  tier: CheckoutTier;
+  amountEur: number;
+  refundedEur: number;
+  currency: string;
+  provider: PaymentProvider;
+  providerPaymentId: string | null;
+  livemode: boolean | null;
+  activation: 'not_applied' | 'applied' | 'skipped';
+  activationReason: string | null;
+  needsRefund: boolean;
+  needsRefundReason: string | null;
+  failureReason: string | null;
+  notes: string | null;
+  createdAt: string;
+  paidAt: string | null;
+  refundedAt: string | null;
+  job: { _id: string; title: string; slug?: string; status: string; isDeleted: boolean } | null;
   employer: { _id: string; email: string; name: string };
 };
 
@@ -1258,10 +1322,41 @@ export const adminApi = {
     return apiRequest<{ payments: AdminPayment[]; pagination: { page: number; limit: number; total: number; pages: number } }>(`/admin/payments?${qs.toString()}`);
   },
 
-  // QA-G5: manual mark-paid override (admin only). Reason >= 5 chars.
-  manualAcceptPayment: async (jobId: string, reason: string) =>
-    apiRequest<{ jobId: string; status: string; paymentStatus: string; paymentMethod: string; paymentId: string; paidAt: string }>(
+  // Manual mark-paid (admin only; reason >= 5 chars). Creates an 'admin'
+  // PaymentOrder and activates through the same path as a card payment.
+  // Allowed for pending_payment (post) or expired/closed (renewal) jobs.
+  manualAcceptPayment: async (jobId: string, reason: string, opts: { tier?: CheckoutTier; amountCents?: number } = {}) =>
+    apiRequest<{
+      jobId: string; status: string; paymentStatus: string; paymentMethod: string; paymentId: string; paidAt: string;
+      expiresAt: string; orderId: string; purpose: PaymentPurpose; tier: CheckoutTier; amountEur: number; supersededCheckouts: number;
+    }>(
       `/admin/payments/${jobId}/manual-accept`,
+      { method: 'POST', body: JSON.stringify({ reason, ...opts }) }
+    ),
+
+  // PaymentOrder list (admin)
+  listPaymentOrders: async (params: { status?: PaymentOrderStatus | 'all'; provider?: PaymentProvider; needsRefund?: boolean; employerEmail?: string; page?: number; limit?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.status && params.status !== 'all') qs.set('status', params.status);
+    if (params.provider) qs.set('provider', params.provider);
+    if (params.needsRefund !== undefined) qs.set('needsRefund', String(params.needsRefund));
+    if (params.employerEmail) qs.set('employerEmail', params.employerEmail);
+    if (params.page) qs.set('page', String(params.page));
+    if (params.limit) qs.set('limit', String(params.limit));
+    return apiRequest<{ orders: AdminPaymentOrder[]; pagination: { page: number; limit: number; total: number; pages: number } }>(`/admin/payments/orders?${qs.toString()}`);
+  },
+
+  // Refund an order (Stripe → real refund; other providers → record-only).
+  refundOrder: async (orderId: string, reason: string, amountCents?: number) =>
+    apiRequest<{ orderId: string; status: PaymentOrderStatus; refundedEur: number; needsRefund: boolean; refundId: string | null; recordedOnly: boolean; jobClosed: boolean }>(
+      `/admin/payments/orders/${orderId}/refund`,
+      { method: 'POST', body: JSON.stringify(amountCents === undefined ? { reason } : { reason, amountCents }) }
+    ),
+
+  // Clear a needsRefund flag without refunding (decision recorded).
+  resolveOrderRefundFlag: async (orderId: string, reason: string) =>
+    apiRequest<{ orderId: string; needsRefund: boolean; needsRefundReason: string }>(
+      `/admin/payments/orders/${orderId}/resolve`,
       { method: 'POST', body: JSON.stringify({ reason }) }
     ),
 
@@ -2151,29 +2246,43 @@ export const cvApi = {
   }
 };
 
-// Paysera payment API
+// Card payments (Stripe-hosted checkout; see backend PAYMENTS.md)
+export type PaymentOrderView = {
+  orderId: string;
+  status: PaymentOrderStatus;
+  purpose: PaymentPurpose;
+  tier: CheckoutTier;
+  amountEur: number;
+  currency: string;
+  provider: PaymentProvider;
+  jobId: string;
+  jobSlug: string | null;
+  jobTitle: string | null;
+  jobStatus: string | null;
+  paidAt: string | null;
+  activation: 'not_applied' | 'applied' | 'skipped';
+  checkoutExpiresAt: string | null;
+};
+
 export const paymentsApi = {
   /**
-   * Initiate a Paysera redirect-flow payment for a pending_payment job.
-   * Returns either a real Paysera URL (when keys are configured) or a
-   * relative `/payment/fake-success?jobId=...` URL in dev when keys are not set.
+   * Open a hosted checkout for a job. Returns the URL to send the browser to
+   * (Stripe, or a relative /payment/fake-success?order=… in dev without keys).
+   * Errors (thrown ApiError): 400 INVALID_JOB_STATE / FREE_POSTING / INVALID_TIER,
+   * 409 CHECKOUT_IN_PROGRESS / ALREADY_PAID, 502 PROVIDER_ERROR,
+   * 503 PAYMENTS_UNAVAILABLE.
    */
-  initiatePaysera: (jobId: string, tier: 'standard' | 'promoted') =>
-    apiRequest<{ redirectUrl: string; amountEur: number; tier: 'standard' | 'promoted'; fake?: boolean }>(
-      '/payments/paysera/initiate',
-      {
-        method: 'POST',
-        body: JSON.stringify({ jobId, tier }),
-      }
+  createCheckout: (jobId: string, tier: CheckoutTier, purpose: PaymentPurpose = 'job_post') =>
+    apiRequest<{ url: string; orderId: string; amountEur: number; tier: CheckoutTier; purpose: PaymentPurpose; fake?: boolean; reused?: boolean }>(
+      '/payments/checkout',
+      { method: 'POST', body: JSON.stringify({ jobId, tier, purpose }) }
     ),
 
-  /**
-   * Dev-only auto-accept fallback when Paysera is not configured.
-   * Flips the job from pending_payment → active server-side.
-   */
-  fakeSuccess: (jobId: string) =>
-    apiRequest<{ jobId: string; status: string }>(
-      `/payments/paysera/fake-success/${jobId}`,
-      { method: 'GET' }
-    ),
+  /** Real order status (the success page polls this; never trust the redirect alone). */
+  getOrder: (orderId: string) =>
+    apiRequest<PaymentOrderView>(`/payments/orders/${encodeURIComponent(orderId)}`),
+
+  /** Dev-only: complete a dev-fake order (no payment provider configured). */
+  fakeComplete: (orderId: string) =>
+    apiRequest<PaymentOrderView>(`/payments/orders/${encodeURIComponent(orderId)}/fake-complete`, { method: 'POST' }),
 };

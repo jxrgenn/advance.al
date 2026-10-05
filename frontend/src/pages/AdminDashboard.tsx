@@ -54,12 +54,285 @@ interface DashboardStats {
   };
 }
 
-// Configuration Setting Component
-// QA-G5: Admin payments panel — list + manual-accept override.
-// Read-only list is the common case; manual-accept is the "callback was
-// lost" recovery path. Reason is required and ends up in the
-// PaymentEvent audit log so the override is reviewable later.
+// Admin "Pagesat" tab (payments rebuild 2026-10).
+//   - Porositë: every PaymentOrder (card/admin/dev) with status, refund flag,
+//     refund (Stripe → real refund; others → recorded only) and resolve.
+//   - Punët: job-centric view + manual "mark as paid" (creates an 'admin'
+//     order and activates through the same path as a card payment).
+// Every money action requires a written reason that lands in the audit log.
+type AdminOrderAction = { kind: 'refund' | 'resolve'; order: import("@/lib/api").AdminPaymentOrder } | null;
+
+const ORDER_STATUS_LABEL: Record<string, { label: string; color: string }> = {
+  created: { label: 'Krijuar', color: 'bg-gray-100 text-gray-800 border-gray-200' },
+  pending: { label: 'Në pritje', color: 'bg-amber-100 text-amber-800 border-amber-200' },
+  paid: { label: 'E paguar', color: 'bg-green-100 text-green-800 border-green-200' },
+  failed: { label: 'E dështuar', color: 'bg-red-100 text-red-800 border-red-200' },
+  canceled: { label: 'Anuluar', color: 'bg-gray-100 text-gray-700 border-gray-200' },
+  expired: { label: 'Skaduar', color: 'bg-gray-100 text-gray-700 border-gray-200' },
+  refunded: { label: 'Rimbursuar', color: 'bg-blue-100 text-blue-800 border-blue-200' },
+  partially_refunded: { label: 'Rimbursuar pjesërisht', color: 'bg-blue-100 text-blue-800 border-blue-200' },
+  disputed: { label: 'Kontestim', color: 'bg-red-100 text-red-800 border-red-200' },
+};
+
+const AdminPaymentOrdersView = () => {
+  const [loading, setLoading] = useState(true);
+  const [orders, setOrders] = useState<import("@/lib/api").AdminPaymentOrder[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [needsRefundOnly, setNeedsRefundOnly] = useState(false);
+  const [emailFilter, setEmailFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [action, setAction] = useState<AdminOrderAction>(null);
+  const [reason, setReason] = useState('');
+  const [amountEur, setAmountEur] = useState('');
+  const [working, setWorking] = useState(false);
+  const { toast } = useToast();
+
+  const fetchOrders = async () => {
+    setLoading(true);
+    try {
+      const r = await adminApi.listPaymentOrders({
+        status: statusFilter as import("@/lib/api").PaymentOrderStatus | 'all',
+        needsRefund: needsRefundOnly ? true : undefined,
+        employerEmail: emailFilter || undefined,
+        page,
+        limit: 25,
+      });
+      if (r.success && r.data) {
+        setOrders(r.data.orders);
+        setTotalPages(r.data.pagination.pages || 1);
+      }
+    } catch (err: unknown) {
+      toast({ title: 'Gabim', description: err instanceof Error ? err.message : 'S\'mund të ngarkohen porositë', variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, needsRefundOnly, page]);
+
+  const canRefund = (o: import("@/lib/api").AdminPaymentOrder) =>
+    o.status !== 'refunded' && o.status !== 'disputed'
+    && (o.status === 'paid' || o.status === 'partially_refunded' || o.needsRefund)
+    && (o.provider !== 'stripe' || !!o.providerPaymentId)
+    && (o.amountEur > 0 || o.needsRefund);
+
+  const submitAction = async () => {
+    if (!action || reason.trim().length < 5) {
+      toast({ title: 'Arsye e pavlefshme', description: 'Jepni një arsye të paktën 5 karaktere.', variant: 'destructive' });
+      return;
+    }
+    let amountCents: number | undefined;
+    if (action.kind === 'refund' && amountEur.trim()) {
+      const n = Number(amountEur.replace(',', '.'));
+      if (!Number.isFinite(n) || n <= 0) {
+        toast({ title: 'Shumë e pavlefshme', description: 'Lëreni bosh për rimbursim të plotë, ose shkruani një shumë > 0.', variant: 'destructive' });
+        return;
+      }
+      amountCents = Math.round(n * 100);
+    }
+    setWorking(true);
+    try {
+      if (action.kind === 'refund') {
+        const r = await adminApi.refundOrder(action.order.orderId, reason.trim(), amountCents);
+        toast({
+          title: r.data?.recordedOnly ? 'Rimbursimi u regjistrua' : 'Rimbursimi u krye',
+          description: r.data?.jobClosed ? 'Puna u mbyll sepse pagesa u rimbursua plotësisht.' : r.message,
+        });
+      } else {
+        await adminApi.resolveOrderRefundFlag(action.order.orderId, reason.trim());
+        toast({ title: 'U zgjidh', description: 'Flamuri i rimbursimit u hoq dhe vendimi u regjistrua.' });
+      }
+      setAction(null);
+      setReason('');
+      setAmountEur('');
+      await fetchOrders();
+    } catch (err: unknown) {
+      toast({ title: 'Gabim', description: err instanceof Error ? err.message : 'Veprimi dështoi', variant: 'destructive' });
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={statusFilter}
+          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          className="text-sm border rounded px-2 h-8 bg-background"
+          aria-label="Filtro sipas statusit"
+        >
+          <option value="all">Të gjitha statuset</option>
+          {Object.entries(ORDER_STATUS_LABEL).map(([value, { label }]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+        <Button size="sm" variant={needsRefundOnly ? 'default' : 'outline'} onClick={() => { setNeedsRefundOnly(v => !v); setPage(1); }}>
+          Kërkon rimbursim
+        </Button>
+        <div className="flex items-center gap-2 ml-auto">
+          <input
+            type="text"
+            value={emailFilter}
+            onChange={(e) => setEmailFilter(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { setPage(1); fetchOrders(); } }}
+            placeholder="filter email…"
+            className="text-sm border rounded px-2 py-1 h-8 bg-background"
+          />
+          <Button size="sm" variant="outline" onClick={() => { setPage(1); fetchOrders(); }}>Filtro</Button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
+      ) : orders.length === 0 ? (
+        <div className="text-center text-muted-foreground py-6 text-sm">Nuk u gjetën porosi.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs text-muted-foreground">
+                <th className="py-2 pr-3">Porosia</th>
+                <th className="py-2 pr-3">Punëdhënësi</th>
+                <th className="py-2 pr-3">Puna</th>
+                <th className="py-2 pr-3">Paketa</th>
+                <th className="py-2 pr-3 text-right">Shuma</th>
+                <th className="py-2 pr-3">Ofruesi</th>
+                <th className="py-2 pr-3">Statusi</th>
+                <th className="py-2 pr-3">Data</th>
+                <th className="py-2 pr-3">Veprime</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map(o => {
+                const st = ORDER_STATUS_LABEL[o.status] || { label: o.status, color: 'bg-gray-100 text-gray-800 border-gray-200' };
+                return (
+                  <tr key={o.orderId} className="border-b last:border-0 align-top">
+                    <td className="py-2 pr-3 font-mono text-xs" title={o.orderId}>
+                      {o.orderId.slice(0, 12)}…
+                      <div className="text-[11px] text-muted-foreground font-sans">{o.purpose === 'job_renewal' ? 'Ripostim' : 'Postim'}</div>
+                    </td>
+                    <td className="py-2 pr-3 max-w-[180px]">
+                      <div className="font-medium truncate">{o.employer.name}</div>
+                      <div className="text-xs text-muted-foreground truncate">{o.employer.email}</div>
+                    </td>
+                    <td className="py-2 pr-3 max-w-[200px]">
+                      <div className="truncate">{o.job?.title || '—'}</div>
+                      {o.job && <div className="text-xs text-muted-foreground">{o.job.isDeleted ? 'e fshirë' : o.job.status}</div>}
+                    </td>
+                    <td className="py-2 pr-3 text-xs">{o.tier === 'promoted' ? 'I promovuar' : 'Standart'}</td>
+                    <td className="py-2 pr-3 text-right whitespace-nowrap">
+                      €{o.amountEur.toFixed(2)}
+                      {o.refundedEur > 0 && <div className="text-xs text-blue-700">−€{o.refundedEur.toFixed(2)}</div>}
+                    </td>
+                    <td className="py-2 pr-3 text-xs">{o.provider}{o.livemode === false && o.provider === 'stripe' ? ' (test)' : ''}</td>
+                    <td className="py-2 pr-3">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs ${st.color}`}>{st.label}</span>
+                      {o.needsRefund && (
+                        <div className="mt-1">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full border text-xs bg-red-100 text-red-800 border-red-200" title={o.needsRefundReason || ''}>
+                            Kërkon rimbursim
+                          </span>
+                          {o.needsRefundReason && <div className="text-[11px] text-muted-foreground mt-1 max-w-[220px]">{o.needsRefundReason}</div>}
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 text-xs whitespace-nowrap">
+                      {new Date(o.paidAt || o.createdAt).toLocaleString('sq-AL')}
+                    </td>
+                    <td className="py-2 pr-3">
+                      <div className="flex flex-col gap-1">
+                        {canRefund(o) && (
+                          <Button size="sm" variant="outline" onClick={() => { setAction({ kind: 'refund', order: o }); setReason(''); setAmountEur(''); }}>
+                            {o.provider === 'stripe' ? 'Rimburso' : 'Regjistro rimbursim'}
+                          </Button>
+                        )}
+                        {o.needsRefund && (
+                          <Button size="sm" variant="ghost" onClick={() => { setAction({ kind: 'resolve', order: o }); setReason(''); }}>
+                            Zgjidh pa rimbursim
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex justify-center gap-2 pt-2">
+          <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>‹ Më parë</Button>
+          <span className="text-sm py-1.5 text-muted-foreground">Faqja {page} / {totalPages}</span>
+          <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Pasardhëse ›</Button>
+        </div>
+      )}
+
+      <Dialog open={!!action} onOpenChange={(o) => { if (!o && !working) setAction(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {action?.kind === 'refund'
+                ? (action.order.provider === 'stripe' ? 'Rimburso pagesën' : 'Regjistro një rimbursim')
+                : 'Zgjidh pa rimbursim'}
+            </DialogTitle>
+            <DialogDescription>
+              {action?.kind === 'refund'
+                ? (action.order.provider === 'stripe'
+                  ? `Paratë kthehen në kartën e klientit përmes Stripe (€${action.order.amountEur.toFixed(2)}, porosia ${action.order.orderId}). Një rimbursim i plotë e mbyll punën.`
+                  : 'Sistemi nuk lëviz para për këtë ofrues — regjistroni rimbursimin që keni bërë jashtë sistemit.')
+                : 'Hiqni flamurin "kërkon rimbursim" vetëm nëse klienti ka rënë dakord ndryshe. Vendimi regjistrohet.'}
+            </DialogDescription>
+          </DialogHeader>
+          {action?.kind === 'refund' && (
+            <div className="space-y-1">
+              <Label htmlFor="refund-amount" className="text-xs">Shuma në € (bosh = rimbursim i plotë)</Label>
+              <Input id="refund-amount" inputMode="decimal" value={amountEur} onChange={(e) => setAmountEur(e.target.value)} placeholder={action.order.amountEur.toFixed(2)} />
+            </div>
+          )}
+          <Textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Arsye (min 5 karaktere) — p.sh. 'Klienti anuloi brenda 24 orëve, ticket #123'"
+            className="min-h-[90px] text-sm"
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setAction(null)} disabled={working}>Anulo</Button>
+            <Button onClick={submitAction} disabled={working || reason.trim().length < 5} variant={action?.kind === 'refund' ? 'destructive' : 'default'}>
+              {working ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Konfirmo
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
 const AdminPaymentsPanel = () => {
+  const [view, setView] = useState<'orders' | 'jobs'>('orders');
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Pagesat</CardTitle>
+        <CardDescription>Porositë me kartë, rimbursimet dhe miratimi manual kur pagesa u krye jashtë sistemit.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-2">
+          <Button size="sm" variant={view === 'orders' ? 'default' : 'outline'} onClick={() => setView('orders')}>Porositë</Button>
+          <Button size="sm" variant={view === 'jobs' ? 'default' : 'outline'} onClick={() => setView('jobs')}>Punët</Button>
+        </div>
+        {view === 'orders' ? <AdminPaymentOrdersView /> : <AdminPaymentJobsView />}
+      </CardContent>
+    </Card>
+  );
+};
+
+const AdminPaymentJobsView = () => {
   const [loading, setLoading] = useState(true);
   const [payments, setPayments] = useState<import("@/lib/api").AdminPayment[]>([]);
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending_payment' | 'paid' | 'failed'>('all');
@@ -100,7 +373,10 @@ const AdminPaymentsPanel = () => {
       setAccepting(true);
       const r = await adminApi.manualAcceptPayment(acceptModalJobId, acceptReason.trim());
       if (r.success) {
-        toast({ title: 'Miratuar', description: 'Puna u shënua si e paguar.' });
+        toast({
+          title: 'Miratuar',
+          description: r.data?.purpose === 'job_renewal' ? 'Puna u ripostua si e paguar.' : 'Puna u shënua si e paguar dhe u publikua.',
+        });
         setAcceptModalJobId(null);
         setAcceptReason('');
         await fetchPayments();
@@ -115,109 +391,111 @@ const AdminPaymentsPanel = () => {
   };
 
   const statusLabel = (paymentStatus: string, status: string) => {
-    if (paymentStatus === 'paid') return { label: 'E paguar', color: 'bg-green-100 text-green-800 border-green-200' };
-    if (paymentStatus === 'failed') return { label: 'E dështuar', color: 'bg-red-100 text-red-800 border-red-200' };
     if (status === 'pending_payment') return { label: 'Pritet pagesa', color: 'bg-amber-100 text-amber-800 border-amber-200' };
+    if (paymentStatus === 'paid') return { label: 'E paguar', color: 'bg-green-100 text-green-800 border-green-200' };
+    if (paymentStatus === 'refunded') return { label: 'Rimbursuar', color: 'bg-blue-100 text-blue-800 border-blue-200' };
+    if (paymentStatus === 'failed') return { label: 'E dështuar', color: 'bg-red-100 text-red-800 border-red-200' };
     return { label: paymentStatus, color: 'bg-gray-100 text-gray-800 border-gray-200' };
   };
 
+  // Manual accept is allowed for unpaid posts and for expired/closed jobs (renewal).
+  const canManualAccept = (p: import("@/lib/api").AdminPayment) =>
+    p.status === 'pending_payment' || p.status === 'expired' || p.status === 'closed';
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Pagesat</CardTitle>
-        <CardDescription>Shih pagesat aktive, miratosh manualisht kur callback-u Paysera dështon.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex flex-wrap gap-2">
-          {(['all', 'pending_payment', 'paid', 'failed'] as const).map(s => (
-            <Button key={s} size="sm" variant={statusFilter === s ? 'default' : 'outline'} onClick={() => { setStatusFilter(s); setPage(1); }}>
-              {s === 'all' ? 'Të gjitha' : s === 'pending_payment' ? 'Në pritje' : s === 'paid' ? 'Paguar' : 'Dështuar'}
-            </Button>
-          ))}
-          <div className="flex items-center gap-2 ml-auto">
-            <input
-              type="text"
-              value={emailFilter}
-              onChange={(e) => setEmailFilter(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { setPage(1); fetchPayments(); } }}
-              placeholder="filter email…"
-              className="text-sm border rounded px-2 py-1 h-8"
-            />
-            <Button size="sm" variant="outline" onClick={() => { setPage(1); fetchPayments(); }}>Filtro</Button>
-          </div>
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        {(['all', 'pending_payment', 'paid', 'failed'] as const).map(s => (
+          <Button key={s} size="sm" variant={statusFilter === s ? 'default' : 'outline'} onClick={() => { setStatusFilter(s); setPage(1); }}>
+            {s === 'all' ? 'Të gjitha' : s === 'pending_payment' ? 'Në pritje' : s === 'paid' ? 'Paguar' : 'Dështuar'}
+          </Button>
+        ))}
+        <div className="flex items-center gap-2 ml-auto">
+          <input
+            type="text"
+            value={emailFilter}
+            onChange={(e) => setEmailFilter(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { setPage(1); fetchPayments(); } }}
+            placeholder="filter email…"
+            className="text-sm border rounded px-2 py-1 h-8 bg-background"
+          />
+          <Button size="sm" variant="outline" onClick={() => { setPage(1); fetchPayments(); }}>Filtro</Button>
         </div>
+      </div>
 
-        {loading ? (
-          <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
-        ) : payments.length === 0 ? (
-          <div className="text-center text-muted-foreground py-6 text-sm">Nuk u gjetën pagesa.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs text-muted-foreground">
-                  <th className="py-2 pr-3">Pun&euml;</th>
-                  <th className="py-2 pr-3">Pun&euml;dh&euml;n&euml;s</th>
-                  <th className="py-2 pr-3">Statusi</th>
-                  <th className="py-2 pr-3">Metoda</th>
-                  <th className="py-2 pr-3 text-right">Shuma</th>
-                  <th className="py-2 pr-3">Data</th>
-                  <th className="py-2 pr-3">Veprime</th>
-                </tr>
-              </thead>
-              <tbody>
-                {payments.map(p => {
-                  const sl = statusLabel(p.paymentStatus, p.status);
-                  return (
-                    <tr key={p._id} className="border-b last:border-0">
-                      <td className="py-2 pr-3 max-w-[220px] truncate">{p.title}</td>
-                      <td className="py-2 pr-3 max-w-[200px] truncate">
-                        <div className="font-medium truncate">{p.employer.name}</div>
-                        <div className="text-xs text-muted-foreground truncate">{p.employer.email}</div>
-                      </td>
-                      <td className="py-2 pr-3"><span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs ${sl.color}`}>{sl.label}</span></td>
-                      <td className="py-2 pr-3 text-xs">{p.paymentMethod || '—'}</td>
-                      <td className="py-2 pr-3 text-right">€{Number(p.paymentRequired || 0).toFixed(2)}</td>
-                      <td className="py-2 pr-3 text-xs">
-                        {p.paidAt ? new Date(p.paidAt).toLocaleString('sq-AL') : p.paymentInitiatedAt ? new Date(p.paymentInitiatedAt).toLocaleString('sq-AL') : '—'}
-                      </td>
-                      <td className="py-2 pr-3">
-                        {p.paymentStatus !== 'paid' && (
-                          <Button size="sm" variant="outline" onClick={() => { setAcceptModalJobId(p._id); setAcceptReason(''); }}>
-                            Shëno si e paguar
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+      {loading ? (
+        <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
+      ) : payments.length === 0 ? (
+        <div className="text-center text-muted-foreground py-6 text-sm">Nuk u gjetën pagesa.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs text-muted-foreground">
+                <th className="py-2 pr-3">Pun&euml;</th>
+                <th className="py-2 pr-3">Pun&euml;dh&euml;n&euml;s</th>
+                <th className="py-2 pr-3">Statusi</th>
+                <th className="py-2 pr-3">Porosia e fundit</th>
+                <th className="py-2 pr-3 text-right">Shuma</th>
+                <th className="py-2 pr-3">Data</th>
+                <th className="py-2 pr-3">Veprime</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payments.map(p => {
+                const sl = statusLabel(p.paymentStatus, p.status);
+                return (
+                  <tr key={p._id} className="border-b last:border-0">
+                    <td className="py-2 pr-3 max-w-[220px] truncate">{p.title}</td>
+                    <td className="py-2 pr-3 max-w-[200px] truncate">
+                      <div className="font-medium truncate">{p.employer.name}</div>
+                      <div className="text-xs text-muted-foreground truncate">{p.employer.email}</div>
+                    </td>
+                    <td className="py-2 pr-3"><span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs ${sl.color}`}>{sl.label}</span></td>
+                    <td className="py-2 pr-3 text-xs">
+                      {p.latestOrder ? `${ORDER_STATUS_LABEL[p.latestOrder.status]?.label || p.latestOrder.status} · ${p.latestOrder.provider}` : '—'}
+                      {p.latestOrder?.needsRefund && <div className="text-red-700">kërkon rimbursim</div>}
+                    </td>
+                    <td className="py-2 pr-3 text-right">€{Number(p.latestOrder?.amountEur ?? p.paymentRequired ?? 0).toFixed(2)}</td>
+                    <td className="py-2 pr-3 text-xs">
+                      {p.paidAt ? new Date(p.paidAt).toLocaleString('sq-AL') : p.paymentInitiatedAt ? new Date(p.paymentInitiatedAt).toLocaleString('sq-AL') : '—'}
+                    </td>
+                    <td className="py-2 pr-3">
+                      {canManualAccept(p) && (
+                        <Button size="sm" variant="outline" onClick={() => { setAcceptModalJobId(p._id); setAcceptReason(''); }}>
+                          {p.status === 'pending_payment' ? 'Shëno si e paguar' : 'Riposto si e paguar'}
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-        {totalPages > 1 && (
-          <div className="flex justify-center gap-2 pt-2">
-            <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>‹ Më parë</Button>
-            <span className="text-sm py-1.5 text-muted-foreground">Faqja {page} / {totalPages}</span>
-            <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Pasardhëse ›</Button>
-          </div>
-        )}
-      </CardContent>
+      {totalPages > 1 && (
+        <div className="flex justify-center gap-2 pt-2">
+          <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>‹ Më parë</Button>
+          <span className="text-sm py-1.5 text-muted-foreground">Faqja {page} / {totalPages}</span>
+          <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Pasardhëse ›</Button>
+        </div>
+      )}
 
       <Dialog open={!!acceptModalJobId} onOpenChange={(o) => { if (!o) setAcceptModalJobId(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Shëno pagesën si të kryer</DialogTitle>
             <DialogDescription>
-              Kjo ndryshon punën në "aktive" dhe regjistron arsyen në audit-log. Përdor vetëm kur ke konfirmim jashtë sistemit (p.sh. ticket Paysera).
+              Krijon një porosi "admin" dhe e publikon punën për 21 ditë nga tani (njëlloj si pagesa me kartë). Çdo pagesë me kartë e hapur për këtë punë anulohet. Përdoreni vetëm kur keni konfirmim jashtë sistemit.
             </DialogDescription>
           </DialogHeader>
-          <textarea
+          <Textarea
             value={acceptReason}
             onChange={(e) => setAcceptReason(e.target.value)}
-            placeholder="Arsye (min 5 karaktere) — p.sh. 'Paysera ticket #98765 konfirmuar përmes emailit më 14.05.'"
-            className="w-full border rounded p-2 text-sm min-h-[100px]"
+            placeholder="Arsye (min 5 karaktere) — p.sh. 'Transfertë bankare e konfirmuar më 14.05.'"
+            className="min-h-[100px] text-sm"
           />
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setAcceptModalJobId(null)} disabled={accepting}>Anulo</Button>
@@ -228,10 +506,11 @@ const AdminPaymentsPanel = () => {
           </div>
         </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   );
 };
 
+// Configuration Setting Component
 const ConfigurationSetting = ({ setting, onUpdate, onReset }: any) => {
   const [value, setValue] = useState(setting.value);
   const [reason, setReason] = useState('');

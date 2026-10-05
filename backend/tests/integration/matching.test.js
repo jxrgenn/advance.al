@@ -111,6 +111,32 @@ describe('Matching API - Integration Tests', () => {
       expect(accessRes.status).toBe(200);
       expect(accessRes.body.data.hasAccess).toBe(true);
     });
+
+    // Fail closed (payments rebuild 2026-10): the mock purchase grants paid
+    // access for free, so ENABLE_MOCK_PAYMENTS=true must be ignored when
+    // NODE_ENV=production (the local prod env copy had it set).
+    it('returns 503 in production even with ENABLE_MOCK_PAYMENTS=true, and grants nothing', async () => {
+      process.env.ENABLE_MOCK_PAYMENTS = 'true';
+      const prevEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        const { user: emp } = await createVerifiedEmployer();
+        const job = await createJob(emp);
+
+        const response = await request(app)
+          .post(`/api/matching/jobs/${job._id}/purchase`)
+          .set(createAuthHeaders(emp));
+        expect(response.status).toBe(503);
+
+        process.env.NODE_ENV = prevEnv;
+        const accessRes = await request(app)
+          .get(`/api/matching/jobs/${job._id}/access`)
+          .set(createAuthHeaders(emp));
+        expect(accessRes.body.data.hasAccess).toBe(false);
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+      }
+    });
   });
 
   describe('GET /api/matching/jobs/:jobId/access', () => {

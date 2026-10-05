@@ -5,8 +5,9 @@ do when it does, and the routine that prevents most breakage. Read this once;
 come back to the **Incident response** section when something is on fire.
 
 Stack: backend on **Render** (`advance-al.onrender.com`), frontend on **Vercel**,
-database on **MongoDB Atlas**. Email via Resend, payments via Paysera, SMS via
-Twilio, images on Cloudinary.
+database on **MongoDB Atlas**. Email via Resend, card payments via **Stripe**
+Checkout (Paysera code kept but disabled — see `PAYMENTS.md`), SMS via Twilio,
+images on Cloudinary.
 
 ---
 
@@ -75,7 +76,8 @@ Work top to bottom. **Restore service first, understand it second.**
 | Backend 503 on `/health` | Atlas — DB up? connection limit? | Restart service / check Atlas |
 | Errors but site up | Sentry stack trace | Branch-fix, deploy |
 | No emails arriving | Resend dashboard; is `EMAIL_TEST_MODE` set in prod? | Unset `EMAIL_TEST_MODE` |
-| Payments not completing | Render logs for `/paysera/callback`; Paysera dashboard | Check Paysera keys/signature |
+| Payments not completing | `GET /healthz/payments` (X-Healthz-Token); Render logs `stripe webhook`; Stripe dashboard → Developers → Webhooks → recent deliveries | `PAYMENTS.md` runbook: stuck order / webhook replay |
+| "Paid but job not live" complaint | Admin → Pagesat → Porositë (filter the employer email) | `PAYMENTS.md` runbook: paid-not-activated / needsRefund |
 | Backend slow after idle | Render free tier slept | `keep-warm.yml` handles it; consider paid tier |
 
 ---

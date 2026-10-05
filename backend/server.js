@@ -51,6 +51,7 @@ import cvRoutes from './src/routes/cv.js';
 import adminEmbeddingsRoutes from './src/routes/admin/embeddings.js';
 import healthzRoutes from './src/routes/healthz.js';
 import paymentRoutes from './src/routes/payments.js';
+import stripeWebhookRoutes from './src/routes/stripeWebhook.js';
 import { Job, SystemConfiguration } from './src/models/index.js';
 import { redis } from './src/config/redis.js';
 
@@ -201,6 +202,12 @@ app.use((err, req, res, next) => {
   }
   next(err);
 });
+
+// Stripe webhook — mounted BEFORE the global /api limiter, the JSON body
+// parser and the maintenance-mode gate: Stripe signs the raw bytes
+// (express.raw inside the router), retries must never be rate-limited, and
+// payment confirmations must still land during maintenance.
+app.use('/api/payments/stripe/webhook', stripeWebhookRoutes);
 
 // Rate Limiting - Environment-aware configuration
 const limiter = rateLimit({
@@ -507,6 +514,27 @@ const server = app.listen(PORT, () => {
     activeIntervals.push(setInterval(() => {
       alertDuePaymentTimeouts().catch(err => logger.error('Payment timeout worker error:', err.message));
     }, interval));
+  }).catch(() => {});
+
+  // Payments reconcile worker (lost webhooks, stale checkouts, half-applied
+  // activations, needsRefund digest). Default every 15 min. Never crashes.
+  import('./src/services/payments/reconcileWorker.js').then(({ reconcileOnce }) => {
+    const interval = parseInt(process.env.PAYMENTS_RECONCILE_INTERVAL_MS || `${15 * 60 * 1000}`, 10);
+    activeIntervals.push(setInterval(() => {
+      const p = reconcileOnce().catch(err => logger.error('Payments reconcile error:', err.message));
+      inflightCronWork.push(p);
+      p.finally(() => {
+        const i = inflightCronWork.indexOf(p);
+        if (i !== -1) inflightCronWork.splice(i, 1);
+      });
+    }, interval));
+  }).catch(() => {});
+
+  // Payments boot check (O-39): paid posting on + no usable provider in
+  // production = employers can create jobs they can never publish. Fail
+  // loudly (ERROR log + Discord/email alert + /healthz/payments flag).
+  import('./src/services/payments/bootCheck.js').then(({ runPaymentsBootCheck }) => {
+    runPaymentsBootCheck().catch(err => logger.error('Payments boot check error:', err.message));
   }).catch(() => {});
 
   // Discord daily digest — first run at the next 07:00 UTC (09:00 Albania),

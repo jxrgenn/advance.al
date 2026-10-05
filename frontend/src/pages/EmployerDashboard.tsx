@@ -12,11 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, CheckCircle, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin, Play, Lightbulb, HelpCircle, Upload, ChevronDown, ChevronUp, CreditCard } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, CheckCircle, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin, Play, Lightbulb, HelpCircle, Upload, ChevronDown, ChevronUp, CreditCard, RefreshCw } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import ReportUserModal from "@/components/ReportUserModal";
 import { useToast } from "@/hooks/use-toast";
-import { jobsApi, applicationsApi, usersApi, locationsApi, matchingApi, Job, Application, Location, CandidateMatch, User } from "@/lib/api";
+import { ApiError, jobsApi, applicationsApi, usersApi, locationsApi, matchingApi, Job, Application, Location, CandidateMatch, User } from "@/lib/api";
 import { viewResume, downloadResume, isInlineViewable, DOCX_VIEW_TOOLTIP } from "@/lib/resumeView";
 import { useAuth } from "@/contexts/AuthContext";
 import { validateForm, employerDashboardSettingsRules, formatValidationErrors, isValidAlbanianPhone, normalizeAlbanianPhone, ALBANIAN_PHONE_MESSAGE, cleanAlbanianPhoneInput } from "@/lib/formValidation";
@@ -846,6 +846,34 @@ const EmployerDashboard = () => {
     }
   };
 
+  // Re-list an expired/closed job. Free employers renew right here; paying
+  // employers get 402 PAYMENT_REQUIRED from the server and go to checkout.
+  const [renewingJobId, setRenewingJobId] = useState<string | null>(null);
+  const handleRenewJob = async (jobId: string) => {
+    if (renewingJobId) return;
+    setRenewingJobId(jobId);
+    try {
+      const r = await jobsApi.renewJob(jobId);
+      toast({
+        title: "Puna u ripostua",
+        description: r.message || "Puna është sërish e publikuar për 21 ditë.",
+      });
+      loadDashboardData();
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 402) {
+        navigate(`/payment/job/${jobId}?purpose=job_renewal`);
+        return;
+      }
+      toast({
+        title: "Gabim",
+        description: error instanceof Error ? error.message : "Ripostimi dështoi",
+        variant: "destructive",
+      });
+    } finally {
+      setRenewingJobId(null);
+    }
+  };
+
   const handleJobAction = async (action: string, jobId: string) => {
     if (action === 'edituar') {
       // Navigate to edit job page
@@ -864,6 +892,12 @@ const EmployerDashboard = () => {
             });
             loadDashboardData();
           } catch (error) {
+            if (error instanceof ApiError && error.response?.code === 'PAYMENT_COMPLETED') {
+              // A checkout for this job was paid a moment ago — it is live now.
+              toast({ title: "Pagesa u krye", description: "Puna sapo u publikua, prandaj nuk u fshi." });
+              loadDashboardData();
+              return;
+            }
             toast({
               title: "Gabim",
               description: "Nuk mund të fshihet puna",
@@ -1497,6 +1531,21 @@ const EmployerDashboard = () => {
                             >
                               <CreditCard className="h-3 w-3 sm:h-4 sm:w-4" />
                               <span className="ml-1 hidden sm:inline">Paguaj tani</span>
+                            </Button>
+                          )}
+                          {(job.status === 'expired' || job.status === 'closed') && (
+                            <Button
+                              size="sm"
+                              variant="default"
+                              onClick={() => handleRenewJob(job._id)}
+                              disabled={renewingJobId === job._id}
+                              className="h-8 sm:h-9 px-2 sm:px-3"
+                              title="Riposto punën për 21 ditë të tjera"
+                            >
+                              {renewingJobId === job._id
+                                ? <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+                                : <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4" />}
+                              <span className="ml-1 hidden sm:inline">Riposto</span>
                             </Button>
                           )}
                           <Button

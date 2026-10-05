@@ -122,7 +122,9 @@ describe('jobs.js — employer actions', () => {
   });
 
   describe('PATCH /:id/status', () => {
-    it('owner can pause an active job', async () => {
+    // Pause was removed by the owner (payments rebuild, O-18): 'paused' is
+    // rejected and the job is left untouched.
+    it("rejects status 'paused' with 400 and leaves the job active", async () => {
       const { user: emp } = await createVerifiedEmployer();
       const job = await createJob(emp, { status: 'active' });
 
@@ -130,9 +132,10 @@ describe('jobs.js — employer actions', () => {
         .patch(`/api/jobs/${job._id}/status`)
         .set(createAuthHeaders(emp))
         .send({ status: 'paused' });
-      expect(r.status).toBe(200);
+      expect(r.status).toBe(400);
+      expect(r.body.message).toBe('Statusi duhet të jetë: active ose closed');
       const refreshed = await Job.findById(job._id);
-      expect(refreshed.status).toBe('paused');
+      expect(refreshed.status).toBe('active');
     });
 
     it('owner can close own job', async () => {
@@ -162,8 +165,9 @@ describe('jobs.js — employer actions', () => {
       const r = await request(app)
         .patch(`/api/jobs/${job._id}/status`)
         .set(createAuthHeaders(emp2))
-        .send({ status: 'paused' });
+        .send({ status: 'closed' });
       expect(r.status).toBe(404);
+      expect((await Job.findById(job._id)).status).toBe('active');
     });
   });
 

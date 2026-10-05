@@ -1,6 +1,6 @@
 /**
  * Phase 28 — coverage push for jobs.js POST / validation branches:
- *   - tier whitelist (L846-852)
+ *   - client tier ignored → always 'basic' (payments rebuild, O-60)
  *   - salary.min > salary.max (L859-865)
  *   - non-administrata employer setting administrata=true (L854-857) — server silently strips
  *   - location not in active list (L867-874)
@@ -46,14 +46,16 @@ describe('jobs.js — POST / validation branches', () => {
     await closeTestDB();
   });
 
-  it('rejects tier outside whitelist (L846-852)', async () => {
+  // Payments rebuild (O-60): tier is server-assigned — any client `tier`
+  // (valid or not) is ignored and the job is created 'basic'.
+  it.each(['enterprise_unlimited', 'premium', 'featured'])('ignores client tier=%s → 201, job tier basic', async (tier) => {
     const { user: emp } = await createVerifiedEmployer();
     const r = await request(app)
       .post('/api/jobs')
       .set(createAuthHeaders(emp))
-      .send(basePayload({ tier: 'enterprise_unlimited' }));
-    expect(r.status).toBe(400);
-    expect(r.body.message).toMatch(/Tier i pavlefshëm/i);
+      .send(basePayload({ tier }));
+    expect(r.status).toBe(201);
+    expect(r.body.data.job.tier).toBe('basic');
   });
 
   it('rejects salary.min > salary.max (L859-865)', async () => {

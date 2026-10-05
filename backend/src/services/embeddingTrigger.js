@@ -41,6 +41,8 @@ const EMBED_CAP = Number.isFinite(EMBED_DAILY_CAP) ? EMBED_DAILY_CAP : 50;
 const INFLIGHT_CAP = parseInt(process.env.EMBEDDING_INFLIGHT_MAX || '20', 10);
 let inflightCount = 0;
 
+const QUOTA_EXEMPT_REASONS = new Set(['cv-generate', 'paysera-paid', 'order-paid', 'order-renewal-paid']);
+
 export function fireEmbedding({ kind, id, reason, extraMetadata = {} }) {
   if (!id) {
     logger.warn('fireEmbedding: missing id', { kind, reason });
@@ -48,9 +50,10 @@ export function fireEmbedding({ kind, id, reason, extraMetadata = {} }) {
   }
   setImmediate(async () => {
     const idStr = String(id);
-    // Daily-quota gate (per-entity). Skip for CV-gen + Paysera-paid signals
-    // — both are legitimate one-shot triggers we never want to drop.
-    if (EMBED_CAP > 0 && reason !== 'cv-generate' && reason !== 'paysera-paid') {
+    // Daily-quota gate (per-entity). Skip for CV-gen + payment-activation
+    // signals — legitimate one-shot triggers we never want to drop (a paid
+    // post's notify fan-out rides on this kick).
+    if (EMBED_CAP > 0 && !QUOTA_EXEMPT_REASONS.has(reason)) {
       try {
         const { allowed, count } = await incrementAndCheck(`embed:${kind}:${idStr}`, EMBED_CAP);
         if (!allowed) {

@@ -1,7 +1,8 @@
 /**
  * Phase 28 — coverage push for jobs.js PATCH /:id/status remaining branches.
  *
- * Existing tests cover paused / active transitions. Missing branches:
+ * The full from-state × to-state matrix lives in jobs-status-matrix.test.js
+ * (payments rebuild). Branches here:
  *   - status='closed' → statusMessages.closed (L1318)
  *   - invalid status enum → 400 (L1289-1294)
  *   - Other employer's job → 404 (L1302-1307)
@@ -58,7 +59,8 @@ describe('jobs.js — PATCH /:id/status remaining branches', () => {
       .send({ status: 'BOGUS_STATUS' });
 
     expect(r.status).toBe(400);
-    expect(r.body.message).toMatch(/active.*paused.*closed/);
+    // 'paused' is no longer offered (pause feature removed, O-18).
+    expect(r.body.message).toBe('Statusi duhet të jetë: active ose closed');
   });
 
   it('other employer cannot mutate status (L1302-1307 → 404)', async () => {
@@ -69,9 +71,10 @@ describe('jobs.js — PATCH /:id/status remaining branches', () => {
     const r = await request(app)
       .patch(`/api/jobs/${job._id}/status`)
       .set(createAuthHeaders(empB))
-      .send({ status: 'paused' });
+      .send({ status: 'closed' });
 
     expect(r.status).toBe(404);
+    expect((await Job.findById(job._id)).status).toBe('active');
   });
 
   it('malformed ObjectId rejected with 400 via validateObjectId', async () => {
