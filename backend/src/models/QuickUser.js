@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import crypto from 'crypto';
 import { escapeRegex } from '../utils/sanitize.js';
+import { emailFormatValidator } from '../lib/emailFormat.js';
 import { JOB_CATEGORIES } from '../constants/jobCategories.js';
 
 const { Schema } = mongoose;
@@ -24,7 +25,7 @@ const quickUserSchema = new Schema({
     unique: true,
     lowercase: true,
     trim: true,
-    match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,63})+$/, 'Email i pavlefshëm']
+    validate: { validator: emailFormatValidator, message: 'Email i pavlefshëm' }
   },
   phone: {
     type: String,
