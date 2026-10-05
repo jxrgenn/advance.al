@@ -10,6 +10,14 @@
 //   - fake_success:       dev-only auto-accept route fired
 //   - admin_manual_accept: admin used the manual mark-paid override
 //
+// Order-based events (payments rebuild, 2026-10):
+//   - order_created / checkout_created / checkout_reused / order_canceled
+//   - order_paid / order_failed / order_expired / verification_failed
+//   - activation_applied / activation_skipped (duplicate or dead job → needsRefund)
+//   - paid_after_close (provider confirmed money for a failed/canceled/expired order)
+//   - refund_requested / refund_recorded / dispute_recorded / needs_refund_resolved
+//   - webhook_received (Stripe; providerEventId is the dedupe key)
+//
 // Use cases:
 //   - Post-incident debugging ("Paysera says they sent us a callback at 14:32 — did we receive it?")
 //   - Audit trail for disputes / reconciliation
@@ -37,13 +45,37 @@ const paymentEventSchema = new Schema({
       'fake_success',
       'admin_manual_accept',
       'reminder_sent',
+      'order_created',
+      'checkout_created',
+      'checkout_reused',
+      'order_canceled',
+      'order_paid',
+      'order_failed',
+      'order_expired',
+      'verification_failed',
+      'activation_applied',
+      'activation_skipped',
+      'paid_after_close',
+      'refund_requested',
+      'refund_recorded',
+      'dispute_recorded',
+      'needs_refund_resolved',
+      'webhook_received',
     ],
     required: true,
   },
-  orderId:     String,   // e.g. "job-<jobId>" — value we send to Paysera as orderid
-  paymentId:   String,   // Paysera requestid (when known — null on initial /initiate)
+  orderId:     String,   // PaymentOrder.orderId ("ord_…"); legacy rows: "job-<jobId>"
+  paymentId:   String,   // provider payment id (Stripe payment_intent / Paysera requestid)
   amountCents: Number,
   tier:        { type: String, enum: ['standard', 'promoted', 'admin'] },
+  provider:    { type: String, enum: ['stripe', 'paysera', 'admin', 'dev-fake'] },
+  // Provider webhook event id (Stripe evt_…). Unique so a re-delivered event
+  // is recognised; processedAt marks it handled (a failed attempt leaves it
+  // unset so Stripe's retry is processed again — every handler is idempotent).
+  providerEventId: String,
+  eventType:   String,   // provider event type, e.g. checkout.session.completed
+  processedAt: Date,
+  source:      String,   // webhook | reconcile-read | reconcile-cron | dev-fake | admin | …
   status:      String,   // raw Paysera status code as string ("0", "1", "2", etc.)
   ip:          String,
   userAgent:   String,
@@ -53,6 +85,8 @@ const paymentEventSchema = new Schema({
 
 paymentEventSchema.index({ createdAt: -1 });
 paymentEventSchema.index({ jobId: 1, event: 1, createdAt: -1 });
+paymentEventSchema.index({ orderId: 1, createdAt: -1 });
+paymentEventSchema.index({ providerEventId: 1 }, { unique: true, sparse: true });
 
 const PaymentEvent = mongoose.model('PaymentEvent', paymentEventSchema);
 

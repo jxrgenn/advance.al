@@ -608,7 +608,9 @@ describe('Jobs API - Integration Tests', () => {
   // PATCH /api/jobs/:id/status - Update Status
   // ========================================
   describe('PATCH /api/jobs/:id/status - Update Job Status', () => {
-    it('TC-22.7: should pause job successfully', async () => {
+    // Pause was removed by the owner; PATCH /status only closes a job or
+    // re-opens one the employer closed (payments rebuild, O-18).
+    it('TC-22.7: should close an active job', async () => {
       // Arrange
       const { user: employer } = await createVerifiedEmployer();
       const job = await createJob(employer, { status: 'active' });
@@ -617,17 +619,18 @@ describe('Jobs API - Integration Tests', () => {
       const response = await request(app)
         .patch(`/api/jobs/${job._id}/status`)
         .set(createAuthHeaders(employer))
-        .send({ status: 'paused' });
+        .send({ status: 'closed' });
 
       // Assert
       expect(response.status).toBe(200);
-      expect(response.body.data.job.status).toBe('paused');
+      expect(response.body.data.job.status).toBe('closed');
+      expect(response.body.data.job.closedReason).toBe('employer');
     });
 
-    it('TC-22.8: should activate paused job', async () => {
-      // Arrange
+    it('TC-22.8: should re-open a paid, unexpired job the employer closed', async () => {
+      // Arrange — factory jobs are paid with ~21 days left
       const { user: employer } = await createVerifiedEmployer();
-      const job = await createJob(employer, { status: 'paused' });
+      const job = await createJob(employer, { status: 'closed', closedReason: 'employer', closedFromStatus: 'active' });
 
       // Act
       const response = await request(app)
@@ -638,6 +641,19 @@ describe('Jobs API - Integration Tests', () => {
       // Assert
       expect(response.status).toBe(200);
       expect(response.body.data.job.status).toBe('active');
+    });
+
+    it("TC-22.10: rejects the removed 'paused' status with 400", async () => {
+      const { user: employer } = await createVerifiedEmployer();
+      const job = await createJob(employer, { status: 'active' });
+
+      const response = await request(app)
+        .patch(`/api/jobs/${job._id}/status`)
+        .set(createAuthHeaders(employer))
+        .send({ status: 'paused' });
+
+      expect(response.status).toBe(400);
+      expect((await Job.findById(job._id)).status).toBe('active');
     });
   });
 

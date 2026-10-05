@@ -15,6 +15,28 @@ of Phase 28 (test-suite genuineness sprint).
 | Upstash Redis | yes | gracefully degrades to in-memory | ⚠️ Real path uncovered in CI |
 | Sentry | yes | not exercised | ⚠️ Production-only |
 | Twilio (SMS) | partially configured | NOT TESTED — no Twilio account | 🔴 **Known gap** |
+| Stripe (card checkout) | yes (2026-10) | SDK client faked at the network boundary; webhook signatures REAL; real test-mode suite auto-runs with `sk_test_` | ⚠️ Real API path pending keys |
+
+## Stripe (card checkout — added 2026-10)
+
+**What CI proves offline**: every payment state transition, fulfilment,
+refund/dispute bookkeeping and the full webhook route — with REAL signature
+verification (`Stripe.webhooks.generateTestHeaderString` → route →
+`Stripe.webhooks.constructEvent`, raw-body mount). Only the Stripe SDK's
+network calls (`checkout.sessions.create/retrieve/expire`, `refunds.create`)
+are replaced by an in-memory fake injected through
+`stripeProvider.__setStripeClientForTests()`; tests assert the exact params
+we send (amount, metadata, return URLs, idempotency keys).
+
+**What needs a real key** (`tests/integration/stripe-real/`): our Checkout
+Session params accepted by the live test-mode API (expires_at window, pinned
+apiVersion `2026-09-30.endive`), retrieve/expire round-trip, idempotency on
+the order id. Runs automatically when `STRIPE_SECRET_KEY=sk_test_…` is set,
+otherwise skipped with a printed reason.
+
+**Never automated**: a live-mode charge, real refunds, real disputes. Do the
+manual test-mode procedure in `PAYMENTS.md` (card 4242…, `stripe listen`)
+before switching to live keys.
 
 ## Twilio (the major gap)
 

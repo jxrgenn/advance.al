@@ -1,86 +1,169 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { jobsApi, paymentsApi, Job } from "@/lib/api";
-import { CreditCard, Loader2, ArrowLeft, Sparkles, Clock, Check, Star } from "lucide-react";
+import { ApiError, configApi, jobsApi, paymentsApi, Job, CheckoutTier, PaymentPurpose } from "@/lib/api";
+import { AlertTriangle, ArrowLeft, Check, Clock, CreditCard, Loader2, Lock, RefreshCw, Sparkles, Star } from "lucide-react";
 
-type Tier = 'standard' | 'promoted';
+/**
+ * /payment/job/:jobId[?purpose=job_renewal]
+ *
+ * Tier picker + "Pay by card". Prices come from the public configuration
+ * endpoint, which serves exactly the values the checkout charges. The button
+ * creates a server-side order and sends the browser to Stripe's hosted page;
+ * the job is published only after the server confirms the payment.
+ */
 
-const STANDARD_PRICE = 35;
-const PROMOTED_PRICE = 49;
+type Prices = { standard: number; promoted: number };
+
+const POST_STATES = ["pending_payment"];
+const RENEWAL_STATES = ["expired", "closed"];
+
+function readPrice(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
+}
+
+const formatEur = (n: number) => `€${Number.isInteger(n) ? n : n.toFixed(2)}`;
 
 const PaymentJobPosting = () => {
   const { jobId } = useParams<{ jobId: string }>();
+  const [params] = useSearchParams();
+  const purpose: PaymentPurpose = params.get("purpose") === "job_renewal" ? "job_renewal" : "job_post";
+  const isRenewal = purpose === "job_renewal";
   const navigate = useNavigate();
   const { toast } = useToast();
+
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
-  const [cancelling, setCancelling] = useState(false);
+  const [prices, setPrices] = useState<Prices | null>(null);
+  const [paymentsAvailable, setPaymentsAvailable] = useState<boolean>(true);
+  const [selectedTier, setSelectedTier] = useState<CheckoutTier>("standard");
   const [paying, setPaying] = useState(false);
-  const [selectedTier, setSelectedTier] = useState<Tier>('standard');
+  const [cancelling, setCancelling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadJob = useCallback(async () => {
+    if (!jobId) return null;
+    const r = await jobsApi.getJob(jobId);
+    if (r.success && r.data?.job) {
+      setJob(r.data.job);
+      return r.data.job;
+    }
+    return null;
+  }, [jobId]);
 
   useEffect(() => {
     if (!jobId) {
-      navigate('/employer-dashboard');
+      navigate("/employer-dashboard");
       return;
     }
-    jobsApi.getJob(jobId)
-      .then((r) => {
-        if (r.success && r.data?.job) {
-          setJob(r.data.job);
-          // Pre-select tier if the job already has one (e.g. retrying payment).
-          const existing = (r.data.job as any)?.tier;
-          if (existing === 'premium') setSelectedTier('promoted');
-        } else {
-          navigate('/employer-dashboard');
+    let cancelled = false;
+    (async () => {
+      try {
+        const [loadedJob, config] = await Promise.all([
+          loadJob(),
+          configApi.getPublic().catch(() => null),
+        ]);
+        if (cancelled) return;
+        if (!loadedJob) {
+          navigate("/employer-dashboard");
+          return;
         }
-      })
-      .catch(() => navigate('/employer-dashboard'))
-      .finally(() => setLoading(false));
-  }, [jobId, navigate]);
-
-  const price = selectedTier === 'promoted' ? PROMOTED_PRICE : STANDARD_PRICE;
-
-  const handlePay = async () => {
-    if (!jobId || paying) return;
-    try {
-      setPaying(true);
-      const r = await paymentsApi.initiatePaysera(jobId, selectedTier);
-      if (r.success && r.data?.redirectUrl) {
-        window.location.href = r.data.redirectUrl;
-        return;
+        if (loadedJob.tier === "premium" || loadedJob.tier === "featured") setSelectedTier("promoted");
+        if (config?.success && config.data) {
+          const s = config.data.settings || {};
+          const standard = readPrice(s.pricing_standard_posting);
+          const promoted = readPrice(s.pricing_promoted_posting);
+          if (standard !== null && promoted !== null) setPrices({ standard, promoted });
+          setPaymentsAvailable(config.data.paymentsAvailable !== false);
+        }
+      } catch {
+        if (!cancelled) navigate("/employer-dashboard");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      toast({
-        title: 'Gabim',
-        description: r.message || 'Nuk mund të inicializohet pagesa. Provoni përsëri.',
-        variant: 'destructive',
-      });
-    } catch (err: any) {
-      toast({
-        title: 'Gabim',
-        description: err?.message || 'Nuk mund të inicializohet pagesa.',
-        variant: 'destructive',
-      });
-    } finally {
-      setPaying(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [jobId, navigate, loadJob]);
+
+  const allowedStates = isRenewal ? RENEWAL_STATES : POST_STATES;
+  const payable = !!job && allowedStates.includes(job.status);
+
+  const renewForFree = async () => {
+    if (!jobId) return;
+    try {
+      await jobsApi.renewJob(jobId);
+      toast({ title: "Puna u ripostua", description: "Llogaria juaj riposton falas." });
+      navigate("/employer-dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ripostimi dështoi.");
     }
   };
 
-  const handleCancel = async () => {
-    if (!jobId || cancelling) return;
-    const ok = window.confirm('A jeni i sigurt që doni ta anuloni këtë postim? Puna nuk do të publikohet.');
-    if (!ok) return;
+  const handlePay = async () => {
+    if (!jobId || paying) return;
+    setError(null);
+    setPaying(true);
     try {
-      setCancelling(true);
+      const r = await paymentsApi.createCheckout(jobId, selectedTier, purpose);
+      if (r.success && r.data?.url) {
+        // Leave the button disabled: the browser is navigating to the checkout.
+        window.location.assign(r.data.url);
+        return;
+      }
+      setError(r.message || "Nuk mund të hapet faqja e pagesës. Provoni përsëri.");
+      setPaying(false);
+    } catch (err) {
+      setPaying(false);
+      if (err instanceof ApiError) {
+        const code = err.response?.code;
+        if (code === "ALREADY_PAID") {
+          toast({ title: "Kjo punë është paguar", description: "Pagesa sapo u konfirmua." });
+          navigate("/employer-dashboard");
+          return;
+        }
+        if (code === "FREE_POSTING") {
+          if (isRenewal) {
+            await renewForFree();
+            return;
+          }
+          setError("Llogaria juaj publikon falas — nuk nevojitet pagesë.");
+          return;
+        }
+        if (code === "INVALID_JOB_STATE") {
+          await loadJob();
+        }
+        if (code === "PAYMENTS_UNAVAILABLE") {
+          setPaymentsAvailable(false);
+        }
+        setError(err.message);
+        return;
+      }
+      setError(err instanceof Error ? err.message : "Nuk mund të hapet faqja e pagesës.");
+    }
+  };
+
+  const handleCancelPost = async () => {
+    if (!jobId || cancelling) return;
+    const ok = window.confirm("A jeni i sigurt që doni ta anuloni këtë postim? Puna nuk do të publikohet.");
+    if (!ok) return;
+    setCancelling(true);
+    try {
       await jobsApi.deleteJob(jobId);
-      toast({ title: 'Postimi u anulua', description: 'Mund të krijoni një postim të ri kur jeni gati.' });
-      navigate('/employer-dashboard');
-    } catch {
-      toast({ title: 'Gabim', description: 'Nuk mund të anulohet tani. Provoni përsëri.', variant: 'destructive' });
+      toast({ title: "Postimi u anulua", description: "Mund të krijoni një postim të ri kur jeni gati." });
+      navigate("/employer-dashboard");
+    } catch (err) {
+      if (err instanceof ApiError && err.response?.code === "PAYMENT_COMPLETED") {
+        toast({ title: "Pagesa u krye", description: "Puna sapo u publikua — nuk u anulua." });
+        navigate("/employer-dashboard");
+        return;
+      }
+      toast({ title: "Gabim", description: "Nuk mund të anulohet tani. Provoni përsëri.", variant: "destructive" });
     } finally {
       setCancelling(false);
     }
@@ -99,12 +182,14 @@ const PaymentJobPosting = () => {
 
   if (!job) return null;
 
+  const price = prices ? (selectedTier === "promoted" ? prices.promoted : prices.standard) : null;
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Navigation />
       <main className="flex-1 container py-8">
         <div className="max-w-3xl mx-auto">
-          <Button variant="ghost" onClick={() => navigate('/employer-dashboard')} className="mb-6">
+          <Button variant="ghost" onClick={() => navigate("/employer-dashboard")} className="mb-6">
             <ArrowLeft className="h-4 w-4 mr-2" /> Kthehu te paneli
           </Button>
 
@@ -112,11 +197,17 @@ const PaymentJobPosting = () => {
             <CardHeader>
               <div className="flex items-center gap-3">
                 <div className="bg-primary/10 p-3 rounded-full">
-                  <CreditCard className="h-6 w-6 text-primary" />
+                  {isRenewal ? <RefreshCw className="h-6 w-6 text-primary" /> : <CreditCard className="h-6 w-6 text-primary" />}
                 </div>
                 <div>
-                  <CardTitle className="text-2xl">Zgjidh paketën dhe paguaj</CardTitle>
-                  <CardDescription>Puna publikohet menjëherë pas konfirmimit të pagesës</CardDescription>
+                  <CardTitle className="text-2xl">
+                    {isRenewal ? "Riposto punën" : "Zgjidh paketën dhe paguaj"}
+                  </CardTitle>
+                  <CardDescription>
+                    {isRenewal
+                      ? "Puna publikohet sërish për 21 ditë pas konfirmimit të pagesës"
+                      : "Puna publikohet menjëherë pas konfirmimit të pagesës"}
+                  </CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -126,61 +217,95 @@ const PaymentJobPosting = () => {
                 <p className="font-semibold">{job.title}</p>
               </div>
 
-              {/* Tier selector */}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <TierCard
-                  tier="standard"
-                  selected={selectedTier === 'standard'}
-                  onSelect={() => setSelectedTier('standard')}
-                  title="Standart"
-                  price={STANDARD_PRICE}
-                  description="Postim i rregullt"
-                  features={[
-                    'Aktiv për 21 ditë',
-                    'Renditje normale në listim',
-                    'Aplikime të pakufizuara',
-                    'Statistika bazë',
-                  ]}
-                />
-                <TierCard
-                  tier="promoted"
-                  selected={selectedTier === 'promoted'}
-                  onSelect={() => setSelectedTier('promoted')}
-                  title="I Promovuar"
-                  price={PROMOTED_PRICE}
-                  description="Dukshmëri më e madhe"
-                  badge="I rekomanduar"
-                  features={[
-                    'Aktiv për 21 ditë',
-                    'Pozicion prioritar në listim',
-                    'Shenjë premium në kartelë',
-                    'Statistika të plota',
-                  ]}
-                />
-              </div>
+              {!payable ? (
+                <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-amber-900">
+                    {job.status === "active" || job.status === "pending_approval" ? (
+                      <p>Kjo punë është tashmë e paguar{job.status === "pending_approval" ? " dhe pret miratimin" : " dhe e publikuar"}. Nuk nevojitet pagesë.</p>
+                    ) : (
+                      <p>
+                        {isRenewal
+                          ? "Vetëm punët e skaduara ose të mbyllura mund të ripostohen."
+                          : "Kjo punë nuk është në pritje të pagesës."}
+                      </p>
+                    )}
+                    <Button variant="outline" size="sm" className="mt-3" onClick={() => navigate("/employer-dashboard")}>
+                      Te paneli
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <TierCard
+                      selected={selectedTier === "standard"}
+                      onSelect={() => setSelectedTier("standard")}
+                      title="Standart"
+                      price={prices?.standard ?? null}
+                      description="Postim i rregullt"
+                      features={["Aktiv për 21 ditë", "Renditje normale në listim", "Aplikime të pakufizuara", "Statistika bazë"]}
+                      disabled={paying}
+                    />
+                    <TierCard
+                      selected={selectedTier === "promoted"}
+                      onSelect={() => setSelectedTier("promoted")}
+                      title="I Promovuar"
+                      price={prices?.promoted ?? null}
+                      description="Dukshmëri më e madhe"
+                      badge="I rekomanduar"
+                      features={["Aktiv për 21 ditë", "Pozicion prioritar në listim", "Shenjë premium në kartelë", "Statistika të plota"]}
+                      disabled={paying}
+                    />
+                  </div>
 
-              <div className="flex items-start gap-3 text-sm bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <Clock className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                <p className="text-blue-800">
-                  Puna mbetet e ruajtur dhe e padukshme deri sa pagesa të kompletohet.
-                  Pas pagesës do të ridrejtoheni automatikisht.
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Button onClick={handlePay} size="lg" className="w-full" disabled={paying}>
-                  {paying ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <Sparkles className="h-4 w-4 mr-2" />
+                  {!paymentsAvailable && (
+                    <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm" role="alert">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                      <p className="text-amber-900">
+                        Pagesat me kartë nuk janë aktive ende. Ju lutemi kontaktoni mbështetjen.
+                      </p>
+                    </div>
                   )}
-                  Paguaj €{price}
-                </Button>
-                <Button onClick={handleCancel} variant="outline" size="lg" className="w-full" disabled={cancelling}>
-                  {cancelling ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                  Anulo postimin
-                </Button>
-              </div>
+
+                  <div className="flex items-start gap-3 text-sm bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <Clock className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-blue-800">
+                      {isRenewal
+                        ? "Puna mbetet e padukshme deri sa pagesa të kompletohet. Pas pagesës do të ridrejtoheni automatikisht."
+                        : "Puna mbetet e ruajtur dhe e padukshme deri sa pagesa të kompletohet. Pas pagesës do të ridrejtoheni automatikisht."}
+                    </p>
+                  </div>
+
+                  {error && (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">
+                      {error}
+                    </div>
+                  )}
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Button onClick={handlePay} size="lg" className="w-full" disabled={paying || !paymentsAvailable}>
+                      {paying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                      {price !== null ? `Paguaj me kartë ${formatEur(price)}` : "Paguaj me kartë"}
+                    </Button>
+                    {isRenewal ? (
+                      <Button onClick={() => navigate("/employer-dashboard")} variant="outline" size="lg" className="w-full" disabled={paying}>
+                        Jo tani
+                      </Button>
+                    ) : (
+                      <Button onClick={handleCancelPost} variant="outline" size="lg" className="w-full" disabled={cancelling || paying}>
+                        {cancelling ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                        Anulo postimin
+                      </Button>
+                    )}
+                  </div>
+
+                  <p className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                    <Lock className="h-3.5 w-3.5" />
+                    Pagesa e sigurt me Stripe — të dhënat e kartës nuk kalojnë nga serverat tanë.
+                  </p>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -191,24 +316,24 @@ const PaymentJobPosting = () => {
 };
 
 type TierCardProps = {
-  tier: Tier;
   selected: boolean;
   onSelect: () => void;
   title: string;
-  price: number;
+  price: number | null;
   description: string;
   features: string[];
   badge?: string;
+  disabled?: boolean;
 };
 
-const TierCard = ({ selected, onSelect, title, price, description, features, badge }: TierCardProps) => (
+const TierCard = ({ selected, onSelect, title, price, description, features, badge, disabled }: TierCardProps) => (
   <button
     type="button"
     onClick={onSelect}
-    className={`relative text-left rounded-lg border-2 p-4 transition-all ${
-      selected
-        ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-        : 'border-muted hover:border-muted-foreground/30'
+    disabled={disabled}
+    aria-pressed={selected}
+    className={`relative text-left rounded-lg border-2 p-4 transition-all disabled:opacity-60 ${
+      selected ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "border-muted hover:border-muted-foreground/30"
     }`}
   >
     {badge && (
@@ -221,7 +346,7 @@ const TierCard = ({ selected, onSelect, title, price, description, features, bad
         <p className="font-semibold text-lg">{title}</p>
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
-      <p className="text-2xl font-bold">€{price}</p>
+      <p className="text-2xl font-bold">{price !== null ? formatEur(price) : "—"}</p>
     </div>
     <ul className="space-y-1.5 mt-3">
       {features.map((f) => (
@@ -234,13 +359,13 @@ const TierCard = ({ selected, onSelect, title, price, description, features, bad
     <div className="mt-3 flex items-center gap-2 text-sm">
       <span
         className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-          selected ? 'border-primary bg-primary' : 'border-muted-foreground/40'
+          selected ? "border-primary bg-primary" : "border-muted-foreground/40"
         }`}
       >
         {selected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
       </span>
-      <span className={selected ? 'text-primary font-medium' : 'text-muted-foreground'}>
-        {selected ? 'I zgjedhur' : 'Zgjidh'}
+      <span className={selected ? "text-primary font-medium" : "text-muted-foreground"}>
+        {selected ? "I zgjedhur" : "Zgjidh"}
       </span>
     </div>
   </button>

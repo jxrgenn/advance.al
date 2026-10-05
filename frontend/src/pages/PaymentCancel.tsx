@@ -1,17 +1,44 @@
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { XCircle, LayoutDashboard } from "lucide-react";
+import { paymentsApi, PaymentOrderView } from "@/lib/api";
+import { LayoutDashboard, RefreshCw, XCircle } from "lucide-react";
 
 /**
- * /payment/cancel — Paysera redirects the user here when they cancel the
- * checkout (or close the tab and come back). The job stays in
- * pending_payment state on the server. User can retry from the dashboard.
+ * /payment/cancel?order=<orderId> — Stripe sends the customer here when they
+ * leave the checkout. The job stays unpublished (pending_payment for a new
+ * post; expired/closed for a renewal). "Provo përsëri" goes back to the tier
+ * picker for the same job; if the order was paid after all (rare race), we
+ * hand over to the success page instead.
  */
 const PaymentCancel = () => {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const orderId = params.get("order");
+  const [order, setOrder] = useState<PaymentOrderView | null>(null);
+
+  useEffect(() => {
+    if (!orderId) return;
+    let cancelled = false;
+    paymentsApi.getOrder(orderId)
+      .then((r) => {
+        if (cancelled || !r.success || !r.data) return;
+        if (r.data.status === "paid") {
+          navigate(`/payment/success?order=${encodeURIComponent(orderId)}`, { replace: true });
+          return;
+        }
+        setOrder(r.data);
+      })
+      .catch(() => { /* fall back to the dashboard link */ });
+    return () => { cancelled = true; };
+  }, [orderId, navigate]);
+
+  const retryPath = order
+    ? `/payment/job/${order.jobId}${order.purpose === "job_renewal" ? "?purpose=job_renewal" : ""}`
+    : null;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -25,11 +52,22 @@ const PaymentCancel = () => {
               </div>
               <h1 className="text-2xl font-bold">Pagesa u anulua</h1>
               <p className="text-muted-foreground">
-                Pagesa nuk u kompletua. Puna juaj është ende në pritje dhe nuk është
-                publikuar. Mund ta riprovoni në çdo kohë nga paneli i punëdhënësit.
+                Pagesa nuk u kompletua dhe nuk ju është tërhequr asnjë shumë.
+                {order?.jobTitle ? <> Puna <strong>“{order.jobTitle}”</strong> nuk është publikuar.</> : " Puna nuk është publikuar."}{" "}
+                Mund ta riprovoni në çdo kohë.
               </p>
-              <div className="pt-4">
-                <Button onClick={() => navigate('/employer-dashboard')} className="w-full sm:w-auto">
+              <div className="grid gap-3 sm:grid-cols-2 pt-4">
+                {retryPath && (
+                  <Button onClick={() => navigate(retryPath)} className="w-full">
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Provo përsëri
+                  </Button>
+                )}
+                <Button
+                  onClick={() => navigate("/employer-dashboard")}
+                  variant={retryPath ? "outline" : "default"}
+                  className={retryPath ? "w-full" : "w-full sm:col-span-2"}
+                >
                   <LayoutDashboard className="h-4 w-4 mr-2" />
                   Kthehu te paneli
                 </Button>

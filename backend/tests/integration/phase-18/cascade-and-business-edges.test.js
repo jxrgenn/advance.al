@@ -32,24 +32,27 @@ describe('Phase 18 — Cascade + Business-Logic Edges', () => {
     await closeTestDB();
   });
 
-  describe('Job lifecycle full chain: draft → active → paused → closed → expired → soft-deleted', () => {
+  // 'paused' was removed by the owner (payments rebuild): the chain is now
+  // active → closed → re-opened → closed → soft-deleted.
+  describe('Job lifecycle full chain: active → closed → active → closed → soft-deleted', () => {
     it('full transition chain via API works end-to-end', async () => {
       const { user: emp } = await createVerifiedEmployer();
       const job = await createJob(emp, { status: 'active' });
 
-      // active → paused
+      // active → closed
       let r = await request(app)
         .patch(`/api/jobs/${job._id}/status`)
         .set(createAuthHeaders(emp))
-        .send({ status: 'paused' });
+        .send({ status: 'closed' });
       expect(r.status).toBe(200);
 
-      // paused → active
+      // closed (by employer, paid, unexpired) → active
       r = await request(app)
         .patch(`/api/jobs/${job._id}/status`)
         .set(createAuthHeaders(emp))
         .send({ status: 'active' });
       expect(r.status).toBe(200);
+      expect(r.body.data.job.status).toBe('active');
 
       // active → closed
       r = await request(app)

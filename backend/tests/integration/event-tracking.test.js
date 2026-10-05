@@ -8,7 +8,11 @@
  *   - POST /api/applications logs apply event
  *   - ?ref=recommendation captured as source
  *
- * The logger uses setImmediate so we yield the event loop before asserting.
+ * The logger is fire-and-forget (setImmediate → Mongo write). A fixed number
+ * of event-loop turns does not bound a real database round-trip, so positive
+ * assertions POLL for the expected rows (bounded) and negative assertions use
+ * a settle wait. (Was flaky under load: the write could land after the
+ * assertion — or, in the dedup-window case, after the back-dating update.)
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
@@ -25,6 +29,22 @@ async function flushImmediate() {
   for (let i = 0; i < 8; i++) {
     await new Promise(r => setImmediate(() => setImmediate(r)));
   }
+}
+
+// Wait until at least `count` matching events exist (or the timeout passes).
+async function waitForEvents(filter, count, timeoutMs = 4000) {
+  const end = Date.now() + timeoutMs;
+  for (;;) {
+    const n = await Event.countDocuments(filter);
+    if (n >= count || Date.now() > end) return n;
+    await new Promise(r => setTimeout(r, 20));
+  }
+}
+
+// For "nothing (more) gets written" assertions: give a stray write time to land.
+async function settle() {
+  await flushImmediate();
+  await new Promise(r => setTimeout(r, 200));
 }
 
 describe('Engagement event tracking', () => {
@@ -46,7 +66,8 @@ describe('Engagement event tracking', () => {
         .set(createAuthHeaders(js));
 
       expect(r.status).toBe(200);
-      await flushImmediate();
+      await waitForEvents({ userId: js._id, jobId: job._id }, 1);
+      await settle();
 
       const events = await Event.find({ userId: js._id, jobId: job._id });
       expect(events).toHaveLength(1);
@@ -60,9 +81,9 @@ describe('Engagement event tracking', () => {
       const { user: js } = await createJobseeker();
 
       await request(app).get(`/api/jobs/${job._id}`).set(createAuthHeaders(js));
-      await flushImmediate();
+      await waitForEvents({ userId: js._id, jobId: job._id, type: 'view' }, 1);
       await request(app).get(`/api/jobs/${job._id}`).set(createAuthHeaders(js));
-      await flushImmediate();
+      await settle();
 
       const events = await Event.find({ userId: js._id, jobId: job._id, type: 'view' });
       expect(events).toHaveLength(1); // not 2
@@ -73,9 +94,9 @@ describe('Engagement event tracking', () => {
       const job = await createJob(emp);
       const { user: js } = await createJobseeker();
 
-      // First view
+      // First view — must be written before we back-date it
       await request(app).get(`/api/jobs/${job._id}`).set(createAuthHeaders(js));
-      await flushImmediate();
+      expect(await waitForEvents({ userId: js._id, jobId: job._id, type: 'view' }, 1)).toBe(1);
 
       // Back-date that event so the next view passes the 10-min dedup
       await Event.updateMany(
@@ -85,7 +106,7 @@ describe('Engagement event tracking', () => {
 
       // Second view — should be logged
       await request(app).get(`/api/jobs/${job._id}`).set(createAuthHeaders(js));
-      await flushImmediate();
+      await waitForEvents({ userId: js._id, jobId: job._id, type: 'view' }, 2);
 
       const events = await Event.find({ userId: js._id, jobId: job._id, type: 'view' });
       expect(events).toHaveLength(2);
@@ -99,7 +120,7 @@ describe('Engagement event tracking', () => {
       await request(app)
         .get(`/api/jobs/${job._id}?ref=recommendation`)
         .set(createAuthHeaders(js));
-      await flushImmediate();
+      await waitForEvents({ userId: js._id, jobId: job._id, type: 'view' }, 1);
 
       const ev = await Event.findOne({ userId: js._id, jobId: job._id, type: 'view' });
       expect(ev.source).toBe('recommendation');
@@ -110,7 +131,7 @@ describe('Engagement event tracking', () => {
       const job = await createJob(emp);
 
       await request(app).get(`/api/jobs/${job._id}`).set(createAuthHeaders(emp));
-      await flushImmediate();
+      await settle();
 
       const events = await Event.find({ jobId: job._id, type: 'view' });
       expect(events).toHaveLength(0);
@@ -128,10 +149,10 @@ describe('Engagement event tracking', () => {
         .set(createAuthHeaders(js));
 
       expect(r.status).toBe(200);
-      await flushImmediate();
+      await waitForEvents({ userId: js._id, jobId: job._id, type: 'save' }, 1);
 
       const ev = await Event.findOne({ userId: js._id, jobId: job._id, type: 'save' });
-      expect(ev).toBeTruthy();
+      expect(ev.type).toBe('save');
     });
 
     it('DELETE /api/users/saved-jobs/:id logs an unsave event', async () => {
@@ -140,13 +161,13 @@ describe('Engagement event tracking', () => {
       const { user: js } = await createJobseeker();
 
       await request(app).post(`/api/users/saved-jobs/${job._id}`).set(createAuthHeaders(js));
-      await flushImmediate();
+      await waitForEvents({ userId: js._id, jobId: job._id, type: 'save' }, 1);
 
       await request(app).delete(`/api/users/saved-jobs/${job._id}`).set(createAuthHeaders(js));
-      await flushImmediate();
+      await waitForEvents({ userId: js._id, jobId: job._id, type: 'unsave' }, 1);
 
       const ev = await Event.findOne({ userId: js._id, jobId: job._id, type: 'unsave' });
-      expect(ev).toBeTruthy();
+      expect(ev.type).toBe('unsave');
     });
   });
 
@@ -168,11 +189,12 @@ describe('Engagement event tracking', () => {
           coverLetter: 'test',
         });
 
+      // JUSTIFIED: the apply route answers 201 (created); some versions answered 200.
       expect([200, 201]).toContain(r.status);
-      await flushImmediate();
+      await waitForEvents({ userId: js._id, jobId: job._id, type: 'apply' }, 1);
 
       const ev = await Event.findOne({ userId: js._id, jobId: job._id, type: 'apply' });
-      expect(ev).toBeTruthy();
+      expect(ev.type).toBe('apply');
     });
   });
 });

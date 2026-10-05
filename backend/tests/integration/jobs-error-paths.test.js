@@ -138,7 +138,7 @@ describe('jobs.js — outer catch + status validation paths', () => {
       .set(createAuthHeaders(emp))
       .send({ status: 'invalid_status' });
     expect(r.status).toBe(400);
-    expect(r.body.message).toMatch(/active, paused, ose closed/);
+    expect(r.body.message).toBe('Statusi duhet të jetë: active ose closed');
   });
 
   it('PATCH /:id/status returns 404 for non-owned job (L1302-1307)', async () => {
@@ -147,7 +147,7 @@ describe('jobs.js — outer catch + status validation paths', () => {
     const r = await request(app)
       .patch(`/api/jobs/${id}/status`)
       .set(createAuthHeaders(emp))
-      .send({ status: 'paused' });
+      .send({ status: 'closed' });
     expect(r.status).toBe(404);
   });
 
@@ -158,7 +158,7 @@ describe('jobs.js — outer catch + status validation paths', () => {
     const r = await request(app)
       .patch(`/api/jobs/${job._id}/status`)
       .set(createAuthHeaders(emp))
-      .send({ status: 'paused' });
+      .send({ status: 'closed' });
     expect(r.status).toBe(500);
     expect(r.body.message).toMatch(/përditësimin e statusit/);
   });

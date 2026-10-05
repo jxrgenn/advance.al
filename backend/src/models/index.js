@@ -16,6 +16,7 @@ import PricingRule from './PricingRule.js';
 import RevenueAnalytics from './RevenueAnalytics.js';
 import CandidateMatch from './CandidateMatch.js';
 import PaymentEvent from './PaymentEvent.js';
+import PaymentOrder from './PaymentOrder.js';
 
 export {
   User,
@@ -34,5 +35,6 @@ export {
   PricingRule,
   RevenueAnalytics,
   CandidateMatch,
-  PaymentEvent
+  PaymentEvent,
+  PaymentOrder
 };

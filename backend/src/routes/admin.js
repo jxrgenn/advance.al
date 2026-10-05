@@ -1,6 +1,10 @@
 import express from 'express';
 import mongoose from 'mongoose';
-import { User, Job, Application, QuickUser, PaymentEvent } from '../models/index.js';
+import { User, Job, Application, QuickUser, PaymentOrder } from '../models/index.js';
+import {
+  PaymentError, adminManualAccept, adminRefundOrder, adminResolveRefundFlag, cancelOpenOrdersForJob, flagPaidListingWithdrawn,
+} from '../services/payments/orderService.js';
+import { isEmployerFree } from '../lib/pricing.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { escapeRegex, sanitizeLimit } from '../utils/sanitize.js';
 import notificationService from '../lib/notificationService.js';
@@ -620,7 +624,7 @@ router.patch('/users/:userId/manage', async (req, res) => {
           ).lean();
           await Job.updateMany(
             { employerId: user._id, isDeleted: false, status: 'active' },
-            { $set: { status: 'closed' } }
+            { $set: { status: 'closed', closedReason: 'suspension' } }
           );
           await Job.decrementLocationCountsForCities(affected.map(j => j.location?.city));
         }
@@ -742,11 +746,32 @@ router.patch('/jobs/:jobId/manage', async (req, res) => {
     }
 
     switch (action) {
-      case 'approve':
+      case 'approve': {
+        if (!['pending_approval', 'rejected'].includes(job.status)) {
+          return res.status(400).json({
+            success: false,
+            message: `Vetëm punët në pritje të miratimit ose të refuzuara mund të aprovohen (statusi: ${job.status})`
+          });
+        }
+        // Approval is moderation, not payment: an unpaid job of a paying
+        // employer is published only through a paid order or an explicit,
+        // audited manual-accept (admin → Pagesat).
+        const employer = await User.findById(job.employerId).select('freePostingEnabled').lean();
+        if (job.paymentStatus !== 'paid' && !(await isEmployerFree(employer))) {
+          return res.status(409).json({
+            success: false,
+            code: 'PAYMENT_REQUIRED',
+            message: 'Kjo punë nuk është paguar. Përdorni "Shëno si e paguar" te Pagesat nëse pagesa u krye jashtë sistemit.'
+          });
+        }
         job.status = 'active';
         job.adminApproved = true;
+        job.closedReason = undefined;
+        job.closedFromStatus = undefined;
         break;
+      }
       case 'reject':
+        await cancelOpenOrdersForJob(job._id, 'job rejected by admin', { source: 'admin' });
         job.status = 'rejected';
         job.rejectionReason = reason;
         break;
@@ -757,10 +782,13 @@ router.patch('/jobs/:jobId/manage', async (req, res) => {
         job.tier = 'basic';
         break;
       case 'delete':
+        await cancelOpenOrdersForJob(job._id, 'job deleted by admin', { source: 'admin' });
         // Soft delete instead of hard delete
         job.isDeleted = true;
         job.status = 'closed';
         await job.save();
+        await flagPaidListingWithdrawn(job, { admin: req.user, action: 'deleted' }).catch((err) =>
+          logger.warn('flagPaidListingWithdrawn failed', { error: err.message }));
         return res.json({
           success: true,
           message: 'Puna u fshi me sukses'
@@ -773,6 +801,11 @@ router.patch('/jobs/:jobId/manage', async (req, res) => {
     }
 
     await job.save();
+
+    if (action === 'reject') {
+      await flagPaidListingWithdrawn(job, { admin: req.user, action: 'rejected' }).catch((err) =>
+        logger.warn('flagPaidListingWithdrawn failed', { error: err.message }));
+    }
 
     // Notify matching users when job is approved. Round P: route through fireEmbedding
     // so the trigger's inline pipeline handles generate→similarity→notify in order
@@ -1003,6 +1036,11 @@ router.patch('/jobs/:id/approve', async (req, res) => {
     job.status = action === 'approve' ? 'active' : 'rejected';
     await job.save();
 
+    if (action === 'reject') {
+      await flagPaidListingWithdrawn(job, { admin: req.user, action: 'rejected' }).catch((err) =>
+        logger.warn('flagPaidListingWithdrawn failed', { error: err.message }));
+    }
+
     // Notify matching users when job is approved. Round P: route through fireEmbedding
     // so generate→similarity→notify run in order without the previous 2s-sleep race.
     if (action === 'approve') {
@@ -1158,7 +1196,8 @@ router.post('/backfill-job-embeddings', async (req, res) => {
 // @route   GET /api/admin/payments
 // @desc    List jobs joined with their payment state, filterable.
 //          Filters: status=pending_payment|paid|failed|all, employerEmail (substring),
-//          dateFrom/dateTo (ISO), page, limit.
+//          dateFrom/dateTo (ISO), page, limit. Each row carries the job's
+//          latest PaymentOrder (or null).
 // @access  Private (Admin only)
 router.get('/payments', async (req, res) => {
   try {
@@ -1186,7 +1225,7 @@ router.get('/payments', async (req, res) => {
       // include any job that has touched the payment pipeline
       jobQuery.$or = [
         { status: 'pending_payment' },
-        { paymentStatus: { $in: ['paid', 'failed'] } },
+        { paymentStatus: { $in: ['paid', 'failed', 'refunded'] } },
         { paymentInitiatedAt: { $exists: true, $ne: null } },
       ];
     }
@@ -1198,7 +1237,7 @@ router.get('/payments', async (req, res) => {
     }
 
     // Filter by employer email substring: resolve user ids first.
-    if (employerEmail && employerEmail.trim()) {
+    if (typeof employerEmail === 'string' && employerEmail.trim()) {
       const safe = escapeRegex(employerEmail.trim());
       const employerIds = await User.find({ email: { $regex: safe, $options: 'i' }, userType: 'employer' }).distinct('_id');
       jobQuery.employerId = { $in: employerIds };
@@ -1212,27 +1251,41 @@ router.get('/payments', async (req, res) => {
       .populate('employerId', 'email profile.firstName profile.employerProfile.companyName')
       .lean();
 
+    const latestOrders = await PaymentOrder.aggregate([
+      { $match: { jobId: { $in: docs.map((d) => d._id) } } },
+      { $sort: { createdAt: -1 } },
+      { $group: { _id: '$jobId', order: { $first: '$$ROOT' } } },
+    ]);
+    const orderByJob = new Map(latestOrders.map((o) => [String(o._id), o.order]));
+
     res.json({
       success: true,
       data: {
-        payments: docs.map(j => ({
-          _id: j._id,
-          title: j.title,
-          slug: j.slug,
-          status: j.status,
-          paymentStatus: j.paymentStatus,
-          paymentMethod: j.paymentMethod,
-          paymentRequired: j.paymentRequired,
-          paymentId: j.paymentId,
-          paymentInitiatedAt: j.paymentInitiatedAt,
-          paidAt: j.paidAt,
-          tier: j.tier,
-          employer: {
-            _id: j.employerId?._id,
-            email: j.employerId?.email,
-            name: j.employerId?.profile?.employerProfile?.companyName || j.employerId?.profile?.firstName || '—',
-          },
-        })),
+        payments: docs.map(j => {
+          const o = orderByJob.get(String(j._id));
+          return {
+            _id: j._id,
+            title: j.title,
+            slug: j.slug,
+            status: j.status,
+            paymentStatus: j.paymentStatus,
+            paymentMethod: j.paymentMethod,
+            paymentRequired: j.paymentRequired,
+            paymentId: j.paymentId,
+            paymentInitiatedAt: j.paymentInitiatedAt,
+            paidAt: j.paidAt,
+            tier: j.tier,
+            employer: {
+              _id: j.employerId?._id,
+              email: j.employerId?.email,
+              name: j.employerId?.profile?.employerProfile?.companyName || j.employerId?.profile?.firstName || '—',
+            },
+            latestOrder: o ? {
+              orderId: o.orderId, status: o.status, provider: o.provider, purpose: o.purpose, tier: o.tier,
+              amountEur: o.amountCents / 100, needsRefund: !!o.needsRefund, createdAt: o.createdAt, paidAt: o.paidAt || null,
+            } : null,
+          };
+        }),
         pagination: { page: pageNum, limit: limNum, total, pages: Math.ceil(total / limNum) },
       },
     });
@@ -1242,49 +1295,151 @@ router.get('/payments', async (req, res) => {
   }
 });
 
+const ADMIN_ORDER_STATUSES = ['created', 'pending', 'paid', 'failed', 'canceled', 'expired', 'refunded', 'partially_refunded', 'disputed'];
+const ADMIN_ORDER_PROVIDERS = ['stripe', 'paysera', 'admin', 'dev-fake'];
+
+function sendAdminPaymentError(res, err, context) {
+  if (err instanceof PaymentError) {
+    return res.status(err.status).json({ success: false, code: err.code, message: err.message, ...(err.data ? { data: err.data } : {}) });
+  }
+  logger.error(`${context} error:`, err?.message);
+  return res.status(500).json({ success: false, message: 'Gabim në përpunimin e pagesës' });
+}
+
+// @route   GET /api/admin/payments/orders
+// @desc    PaymentOrder list. Filters: status, provider, needsRefund=true|false,
+//          employerEmail (substring), jobId, page, limit.
+// @access  Private (Admin only)
+router.get('/payments/orders', async (req, res) => {
+  try {
+    const { status, provider, needsRefund, employerEmail, jobId, page = 1, limit = 25 } = req.query;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limNum = sanitizeLimit(limit, 25, 100);
+    const q = {};
+    if (status !== undefined && status !== '' && status !== 'all') {
+      if (typeof status !== 'string' || !ADMIN_ORDER_STATUSES.includes(status)) {
+        return res.status(400).json({ success: false, message: `status duhet të jetë një nga: ${ADMIN_ORDER_STATUSES.join(', ')}` });
+      }
+      q.status = status;
+    }
+    if (provider !== undefined && provider !== '') {
+      if (typeof provider !== 'string' || !ADMIN_ORDER_PROVIDERS.includes(provider)) {
+        return res.status(400).json({ success: false, message: `provider duhet të jetë një nga: ${ADMIN_ORDER_PROVIDERS.join(', ')}` });
+      }
+      q.provider = provider;
+    }
+    if (needsRefund === 'true') q.needsRefund = true;
+    else if (needsRefund === 'false') q.needsRefund = { $ne: true };
+    if (jobId !== undefined && jobId !== '') {
+      if (!mongoose.isValidObjectId(jobId)) return res.status(400).json({ success: false, message: 'jobId i pavlefshëm' });
+      q.jobId = jobId;
+    }
+    if (typeof employerEmail === 'string' && employerEmail.trim()) {
+      const safe = escapeRegex(employerEmail.trim());
+      q.employerId = { $in: await User.find({ email: { $regex: safe, $options: 'i' }, userType: 'employer' }).distinct('_id') };
+    }
+
+    const total = await PaymentOrder.countDocuments(q);
+    const orders = await PaymentOrder.find(q)
+      .sort({ createdAt: -1 })
+      .skip((pageNum - 1) * limNum)
+      .limit(limNum)
+      .populate('employerId', 'email profile.firstName profile.employerProfile.companyName')
+      .populate('jobId', 'title slug status isDeleted')
+      .lean();
+
+    res.json({
+      success: true,
+      data: {
+        orders: orders.map((o) => ({
+          orderId: o.orderId,
+          status: o.status,
+          purpose: o.purpose,
+          tier: o.tier,
+          amountEur: o.amountCents / 100,
+          refundedEur: (o.refundedCents || 0) / 100,
+          currency: o.currency,
+          provider: o.provider,
+          providerPaymentId: o.providerPaymentId || null,
+          livemode: typeof o.livemode === 'boolean' ? o.livemode : null,
+          activation: o.activation?.status || 'not_applied',
+          activationReason: o.activation?.reason || null,
+          needsRefund: !!o.needsRefund,
+          needsRefundReason: o.needsRefundReason || null,
+          failureReason: o.failureReason || null,
+          notes: o.notes || null,
+          createdAt: o.createdAt,
+          paidAt: o.paidAt || null,
+          refundedAt: o.refundedAt || null,
+          job: o.jobId ? { _id: o.jobId._id, title: o.jobId.title, slug: o.jobId.slug, status: o.jobId.status, isDeleted: !!o.jobId.isDeleted } : null,
+          employer: {
+            _id: o.employerId?._id,
+            email: o.employerId?.email,
+            name: o.employerId?.profile?.employerProfile?.companyName || o.employerId?.profile?.firstName || '—',
+          },
+        })),
+        pagination: { page: pageNum, limit: limNum, total, pages: Math.ceil(total / limNum) },
+      },
+    });
+  } catch (error) {
+    logger.error('admin/payments/orders list error:', error.message);
+    res.status(500).json({ success: false, message: 'Gabim në marrjen e porosive' });
+  }
+});
+
+// @route   POST /api/admin/payments/orders/:orderId/refund
+// @desc    Refund an order. Stripe → real refund via the Stripe API (idempotent);
+//          other providers → record-only. Body { reason (≥5 chars), amountCents? }.
+// @access  Private (Admin only)
+router.post('/payments/orders/:orderId/refund', async (req, res) => {
+  try {
+    const { reason, amountCents } = req.body || {};
+    const r = await adminRefundOrder({ admin: req.user, orderId: req.params.orderId, reason, amountCents });
+    res.json({
+      success: true,
+      message: r.recordedOnly ? 'Rimbursimi u regjistrua (pa lëvizje parash nga sistemi).' : 'Rimbursimi u krye.',
+      data: {
+        orderId: r.order.orderId,
+        status: r.order.status,
+        refundedEur: (r.order.refundedCents || 0) / 100,
+        needsRefund: !!r.order.needsRefund,
+        refundId: r.refundId || null,
+        recordedOnly: r.recordedOnly,
+        jobClosed: r.jobClosed,
+      },
+    });
+  } catch (err) {
+    sendAdminPaymentError(res, err, 'admin/payments refund');
+  }
+});
+
+// @route   POST /api/admin/payments/orders/:orderId/resolve
+// @desc    Clear a needsRefund flag without refunding (decision recorded). Body { reason }.
+// @access  Private (Admin only)
+router.post('/payments/orders/:orderId/resolve', async (req, res) => {
+  try {
+    const order = await adminResolveRefundFlag({ admin: req.user, orderId: req.params.orderId, reason: (req.body || {}).reason });
+    res.json({ success: true, data: { orderId: order.orderId, needsRefund: order.needsRefund, needsRefundReason: order.needsRefundReason } });
+  } catch (err) {
+    sendAdminPaymentError(res, err, 'admin/payments resolve');
+  }
+});
+
 // @route   POST /api/admin/payments/:jobId/manual-accept
-// @desc    Override: mark a job as paid (status=active, paymentStatus=paid)
-//          when the real Paysera callback was lost / never delivered. Requires
-//          a non-empty `reason` so the PaymentEvent audit trail captures WHY.
+// @desc    Admin confirms a payment received outside the card flow (or waives
+//          it with amountCents=0). Creates a provider 'admin' PaymentOrder and
+//          activates through the SAME fulfilment path as a card payment
+//          (fresh postedAt/expiresAt, job-alert fan-out on first publication).
+//          Allowed from pending_payment (post) or expired/closed (renewal).
+//          Body { reason (≥5 chars), tier?: 'standard'|'promoted', amountCents? }.
 // @access  Private (Admin only)
 router.post('/payments/:jobId/manual-accept', async (req, res) => {
   try {
-    const { jobId } = req.params;
-    const { reason } = req.body || {};
-    if (!reason || typeof reason !== 'string' || reason.trim().length < 5) {
-      return res.status(400).json({ success: false, message: 'Reason required (min 5 chars)' });
-    }
-    if (!mongoose.isValidObjectId(jobId)) {
-      return res.status(400).json({ success: false, message: 'jobId i pavlefshëm' });
-    }
-
-    const job = await Job.findById(jobId);
-    if (!job || job.isDeleted) {
-      return res.status(404).json({ success: false, message: 'Puna nuk u gjet' });
-    }
-    if (job.paymentStatus === 'paid') {
-      return res.status(409).json({ success: false, message: 'Tashmë e paguar' });
-    }
-
-    const adminPaymentId = `admin-${req.user._id}-${Date.now()}`;
-    job.status = 'active';
-    job.paymentStatus = 'paid';
-    job.paymentMethod = 'admin-manual';
-    job.paymentId = adminPaymentId;
-    job.paidAt = new Date();
-    await job.save();
-    setImmediate(() => { pingJob(job); });
-
-    await PaymentEvent.create({
-      jobId: job._id,
-      employerId: job.employerId,
-      event: 'admin_manual_accept',
-      orderId: `job-${jobId}`,
-      paymentId: adminPaymentId,
-      amountCents: Math.round((job.paymentRequired || 0) * 100),
-      notes: `admin=${req.user.email || req.user._id}; reason=${reason.trim()}`,
-    }).catch(err => logger.warn('admin manual-accept PaymentEvent failed', { error: err.message }));
-
+    const { reason, tier, amountCents } = req.body || {};
+    const { order, job, superseded } = await adminManualAccept({
+      admin: req.user, jobId: req.params.jobId, reason, tier, amountCents,
+    });
+    cacheDelete('admin:dashboard').catch(() => {});
     res.json({
       success: true,
       data: {
@@ -1294,11 +1449,16 @@ router.post('/payments/:jobId/manual-accept', async (req, res) => {
         paymentMethod: job.paymentMethod,
         paymentId: job.paymentId,
         paidAt: job.paidAt,
+        expiresAt: job.expiresAt,
+        orderId: order.orderId,
+        purpose: order.purpose,
+        tier: order.tier,
+        amountEur: order.amountCents / 100,
+        supersededCheckouts: superseded.length,
       },
     });
-  } catch (error) {
-    logger.error('admin/payments manual-accept error:', error.message);
-    res.status(500).json({ success: false, message: 'Gabim në miratimin manual' });
+  } catch (err) {
+    sendAdminPaymentError(res, err, 'admin/payments manual-accept');
   }
 });
 

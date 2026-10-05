@@ -100,14 +100,14 @@ describe('Phase 2 — Tenant Isolation Matrix', () => {
       const isoB = await request(app)
         .patch(`/api/jobs/${job._id}/status`)
         .set(createAuthHeaders(otherEmp))
-        .send({ status: 'paused' });
+        .send({ status: 'closed' });
       // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
       expect([403, 404]).toContain(isoB.status);
 
       const isoA = await request(app)
         .patch(`/api/jobs/${job._id}/status`)
         .set(createAuthHeaders(ownerEmp))
-        .send({ status: 'paused' });
+        .send({ status: 'closed' });
       expect(isoA.status).toBe(200);
     });
   });

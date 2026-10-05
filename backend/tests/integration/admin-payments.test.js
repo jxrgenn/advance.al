@@ -17,7 +17,7 @@
  *       - 400 when jobId malformed
  *       - 404 when job missing
  *       - 409 when job is already paid
- *       - 200 + flips job to active/paid + paymentMethod=admin-manual
+ *       - 200 + flips job to active/paid + paymentMethod=admin (PaymentOrder)
  *         + paidAt set + PaymentEvent('admin_manual_accept') logged
  *         with admin email + reason in notes
  */
@@ -32,6 +32,7 @@ import { createJobPendingPayment, createJob } from '../factories/job.factory.js'
 import { createAuthHeaders } from '../helpers/auth.helper.js';
 import Job from '../../src/models/Job.js';
 import PaymentEvent from '../../src/models/PaymentEvent.js';
+import PaymentOrder from '../../src/models/PaymentOrder.js';
 
 describe('Admin payments — integration', () => {
   beforeAll(async () => {
@@ -191,12 +192,17 @@ describe('Admin payments — integration', () => {
       expect(res.status).toBe(409);
     });
 
-    it('flips job to active+paid, sets paymentMethod=admin-manual, logs PaymentEvent', async () => {
+    // Payments rebuild: manual accept now creates a provider 'admin'
+    // PaymentOrder and activates through the same fulfilment path as a card
+    // payment — paymentMethod is the order provider ('admin'), paymentId is
+    // the order id, and the listing period restarts at acceptance (O-65/O-66).
+    it('flips job to active+paid via an admin PaymentOrder, logs PaymentEvent', async () => {
       const { user: admin } = await createAdmin();
       const { user: emp } = await createVerifiedEmployer();
       const job = await createJobPendingPayment(emp);
 
       const reason = 'Paysera ticket #98765 confirms payment received offline';
+      const before = Date.now();
       const res = await request(app)
         .post(`/api/admin/payments/${job._id}/manual-accept`)
         .set(createAuthHeaders(admin))
@@ -206,14 +212,27 @@ describe('Admin payments — integration', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data.status).toBe('active');
       expect(res.body.data.paymentStatus).toBe('paid');
-      expect(res.body.data.paymentMethod).toBe('admin-manual');
+      expect(res.body.data.paymentMethod).toBe('admin');
+      expect(res.body.data.purpose).toBe('job_post');
+      expect(res.body.data.tier).toBe('standard');
+      expect(res.body.data.amountEur).toBe(35);
 
       const updated = await Job.findById(job._id);
       expect(updated.status).toBe('active');
       expect(updated.paymentStatus).toBe('paid');
-      expect(updated.paymentMethod).toBe('admin-manual');
+      expect(updated.paymentMethod).toBe('admin');
       expect(updated.paidAt).toBeInstanceOf(Date);
-      expect(updated.paymentId).toMatch(/^admin-/);
+      expect(updated.paymentId).toMatch(/^ord_[0-9a-f]{24}$/);
+      expect(updated.paymentId).toBe(res.body.data.orderId);
+      expect(updated.postedAt.getTime()).toBeGreaterThanOrEqual(before);
+      expect(updated.expiresAt.getTime() - updated.postedAt.getTime()).toBe(21 * 24 * 60 * 60 * 1000);
+
+      const order = await PaymentOrder.findOne({ orderId: updated.paymentId }).lean();
+      expect(order.provider).toBe('admin');
+      expect(order.status).toBe('paid');
+      expect(order.amountCents).toBe(3500);
+      expect(order.activation.status).toBe('applied');
+      expect(String(order.createdByAdmin)).toBe(String(admin._id));
 
       const events = await PaymentEvent.find({ jobId: job._id, event: 'admin_manual_accept' }).lean();
       expect(events.length).toBe(1);

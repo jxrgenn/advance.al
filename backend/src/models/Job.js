@@ -170,6 +170,21 @@ const jobSchema = new Schema({
     type: String,
     maxlength: 500
   },
+  // Why a job is in status 'closed'. Only 'employer' closes (or legacy docs
+  // with no reason) may be re-opened by the employer via PATCH /status; a job
+  // closed by an account suspension or a full refund must go through a
+  // (paid) renewal instead. Cleared on every (re)activation.
+  closedReason: {
+    type: String,
+    enum: ['employer', 'suspension', 'refund', 'payment_canceled']
+  },
+  // Status the job had when the employer closed it. Re-opening restores it
+  // (a job closed while awaiting moderation goes back to pending_approval,
+  // never straight to active). Cleared on (re)activation.
+  closedFromStatus: {
+    type: String,
+    enum: ['active', 'paused', 'pending_approval', 'draft', 'pending_payment']
+  },
 
   // Application Settings
   applicationMethod: {
@@ -276,9 +291,11 @@ const jobSchema = new Schema({
   paymentInitiatedAt: {
     type: Date
   },
+  // Provider of the order that activated the CURRENT listing period.
+  // 'admin-manual' is the legacy (pre-order) manual override value.
   paymentMethod: {
     type: String,
-    enum: ['paysera', 'dev-fake', 'admin-manual']
+    enum: ['stripe', 'paysera', 'dev-fake', 'admin', 'admin-manual']
   },
   paymentReminderSentAt: {
     type: Date
@@ -718,6 +735,24 @@ jobSchema.statics.decrementLocationCountsForCities = async function(cities) {
   }
   await Promise.all(Object.entries(tally).map(([city, n]) =>
     Location.updateOne({ city }, { $inc: { jobCount: -n } })
+  ));
+  await cacheDelete('locations:all').catch(() => {});
+  await cacheDelete('locations:popular:5').catch(() => {});
+  await cacheDelete('locations:popular:10').catch(() => {});
+};
+
+// Counterpart of decrementLocationCountsForCities for atomic activations that
+// bypass the post-save hook (findOneAndUpdate in the payment fulfilment path):
+// call with the city of every job that just transitioned inactive → active.
+jobSchema.statics.incrementLocationCountsForCities = async function(cities) {
+  if (!Array.isArray(cities) || cities.length === 0) return;
+  const Location = mongoose.model('Location');
+  const tally = {};
+  for (const c of cities) {
+    if (c) tally[c] = (tally[c] || 0) + 1;
+  }
+  await Promise.all(Object.entries(tally).map(([city, n]) =>
+    Location.updateOne({ city }, { $inc: { jobCount: n } })
   ));
   await cacheDelete('locations:all').catch(() => {});
   await cacheDelete('locations:popular:5').catch(() => {});
