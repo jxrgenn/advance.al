@@ -292,12 +292,12 @@ describe('accountCleanup.purgeDeletedAccounts (replSet — supports transactions
       // (detected from URL path). publicId is the folder + filename without ext.
       expect(spy).toHaveBeenCalledWith(
         'advance-al/cvs/resume-67890abcdef67890abcdef67-1747000000',
-        { resource_type: 'raw', type: 'authenticated' }
+        { resource_type: 'raw', type: 'authenticated', invalidate: true }
       );
       // Photo: 'image' resource_type, type:'upload' (photos stay public).
       expect(spy).toHaveBeenCalledWith(
         'advance-al/photos/photo-67890abcdef67890abcdef67',
-        { resource_type: 'image', type: 'upload' }
+        { resource_type: 'image', type: 'upload', invalidate: true }
       );
     } finally {
       spy.mockRestore();
