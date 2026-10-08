@@ -87,6 +87,9 @@ export async function createCheckoutSession(order, { employerEmail, jobTitle } =
   const description = String(jobTitle || '').slice(0, 200) || undefined;
   const params = {
     mode: 'payment',
+    // Cards only (L2): delayed methods (SEPA, bank transfer…) would leave the
+    // order 'pending' for days and block new checkouts for the job.
+    payment_method_types: ['card'],
     line_items: [{
       quantity: 1,
       price_data: {
@@ -116,8 +119,28 @@ export async function createCheckoutSession(order, { employerEmail, jobTitle } =
   };
 }
 
+/**
+ * Session with its PaymentIntent AND the PI's latest charge expanded, so the
+ * caller sees refunds that happened before we fulfilled (M2).
+ */
 export async function retrieveSession(sessionId) {
-  return getStripe().checkout.sessions.retrieve(sessionId, { expand: ['payment_intent'] });
+  return getStripe().checkout.sessions.retrieve(sessionId, { expand: ['payment_intent.latest_charge'] });
+}
+
+/** PaymentIntent with its latest charge (metadata.orderId lives on the PI). */
+export async function retrievePaymentIntent(paymentIntentId) {
+  return getStripe().paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] });
+}
+
+/**
+ * Cents already refunded on a session's payment, when the session came back
+ * with payment_intent.latest_charge expanded; 0 when unknown.
+ */
+export function refundedCentsOf(session) {
+  const pi = session?.payment_intent;
+  const charge = pi && typeof pi === 'object' ? pi.latest_charge : null;
+  const n = charge && typeof charge === 'object' ? charge.amount_refunded : 0;
+  return Number.isInteger(n) && n > 0 ? n : 0;
 }
 
 /**
@@ -190,6 +213,8 @@ export default {
   getStripe,
   createCheckoutSession,
   retrieveSession,
+  retrievePaymentIntent,
+  refundedCentsOf,
   expireSession,
   createRefund,
   constructEvent,

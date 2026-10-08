@@ -119,10 +119,11 @@ describe('jobs.js — outer catch + status validation paths', () => {
     expect(r.body.message).toMatch(/përditësimin e punës/);
   });
 
-  it('DELETE /:id returns 500 when softDelete throws (L1274-1275)', async () => {
+  // Payments review M1: delete/close are conditional findOneAndUpdate writes now.
+  it('DELETE /:id returns 500 when the conditional delete write throws', async () => {
     const { user: emp } = await createVerifiedEmployer();
     const job = await createJob(emp);
-    jest.spyOn(Job.prototype, 'softDelete').mockRejectedValueOnce(new Error('softDelete fail'));
+    jest.spyOn(Job, 'findOneAndUpdate').mockRejectedValueOnce(new Error('delete write fail'));
     const r = await request(app)
       .delete(`/api/jobs/${job._id}`)
       .set(createAuthHeaders(emp));
@@ -151,10 +152,10 @@ describe('jobs.js — outer catch + status validation paths', () => {
     expect(r.status).toBe(404);
   });
 
-  it('PATCH /:id/status returns 500 when save throws (L1328-1329)', async () => {
+  it('PATCH /:id/status returns 500 when the conditional status write throws', async () => {
     const { user: emp } = await createVerifiedEmployer();
     const job = await createJob(emp);
-    jest.spyOn(Job.prototype, 'save').mockRejectedValueOnce(new Error('save fail'));
+    jest.spyOn(Job, 'findOneAndUpdate').mockRejectedValueOnce(new Error('status write fail'));
     const r = await request(app)
       .patch(`/api/jobs/${job._id}/status`)
       .set(createAuthHeaders(emp))

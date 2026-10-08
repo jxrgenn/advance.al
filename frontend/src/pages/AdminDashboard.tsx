@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { adminApi, reportsApi, isAuthenticated, getUserType, User, usersApi } from "@/lib/api";
+import { adminApi, configApi, reportsApi, isAuthenticated, getUserType, User, usersApi } from "@/lib/api";
 import { viewResume, downloadResume, isInlineViewable, DOCX_VIEW_TOOLTIP } from "@/lib/resumeView";
 import {
   CheckCircle, XCircle, Clock, Building, MapPin, Mail, Phone,
@@ -342,7 +342,31 @@ const AdminPaymentJobsView = () => {
   const [acceptModalJobId, setAcceptModalJobId] = useState<string | null>(null);
   const [acceptReason, setAcceptReason] = useState('');
   const [accepting, setAccepting] = useState(false);
+  // L4: what actually happened — money received offline (amount booked, invoice
+  // emailed) or a waiver (0 €, no invoice).
+  const [acceptMode, setAcceptMode] = useState<'paid' | 'waived'>('paid');
+  const [acceptTier, setAcceptTier] = useState<'standard' | 'promoted'>('standard');
+  const [acceptAmount, setAcceptAmount] = useState('');
+  const [listPrices, setListPrices] = useState<{ standard: number; promoted: number } | null>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    configApi.getPublic().then((r) => {
+      const s = r.data?.settings || {};
+      const std = Number(s.pricing_standard_posting);
+      const pro = Number(s.pricing_promoted_posting);
+      if (Number.isFinite(std) && Number.isFinite(pro)) setListPrices({ standard: std, promoted: pro });
+    }).catch(() => { /* amount field stays editable */ });
+  }, []);
+
+  const openManualAccept = (p: import("@/lib/api").AdminPayment) => {
+    const tier = p.latestOrder?.tier || (p.tier === 'premium' || p.tier === 'featured' ? 'promoted' : 'standard');
+    setAcceptModalJobId(p._id);
+    setAcceptReason('');
+    setAcceptMode('paid');
+    setAcceptTier(tier);
+    setAcceptAmount(listPrices ? String(listPrices[tier]) : '');
+  };
 
   const fetchPayments = async () => {
     setLoading(true);
@@ -369,13 +393,24 @@ const AdminPaymentJobsView = () => {
       toast({ title: 'Arsye e pavlefshme', description: 'Jepni një arsye të paktën 5 karaktere.', variant: 'destructive' });
       return;
     }
+    let amountCents = 0;
+    if (acceptMode === 'paid') {
+      const n = Number(acceptAmount.replace(',', '.'));
+      if (!Number.isFinite(n) || n <= 0) {
+        toast({ title: 'Shumë e pavlefshme', description: 'Shkruani shumën e marrë (> 0 €), ose zgjidhni "Falas".', variant: 'destructive' });
+        return;
+      }
+      amountCents = Math.round(n * 100);
+    }
     try {
       setAccepting(true);
-      const r = await adminApi.manualAcceptPayment(acceptModalJobId, acceptReason.trim());
+      const r = await adminApi.manualAcceptPayment(acceptModalJobId, acceptReason.trim(), { tier: acceptTier, amountCents });
       if (r.success) {
         toast({
           title: 'Miratuar',
-          description: r.data?.purpose === 'job_renewal' ? 'Puna u ripostua si e paguar.' : 'Puna u shënua si e paguar dhe u publikua.',
+          description: acceptMode === 'waived'
+            ? 'Puna u publikua falas (pa faturë).'
+            : r.data?.purpose === 'job_renewal' ? 'Puna u ripostua si e paguar.' : 'Puna u shënua si e paguar dhe u publikua.',
         });
         setAcceptModalJobId(null);
         setAcceptReason('');
@@ -462,7 +497,7 @@ const AdminPaymentJobsView = () => {
                     </td>
                     <td className="py-2 pr-3">
                       {canManualAccept(p) && (
-                        <Button size="sm" variant="outline" onClick={() => { setAcceptModalJobId(p._id); setAcceptReason(''); }}>
+                        <Button size="sm" variant="outline" onClick={() => openManualAccept(p)}>
                           {p.status === 'pending_payment' ? 'Shëno si e paguar' : 'Riposto si e paguar'}
                         </Button>
                       )}
@@ -491,6 +526,45 @@ const AdminPaymentJobsView = () => {
               Krijon një porosi "admin" dhe e publikon punën për 21 ditë nga tani (njëlloj si pagesa me kartë). Çdo pagesë me kartë e hapur për këtë punë anulohet. Përdoreni vetëm kur keni konfirmim jashtë sistemit.
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex gap-2" role="radiogroup" aria-label="Lloji i miratimit">
+              <Button type="button" size="sm" variant={acceptMode === 'paid' ? 'default' : 'outline'} aria-pressed={acceptMode === 'paid'} onClick={() => setAcceptMode('paid')}>
+                Paguar jashtë sistemit
+              </Button>
+              <Button type="button" size="sm" variant={acceptMode === 'waived' ? 'default' : 'outline'} aria-pressed={acceptMode === 'waived'} onClick={() => setAcceptMode('waived')}>
+                Falas (pa faturë)
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label htmlFor="accept-tier" className="text-xs">Paketa</Label>
+                <select
+                  id="accept-tier"
+                  value={acceptTier}
+                  onChange={(e) => {
+                    const t = e.target.value as 'standard' | 'promoted';
+                    setAcceptTier(t);
+                    if (listPrices) setAcceptAmount(String(listPrices[t]));
+                  }}
+                  className="w-full text-sm border rounded px-2 h-9 bg-background"
+                >
+                  <option value="standard">Standart</option>
+                  <option value="promoted">I promovuar</option>
+                </select>
+              </div>
+              {acceptMode === 'paid' && (
+                <div className="space-y-1">
+                  <Label htmlFor="accept-amount" className="text-xs">Shuma e marrë (€)</Label>
+                  <Input id="accept-amount" inputMode="decimal" value={acceptAmount} onChange={(e) => setAcceptAmount(e.target.value)} />
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {acceptMode === 'paid'
+                ? 'Shuma regjistrohet në të ardhura dhe punëdhënësit i dërgohet fatura me email.'
+                : 'Asnjë shumë nuk regjistrohet dhe nuk dërgohet faturë.'}
+            </p>
+          </div>
           <Textarea
             value={acceptReason}
             onChange={(e) => setAcceptReason(e.target.value)}

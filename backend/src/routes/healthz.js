@@ -159,7 +159,8 @@ router.get('/notifications', async (req, res) => {
  * GET /healthz/payments — same auth pattern.
  * Secret-free provider status + money-safety counters:
  *   payments: { provider, enabledProviders, configured, mode: live|test|fake|unconfigured,
- *               webhookSecretSet, paymentEnabled, blocking }
+ *               webhookSecretSet, testModeInProduction, testModeAllowlisted,
+ *               paymentEnabled, paymentEnabledSource, blocking, degradedReasons[] }
  *   orders:   { open, openOlderThan60m, needsRefund, paidNotActivated }
  * status === 'degraded' when blocking (paid posting on, no provider), any
  * order needs a refund, a paid order was never applied, or checkouts are
@@ -183,7 +184,10 @@ router.get('/payments', async (req, res) => {
       PaymentOrder.countDocuments({ status: 'paid', 'activation.status': 'not_applied', paidAt: { $lt: new Date(now - 10 * 60 * 1000) } }),
     ]);
     const orders = { open, openOlderThan60m: openOld, needsRefund, paidNotActivated };
-    const degraded = payments.blocking || needsRefund > 0 || paidNotActivated > 0 || openOld > 0;
+    // degradedReasons covers: no usable provider, Stripe TEST mode in
+    // production (H1), missing payment_enabled switch in production (M4).
+    const degraded = payments.blocking || payments.degradedReasons.length > 0
+      || needsRefund > 0 || paidNotActivated > 0 || openOld > 0;
     res.json({
       status: degraded ? 'degraded' : 'healthy',
       checkedAt: new Date().toISOString(),

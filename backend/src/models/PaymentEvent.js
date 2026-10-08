@@ -60,6 +60,9 @@ const paymentEventSchema = new Schema({
       'refund_recorded',
       'dispute_recorded',
       'needs_refund_resolved',
+      'dispute_closed',
+      'refund_unmatched',
+      'free_publication',
       'webhook_received',
     ],
     required: true,
@@ -68,7 +71,7 @@ const paymentEventSchema = new Schema({
   paymentId:   String,   // provider payment id (Stripe payment_intent / Paysera requestid)
   amountCents: Number,
   tier:        { type: String, enum: ['standard', 'promoted', 'admin'] },
-  provider:    { type: String, enum: ['stripe', 'paysera', 'admin', 'dev-fake'] },
+  provider:    { type: String, enum: ['stripe', 'paysera', 'admin', 'dev-fake', 'free'] },
   // Provider webhook event id (Stripe evt_…). Unique so a re-delivered event
   // is recognised; processedAt marks it handled (a failed attempt leaves it
   // unset so Stripe's retry is processed again — every handler is idempotent).

@@ -846,6 +846,49 @@ const EmployerDashboard = () => {
     }
   };
 
+  // Close / re-open (PATCH /jobs/:id/status — the backend is the source of
+  // truth; these helpers only decide which button to SHOW, and every refusal
+  // shows the backend's own Albanian reason).
+  const [statusChangingJobId, setStatusChangingJobId] = useState<string | null>(null);
+  const canReopenJob = (job: Job) => {
+    if (job.status !== 'closed') return false;
+    if (job.closedReason && job.closedReason !== 'employer') return false;
+    if (job.closedFromStatus === 'draft') return false;
+    if (!job.expiresAt || new Date(job.expiresAt).getTime() <= Date.now()) return false;
+    const freeBasis = job.postingBasis ? job.postingBasis === 'free' : job.pricing?.finalPrice === 0;
+    return job.paymentStatus === 'paid' || freeBasis;
+  };
+  const changeJobStatus = async (jobId: string, status: 'active' | 'closed') => {
+    if (statusChangingJobId) return;
+    setStatusChangingJobId(jobId);
+    try {
+      const r = await jobsApi.updateJobStatus(jobId, status);
+      toast({
+        title: status === 'closed' ? 'Puna u mbyll' : 'Puna u rihap',
+        description: r.message || (status === 'closed' ? 'Puna nuk është më e dukshme për kandidatët.' : 'Puna është sërish e dukshme.'),
+      });
+      loadDashboardData();
+    } catch (error) {
+      toast({
+        title: 'Gabim',
+        description: error instanceof Error ? error.message : 'Ndryshimi i statusit dështoi',
+        variant: 'destructive',
+      });
+      // A 409 (payment just completed / job changed) means our list is stale.
+      if (error instanceof ApiError && error.status === 409) loadDashboardData();
+    } finally {
+      setStatusChangingJobId(null);
+    }
+  };
+  const handleCloseJob = (jobId: string) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Mbyll punën?',
+      description: 'Puna nuk do të jetë më e dukshme për kandidatët. Mund ta rihapni deri në skadimin e saj, pa pagesë shtesë.',
+      action: () => { changeJobStatus(jobId, 'closed'); },
+    });
+  };
+
   // Re-list an expired/closed job. Free employers renew right here; paying
   // employers get 402 PAYMENT_REQUIRED from the server and go to checkout.
   const [renewingJobId, setRenewingJobId] = useState<string | null>(null);
@@ -1571,6 +1614,36 @@ const EmployerDashboard = () => {
                             >
                               <CreditCard className="h-3 w-3 sm:h-4 sm:w-4" />
                               <span className="ml-1 hidden sm:inline">Paguaj tani</span>
+                            </Button>
+                          )}
+                          {job.status === 'active' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleCloseJob(job._id)}
+                              disabled={statusChangingJobId === job._id}
+                              className="h-8 sm:h-9 px-2 sm:px-3"
+                              title="Mbyll punën (nuk shfaqet më për kandidatët)"
+                            >
+                              {statusChangingJobId === job._id
+                                ? <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+                                : <X className="h-3 w-3 sm:h-4 sm:w-4" />}
+                              <span className="ml-1 hidden sm:inline">Mbyll</span>
+                            </Button>
+                          )}
+                          {canReopenJob(job) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => changeJobStatus(job._id, 'active')}
+                              disabled={statusChangingJobId === job._id}
+                              className="h-8 sm:h-9 px-2 sm:px-3"
+                              title="Rihap punën deri në skadimin e saj (pa pagesë)"
+                            >
+                              {statusChangingJobId === job._id
+                                ? <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+                                : <Play className="h-3 w-3 sm:h-4 sm:w-4" />}
+                              <span className="ml-1 hidden sm:inline">Rihap</span>
                             </Button>
                           )}
                           {(job.status === 'expired' || job.status === 'closed') && (
