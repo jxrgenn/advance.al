@@ -20,7 +20,15 @@ const POLL_MS = 2000;
 const TIMEOUT_MS = 90 * 1000;
 const FINAL = new Set(["paid", "refunded", "partially_refunded", "disputed", "failed", "canceled", "expired"]);
 
-type ViewState = "verifying" | "paid" | "failed" | "notfound" | "timeout";
+type ViewState = "verifying" | "paid" | "refunded" | "disputed" | "failed" | "notfound" | "timeout";
+
+// L3: a refunded / disputed order must never be shown as "published".
+function viewStateFor(status: string): ViewState {
+  if (status === "failed" || status === "canceled" || status === "expired") return "failed";
+  if (status === "refunded" || status === "partially_refunded") return "refunded";
+  if (status === "disputed") return "disputed";
+  return "paid";
+}
 
 const PaymentSuccess = () => {
   const navigate = useNavigate();
@@ -46,7 +54,7 @@ const PaymentSuccess = () => {
           // for a job that is still pending_payment.
           const settled = FINAL.has(r.data.status) && !(r.data.status === "paid" && r.data.activation === "not_applied");
           if (settled) {
-            setState(r.data.status === "failed" || r.data.status === "canceled" || r.data.status === "expired" ? "failed" : "paid");
+            setState(viewStateFor(r.data.status));
             return;
           }
         }
@@ -139,6 +147,44 @@ const PaymentSuccess = () => {
                   <p className="text-muted-foreground">
                     Kjo punë ishte tashmë e paguar ose nuk është më e disponueshme. Ekipi ynë është njoftuar
                     dhe do t'jua rimbursojë shumën. Për pyetje: support@advance.al (porosia {order.orderId}).
+                  </p>
+                  <Button onClick={() => navigate("/employer-dashboard")} className="w-full sm:w-auto">
+                    <LayoutDashboard className="h-4 w-4 mr-2" />
+                    Te paneli
+                  </Button>
+                </>
+              )}
+
+              {state === "refunded" && order && (
+                <>
+                  <div className="bg-blue-100 p-4 rounded-full inline-flex">
+                    <RefreshCw className="h-12 w-12 text-blue-600" />
+                  </div>
+                  <h1 className="text-2xl font-bold">
+                    {order.status === "partially_refunded" ? "Pagesa u rimbursua pjesërisht" : "Pagesa u rimbursua"}
+                  </h1>
+                  <p className="text-muted-foreground">
+                    {order.status === "partially_refunded"
+                      ? "Një pjesë e shumës iu kthye kartës suaj."
+                      : `Shuma €${order.amountEur.toFixed(2)} iu kthye kartës suaj dhe kjo pagesë nuk e publikon punën.`}{" "}
+                    Për pyetje: support@advance.al (porosia {order.orderId}).
+                  </p>
+                  <Button onClick={() => navigate("/employer-dashboard")} className="w-full sm:w-auto">
+                    <LayoutDashboard className="h-4 w-4 mr-2" />
+                    Te paneli
+                  </Button>
+                </>
+              )}
+
+              {state === "disputed" && order && (
+                <>
+                  <div className="bg-amber-100 p-4 rounded-full inline-flex">
+                    <AlertTriangle className="h-12 w-12 text-amber-600" />
+                  </div>
+                  <h1 className="text-2xl font-bold">Pagesa është në kontestim</h1>
+                  <p className="text-muted-foreground">
+                    Banka juaj ka hapur një kontestim për këtë pagesë. Ekipi ynë do t'ju kontaktojë.
+                    Për pyetje: support@advance.al (porosia {order.orderId}).
                   </p>
                   <Button onClick={() => navigate("/employer-dashboard")} className="w-full sm:w-auto">
                     <LayoutDashboard className="h-4 w-4 mr-2" />

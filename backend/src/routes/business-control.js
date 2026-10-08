@@ -1,7 +1,7 @@
 import express from 'express';
 import { body, query, validationResult } from 'express-validator';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
-import { BusinessCampaign, PricingRule, RevenueAnalytics, Job, User, SystemConfiguration, ConfigurationAudit } from '../models/index.js';
+import { BusinessCampaign, PricingRule, RevenueAnalytics, Job, User, SystemConfiguration, ConfigurationAudit, PaymentOrder } from '../models/index.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { escapeRegex, sanitizeLimit, validateObjectId } from '../utils/sanitize.js';
 import { errorDetail } from '../utils/errors.js';
@@ -569,12 +569,13 @@ router.post('/analytics/update', authenticate, requireAdmin, async (req, res) =>
     // Update today's analytics
     const today = await RevenueAnalytics.getOrCreateDaily();
 
-    // Calculate basic metrics from actual data
+    // Calculate basic metrics from actual data. UTC day bounds — the daily
+    // RevenueAnalytics row is keyed by the UTC date (getOrCreateDaily).
     const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    startOfDay.setUTCHours(0, 0, 0, 0);
 
     const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
+    endOfDay.setUTCHours(23, 59, 59, 999);
 
     // Get jobs posted today
     const todayJobs = await Job.countDocuments({
@@ -587,15 +588,34 @@ router.post('/analytics/update', authenticate, requireAdmin, async (req, res) =>
       createdAt: { $gte: startOfDay, $lte: endOfDay }
     });
 
-    // Calculate total revenue (simplified)
-    const revenue = todayJobs * 50; // Assuming average €50 per job
+    // Revenue = money actually collected today: PaymentOrders paid today
+    // whose activation was applied, net of refunds (was jobs × 50 € — a
+    // made-up number that overwrote the real totals recorded at payment).
+    const paidToday = await PaymentOrder.aggregate([
+      { $match: {
+        paidAt: { $gte: startOfDay, $lte: endOfDay },
+        'activation.status': 'applied',
+        // net of refunds must be > 0 — a fully refunded order is not a sale
+        $expr: { $gt: ['$amountCents', { $ifNull: ['$refundedCents', 0] }] },
+      } },
+      { $group: {
+        _id: '$tier',
+        cents: { $sum: { $max: [0, { $subtract: ['$amountCents', { $ifNull: ['$refundedCents', 0] }] }] } },
+        count: { $sum: 1 },
+      } },
+    ]);
+    const centsFor = (tier) => paidToday.filter((g) => g._id === tier).reduce((n, g) => n + g.cents, 0);
+    const paidCount = paidToday.reduce((n, g) => n + g.count, 0);
+    const revenue = (centsFor('standard') + centsFor('promoted')) / 100;
 
     // Update analytics
     await today.updateMetrics({
       totalRevenue: revenue,
+      regularJobRevenue: centsFor('standard') / 100,
+      featuredJobRevenue: centsFor('promoted') / 100,
       jobsPosted: todayJobs,
       newEmployers: newEmployers,
-      averageJobPrice: todayJobs > 0 ? revenue / todayJobs : 0
+      averageJobPrice: paidCount > 0 ? revenue / paidCount : 0
     });
 
     res.json({

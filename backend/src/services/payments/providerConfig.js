@@ -12,6 +12,14 @@
  * switches are ignored there (bootCheck logs an ERROR if they are set).
  * Production without provider keys therefore fails loudly (503 + alert),
  * never silently and never for free.
+ *
+ * TEST KEYS IN PRODUCTION (H1): an sk_test_ key moves no money, so in
+ * production it would publish real listings for card 4242. It is refused
+ * unless BOTH
+ *   STRIPE_ALLOW_TEST_MODE_IN_PRODUCTION=true   and
+ *   STRIPE_TEST_MODE_ALLOWLIST=<emails or user ids, comma separated>
+ * are set — and then only allowlisted employers can check out (a supervised
+ * go-live rehearsal). /healthz/payments is 'degraded' the whole time.
  */
 
 import { isConfigured as stripeConfigured, keyIsLive as stripeKeyIsLive } from './stripeProvider.js';
@@ -65,17 +73,57 @@ export function expectedLivemode(provider) {
   return undefined;
 }
 
+/** Provider credentials are test-mode while NODE_ENV=production. */
+export function testModeInProduction(provider = primaryProvider()) {
+  return isProduction() && !!provider && providerConfigured(provider) && expectedLivemode(provider) === false;
+}
+
+export function testModeAllowlist() {
+  return (process.env.STRIPE_TEST_MODE_ALLOWLIST || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/** Test mode in production was explicitly opted into (flag + non-empty allowlist). */
+export function testModeOptedIn() {
+  return process.env.STRIPE_ALLOW_TEST_MODE_IN_PRODUCTION === 'true' && testModeAllowlist().length > 0;
+}
+
+/** Is this employer on the production test-mode allowlist? (email or id) */
+export function isTestModeAllowlisted(employer) {
+  if (!employer) return false;
+  const list = testModeAllowlist();
+  const email = String(employer.email || '').toLowerCase();
+  const id = String(employer._id || '').toLowerCase();
+  return (email && list.includes(email)) || (id && list.includes(id));
+}
+
 /**
  * Resolve the provider that will actually create the checkout.
  * @param {string} [requested] force a provider (legacy /paysera/initiate)
- * @param {{ allowFake?: boolean }} [opts]
- * @returns {{ provider: 'stripe'|'paysera'|'dev-fake'|null, reason?: string }}
+ * @param {{ allowFake?: boolean, employer?: object }} [opts]
+ * @returns {{ provider: 'stripe'|'paysera'|'dev-fake'|null, reason?: string, testMode?: boolean }}
  */
 export function resolveCheckoutProvider(requested, opts = {}) {
   const wanted = requested || primaryProvider();
   if (!wanted) return { provider: null, reason: 'no payment provider enabled (PAYMENT_PROVIDERS)' };
   if (!isProviderEnabled(wanted)) return { provider: null, reason: `${wanted} is not enabled (PAYMENT_PROVIDERS)` };
-  if (providerConfigured(wanted)) return { provider: wanted };
+  if (providerConfigured(wanted)) {
+    if (testModeInProduction(wanted)) {
+      if (wanted === 'stripe' && testModeOptedIn() && isTestModeAllowlisted(opts.employer)) {
+        return { provider: wanted, testMode: true };
+      }
+      return {
+        provider: null,
+        code: 'TEST_MODE_BLOCKED',
+        reason: testModeOptedIn()
+          ? 'test-mode keys in production — employer not on STRIPE_TEST_MODE_ALLOWLIST'
+          : 'test-mode keys in production (set live keys, or STRIPE_ALLOW_TEST_MODE_IN_PRODUCTION + STRIPE_TEST_MODE_ALLOWLIST for a supervised rehearsal)',
+      };
+    }
+    return { provider: wanted };
+  }
   // Callers may narrow, never widen: production is closed regardless.
   const allowFake = fakeAllowed() && opts.allowFake !== false;
   if (allowFake) return { provider: 'dev-fake', underlying: wanted };
@@ -93,11 +141,16 @@ export function paymentsHealth() {
   } else if (primary && fakeAllowed()) {
     mode = 'fake';
   }
+  const testInProd = testModeInProduction(primary);
   return {
     provider: primary,
     enabledProviders: enabledProviders(),
     configured,
     mode,
     webhookSecretSet: !!process.env.STRIPE_WEBHOOK_SECRET,
+    testModeInProduction: testInProd,
+    // Only meaningful when testModeInProduction: a supervised rehearsal with
+    // an allowlist (counts only — never the list itself).
+    testModeAllowlisted: testInProd && testModeOptedIn() ? testModeAllowlist().length : 0,
   };
 }

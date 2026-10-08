@@ -80,15 +80,48 @@ export async function priceCentsForTier(tier, prices) {
 }
 
 /**
+ * The platform-wide paid-posting switch, with where the answer came from.
+ *   source 'config'  — an active `payment_enabled` document exists
+ *   source 'missing' — no active document (missing or isActive:false)
+ *   source 'error'   — the read failed
+ * FAIL CLOSED (M4): in production a missing/unreadable switch means PAID —
+ * a lost config document must never silently turn the platform free.
+ * Outside production the historic default (missing ⇒ free) is kept so dev
+ * and test databases without seeded config keep working.
+ * @returns {Promise<{ enabled: boolean, source: 'config'|'missing'|'error' }>}
+ */
+export async function getPaymentEnabledState() {
+  const prod = process.env.NODE_ENV === 'production';
+  try {
+    const doc = await SystemConfiguration.findOne({ key: 'payment_enabled', isActive: true }).select('value').lean();
+    if (!doc) return { enabled: prod, source: 'missing' };
+    return { enabled: doc.value === true || doc.value === 'true', source: 'config' };
+  } catch (err) {
+    logger.error('pricing: payment_enabled read failed', { error: err.message, failClosed: prod });
+    return { enabled: prod, source: 'error' };
+  }
+}
+
+/**
  * Whether the employer publishes without paying: whitelisted
- * (`freePostingEnabled`) or the platform-wide `payment_enabled` switch is off.
- * Mirrors the historic job-creation semantics (a missing `payment_enabled`
- * document means payments are off).
+ * (`freePostingEnabled`) or the platform-wide `payment_enabled` switch is off
+ * (see getPaymentEnabledState for the fail-closed rule).
  */
 export async function isEmployerFree(user) {
   if (user?.freePostingEnabled) return true;
-  const paymentEnabled = await SystemConfiguration.getSettingValue('payment_enabled');
-  return !paymentEnabled;
+  const { enabled } = await getPaymentEnabledState();
+  return !enabled;
+}
+
+/**
+ * Was this job's current listing period granted for free (M5)? Explicit
+ * postingBasis wins; legacy documents without it count as free when free
+ * creation zeroed their informational price.
+ */
+export function jobHasFreeBasis(job) {
+  if (!job) return false;
+  if (job.postingBasis) return job.postingBasis === 'free';
+  return job.pricing?.finalPrice === 0;
 }
 
 export default {
@@ -100,4 +133,6 @@ export default {
   eurToCents,
   priceCentsForTier,
   isEmployerFree,
+  getPaymentEnabledState,
+  jobHasFreeBasis,
 };

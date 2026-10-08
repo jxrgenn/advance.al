@@ -116,6 +116,10 @@ export interface Job {
   paymentStatus?: 'pending' | 'paid' | 'failed' | 'refunded';
   // Why a 'closed' job was closed — only 'employer' closes can be re-opened.
   closedReason?: 'employer' | 'suspension' | 'refund' | 'payment_canceled';
+  closedFromStatus?: string;
+  // On what basis the current listing period was granted ('free' = no payment needed).
+  postingBasis?: 'free' | 'paid';
+  pricing?: { finalPrice?: number };
   applicationMethod: string;
   customQuestions: Array<{
     question: string;
@@ -1255,7 +1259,7 @@ export type AdminPayment = {
   slug?: string;
   status: string;
   paymentStatus: string;
-  paymentMethod?: 'paysera' | 'dev-fake' | 'admin-manual';
+  paymentMethod?: 'stripe' | 'paysera' | 'dev-fake' | 'admin' | 'admin-manual' | 'free';
   paymentRequired: number;
   paymentId?: string;
   paymentInitiatedAt?: string;
@@ -1277,7 +1281,7 @@ export type AdminPayment = {
 
 export type CheckoutTier = 'standard' | 'promoted';
 export type PaymentPurpose = 'job_post' | 'job_renewal';
-export type PaymentProvider = 'stripe' | 'paysera' | 'admin' | 'dev-fake';
+export type PaymentProvider = 'stripe' | 'paysera' | 'admin' | 'dev-fake' | 'free';
 export type PaymentOrderStatus =
   | 'created' | 'pending' | 'paid' | 'failed' | 'canceled' | 'expired'
   | 'refunded' | 'partially_refunded' | 'disputed';
@@ -2285,4 +2289,25 @@ export const paymentsApi = {
   /** Dev-only: complete a dev-fake order (no payment provider configured). */
   fakeComplete: (orderId: string) =>
     apiRequest<PaymentOrderView>(`/payments/orders/${encodeURIComponent(orderId)}/fake-complete`, { method: 'POST' }),
+
+  /**
+   * What THIS employer can do for this job right now: `free` (posts free now →
+   * publishFree), `paymentsAvailable` (card checkout usable for this user),
+   * and the exact prices checkout charges.
+   */
+  getOptions: (jobId: string) =>
+    apiRequest<PaymentOptions>(`/payments/options?jobId=${encodeURIComponent(jobId)}`),
+
+  /** Publish a pending_payment job without paying — only when the employer posts free now. */
+  publishFree: (jobId: string) =>
+    apiRequest<PaymentOrderView>('/payments/publish-free', { method: 'POST', body: JSON.stringify({ jobId }) }),
+};
+
+export type PaymentOptions = {
+  jobStatus: string;
+  jobTier: string;
+  free: boolean;
+  paymentsAvailable: boolean;
+  testMode: boolean;
+  prices: { standard: number; promoted: number };
 };

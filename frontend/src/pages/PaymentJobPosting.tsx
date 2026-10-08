@@ -5,26 +5,25 @@ import Footer from "@/components/Footer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { ApiError, configApi, jobsApi, paymentsApi, Job, CheckoutTier, PaymentPurpose } from "@/lib/api";
-import { AlertTriangle, ArrowLeft, Check, Clock, CreditCard, Loader2, Lock, RefreshCw, Sparkles, Star } from "lucide-react";
+import { ApiError, jobsApi, paymentsApi, Job, CheckoutTier, PaymentPurpose } from "@/lib/api";
+import { AlertTriangle, ArrowLeft, Check, CheckCircle2, Clock, CreditCard, Loader2, Lock, RefreshCw, Sparkles, Star } from "lucide-react";
 
 /**
  * /payment/job/:jobId[?purpose=job_renewal]
  *
- * Tier picker + "Pay by card". Prices come from the public configuration
- * endpoint, which serves exactly the values the checkout charges. The button
- * creates a server-side order and sends the browser to Stripe's hosted page;
- * the job is published only after the server confirms the payment.
+ * Tier picker + "Pay by card". Prices, card availability and whether this
+ * employer posts free NOW come from GET /api/payments/options (per user — the
+ * exact values checkout uses). The pay button creates a server-side order and
+ * sends the browser to Stripe's hosted page; the job is published only after
+ * the server confirms the payment. If the employer posts free now (whitelisted
+ * or payments switched off after posting), a "Publiko tani" button publishes
+ * the job without payment instead (M5a).
  */
 
 type Prices = { standard: number; promoted: number };
 
 const POST_STATES = ["pending_payment"];
 const RENEWAL_STATES = ["expired", "closed"];
-
-function readPrice(v: unknown): number | null {
-  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
-}
 
 const formatEur = (n: number) => `€${Number.isInteger(n) ? n : n.toFixed(2)}`;
 
@@ -42,6 +41,8 @@ const PaymentJobPosting = () => {
   const [paymentsAvailable, setPaymentsAvailable] = useState<boolean>(true);
   const [selectedTier, setSelectedTier] = useState<CheckoutTier>("standard");
   const [paying, setPaying] = useState(false);
+  const [free, setFree] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,9 +64,11 @@ const PaymentJobPosting = () => {
     let cancelled = false;
     (async () => {
       try {
-        const [loadedJob, config] = await Promise.all([
+        // Both calls go through apiRequest: an expired token is refreshed and
+        // retried transparently; if that fails we leave for the dashboard.
+        const [loadedJob, options] = await Promise.all([
           loadJob(),
-          configApi.getPublic().catch(() => null),
+          paymentsApi.getOptions(jobId).catch(() => null),
         ]);
         if (cancelled) return;
         if (!loadedJob) {
@@ -73,12 +76,10 @@ const PaymentJobPosting = () => {
           return;
         }
         if (loadedJob.tier === "premium" || loadedJob.tier === "featured") setSelectedTier("promoted");
-        if (config?.success && config.data) {
-          const s = config.data.settings || {};
-          const standard = readPrice(s.pricing_standard_posting);
-          const promoted = readPrice(s.pricing_promoted_posting);
-          if (standard !== null && promoted !== null) setPrices({ standard, promoted });
-          setPaymentsAvailable(config.data.paymentsAvailable !== false);
+        if (options?.success && options.data) {
+          setPrices(options.data.prices);
+          setPaymentsAvailable(options.data.paymentsAvailable);
+          setFree(options.data.free);
         }
       } catch {
         if (!cancelled) navigate("/employer-dashboard");
@@ -105,6 +106,31 @@ const PaymentJobPosting = () => {
     }
   };
 
+  const handlePublishFree = async () => {
+    if (!jobId || publishing) return;
+    setError(null);
+    if (isRenewal) {
+      setPublishing(true);
+      await renewForFree();
+      setPublishing(false);
+      return;
+    }
+    setPublishing(true);
+    try {
+      await paymentsApi.publishFree(jobId);
+      toast({ title: "Puna u publikua", description: "Llogaria juaj publikon falas — puna është tani e dukshme për kandidatët." });
+      navigate("/employer-dashboard");
+    } catch (err) {
+      if (err instanceof ApiError && err.response?.code === "PAYMENT_REQUIRED") {
+        // No longer free (config changed back) — show the paid flow.
+        setFree(false);
+      }
+      setError(err instanceof Error ? err.message : "Publikimi dështoi.");
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   const handlePay = async () => {
     if (!jobId || paying) return;
     setError(null);
@@ -128,11 +154,8 @@ const PaymentJobPosting = () => {
           return;
         }
         if (code === "FREE_POSTING") {
-          if (isRenewal) {
-            await renewForFree();
-            return;
-          }
-          setError("Llogaria juaj publikon falas — nuk nevojitet pagesë.");
+          // Became free since the page loaded — offer the free publish path.
+          setFree(true);
           return;
         }
         if (code === "INVALID_JOB_STATE") {
@@ -201,12 +224,14 @@ const PaymentJobPosting = () => {
                 </div>
                 <div>
                   <CardTitle className="text-2xl">
-                    {isRenewal ? "Riposto punën" : "Zgjidh paketën dhe paguaj"}
+                    {isRenewal ? "Riposto punën" : free ? "Publiko punën" : "Zgjidh paketën dhe paguaj"}
                   </CardTitle>
                   <CardDescription>
-                    {isRenewal
-                      ? "Puna publikohet sërish për 21 ditë pas konfirmimit të pagesës"
-                      : "Puna publikohet menjëherë pas konfirmimit të pagesës"}
+                    {free
+                      ? "Pa pagesë — puna publikohet për 21 ditë"
+                      : isRenewal
+                        ? "Puna publikohet sërish për 21 ditë pas konfirmimit të pagesës"
+                        : "Puna publikohet menjëherë pas konfirmimit të pagesës"}
                   </CardDescription>
                 </div>
               </div>
@@ -234,6 +259,25 @@ const PaymentJobPosting = () => {
                       Te paneli
                     </Button>
                   </div>
+                </div>
+              ) : free ? (
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 p-4 text-sm">
+                    <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-green-900">
+                      Llogaria juaj publikon falas tani — nuk nevojitet pagesë.
+                      {isRenewal ? " Puna ripostohet për 21 ditë." : " Puna publikohet menjëherë për 21 ditë."}
+                    </p>
+                  </div>
+                  {error && (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">
+                      {error}
+                    </div>
+                  )}
+                  <Button onClick={handlePublishFree} size="lg" className="w-full" disabled={publishing}>
+                    {publishing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                    {isRenewal ? "Riposto tani" : "Publiko tani"}
+                  </Button>
                 </div>
               ) : (
                 <>

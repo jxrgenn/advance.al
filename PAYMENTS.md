@@ -19,7 +19,15 @@ Owner decisions (2026-10-02, binding):
    and each one that is set is logged as an ERROR at boot (+ admin alert).
    The dev-fake provider, `POST /orders/:id/fake-complete`, fulfilment of any
    `dev-fake` order, and the mock candidate-matching purchase all refuse in
-   production.
+   production. A **missing/unreadable `payment_enabled` switch counts as paid
+   posting ON** in production (boot ERROR + alert + healthz degraded).
+6. **No test money in production** (review H1): with `NODE_ENV=production` an
+   `sk_test_` key is refused (checkout 503, healthz degraded + blocking, boot
+   ERROR) — unless `STRIPE_ALLOW_TEST_MODE_IN_PRODUCTION=true` AND
+   `STRIPE_TEST_MODE_ALLOWLIST` lists the employers (emails or ids) who may run
+   a supervised rehearsal. Everyone else still gets 503, healthz stays
+   degraded, and even a test payment that slips through never publishes for a
+   non-allowlisted employer.
 
 ---
 
@@ -58,7 +66,10 @@ created|pending ──► paid                provider confirmed the money
 created|pending ──► failed | canceled | expired
 canceled|expired ──► paid               late payment (a Paysera page can't be expired)
 paid ──► refunded | partially_refunded | disputed
+paid ──► refunded | partially_refunded refunded BEFORE it could be applied (activation skipped)
 partially_refunded ──► refunded | partially_refunded   (refundedCents only grows)
+disputed ──► paid | partially_refunded dispute won / warning closed
+disputed ──► refunded                  dispute lost (money gone, listing closed)
 ```
 
 * Transitions happen **only** through atomic `findOneAndUpdate` filtered on the
@@ -103,6 +114,12 @@ partially_refunded ──► refunded | partially_refunded   (refundedCents only
    `success_url …/payment/success?order=<id>&session_id={CHECKOUT_SESSION_ID}`,
    `cancel_url …/payment/cancel?order=<id>`) → order `pending`.
    Stripe error → order `failed`, slot freed, `502 PROVIDER_ERROR`.
+   **Cards only** (`payment_method_types: ['card']`) — delayed methods would
+   leave orders pending for days and block new checkouts (review L2).
+
+`GET /api/payments/options?jobId=` (verified owner) tells the tier page what
+THIS employer can do now: `{ free, paymentsAvailable, testMode, prices }` —
+the per-user answer (production test-mode allowlist, free-now employers).
 
 ### 3.2 Fulfilment (provider says "paid")
 Sources: Stripe webhook, success-page reconcile (`GET /api/payments/orders/:id`
@@ -132,6 +149,17 @@ dev-fake completion, admin manual accept. All call `fulfillOrder()`:
    * Job cannot be activated (deleted, rejected, closed, already paid by
      another order = **duplicate payment**) → `activation: skipped`,
      **needsRefund**, admin alert, job untouched.
+   * **Guards before anything is published** (review M2/M3/H1) — each one
+     skips activation and leaves the job untouched:
+     - the payment was refunded (fully/partly) before we could apply it — a
+       `charge.refunded` that beat `checkout.session.completed`, or a refund the
+       reconcile sees on the expanded PaymentIntent → order `refunded`
+       (no flag) / `partially_refunded` (**needsRefund** review)
+     - the employer is suspended / banned / deleted (paid while on the Stripe
+       page) → **needsRefund**
+     - a test-mode payment in production for a non-allowlisted employer → no
+       flag (no real money)
+   * `postingBasis` = `paid` (amount > 0) or `free` (waiver / free order).
 4. Side effects (never block or fail the money path): receipt email (+ .docx,
    says "awaiting approval" when applicable), Discord, embedding refresh with
    **`notifyUsers: true` for the first publication of a `job_post` that is
@@ -146,7 +174,19 @@ dev-fake completion, admin manual accept. All call `fulfillOrder()`:
 (`amountCents: 0`). Allowed from `pending_payment` (post) or `expired|closed`
 (renewal); anything else → 409. Creates a provider **`admin`** order and goes
 through the **same** fulfilment/activation (fresh 21 days, job alerts on first
-publication), then retires the employer's open card checkout.
+publication), then retires the employer's open card checkout. The admin UI
+asks which it was (review L4): **"Paguar jashtë sistemit"** (package + amount
+received, booked as revenue, invoice emailed) or **"Falas (pa faturë)"**
+(0 €, no invoice, `postingBasis: free`).
+
+### 3.3b Free publication (employer became free after posting — review M5a)
+If a `pending_payment` job's employer posts free NOW (whitelisted, or
+`payment_enabled` switched off after the job was created), checkout answers
+`FREE_POSTING` and the tier page shows **"Publiko tani"** →
+`POST /api/payments/publish-free { jobId }` → a 0 € provider **`free`** order
+through the normal activation (fresh 21 days, job alerts, no invoice; any open
+card checkout is retired first). Refused (400 `PAYMENT_REQUIRED`) when the
+employer is not free.
 
 ### 3.4 Refunds
 * **Admin → Pagesat → Porositë → "Rimburso"**
@@ -167,27 +207,55 @@ publication), then retires the employer's open card checkout.
 `charge.dispute.created` → order `disputed`, admin alerted (Discord + email).
 The job is **not** closed automatically — respond in the Stripe dashboard and
 decide. Admin refund is blocked while disputed.
+`charge.dispute.closed` (review L6b): `won`/`warning_closed` → back to `paid`
+(refunds unblocked); `lost` → order `refunded` (money gone), revenue reversed,
+the listing it paid for closed (`closedReason: refund`), admin alerted.
 
 ### 3.6 Employer lifecycle (no money moves here)
 * `PATCH /api/jobs/:id/status` (verified owner) accepts only `closed` or
   `active`. `closed` from active/pending_approval/draft/pending_payment
-  (retires open checkouts; 409 if one was just paid). `active` only
-  **re-opens a job the employer closed**, still paid (or employer free), not
-  expired; a job closed while awaiting approval goes back to
-  `pending_approval`. Everything else → 400 with an Albanian message. No
-  `paused`.
+  (retires open checkouts). `active` only **re-opens a job the employer
+  closed** (or a legacy closed job without `closedReason`) whose period was
+  paid or granted free (`postingBasis`/legacy free price) — or whose employer
+  is free now — and is not expired; a job closed while awaiting approval goes
+  back to `pending_approval`. An unpaid legacy job is never re-opened for free
+  (review L6c). Everything else → 400 with an Albanian message. No `paused`.
+  Dashboard: **"Mbyll"** on active jobs (confirm dialog), **"Rihap"** only where
+  this rule allows; refusals show the backend's message.
+* **Race safety (review M1)**: close and delete are conditional writes on the
+  status + `paymentId` that were read. A checkout that was paid a moment ago →
+  409 `PAYMENT_COMPLETED`; one that cannot be confirmed retired (Stripe
+  unreachable, session completing) → 409 `CHECKOUT_IN_PROGRESS` ("try again in
+  a minute"); a job changed in between → 409 `JOB_CHANGED`. A paid activation
+  is never overwritten; Location counts are adjusted explicitly.
 * `POST /api/jobs/:id/renew` (verified owner): free employers → fresh 21-day
   period, tier basic. Paying employers → **402 `PAYMENT_REQUIRED`**
   `{ data: { checkout: { purpose: 'job_renewal', jobId } } }` → the dashboard
   sends them to `/payment/job/:id?purpose=job_renewal`.
-* `DELETE /api/jobs/:id` retires open checkouts first (409 if one was just
-  paid); a late payment for a deleted job → `activation: skipped` +
-  needsRefund.
+* `DELETE /api/jobs/:id` retires open checkouts first (409s as above); a late
+  payment for a deleted job → `activation: skipped` + needsRefund.
 * `POST /api/jobs` ignores any client `tier` (always `basic`) and never runs
   the discount engine; `job.pricing` is informational (list price).
-* Admin moderation is not a payment bypass: approving an unpaid job of a
-  paying employer → 409 (use manual accept); rejecting/deleting a paid job
+* Admin moderation is not a payment bypass (review L1): BOTH approve routes
+  (`/admin/jobs/:id/manage` and `/admin/jobs/:id/approve`) share one rule —
+  approvable when paid, granted free (`postingBasis: free`, or a legacy job
+  created free — review M5b), or the employer is free now; otherwise 409 (use
+  manual accept). **Approval starts the 21 days** (review L6a: `postedAt`/
+  `expiresAt` reset at approval, not at payment). Rejecting/deleting a paid job
   flags its order `needsRefund` for a decision.
+
+### 3.7 Employer sanctions (review M3, L5)
+* Activation never publishes for a suspended/banned/deleted employer (money
+  → needsRefund).
+* `orderService.handleEmployerSanction({ employerId, closedJobIds, action, actor })`
+  — call it AFTER the sanction closed the employer's live jobs (integration:
+  `lib/employerSanctions.js closeJobsForSanctionedEmployer`, used by both the
+  admin manage route and the report-action path). It retires the employer's
+  open checkouts (`retireOpenCheckoutsForEmployer`) and flags the paid order of
+  every listing the sanction closed as **needsRefund — refund review (admin
+  decides)**. Owner rule: listings closed by a suspension stay closed; the
+  refund is never automatic — decide in Pagesat (refund or "Zgjidh pa
+  rimbursim").
 
 ---
 
@@ -203,12 +271,14 @@ global `/api` rate limiter and before maintenance mode.
 | `checkout.session.async_payment_succeeded` | fulfil |
 | `checkout.session.async_payment_failed` | order failed |
 | `checkout.session.expired` | order expired (slot freed) |
-| `charge.refunded` | record refund (cumulative `amount_refunded`) |
+| `charge.refunded` | record refund (cumulative `amount_refunded`); payment not yet linked → order found through the PaymentIntent's metadata; still unmatched → **500, not marked processed** (Stripe re-delivers) |
 | `charge.dispute.created` | order disputed + alert |
+| `charge.dispute.closed` | won → paid; lost → refunded + listing closed |
 | anything else | 200, recorded as ignored |
 
 Responses: 400 bad/missing signature · 503 secret not set (Stripe retries) ·
-500 transient failure (Stripe retries) · 200 otherwise. Each Stripe event id
+500 transient failure or not-yet-applicable event (Stripe retries) · 200
+otherwise. Each Stripe event id
 is stored once (`PaymentEvent.providerEventId`, unique); a re-delivery of a
 processed event is a no-op, a re-delivery of one that failed half-way is
 processed again (every handler is idempotent).
@@ -224,6 +294,9 @@ PAYMENT_PROVIDERS=stripe                # first = checkout provider
 ALERT_EMAIL_TO=ops@advance.al           # + Discord DISCORD_WEBHOOK_PAYMENTS
 FRONTEND_URL=https://advance.al         # Stripe return URLs
 PAYMENTS_RECONCILE_INTERVAL_MS=900000   # optional
+# Supervised go-live rehearsal ONLY (production + sk_test_ key) — remove after:
+STRIPE_ALLOW_TEST_MODE_IN_PRODUCTION=true
+STRIPE_TEST_MODE_ALLOWLIST=owner@advance.al,<employer id>   # who may pay with test cards
 ```
 **Remove from production** (ignored there, logged as an ERROR at boot):
 `PAYSERA_ALLOW_FAKE_SUCCESS`, `ENABLE_MOCK_PAYMENTS`, `PAYMENTS_ALLOW_FAKE`.
@@ -233,7 +306,10 @@ dev-fake provider automatically (no flag needed).
 SystemConfiguration (Admin → Konfigurimi / Çmimet): `payment_enabled`,
 `pricing_standard_posting`, `pricing_promoted_posting`,
 `require_job_approval`. The public configuration endpoint serves the exact
-prices checkout charges, plus `paymentsAvailable`.
+prices checkout charges, plus `paymentsAvailable`. `PUT /configuration/pricing`
+parses `paymentEnabled` strictly (`true`/`false`/`"true"`/`"false"`; anything
+else → 400 — review L6d). In production the `payment_enabled` document MUST
+exist and be active (missing ⇒ treated as ON + ERROR).
 
 The Stripe API version is pinned in `stripeProvider.js`
 (`2026-09-30.endive`, the version `stripe@23.0.0` was generated against). Bump
@@ -245,11 +321,16 @@ it together with the SDK.
 
 * `GET /healthz/payments` (header `X-Healthz-Token`) →
   `payments: { provider, configured, mode: live|test|fake|unconfigured,
-  webhookSecretSet, paymentEnabled, blocking }`, `orders: { open,
+  webhookSecretSet, testModeInProduction, testModeAllowlisted, paymentEnabled,
+  paymentEnabledSource, blocking, degradedReasons[] }`, `orders: { open,
   openOlderThan60m, needsRefund, paidNotActivated }`, reconcile worker
-  heartbeat. `status: degraded` when blocking, any `needsRefund`, any
+  heartbeat. `status: degraded` when blocking, Stripe TEST mode in production,
+  `payment_enabled` missing in production, any `needsRefund`, any
   paid-not-activated, or checkouts open > 60 min (lost webhooks). Point
   UptimeRobot at it with a keyword monitor on `"healthy"`.
+* Business control → "update analytics" recomputes today's revenue from paid
+  orders (net of refunds, split standard/promoted) — it used to overwrite it
+  with jobs × 50 €.
 * Alerts (Discord `payments` + email): checkout unavailable, verification
   failure, duplicate / un-appliable payment, payment for a closed order,
   payment for an unknown order, dispute, daily needsRefund digest.
@@ -295,21 +376,37 @@ are idempotent.
 missing on Render (see `/healthz/payments`). Set both keys, redeploy, or set
 `payment_enabled=false` to let everyone post free in the meantime.
 
-**Switch test → live** — create the live webhook endpoint (same URL, same 6
+**Switch test → live** — create the live webhook endpoint (same URL, same 7
 events), set `STRIPE_SECRET_KEY=sk_live_…` and the **live** `whsec_…`
-together, redeploy, check `/healthz/payments` shows `mode: "live"`. Orders
-created in test mode can no longer be fulfilled (livemode check) — let them
-expire.
+together, REMOVE `STRIPE_ALLOW_TEST_MODE_IN_PRODUCTION` and
+`STRIPE_TEST_MODE_ALLOWLIST`, redeploy, check `/healthz/payments` shows
+`mode: "live"`, `testModeInProduction: false`, `status: "healthy"`. Open
+test-mode orders are retired automatically (mode-switch handling).
+
+**An employer was suspended/banned** — their open checkouts are retired and
+any paid listing the sanction closed appears in Pagesat as "Kërkon
+rimbursim" (refund review). Decide per order: refund, or "Zgjidh pa
+rimbursim" with the reason. Listings closed by a suspension stay closed.
 
 ---
 
 ## 8. Test-mode procedure (before go-live)
 
-1. Render (or local `backend/.env`): `STRIPE_SECRET_KEY=sk_test_…`.
+Never put a bare `sk_test_` key on the production service: production refuses
+it (review H1). Choose ONE:
+* **Staging / local** (preferred): a separate Render service or local backend
+  with `NODE_ENV` ≠ production, or
+* **Supervised rehearsal on production**: `sk_test_` + test webhook secret +
+  `STRIPE_ALLOW_TEST_MODE_IN_PRODUCTION=true` +
+  `STRIPE_TEST_MODE_ALLOWLIST=<your test employer email>`. Only that employer
+  can check out; healthz stays `degraded` until you switch to live and remove
+  both flags.
+
+1. Set `STRIPE_SECRET_KEY=sk_test_…` (+ the two rehearsal flags on production).
 2. Local: `stripe listen --forward-to localhost:3001/api/payments/stripe/webhook`
    and put the printed `whsec_…` in `STRIPE_WEBHOOK_SECRET`. Deployed: create
-   the test-mode endpoint in the dashboard.
-3. As a verified, non-whitelisted employer with `payment_enabled=true`: post a
+   the test-mode endpoint in the dashboard (7 events).
+3. As a verified, non-whitelisted (and, on production, allowlisted) employer with `payment_enabled=true`: post a
    job → tier page → "Paguaj me kartë" → card `4242 4242 4242 4242`, any future
    date, any CVC → back on `/payment/success` the page must go from "Po
    verifikojmë…" to "Pagesa u krye me sukses" and the job is live with
@@ -322,6 +419,7 @@ expire.
    again for 21 days.
 8. `cd backend && STRIPE_SECRET_KEY=sk_test_… npx jest tests/integration/stripe-real`
    — real test-mode API checks.
+9. Then **switch to live** (§7) and remove the rehearsal flags.
 
 ---
 

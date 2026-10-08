@@ -95,15 +95,32 @@ RERANK_ENABLED=true                              # default true; toggle false to
 
 ### Payments (Stripe) — required before paid posting goes live (2026-10)
 
-Full detail: `PAYMENTS.md`. On the Render backend service:
+Full detail: `PAYMENTS.md`. Production refuses Stripe TEST keys (anyone could
+publish with card 4242), so the order of work is: **rehearse (staging, or
+production with an allowlist) → switch to live → remove the rehearsal flags.**
 
+**A. Rehearsal** — preferred on a staging service / local backend
+(`NODE_ENV` ≠ production) with `sk_test_…`. If it must run on the production
+service, set ALL of:
 ```
-STRIPE_SECRET_KEY=sk_test_…        # test mode first; sk_live_… only at go-live
-STRIPE_WEBHOOK_SECRET=whsec_…      # from the webhook endpoint below (test & live secrets differ)
-PAYMENT_PROVIDERS=stripe           # default; Paysera stays disabled
-ALERT_EMAIL_TO=ops@advance.al      # money alerts (also Discord DISCORD_WEBHOOK_PAYMENTS)
-HEALTHZ_TOKEN=…                    # for GET /healthz/payments monitoring
+STRIPE_SECRET_KEY=sk_test_…
+STRIPE_WEBHOOK_SECRET=whsec_…            # of the TEST-mode endpoint
+STRIPE_ALLOW_TEST_MODE_IN_PRODUCTION=true
+STRIPE_TEST_MODE_ALLOWLIST=<test employer email>[,<more emails or user ids>]
 ```
+Only allowlisted employers can check out (everyone else: 503 "Pagesat me
+kartë nuk janë aktive ende"); `/healthz/payments` is `degraded` the whole time
+and the boot logs an ERROR. Run `PAYMENTS.md` §8.
+
+**B. Live** — on the Render backend service:
+```
+STRIPE_SECRET_KEY=sk_live_…
+STRIPE_WEBHOOK_SECRET=whsec_…            # of the LIVE endpoint (differs from test)
+PAYMENT_PROVIDERS=stripe                 # default; Paysera stays disabled
+ALERT_EMAIL_TO=ops@advance.al            # money alerts (also Discord DISCORD_WEBHOOK_PAYMENTS)
+HEALTHZ_TOKEN=…                          # for GET /healthz/payments monitoring
+```
+and **remove** `STRIPE_ALLOW_TEST_MODE_IN_PRODUCTION`, `STRIPE_TEST_MODE_ALLOWLIST`.
 
 **Remove from Render** (fake/mock payment switches — ignored in production
 since 2026-10, but each one still logs an ERROR at every boot):
@@ -111,26 +128,30 @@ since 2026-10, but each one still logs an ERROR at every boot):
 Paysera keys (`PAYSERA_PROJECT_ID`, `PAYSERA_SIGN_PASSWORD`, `PAYSERA_TEST`)
 are unused unless `PAYMENT_PROVIDERS` lists `paysera`.
 
-Stripe dashboard → Developers → Webhooks → **Add endpoint**
-`https://api.advance.al/api/payments/stripe/webhook`, events:
+Stripe dashboard → Developers → Webhooks → **Add endpoint** (once in test mode,
+once in live mode) `https://api.advance.al/api/payments/stripe/webhook`, events:
 `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
 `checkout.session.async_payment_failed`, `checkout.session.expired`,
-`charge.refunded`, `charge.dispute.created`. Copy its signing secret into
-`STRIPE_WEBHOOK_SECRET`.
+`charge.refunded`, `charge.dispute.created`, `charge.dispute.closed`. Copy its
+signing secret into `STRIPE_WEBHOOK_SECRET`.
 
-Without both Stripe values and with `payment_enabled=true`, the backend logs
+**Admin → Konfigurimi**: the `payment_enabled` setting must EXIST and be
+active in production — if it is missing/inactive the backend treats paid
+posting as ON (fail closed), logs an ERROR and healthz is `degraded`.
+
+Without usable Stripe keys and with paid posting on, the backend logs
 `PAYMENTS NOT USABLE` at boot, alerts admins, `/healthz/payments` reports
 `blocking: true`, and checkout answers 503 — employers can create jobs but
 cannot publish them. Either configure Stripe or set `payment_enabled=false`
-(Admin → Konfigurimi) before launch.
+before launch.
 
-Smoke after deploy:
+Smoke after the LIVE deploy:
 ```bash
 curl -s -H "X-Healthz-Token: $HEALTHZ_TOKEN" https://api.advance.al/healthz/payments | jq '.status, .payments'
-# Expected: "healthy", { provider: "stripe", configured: true, mode: "test"|"live", webhookSecretSet: true, blocking: false }
+# Expected: "healthy", { provider: "stripe", configured: true, mode: "live", testModeInProduction: false,
+#            webhookSecretSet: true, paymentEnabled: true, paymentEnabledSource: "config", blocking: false, degradedReasons: [] }
 ```
-Then one real test-mode purchase (card 4242 4242 4242 4242) as a test employer
-— see `PAYMENTS.md` → "Test-mode procedure".
+Rehearsal steps: `PAYMENTS.md` → "Test-mode procedure".
 
 ## Step 2 — Verify Render env matches local (sanity)
 

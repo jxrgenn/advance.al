@@ -68,12 +68,14 @@ describe('payments — ops surface', () => {
       expect((await request(app).get('/healthz/payments').set('X-Healthz-Token', 'x'.repeat(TOKEN.length))).status).toBe(403);
     });
 
-    it('healthy + test mode with Stripe configured; never echoes a secret', async () => {
+    it('healthy + test mode with Stripe configured (non-production); never echoes a secret', async () => {
       const r = await request(app).get('/healthz/payments').set('X-Healthz-Token', TOKEN);
       expect(r.status).toBe(200);
       expect(r.body.status).toBe('healthy');
       expect(r.body.payments).toEqual({
-        provider: 'stripe', enabledProviders: ['stripe'], configured: true, mode: 'test', webhookSecretSet: true, paymentEnabled: true, blocking: false,
+        provider: 'stripe', enabledProviders: ['stripe'], configured: true, mode: 'test', webhookSecretSet: true,
+        testModeInProduction: false, testModeAllowlisted: 0,
+        paymentEnabled: true, paymentEnabledSource: 'config', blocking: false, degradedReasons: [],
       });
       expect(r.body.orders).toEqual({ open: 0, openOlderThan60m: 0, needsRefund: 0, paidNotActivated: 0 });
       const raw = JSON.stringify(r.body);
@@ -107,7 +109,7 @@ describe('payments — ops surface', () => {
       const r = await runPaymentsBootCheck();
       expect(r.blocking).toBe(true);
       expect(errSpy.mock.calls.some((c) => String(c[0]).startsWith('PAYMENTS NOT USABLE'))).toBe(true);
-      expect(await waitFor(() => spies.alertEmail.mock.calls.some((c) => String(c[1]).includes('Payments not configured')))).toBe(true);
+      expect(await waitFor(() => spies.alertEmail.mock.calls.some((c) => String(c[1]).includes('Payments not usable')))).toBe(true);
     });
 
     it('payment_enabled=false → not blocking even without Stripe', async () => {

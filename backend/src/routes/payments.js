@@ -23,14 +23,17 @@ import { authenticate, requireEmployer, requireVerifiedEmployer } from '../middl
 import { verifyCallback as payseraVerifyCallback, isConfigured as payseraConfigured, isTestMode as payseraTestMode } from '../services/payseraService.js';
 import {
   PaymentError, createCheckout, fulfillOrder, reconcileStripeOrder, serializeOrderForViewer, isValidOrderId, logOrderEvent,
+  publishFree,
 } from '../services/payments/orderService.js';
-import { isProviderEnabled, fakeAllowed } from '../services/payments/providerConfig.js';
+import { isProviderEnabled, fakeAllowed, resolveCheckoutProvider } from '../services/payments/providerConfig.js';
+import { getListingPrices, isEmployerFree } from '../lib/pricing.js';
+import mongoose from 'mongoose';
 import { alertPaymentsAdmin } from '../services/payments/paymentAlerts.js';
 import logger from '../config/logger.js';
 
 const router = express.Router();
 
-const userKey = (req) => (req.user?._id ? `user:${req.user._id}` : `ip:${ipKeyGenerator(req)}`);
+const userKey = (req) => (req.user?._id ? `user:${req.user._id}` : `ip:${ipKeyGenerator(req.ip)}`);
 const skipRateLimit = () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true';
 
 // Checkout: 20 per hour per employer. Mounted AFTER authenticate so the key
@@ -90,6 +93,48 @@ router.post('/checkout', authenticate, requireEmployer, requireVerifiedEmployer,
     });
   } catch (err) {
     sendPaymentError(res, err, 'payments/checkout');
+  }
+});
+
+// ─── GET /api/payments/options?jobId= ───────────────────────────────────────
+// What THIS employer can do for this job right now (the tier page reads it):
+//   free              employer posts free now → "Publiko tani" (M5a)
+//   paymentsAvailable card checkout usable FOR THIS USER (incl. the H1
+//                     production test-mode allowlist)
+//   prices            the exact prices checkout charges
+router.get('/options', authenticate, requireEmployer, requireVerifiedEmployer, orderReadLimiter, async (req, res) => {
+  try {
+    const { jobId } = req.query;
+    if (typeof jobId !== 'string' || !mongoose.isValidObjectId(jobId)) {
+      return res.status(400).json({ success: false, code: 'INVALID_JOB_ID', message: 'jobId i pavlefshëm' });
+    }
+    const job = await Job.findOne({ _id: jobId, employerId: req.user._id, isDeleted: false }).select('status tier title').lean();
+    if (!job) return res.status(404).json({ success: false, code: 'JOB_NOT_FOUND', message: 'Puna nuk u gjet' });
+    const [prices, free] = await Promise.all([getListingPrices(), isEmployerFree(req.user)]);
+    const resolved = resolveCheckoutProvider(undefined, { employer: req.user });
+    res.json({
+      success: true,
+      data: {
+        jobStatus: job.status,
+        jobTier: job.tier,
+        free,
+        paymentsAvailable: !!resolved.provider,
+        testMode: !!resolved.testMode,
+        prices,
+      },
+    });
+  } catch (err) {
+    sendPaymentError(res, err, 'payments/options');
+  }
+});
+
+// ─── POST /api/payments/publish-free { jobId } (M5a) ────────────────────────
+router.post('/publish-free', authenticate, requireEmployer, requireVerifiedEmployer, checkoutLimiter, async (req, res) => {
+  try {
+    const { order, job } = await publishFree({ employer: req.user, jobId: (req.body || {}).jobId, req });
+    res.json({ success: true, data: serializeOrderForViewer(order, job) });
+  } catch (err) {
+    sendPaymentError(res, err, 'payments/publish-free');
   }
 });
 

@@ -38,7 +38,9 @@ export const ORDER_STATUSES = Object.freeze([
   'refunded', 'partially_refunded', 'disputed',
 ]);
 export const OPEN_ORDER_STATUSES = Object.freeze(['created', 'pending']);
-export const ORDER_PROVIDERS = Object.freeze(['stripe', 'paysera', 'admin', 'dev-fake']);
+// 'free' = publication without payment because the employer is free NOW
+// (whitelisted / payment_enabled=false after the job was created) — M5.
+export const ORDER_PROVIDERS = Object.freeze(['stripe', 'paysera', 'admin', 'dev-fake', 'free']);
 export const ORDER_PURPOSES = Object.freeze(['job_post', 'job_renewal']);
 export const ORDER_TIERS = Object.freeze(['standard', 'promoted']);
 
@@ -66,12 +68,13 @@ const paymentOrderSchema = new Schema({
     validate: {
       validator(v) {
         if (!Number.isInteger(v) || v < 0) return false;
-        // 0 is only legitimate for an admin (manual, waived) order — a card
-        // order of 0 would be a free listing disguised as a payment.
-        if (v === 0) return this.provider === 'admin';
+        // 0 is only legitimate for an admin waiver or a 'free' publication —
+        // a card order of 0 would be a free listing disguised as a payment.
+        if (v === 0) return this.provider === 'admin' || this.provider === 'free';
+        if (this.provider === 'free') return false;
         return true;
       },
-      message: 'amountCents must be a positive integer (0 allowed only for provider "admin")',
+      message: 'amountCents must be a positive integer (0 only for providers "admin"/"free"; "free" is always 0)',
     },
   },
   currency: { type: String, default: 'EUR', enum: ['EUR'] },

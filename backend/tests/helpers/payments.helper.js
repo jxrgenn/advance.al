@@ -32,6 +32,7 @@ const PAYMENT_ENV_KEYS = [
   'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'PAYMENT_PROVIDERS', 'PAYMENTS_ALLOW_FAKE',
   'PAYSERA_PROJECT_ID', 'PAYSERA_SIGN_PASSWORD', 'PAYSERA_TEST', 'PAYSERA_ALLOW_FAKE_SUCCESS',
   'FRONTEND_URL', 'BACKEND_URL', 'NODE_ENV', 'ALERT_EMAIL_TO', 'ENABLE_MOCK_PAYMENTS',
+  'STRIPE_ALLOW_TEST_MODE_IN_PRODUCTION', 'STRIPE_TEST_MODE_ALLOWLIST',
 ];
 const DISCORD_KEYS = [
   'DISCORD_WEBHOOK_SIGNUPS', 'DISCORD_WEBHOOK_PAYMENTS', 'DISCORD_WEBHOOK_JOBS', 'DISCORD_WEBHOOK_APPLICATIONS',
@@ -166,10 +167,13 @@ export async function backdate(Model, _id, field, date) {
  * when the customer pays / the session times out.
  */
 export function makeFakeStripe() {
-  const calls = { create: [], retrieve: [], expire: [], refund: [] };
+  const calls = { create: [], retrieve: [], expire: [], refund: [], piRetrieve: [] };
   const sessions = new Map();
   const refundsByKey = new Map();
   const piAmounts = new Map();
+  // PaymentIntents as Stripe holds them: metadata copied from
+  // payment_intent_data.metadata, and the latest charge's refunded amount.
+  const paymentIntents = new Map();
   let seq = 0;
   const rand = () => crypto.randomBytes(6).toString('hex');
 
@@ -180,6 +184,10 @@ export function makeFakeStripe() {
     sessions,
     failCreateWith: null,
     failRefundWith: null,
+    // M1 race tests: make expire() fail like a network error, or run a hook
+    // first (e.g. "the payment completes right now").
+    failExpireWith: null,
+    beforeExpire: null,
     checkout: {
       sessions: {
         async create(params, opts = {}) {
@@ -203,20 +211,35 @@ export function makeFakeStripe() {
           sessions.set(id, s);
           return { ...s };
         },
-        async retrieve(id) {
+        async retrieve(id, params = {}) {
           calls.retrieve.push(id);
           const s = sessions.get(id);
           if (!s) throw Object.assign(new Error(`No such checkout.session: '${id}'`), { type: 'StripeInvalidRequestError', statusCode: 404 });
-          return { ...s, metadata: { ...s.metadata } };
+          const out = { ...s, metadata: { ...s.metadata } };
+          const pi = s.payment_intent && paymentIntents.get(s.payment_intent);
+          if (pi && (params.expand || []).some((e) => e.startsWith('payment_intent'))) {
+            out.payment_intent = { id: pi.id, metadata: { ...pi.metadata }, latest_charge: { id: `ch_${pi.id}`, amount_refunded: pi.amount_refunded } };
+          }
+          return out;
         },
         async expire(id) {
           calls.expire.push(id);
+          if (fake.beforeExpire) await fake.beforeExpire(id);
+          if (fake.failExpireWith) throw fake.failExpireWith;
           const s = sessions.get(id);
           if (!s) throw Object.assign(new Error(`No such checkout.session: '${id}'`), { type: 'StripeInvalidRequestError', statusCode: 404 });
           if (s.status !== 'open') throw notOpenError(`Only Checkout Sessions with a status in ["open"] can be expired. This Checkout Session has a status of "${s.status}".`);
           s.status = 'expired';
           return { ...s };
         },
+      },
+    },
+    paymentIntents: {
+      async retrieve(id) {
+        calls.piRetrieve.push(id);
+        const pi = paymentIntents.get(id);
+        if (!pi) throw Object.assign(new Error(`No such payment_intent: '${id}'`), { type: 'StripeInvalidRequestError', statusCode: 404 });
+        return { id: pi.id, metadata: { ...pi.metadata }, latest_charge: { id: `ch_${pi.id}`, amount_refunded: pi.amount_refunded } };
       },
     },
     refunds: {
@@ -238,7 +261,12 @@ export function makeFakeStripe() {
       s.payment_intent = overrides.payment_intent || `pi_test_${rand()}`;
       Object.assign(s, overrides);
       piAmounts.set(s.payment_intent, s.amount_total);
+      paymentIntents.set(s.payment_intent, { id: s.payment_intent, metadata: { ...s.metadata }, amount_refunded: 0 });
       return { ...s, metadata: { ...s.metadata } };
+    },
+    /** Refund at Stripe (dashboard / API) — sets the PI's cumulative refunded cents. */
+    refundAtStripe(paymentIntentId, amountRefunded) {
+      paymentIntents.get(paymentIntentId).amount_refunded = amountRefunded;
     },
     markExpired(id) {
       const s = sessions.get(id);
