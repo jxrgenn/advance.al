@@ -672,7 +672,7 @@ router.patch('/users/:userId/manage', async (req, res) => {
         // Close suspended employer's active jobs (shared with the report
         // action path — lib/employerSanctions.js).
         if (user.userType === 'employer') {
-          await closeJobsForSanctionedEmployer(user._id, 'suspend');
+          await closeJobsForSanctionedEmployer(user._id, 'suspend', { actor: req.user });
         }
         cacheDelete('admin:dashboard').catch(() => {});
         return res.json({ success: true, data: { user }, message: 'Përdoruesi u pezullua me sukses' });
@@ -680,7 +680,7 @@ router.patch('/users/:userId/manage', async (req, res) => {
         await user.ban(reason || 'Ndaluar nga administratori', req.user._id);
         // Close + soft-delete banned employer's jobs (shared helper)
         if (user.userType === 'employer') {
-          await closeJobsForSanctionedEmployer(user._id, 'ban');
+          await closeJobsForSanctionedEmployer(user._id, 'ban', { actor: req.user });
         }
         cacheDelete('admin:dashboard').catch(() => {});
         return res.json({ success: true, data: { user }, message: 'Përdoruesi u ndalua me sukses' });
