@@ -304,7 +304,7 @@ describe('admin — payment orders', () => {
       expect(r.status).toBe(200);
       const o = await PaymentOrder.findOne({ orderId }).lean();
       expect(o.needsRefund).toBe(true);
-      expect(o.needsRefundReason).toBe(`job rejected by admin ${admin.email} after payment`);
+      expect(o.needsRefundReason).toBe(`job rejected by admin ${admin.email} after payment — refund review (admin decides)`);
     });
 
     it('rejecting a pending_payment job cancels its open checkout', async () => {

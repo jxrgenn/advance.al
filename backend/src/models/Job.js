@@ -184,6 +184,16 @@ const jobSchema = new Schema({
     type: String,
     enum: ['employer', 'suspension', 'refund', 'payment_canceled']
   },
+  // On what basis the CURRENT listing period was granted (M5):
+  //   'free' — created/renewed/published while the employer posted free
+  //   'paid' — a paid order (card/admin) activated it
+  // Approval and re-opening honour a 'free' basis even if payments were
+  // switched on afterwards. Legacy docs without it: pricing.finalPrice === 0
+  // is treated as 'free' (that is what free creation always wrote).
+  postingBasis: {
+    type: String,
+    enum: ['free', 'paid']
+  },
   // Status the job had when the employer closed it. Re-opening restores it
   // (a job closed while awaiting moderation goes back to pending_approval,
   // never straight to active). Cleared on (re)activation.
@@ -301,7 +311,7 @@ const jobSchema = new Schema({
   // 'admin-manual' is the legacy (pre-order) manual override value.
   paymentMethod: {
     type: String,
-    enum: ['stripe', 'paysera', 'dev-fake', 'admin', 'admin-manual']
+    enum: ['stripe', 'paysera', 'dev-fake', 'admin', 'admin-manual', 'free']
   },
   paymentReminderSentAt: {
     type: Date

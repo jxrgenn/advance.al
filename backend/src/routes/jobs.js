@@ -19,7 +19,7 @@ import { pingJob } from '../lib/indexNow.js';
 import { JOB_CATEGORIES } from '../constants/jobCategories.js';
 import { notifyDiscord, deriveRequestSignals } from '../services/discordNotifier.js';
 import { publicJob } from '../lib/serializers.js';
-import { getListingPrices, isEmployerFree } from '../lib/pricing.js';
+import { getListingPrices, isEmployerFree, jobHasFreeBasis } from '../lib/pricing.js';
 import { cancelOpenOrdersForJob, recordRevenue } from '../services/payments/orderService.js';
 import { SALARY_CURRENCIES, APPROX_ALL_PER_EUR, monthlyToAnnual } from '../lib/salary.js';
 import { diacriticInsensitivePattern } from '../lib/searchRegex.js';
@@ -1207,10 +1207,12 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
       job.status = 'pending_payment';
       job.paymentStatus = 'pending';
       job.paymentRequired = prices.standard;
-    } else if (requireApproval) {
-      job.status = 'pending_approval';
     } else {
-      job.status = 'active'; // Free jobs / whitelisted employers go live immediately
+      // M5b: remember that this listing period was granted free, so an
+      // approval after payments are switched on still honours it.
+      job.postingBasis = 'free';
+      // Free jobs / whitelisted employers go live immediately (or to moderation).
+      job.status = requireApproval ? 'pending_approval' : 'active';
     }
 
     await job.save();
@@ -1596,14 +1598,71 @@ const STATUS_LABEL_SQ = {
 };
 
 /**
- * Retire any open checkout for a job that the employer is closing/deleting.
- * Returns the re-read job when a checkout turned out to be PAID a moment ago
- * (the job may now be active) so the caller can stop and tell the employer.
+ * Retire any open checkout for a job that the employer is closing/deleting
+ * (M1). Returns:
+ *   { ok: true }                                   nothing open any more
+ *   { conflict: 'PAYMENT_COMPLETED', job }         a checkout was paid a moment ago
+ *   { conflict: 'CHECKOUT_IN_PROGRESS' }           a checkout could not be confirmed
+ *                                                  retired (Stripe unreachable, or the
+ *                                                  session is completing) — the caller
+ *                                                  must NOT overwrite the job; retry later
  */
 async function retireOpenCheckouts(job, reason, source) {
   const results = await cancelOpenOrdersForJob(job._id, reason, { source });
-  if (!results.some((r) => r.outcome === 'paid')) return null;
-  return Job.findById(job._id);
+  if (results.some((r) => r.outcome === 'paid')) {
+    return { conflict: 'PAYMENT_COMPLETED', job: await Job.findById(job._id) };
+  }
+  if (results.some((r) => r.outcome === 'unknown' || r.outcome === 'busy')) {
+    return { conflict: 'CHECKOUT_IN_PROGRESS' };
+  }
+  return { ok: true };
+}
+
+function sendCheckoutConflict(res, r, action) {
+  if (r.conflict === 'PAYMENT_COMPLETED') {
+    return res.status(409).json({
+      success: false,
+      code: 'PAYMENT_COMPLETED',
+      message: `Pagesa për këtë punë sapo u krye. Rifreskoni panelin${action === 'delete' ? ' përpara se ta fshini' : ''}.`,
+      data: { job: r.job }
+    });
+  }
+  return res.status(409).json({
+    success: false,
+    code: 'CHECKOUT_IN_PROGRESS',
+    message: 'Një pagesë për këtë punë është ende në proces. Provoni përsëri pas një minute.'
+  });
+}
+
+/**
+ * Conditional write (M1): applies `update` only while the job still has the
+ * exact status + paymentId we read — a payment activated in between makes it
+ * a no-op instead of being overwritten by a stale document. Bypasses the
+ * post-save Location hook, so callers adjust Location.jobCount themselves.
+ */
+function writeIfUnchanged(job, update) {
+  return Job.findOneAndUpdate(
+    { _id: job._id, isDeleted: false, status: job.status, paymentId: job.paymentId ?? null },
+    update,
+    { new: true }
+  );
+}
+
+async function sendChangedMeanwhile(res, job) {
+  const fresh = await Job.findById(job._id);
+  if (fresh && fresh.paymentId !== job.paymentId && fresh.paymentStatus === 'paid') {
+    return res.status(409).json({
+      success: false,
+      code: 'PAYMENT_COMPLETED',
+      message: 'Pagesa për këtë punë sapo u krye. Rifreskoni panelin.',
+      data: { job: fresh }
+    });
+  }
+  return res.status(409).json({
+    success: false,
+    code: 'JOB_CHANGED',
+    message: 'Puna ndryshoi ndërkohë. Rifreskoni panelin dhe provoni përsëri.'
+  });
 }
 
 // @route   DELETE /api/jobs/:id
@@ -1628,25 +1687,20 @@ router.delete('/:id', validateObjectId('id'), authenticate, requireEmployer, asy
     }
 
     // Retire open checkouts first so the employer can't be charged for a
-    // deleted job. If one was paid a moment ago, stop: the job just went live.
-    const paidMeanwhile = await retireOpenCheckouts(job, 'job deleted by employer', 'job-delete');
-    if (paidMeanwhile) {
-      return res.status(409).json({
-        success: false,
-        code: 'PAYMENT_COMPLETED',
-        message: 'Pagesa për këtë punë sapo u krye. Rifreskoni panelin përpara se ta fshini.',
-        data: { job: paidMeanwhile }
-      });
-    }
+    // deleted job; stop if one was just paid or can't be confirmed retired.
+    const retired = await retireOpenCheckouts(job, 'job deleted by employer', 'job-delete');
+    if (!retired.ok) return sendCheckoutConflict(res, retired, 'delete');
 
     // Unpaid jobs are deletable like any other. paymentStatus='failed' marks
     // the abandoned post for the audit trail; a late provider "paid" for it
     // lands as activation_skipped → needsRefund (never resurrects the job).
-    if (job.status === 'pending_payment') {
-      job.paymentStatus = 'failed';
+    const set = { isDeleted: true, status: 'closed' };
+    if (job.status === 'pending_payment') set.paymentStatus = 'failed';
+    const deleted = await writeIfUnchanged(job, { $set: set });
+    if (!deleted) return sendChangedMeanwhile(res, job);
+    if (job.status === 'active') {
+      await Job.decrementLocationCountsForCities([job.location?.city]).catch(() => {});
     }
-
-    await job.softDelete();
 
     // F-10 fix: invalidate admin:dashboard cache on delete
     cacheDelete('admin:dashboard').catch(() => {});
@@ -1695,6 +1749,8 @@ router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmploye
     }
 
     const fail = (message, code) => res.status(400).json({ success: false, ...(code ? { code } : {}), message });
+    let update;
+    let target;
 
     if (status === 'closed') {
       if (job.status === 'closed') return fail('Puna është tashmë e mbyllur.');
@@ -1703,18 +1759,10 @@ router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmploye
       if (!closable.includes(job.status)) {
         return fail(`Një punë ${STATUS_LABEL_SQ[job.status] || job.status} nuk mund të mbyllet.`);
       }
-      const paidMeanwhile = await retireOpenCheckouts(job, 'job closed by employer', 'job-close');
-      if (paidMeanwhile) {
-        return res.status(409).json({
-          success: false,
-          code: 'PAYMENT_COMPLETED',
-          message: 'Pagesa për këtë punë sapo u krye. Rifreskoni panelin.',
-          data: { job: paidMeanwhile }
-        });
-      }
-      job.closedFromStatus = job.status;
-      job.closedReason = 'employer';
-      job.status = 'closed';
+      const retired = await retireOpenCheckouts(job, 'job closed by employer', 'job-close');
+      if (!retired.ok) return sendCheckoutConflict(res, retired, 'close');
+      target = 'closed';
+      update = { $set: { status: 'closed', closedReason: 'employer', closedFromStatus: job.status } };
     } else {
       // status === 'active' — only re-opening a job the employer closed.
       if (job.status === 'active') return fail('Puna është tashmë aktive.');
@@ -1742,20 +1790,29 @@ router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmploye
       }
       const from = job.closedFromStatus;
       if (from === 'draft') return fail('Një draft nuk mund të aktivizohet direkt.', 'DRAFT');
-      const paidOrFree = job.paymentStatus === 'paid' || await isEmployerFree(req.user);
+      // L6c / M5: re-opening is free only for a listing period that was paid
+      // or granted free (legacy closed jobs without closedReason included —
+      // an unpaid legacy job is NOT re-opened for free), or when the
+      // employer posts free now.
+      const paidOrFree = job.paymentStatus === 'paid' || jobHasFreeBasis(job) || await isEmployerFree(req.user);
       if (!paidOrFree) {
         return fail('Kjo punë nuk është paguar — ripostojeni me pagesë për ta publikuar.', 'PAYMENT_REQUIRED');
       }
       // A job closed while it awaited moderation goes back to moderation.
-      job.status = from === 'pending_approval' ? 'pending_approval' : 'active';
-      job.closedReason = undefined;
-      job.closedFromStatus = undefined;
+      target = from === 'pending_approval' ? 'pending_approval' : 'active';
+      update = { $set: { status: target }, $unset: { closedReason: 1, closedFromStatus: 1 } };
     }
 
-    await job.save();
+    const updated = await writeIfUnchanged(job, update);
+    if (!updated) return sendChangedMeanwhile(res, job);
+    if (job.status === 'active' && target !== 'active') {
+      await Job.decrementLocationCountsForCities([job.location?.city]).catch(() => {});
+    } else if (job.status !== 'active' && target === 'active') {
+      await Job.incrementLocationCountsForCities([job.location?.city]).catch(() => {});
+    }
 
-    if (job.status === 'active') {
-      setImmediate(() => { pingJob(job); });
+    if (updated.status === 'active') {
+      setImmediate(() => { pingJob(updated); });
     }
 
     // F-10 fix: invalidate admin:dashboard cache on status change
@@ -1769,8 +1826,8 @@ router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmploye
 
     res.json({
       success: true,
-      message: statusMessages[job.status],
-      data: { job }
+      message: statusMessages[updated.status],
+      data: { job: updated }
     });
 
   } catch (error) {
@@ -1829,6 +1886,7 @@ router.post('/:id/renew', validateObjectId('id'), authenticate, requireEmployer,
     job.viewCount = 0;
     // Free renewal never carries a paid placement over.
     job.tier = 'basic';
+    job.postingBasis = 'free';
     job.closedReason = undefined;
     job.closedFromStatus = undefined;
 

@@ -7,7 +7,15 @@ import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
 import { sanitizeLimit, validateObjectId, stripHtml } from '../utils/sanitize.js';
 import { errorDetail } from '../utils/errors.js';
 import logger from '../config/logger.js';
-import { getListingPrices } from '../lib/pricing.js';
+import { getListingPrices, getPaymentEnabledState } from '../lib/pricing.js';
+
+/** Strict boolean from JSON/form input (L6d: Boolean("false") === true). */
+function parseBooleanInput(v) {
+  if (v === true || v === false) return v;
+  if (v === 'true' || v === 1 || v === '1') return true;
+  if (v === 'false' || v === 0 || v === '0') return false;
+  return null;
+}
 import { resolveCheckoutProvider } from '../services/payments/providerConfig.js';
 
 const router = express.Router();
@@ -168,7 +176,8 @@ router.get('/pricing', authenticate, requireAdmin, async (req, res) => {
     // Effective prices — exactly what checkout charges (lib/pricing.js).
     const { standard: standardPosting, promoted: promotedPosting } = await getListingPrices();
     const candidateViewing = await SystemConfiguration.getSettingValue('pricing_candidate_viewing', 15);
-    const paymentEnabled = await SystemConfiguration.getSettingValue('payment_enabled', false);
+    // Effective value (fail-closed in production when the document is missing).
+    const { enabled: paymentEnabled, source: paymentEnabledSource } = await getPaymentEnabledState();
 
     // Get setting IDs for editing
     const settings = await SystemConfiguration.find({
@@ -188,7 +197,8 @@ router.get('/pricing', authenticate, requireAdmin, async (req, res) => {
           standardPosting,
           promotedPosting,
           candidateViewing,
-          paymentEnabled
+          paymentEnabled,
+          paymentEnabledSource
         },
         settings: settingsMap
       }
@@ -209,6 +219,14 @@ router.put('/pricing', authenticate, requireAdmin, configurationLimit, async (re
   try {
     const { standardPosting, promotedPosting, candidateViewing, paymentEnabled } = req.body;
     const updates = [];
+
+    let paymentEnabledValue;
+    if (paymentEnabled !== undefined) {
+      paymentEnabledValue = parseBooleanInput(paymentEnabled);
+      if (paymentEnabledValue === null) {
+        return res.status(400).json({ success: false, message: 'paymentEnabled duhet të jetë true ose false' });
+      }
+    }
 
     if (standardPosting !== undefined) {
       const setting = await SystemConfiguration.getSetting('pricing_standard_posting');
@@ -237,7 +255,7 @@ router.put('/pricing', authenticate, requireAdmin, configurationLimit, async (re
     if (paymentEnabled !== undefined) {
       const setting = await SystemConfiguration.getSetting('payment_enabled');
       if (setting) {
-        await setting.updateValue(Boolean(paymentEnabled), req.user._id);
+        await setting.updateValue(paymentEnabledValue, req.user._id);
         updates.push('payment_enabled');
       }
     }

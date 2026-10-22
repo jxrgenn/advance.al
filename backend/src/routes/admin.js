@@ -4,7 +4,52 @@ import { User, Job, Application, QuickUser, PaymentOrder } from '../models/index
 import {
   PaymentError, adminManualAccept, adminRefundOrder, adminResolveRefundFlag, cancelOpenOrdersForJob, flagPaidListingWithdrawn,
 } from '../services/payments/orderService.js';
-import { isEmployerFree } from '../lib/pricing.js';
+import { isEmployerFree, jobHasFreeBasis } from '../lib/pricing.js';
+import { JOB_TTL_DAYS } from '../models/Job.js';
+
+/**
+ * One approval rule for BOTH admin approve routes (L1).
+ * Approval is moderation, not payment: a job is publishable when its listing
+ * period was paid, was granted free (postingBasis 'free' / legacy free
+ * creation — M5b), or the employer posts free right now. Otherwise the admin
+ * must use the audited manual accept (Pagesat). Returns an error response
+ * object, or null when the job may be approved.
+ */
+async function approvalBlocker(job, allowedFrom) {
+  if (!allowedFrom.includes(job.status)) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message: allowedFrom.length === 1
+          ? 'Kjo punë nuk është në pritje për aprovim'
+          : `Vetëm punët në pritje të miratimit ose të refuzuara mund të aprovohen (statusi: ${job.status})`,
+      },
+    };
+  }
+  if (job.paymentStatus === 'paid' || jobHasFreeBasis(job)) return null;
+  const employer = await User.findById(job.employerId).select('freePostingEnabled').lean();
+  if (await isEmployerFree(employer)) return null;
+  return {
+    status: 409,
+    body: {
+      success: false,
+      code: 'PAYMENT_REQUIRED',
+      message: 'Kjo punë nuk është paguar. Përdorni "Shëno si e paguar" te Pagesat nëse pagesa u krye jashtë sistemit.',
+    },
+  };
+}
+
+/** Publish an approved job. The listing period starts NOW (L6a), not at payment. */
+function applyApproval(job) {
+  const now = new Date();
+  job.status = 'active';
+  job.adminApproved = true;
+  job.postedAt = now;
+  job.expiresAt = new Date(now.getTime() + JOB_TTL_DAYS * 24 * 60 * 60 * 1000);
+  job.closedReason = undefined;
+  job.closedFromStatus = undefined;
+}
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { escapeRegex, sanitizeLimit } from '../utils/sanitize.js';
 import notificationService from '../lib/notificationService.js';
@@ -630,7 +675,7 @@ router.patch('/users/:userId/manage', async (req, res) => {
         // Close suspended employer's active jobs (shared with the report
         // action path — lib/employerSanctions.js).
         if (user.userType === 'employer') {
-          await closeJobsForSanctionedEmployer(user._id, 'suspend');
+          await closeJobsForSanctionedEmployer(user._id, 'suspend', { actor: req.user });
         }
         cacheDelete('admin:dashboard').catch(() => {});
         return res.json({ success: true, data: { user }, message: 'Përdoruesi u pezullua me sukses' });
@@ -638,7 +683,7 @@ router.patch('/users/:userId/manage', async (req, res) => {
         await user.ban(reason || 'Ndaluar nga administratori', req.user._id);
         // Close + soft-delete banned employer's jobs (shared helper)
         if (user.userType === 'employer') {
-          await closeJobsForSanctionedEmployer(user._id, 'ban');
+          await closeJobsForSanctionedEmployer(user._id, 'ban', { actor: req.user });
         }
         cacheDelete('admin:dashboard').catch(() => {});
         return res.json({ success: true, data: { user }, message: 'Përdoruesi u ndalua me sukses' });
@@ -767,27 +812,9 @@ router.patch('/jobs/:jobId/manage', async (req, res) => {
 
     switch (action) {
       case 'approve': {
-        if (!['pending_approval', 'rejected'].includes(job.status)) {
-          return res.status(400).json({
-            success: false,
-            message: `Vetëm punët në pritje të miratimit ose të refuzuara mund të aprovohen (statusi: ${job.status})`
-          });
-        }
-        // Approval is moderation, not payment: an unpaid job of a paying
-        // employer is published only through a paid order or an explicit,
-        // audited manual-accept (admin → Pagesat).
-        const employer = await User.findById(job.employerId).select('freePostingEnabled').lean();
-        if (job.paymentStatus !== 'paid' && !(await isEmployerFree(employer))) {
-          return res.status(409).json({
-            success: false,
-            code: 'PAYMENT_REQUIRED',
-            message: 'Kjo punë nuk është paguar. Përdorni "Shëno si e paguar" te Pagesat nëse pagesa u krye jashtë sistemit.'
-          });
-        }
-        job.status = 'active';
-        job.adminApproved = true;
-        job.closedReason = undefined;
-        job.closedFromStatus = undefined;
+        const blocked = await approvalBlocker(job, ['pending_approval', 'rejected']);
+        if (blocked) return res.status(blocked.status).json(blocked.body);
+        applyApproval(job);
         break;
       }
       case 'reject':
@@ -1046,14 +1073,20 @@ router.patch('/jobs/:id/approve', async (req, res) => {
       });
     }
 
-    if (job.status !== 'pending_approval') {
-      return res.status(400).json({
-        success: false,
-        message: 'Kjo punë nuk është në pritje për aprovim'
-      });
+    if (action === 'approve') {
+      // L1: same payment guard as /manage — this route used to publish unpaid jobs.
+      const blocked = await approvalBlocker(job, ['pending_approval']);
+      if (blocked) return res.status(blocked.status).json(blocked.body);
+      applyApproval(job);
+    } else {
+      if (job.status !== 'pending_approval') {
+        return res.status(400).json({
+          success: false,
+          message: 'Kjo punë nuk është në pritje për aprovim'
+        });
+      }
+      job.status = 'rejected';
     }
-
-    job.status = action === 'approve' ? 'active' : 'rejected';
     await job.save();
 
     if (action === 'reject') {

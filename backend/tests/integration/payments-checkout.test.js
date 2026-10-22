@@ -243,7 +243,8 @@ describe('payments — checkout + orders', () => {
       const job = await createJobPendingPayment(emp);
       const r = await checkout(emp, { jobId: String(job._id), tier: 'standard' });
       expect(r.status).toBe(403);
-      expect(r.body.message).toBe('Llogaria juaj si punëdhënës duhet të verifikohet nga administratori');
+      expect(r.body.code).toBe('EMPLOYER_VERIFICATION_PENDING');
+      expect(r.body.message).toBe('Llogaria juaj si punëdhënës është në pritje të verifikimit nga administratori. Do të mund të publikoni punë sapo të verifikohet — do t\'ju njoftojmë me email.');
       expect(await PaymentOrder.countDocuments({})).toBe(0);
     });
 
@@ -303,13 +304,21 @@ describe('payments — checkout + orders', () => {
       ['tier missing', { tier: undefined }, 'INVALID_TIER'],
       ['purpose bogus', { tier: 'standard', purpose: 'free_stuff' }, 'INVALID_PURPOSE'],
       ['jobId malformed', { tier: 'standard', jobId: 'abc' }, 'INVALID_JOB_ID'],
-      ['jobId NoSQL operator', { tier: 'standard', jobId: { $ne: null } }, 'INVALID_JOB_ID'],
     ])('400 for %s', async (_label, patch, code) => {
       const { user: emp } = await createVerifiedEmployer();
       const job = await createJobPendingPayment(emp);
       const r = await checkout(emp, { jobId: String(job._id), ...patch });
       expect(r.status).toBe(400);
       expect(r.body.code).toBe(code);
+      expect(await PaymentOrder.countDocuments({})).toBe(0);
+    });
+
+    it('400 for a jobId NoSQL operator — rejected by the global operator guard before the route runs', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      await createJobPendingPayment(emp);
+      const r = await checkout(emp, { tier: 'standard', jobId: { $ne: null } });
+      expect(r.status).toBe(400);
+      expect(r.body).toEqual({ success: false, message: 'Kërkesa përmban fusha të palejuara.' });
       expect(await PaymentOrder.countDocuments({})).toBe(0);
     });
   });

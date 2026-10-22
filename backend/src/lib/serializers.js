@@ -102,7 +102,7 @@ const OMIT_JOB_FIELDS = new Set([
   'isDeleted', 'adminApproved', 'rejectionReason', '__v',
   // Lifecycle internals (payments rebuild) — closedReason can reveal an
   // account suspension or a refund.
-  'closedReason', 'closedFromStatus',
+  'closedReason', 'closedFromStatus', 'postingBasis',
 ]);
 
 /**

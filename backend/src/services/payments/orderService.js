@@ -34,7 +34,9 @@ import {
 } from '../../lib/pricing.js';
 import * as stripeProvider from './stripeProvider.js';
 import { createPaymentUrl as payseraCreatePaymentUrl, isTestMode as payseraTestMode } from '../payseraService.js';
-import { resolveCheckoutProvider, expectedLivemode } from './providerConfig.js';
+import {
+  resolveCheckoutProvider, expectedLivemode, isProduction, testModeOptedIn, isTestModeAllowlisted,
+} from './providerConfig.js';
 import { alertPaymentsAdmin } from './paymentAlerts.js';
 import logger from '../../config/logger.js';
 import { notifyDiscord, deriveRequestSignals } from '../discordNotifier.js';
@@ -230,7 +232,7 @@ export async function createCheckout({ employer, jobId, tier, purpose = 'job_pos
     throw new PaymentError(400, msg, 'INVALID_JOB_STATE', { jobStatus: job.status });
   }
 
-  const resolved = resolveCheckoutProvider(forceProvider, { allowFake });
+  const resolved = resolveCheckoutProvider(forceProvider, { allowFake, employer });
   if (!resolved.provider) {
     alertPaymentsUnavailable(resolved.reason, req);
     throw new PaymentError(503, MSG_PAYMENTS_UNAVAILABLE, 'PAYMENTS_UNAVAILABLE');
@@ -440,6 +442,7 @@ async function flagPaidAfterClose(current, p) {
  */
 export async function fulfillOrder(p) {
   const { orderId, provider, providerSessionId, providerPaymentId, amountCents, currency, livemode, source } = p;
+  const refundedBefore = Number.isInteger(p.refundedCents) && p.refundedCents > 0 ? p.refundedCents : 0;
   const order = isValidOrderId(orderId) ? await PaymentOrder.findOne({ orderId }) : null;
   if (!order) {
     logger.error('payments: provider reported a payment for an unknown order', { orderId, provider, source, providerPaymentId });
@@ -495,6 +498,12 @@ export async function fulfillOrder(p) {
   }
 
   const set = { status: 'paid', paidAt: new Date() };
+  if (refundedBefore > (order.refundedCents || 0)) {
+    // The provider already refunded (part of) this payment before we
+    // fulfilled it (M2) — record it so activation refuses to publish.
+    set.refundedCents = refundedBefore;
+    set.refundedAt = new Date();
+  }
   if (providerPaymentId) set.providerPaymentId = providerPaymentId;
   if (providerSessionId && !order.providerSessionId) set.providerSessionId = providerSessionId;
   if (typeof livemode === 'boolean') set.livemode = livemode;
@@ -539,6 +548,7 @@ export async function fulfillFromStripeSession(session, { source, eventId, livem
     amountCents: session?.amount_total,
     currency: session?.currency,
     livemode: typeof livemode === 'boolean' ? livemode : session?.livemode,
+    refundedCents: stripeProvider.refundedCentsOf(session),
     eventId,
     source,
   });
@@ -569,6 +579,40 @@ export async function activateJobFromOrder(order, { source } = {}) {
     return { status: 'not_claimed', order };
   }
 
+  // ── Guards: money that must not publish anything ───────────────────────
+  // M2: refunded (fully or partly) before we could apply it.
+  if ((claimed.refundedCents || 0) > 0) {
+    const full = claimed.refundedCents >= claimed.amountCents;
+    return skipActivation(claimed, {
+      source,
+      reason: `payment was ${full ? 'fully' : 'partly'} refunded before activation (${claimed.refundedCents}/${claimed.amountCents} cents)`,
+      needsRefund: !full,
+      orderStatus: full ? 'refunded' : 'partially_refunded',
+      alert: !full,
+    });
+  }
+  // M3: employer suspended / banned / deleted while on the payment page.
+  const employer = await User.findById(claimed.employerId).select('email status isDeleted').lean();
+  if (!employer || employer.isDeleted || ['suspended', 'banned', 'deleted'].includes(employer.status)) {
+    return skipActivation(claimed, {
+      source,
+      reason: `employer account is ${employer ? (employer.isDeleted ? 'deleted' : employer.status) : 'missing'} — listing not published`,
+      needsRefund: claimed.amountCents > 0,
+      alert: true,
+    });
+  }
+  // H1 (defense in depth): a test-mode payment can only publish in
+  // production for an allowlisted employer during an opted-in rehearsal.
+  if (isProduction() && claimed.livemode === false && ['stripe', 'paysera'].includes(claimed.provider)
+    && !(testModeOptedIn() && isTestModeAllowlisted(employer))) {
+    return skipActivation(claimed, {
+      source,
+      reason: 'test-mode payment in production — not published (no real money)',
+      needsRefund: false,
+      alert: true,
+    });
+  }
+
   const allowedFrom = allowedJobStatesFor(claimed.purpose);
   const requireApproval = !!(await SystemConfiguration.getSettingValue('require_job_approval'));
   const targetStatus = requireApproval ? 'pending_approval' : 'active';
@@ -583,6 +627,8 @@ export async function activateJobFromOrder(order, { source } = {}) {
     paymentRequired: claimed.amountCents / 100,
     postedAt: now,
     expiresAt: new Date(now.getTime() + JOB_TTL_DAYS * DAY_MS),
+    // M5: a waived/free order grants the period for free; anything paid is 'paid'.
+    postingBasis: claimed.amountCents > 0 ? 'paid' : 'free',
   };
   if (claimed.purpose === 'job_renewal') set.viewCount = 0;
   if (claimed.purpose === 'job_post' && targetStatus === 'active') {
@@ -625,16 +671,37 @@ export async function activateJobFromOrder(order, { source } = {}) {
     else if (current.paymentStatus === 'paid' && current.paymentId && current.paymentId !== claimed.orderId) {
       reason = `duplicate payment — job already paid by ${current.paymentId} (status '${current.status}')`;
     } else reason = `job status '${current.status}' cannot be activated by a ${claimed.purpose} order (expected ${allowedFrom.join('/')})`;
-    const skipped = await PaymentOrder.findOneAndUpdate(
-      { _id: claimed._id },
-      { $set: { 'activation.status': 'skipped', 'activation.reason': reason, needsRefund: true, needsRefundReason: `activation skipped: ${reason}` } },
-      { new: true },
-    );
-    logger.error('payments: activation skipped — refund needed', { orderId: claimed.orderId, reason, source });
-    await logOrderEvent(skipped || claimed, 'activation_skipped', { source, notes: reason });
+    return skipActivation(claimed, { source, reason, needsRefund: claimed.amountCents > 0, alert: true });
+  }
+
+  return finishActivation(claimed, job, { source, now });
+}
+
+/**
+ * The paid order will not publish anything: mark activation skipped, flag a
+ * refund decision when real money is held, optionally move the order to a
+ * refund state (paid → refunded/partially_refunded), alert. Job untouched.
+ */
+async function skipActivation(claimed, { source, reason, needsRefund, orderStatus, alert }) {
+  const set = { 'activation.status': 'skipped', 'activation.reason': reason.slice(0, 500) };
+  if (needsRefund) {
+    set.needsRefund = true;
+    set.needsRefundReason = `activation skipped: ${reason}`.slice(0, 1000);
+  }
+  if (orderStatus) set.status = orderStatus;
+  const skipped = await PaymentOrder.findOneAndUpdate(
+    { _id: claimed._id, status: 'paid' },
+    { $set: set },
+    { new: true },
+  ) || await PaymentOrder.findById(claimed._id);
+  logger.error(`payments: activation skipped${needsRefund ? ' — refund decision needed' : ''}`, { orderId: claimed.orderId, reason, source });
+  await logOrderEvent(skipped || claimed, 'activation_skipped', { source, notes: reason });
+  if (alert) {
     alertPaymentsAdmin({
-      title: '💸 Paid order could not be applied — refund needed',
-      description: 'Money was received but the job was not activated by this order. The job was left untouched.',
+      title: needsRefund ? '💸 Paid order could not be applied — refund needed' : '⚠️ Order not applied',
+      description: needsRefund
+        ? 'Money was received but the job was not activated by this order. The job was left untouched.'
+        : 'The order was not applied to its job (no refund needed). The job was left untouched.',
       fields: [
         { name: 'Order', value: claimed.orderId },
         { name: 'Job', value: String(claimed.jobId) },
@@ -643,10 +710,8 @@ export async function activateJobFromOrder(order, { source } = {}) {
       ],
       dedupKey: `pay-skip:${claimed.orderId}`,
     });
-    return { status: 'skipped', order: skipped || claimed, reason };
   }
-
-  return finishActivation(claimed, job, { source, now });
+  return { status: 'skipped', order: skipped || claimed, reason };
 }
 
 async function finishActivation(claimed, job, { source, now, recovered = false }) {
@@ -897,6 +962,66 @@ export async function recordDispute(orderOrId, { disputeId, amountCents, reason,
   return { outcome: updated ? 'disputed' : 'flagged', order: updated || order };
 }
 
+/**
+ * charge.dispute.closed (L6b). Stripe statuses:
+ *   won / warning_closed → the money stays: back to paid (or partially_refunded)
+ *   lost                 → the money is gone: like a full refund (order
+ *                          refunded, revenue reversed, the listing it paid for closed)
+ *   anything else        → dispute still open: no change
+ */
+export async function recordDisputeClosed(orderOrId, { disputeId, status, amountCents, source = 'webhook' } = {}) {
+  const order = typeof orderOrId === 'string' ? await PaymentOrder.findOne({ orderId: orderOrId }) : orderOrId;
+  if (!order) return { outcome: 'order_not_found' };
+  const note = `dispute ${disputeId || ''} closed: ${status}`;
+
+  if (status === 'won' || status === 'warning_closed') {
+    const restored = (order.refundedCents || 0) > 0 ? 'partially_refunded' : 'paid';
+    const updated = await PaymentOrder.findOneAndUpdate(
+      { _id: order._id, status: 'disputed' },
+      { $set: { status: restored, notes: note } },
+      { new: true },
+    );
+    if (!updated) return { outcome: 'no_change', order };
+    await logOrderEvent(updated, 'dispute_closed', { source, notes: note });
+    notifyDiscord({ channel: 'payments', title: '✅ Dispute won', fields: [{ name: 'Order', value: order.orderId, inline: true }], dedupKey: `pay-dispute-won:${order.orderId}` });
+    return { outcome: 'dispute_won', order: updated };
+  }
+
+  if (status === 'lost') {
+    const lostCents = Number.isInteger(amountCents) && amountCents > 0 ? amountCents : order.amountCents;
+    const total = Math.min(order.amountCents, Math.max(order.refundedCents || 0, lostCents));
+    const updated = await PaymentOrder.findOneAndUpdate(
+      { _id: order._id, status: { $in: ['disputed', 'paid', 'partially_refunded'] } },
+      { $set: { status: 'refunded', refundedCents: total, refundedAt: new Date(), needsRefund: false, notes: note } },
+      { new: true },
+    );
+    if (!updated) return { outcome: 'no_change', order };
+    let jobClosed = false;
+    if (updated.activation?.status === 'applied') {
+      const delta = total - (order.refundedCents || 0);
+      if (delta > 0) {
+        await recordRevenue({ amountCents: delta, tier: updated.tier }, { sign: -1, countJob: false })
+          .catch((err) => logger.warn('payments: revenue dispute adjustment failed', { error: err.message }));
+      }
+      jobClosed = await closeRefundedJob(updated);
+    }
+    await logOrderEvent(updated, 'dispute_closed', { source, notes: `${note}; ${total} cents lost${jobClosed ? '; job closed' : ''}` });
+    alertPaymentsAdmin({
+      title: '🛑 Dispute LOST — money returned to the customer',
+      fields: [
+        { name: 'Order', value: order.orderId },
+        { name: 'Amount', value: `€${(total / 100).toFixed(2)}` },
+        { name: 'Job closed', value: jobClosed ? 'yes' : 'no' },
+      ],
+      dedupKey: `pay-dispute-lost:${order.orderId}`,
+      email: true,
+    });
+    return { outcome: 'dispute_lost', order: updated, jobClosed };
+  }
+
+  return { outcome: 'no_change', order };
+}
+
 // ─── reconciliation ─────────────────────────────────────────────────────────
 
 /** Ask Stripe for the truth about an open order. Never throws on Stripe errors. */
@@ -952,6 +1077,101 @@ export async function cancelOpenOrdersForJob(jobId, reason, { source = 'job-canc
     results.push({ orderId: o.orderId, outcome });
   }
   return results;
+}
+
+// ─── free publication (M5a) ─────────────────────────────────────────────────
+
+/**
+ * The employer posts free NOW (whitelisted, or payment_enabled switched off
+ * after the job was created) but the job is stuck in pending_payment.
+ * Publish it through the normal activation path with a 0-cent 'free' order
+ * (audit trail, fresh 21 days, job alerts, no invoice).
+ */
+export async function publishFree({ employer, jobId, req } = {}) {
+  if (typeof jobId !== 'string' || !mongoose.isValidObjectId(jobId)) {
+    throw new PaymentError(400, 'jobId i pavlefshëm', 'INVALID_JOB_ID');
+  }
+  if (!employer || employer.userType !== 'employer') {
+    throw new PaymentError(403, 'Vetëm punëdhënësit mund të publikojnë postime', 'NOT_EMPLOYER');
+  }
+  if (!employer.profile?.employerProfile?.verified) {
+    throw new PaymentError(403, 'Llogaria juaj si punëdhënës duhet të verifikohet nga administratori', 'EMPLOYER_NOT_VERIFIED');
+  }
+  if (!(await isEmployerFree(employer))) {
+    throw new PaymentError(400, 'Kjo punë publikohet pasi të kryhet pagesa.', 'PAYMENT_REQUIRED');
+  }
+  const job = await Job.findOne({ _id: jobId, employerId: employer._id, isDeleted: false });
+  if (!job) throw new PaymentError(404, 'Puna nuk u gjet', 'JOB_NOT_FOUND');
+  if (job.status !== 'pending_payment') {
+    throw new PaymentError(400, `Kjo punë nuk është në pritje të pagesës (statusi: ${job.status}).`, 'INVALID_JOB_STATE', { jobStatus: job.status });
+  }
+  // A card checkout opened before the employer became free must not stay payable.
+  const retired = await cancelOpenOrdersForJob(job._id, 'superseded by free publication', { source: 'free-publish' });
+  if (retired.some((r) => r.outcome === 'paid')) {
+    throw new PaymentError(409, 'Kjo punë sapo u pagua. Rifreskoni panelin.', 'ALREADY_PAID');
+  }
+  if (retired.some((r) => r.outcome === 'unknown' || r.outcome === 'busy')) {
+    throw new PaymentError(409, 'Një pagesë për këtë punë është ende e hapur. Provoni përsëri pas pak.', 'CHECKOUT_IN_PROGRESS');
+  }
+
+  const order = await PaymentOrder.create({
+    orderId: generateOrderId(),
+    jobId: job._id,
+    employerId: employer._id,
+    purpose: 'job_post',
+    tier: 'standard',
+    amountCents: 0,
+    currency: 'EUR',
+    provider: 'free',
+    status: 'created',
+    notes: 'free publication — employer posts free',
+  });
+  await logOrderEvent(order, 'free_publication', { source: 'free-publish', ip: req?.ip, userAgent: req?.headers?.['user-agent'] });
+  const result = await fulfillOrder({ orderId: order.orderId, provider: 'free', amountCents: 0, currency: 'EUR', source: 'free-publish' });
+  if (result.activation !== 'applied') {
+    throw new PaymentError(409, `Publikimi nuk u aplikua: ${result.order?.activation?.reason || result.outcome}`, 'ACTIVATION_SKIPPED', { orderId: order.orderId });
+  }
+  return { order: result.order, job: result.job };
+}
+
+// ─── employer sanctions (M3, L5) ────────────────────────────────────────────
+
+/**
+ * Retire every open checkout of an employer (suspension/ban). A Stripe
+ * session that turns out to be paid is fulfilled — and activation then
+ * refuses to publish for a sanctioned employer (needsRefund).
+ * @returns {Promise<Array<{orderId:string, outcome:string}>>}
+ */
+export async function retireOpenCheckoutsForEmployer(employerId, reason = 'employer sanctioned', { source = 'sanction' } = {}) {
+  const open = await PaymentOrder.find({ employerId, status: { $in: OPEN }, provider: { $ne: 'admin' } });
+  const results = [];
+  for (const o of open) {
+    // eslint-disable-next-line no-await-in-loop
+    const outcome = (o.provider === 'stripe' && !o.providerSessionId)
+      ? ((await markOrderCanceled(o.orderId, `${reason} (no session)`, { source })) ? 'canceled' : 'unknown')
+      : await supersedeOrder(o, reason, { source });
+    results.push({ orderId: o.orderId, outcome });
+  }
+  return results;
+}
+
+/**
+ * Call AFTER an employer was suspended/banned and their live jobs closed
+ * (integration: lib/employerSanctions.js closeJobsForSanctionedEmployer).
+ *   1. retires their open checkouts (no new money for a sanctioned account)
+ *   2. flags the paid order of every listing the sanction closed as
+ *      needsRefund-review — the owner rule is "closed by suspension stays
+ *      closed"; the admin decides on a refund (never automatic) in Pagesat.
+ */
+export async function handleEmployerSanction({ employerId, closedJobIds = [], action = 'suspension', actor } = {}) {
+  const retired = await retireOpenCheckoutsForEmployer(employerId, `employer ${action}`, { source: 'sanction' });
+  const flagged = [];
+  for (const jobId of closedJobIds) {
+    // eslint-disable-next-line no-await-in-loop
+    const order = await flagPaidListingWithdrawn({ _id: jobId }, { admin: actor, action: `closed by ${action}` });
+    if (order) flagged.push(order.orderId);
+  }
+  return { retired, flagged };
 }
 
 // ─── admin manual accept ────────────────────────────────────────────────────
@@ -1147,7 +1367,9 @@ export async function flagPaidListingWithdrawn(job, { admin, action, reason: rea
   const current = await Job.findById(job._id).select('paymentId').lean();
   const paymentId = current?.paymentId;
   if (!paymentId || !isValidOrderId(paymentId)) return null;
-  const reason = reasonOverride || `job ${action} by admin ${admin?.email || admin?._id || ''} after payment`.trim();
+  const actor = admin?.email || (admin?._id ? String(admin._id) : '');
+  const reason = reasonOverride
+    || `job ${action}${actor ? ` by admin ${actor}` : ''} after payment — refund review (admin decides)`;
   const order = await PaymentOrder.findOneAndUpdate(
     { orderId: paymentId, status: { $in: ['paid', 'partially_refunded'] }, 'activation.status': 'applied', needsRefund: { $ne: true }, amountCents: { $gt: 0 } },
     { $set: { needsRefund: true, needsRefundReason: reason } },
@@ -1208,6 +1430,10 @@ export default {
   adminRefundOrder,
   adminResolveRefundFlag,
   flagPaidListingWithdrawn,
+  recordDisputeClosed,
+  publishFree,
+  retireOpenCheckoutsForEmployer,
+  handleEmployerSanction,
   serializeOrderForViewer,
   isValidOrderId,
 };

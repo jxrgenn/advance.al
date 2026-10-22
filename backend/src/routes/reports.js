@@ -817,9 +817,9 @@ router.post('/admin/:id/action',
       // as active and seekers only hit the apply 404.
       if (report.reportedUser?.userType === 'employer') {
         if (action === 'temporary_suspension') {
-          await closeJobsForSanctionedEmployer(report.reportedUser._id, 'suspend');
+          await closeJobsForSanctionedEmployer(report.reportedUser._id, 'suspend', { actor: req.user });
         } else if (action === 'permanent_suspension' || action === 'account_termination') {
-          await closeJobsForSanctionedEmployer(report.reportedUser._id, 'ban');
+          await closeJobsForSanctionedEmployer(report.reportedUser._id, 'ban', { actor: req.user });
         }
       }
 
