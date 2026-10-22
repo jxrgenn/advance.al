@@ -29,6 +29,17 @@ const toPeriod = (annual: number, period: SalaryViewPeriod): number =>
 const grouped = (n: number): string => n.toLocaleString('en-US');
 
 /**
+ * How a currency is written next to an amount. Albanian lek is written
+ * "Lekë" (never the ISO code "ALL", which reads as the English word).
+ */
+export const CURRENCY_DISPLAY: Record<string, string> = { EUR: 'EUR', ALL: 'Lekë' };
+export const currencyDisplay = (currency: string | undefined): string =>
+  CURRENCY_DISPLAY[currency || 'EUR'] || currency || 'EUR';
+
+/** Shown when a job publishes no salary numbers (negotiable or hidden). */
+export const NEGOTIABLE_SALARY_TEXT = "Pagë për t'u negociuar";
+
+/**
  * Format a job salary for display.
  * Returns null when there is nothing to show (no range and not negotiable).
  */
@@ -37,12 +48,12 @@ export const formatSalary = (
   viewPeriod: SalaryViewPeriod = 'monthly'
 ): string | null => {
   if (!salary) return null;
-  const currency = salary.currency || 'EUR';
+  const currency = currencyDisplay(salary.currency);
   const hasMin = typeof salary.min === 'number' && salary.min > 0;
   const hasMax = typeof salary.max === 'number' && salary.max > 0;
 
   if (!hasMin && !hasMax) {
-    return salary.negotiable !== false ? "Pagë për t'u negociuar" : null;
+    return salary.negotiable !== false ? NEGOTIABLE_SALARY_TEXT : null;
   }
 
   const suffix = PERIOD_SUFFIX[viewPeriod];
@@ -120,7 +131,26 @@ export const salaryFilterQuery = (
 export const formatSalaryFilterLabel = (range: [number, number], currency: string | undefined): string => {
   const { max } = salaryFilterConfig(currency);
   const upper = range[1] >= max ? `${grouped(max)}+` : grouped(range[1]);
-  return `${grouped(range[0])} - ${upper} ${filterCurrency(currency)}/muaj`;
+  return `${grouped(range[0])} - ${upper} ${currencyDisplay(filterCurrency(currency))}/muaj`;
+};
+
+/**
+ * The salary line for a job card / detail page:
+ *  - published numbers → "1,000-1,400 EUR/muaj" / "60,000 Lekë/muaj"
+ *  - hidden by the employer, or no numbers and negotiable → "Pagë për t'u negociuar"
+ *  - no numbers and explicitly NOT negotiable → null (show no line)
+ * `currency` is the job's currency (drives the icon), null for the text-only case.
+ */
+export const salaryLine = (
+  salary: (SalaryShape & { showPublic?: boolean }) | undefined | null,
+  viewPeriod: SalaryViewPeriod = 'monthly'
+): { text: string; currency: SalaryCurrency | null } | null => {
+  if (!salary) return { text: NEGOTIABLE_SALARY_TEXT, currency: null };
+  if (salary.showPublic === false) return { text: NEGOTIABLE_SALARY_TEXT, currency: null };
+  const text = formatSalary(salary, viewPeriod);
+  if (!text) return null;
+  const hasNumbers = (typeof salary.min === 'number' && salary.min > 0) || (typeof salary.max === 'number' && salary.max > 0);
+  return { text, currency: hasNumbers ? filterCurrency(salary.currency) : null };
 };
 
 /**

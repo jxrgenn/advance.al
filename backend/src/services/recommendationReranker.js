@@ -19,10 +19,14 @@
  * Toggle via env: set RERANK_ENABLED=false to disable in production.
  */
 
-import OpenAI from 'openai';
 import logger from '../config/logger.js';
+import { NO_EXPERIENCE } from '../lib/experienceLevels.js';
+import { createOpenAIClient } from '../lib/openaiClient.js';
 
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+// #94 class: the SDK aborts the request at the rerank timeout and never
+// retries — the Promise.race below used to give up while the request (and
+// the SDK's 2 hidden retries, 10-minute timeout) kept running.
+const openai = createOpenAIClient({ timeout: parseInt(process.env.RERANK_TIMEOUT_MS, 10) || 4000, maxRetries: 0 });
 
 // Default OFF. Harness measurement (2026-05-11) showed LLM rerank helps
 // text-embedding-3-small (NDCG@10 0.321 → 0.358, +10.9%) but HURTS
@@ -57,7 +61,7 @@ export async function rerank(user, candidates) {
 JOBSEEKER PROFILE:
 title: ${profile.title || '(none)'}
 city: ${user.profile?.location?.city || '(none)'}
-experience: ${profile.experience || '(none)'}
+experience: ${profile.experience === NO_EXPERIENCE ? 'no work experience yet (first job)' : (profile.experience || '(none)')}
 skills: ${(profile.skills || []).join(', ')}
 desired salary: ${profile.desiredSalary?.min || '?'}-${profile.desiredSalary?.max || '?'} ${profile.desiredSalary?.currency || ''}
 bio: ${(profile.bio || '').slice(0, 200)}

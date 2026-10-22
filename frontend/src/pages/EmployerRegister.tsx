@@ -6,13 +6,14 @@ import { Input } from "@/components/ui/input";
 
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building, Mail, Lock, MapPin, Users, CreditCard, Briefcase, Eye, EyeOff, RefreshCw } from "lucide-react";
+import { Building, Mail, Lock, MapPin, Users, CreditCard, Briefcase, Eye, EyeOff, RefreshCw, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi } from "@/lib/api";
 import { useEmailAvailability } from "@/hooks/useEmailAvailability";
-import { validatePassword, PASSWORD_RULE_MESSAGE } from "@/lib/formValidation";
+import { validatePassword, PASSWORD_RULE_MESSAGE, COMPANY_DESCRIPTION_LIMITS } from "@/lib/formValidation";
 import SEO from "@/components/SEO";
+import { useListingPrices, formatEuro, LISTING_DURATION_DAYS } from "@/lib/pricing";
 
 const INDUSTRIES = [
   'Teknologji Informacioni',
@@ -45,6 +46,8 @@ const EmployerRegister = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { register, user } = useAuth();
+  // Real list prices (what checkout charges) — server config, not hard-coded.
+  const listingPrices = useListingPrices();
 
   // Resend cooldown timer
   useEffect(() => {
@@ -100,9 +103,10 @@ const EmployerRegister = () => {
     if (!location.trim()) return 'Vendndodhja është e detyrueshme';
     if (!industry) return 'Sektori i kompanisë është i detyrueshëm';
     if (industry === 'Tjetër' && !customIndustry.trim()) return 'Shkruani sektorin e kompanisë';
+    // Same 50–1000 rule as the dashboard settings and the server.
     const descLen = description.trim().length;
-    if (descLen < 400) return `Përshkrimi i kompanisë duhet të ketë të paktën 400 karaktere (aktualisht ${descLen})`;
-    if (descLen > 1000) return `Përshkrimi i kompanisë nuk mund të ketë më shumë se 1000 karaktere (aktualisht ${descLen})`;
+    if (descLen < COMPANY_DESCRIPTION_LIMITS.min) return `Përshkrimi i kompanisë duhet të ketë të paktën ${COMPANY_DESCRIPTION_LIMITS.min} karaktere (aktualisht ${descLen})`;
+    if (descLen > COMPANY_DESCRIPTION_LIMITS.max) return `Përshkrimi i kompanisë nuk mund të ketë më shumë se ${COMPANY_DESCRIPTION_LIMITS.max} karaktere (aktualisht ${descLen})`;
     return null;
   };
 
@@ -220,7 +224,7 @@ const EmployerRegister = () => {
             <CardHeader className="text-center">
               <CardTitle className="text-2xl">Regjistro Kompaniën</CardTitle>
               <CardDescription>
-                Hapi {step} nga 3 - {step === 1 ? 'Informacioni Bazë' : step === 2 ? 'Detajet e Kompanisë' : 'Metoda e Pagesës'}
+                Hapi {step} nga 3 - {step === 1 ? 'Informacioni Bazë' : step === 2 ? 'Detajet e Kompanisë' : 'Çmimet'}
               </CardDescription>
               <div className="w-full max-w-xs mx-auto bg-secondary rounded-full h-2 mt-4">
                 <div
@@ -403,24 +407,24 @@ const EmployerRegister = () => {
                     <div className="space-y-1">
                       <Textarea
                         id="description"
-                        placeholder="Përshkruani kompaninë: çfarë bëni, vlerat tuaja, kulturën dhe pse dikush do të donte të punonte tek ju. Minimumi 400 karaktere."
+                        placeholder={`Përshkruani kompaninë: çfarë bëni, vlerat tuaja, kulturën dhe pse dikush do të donte të punonte tek ju. Minimumi ${COMPANY_DESCRIPTION_LIMITS.min} karaktere.`}
                         rows={6}
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         required
-                        minLength={400}
-                        maxLength={1000}
+                        minLength={COMPANY_DESCRIPTION_LIMITS.min}
+                        maxLength={COMPANY_DESCRIPTION_LIMITS.max}
                       />
                       <p
                         className={`text-xs ${
                           description.trim().length === 0
                             ? 'text-muted-foreground'
-                            : description.trim().length < 400
+                            : description.trim().length < COMPANY_DESCRIPTION_LIMITS.min
                               ? 'text-red-500'
                               : 'text-green-600'
                         }`}
                       >
-                        {description.trim().length}/400 minimumi {description.trim().length > 1000 ? '(mbi 1000 — shkurto)' : ''}
+                        {description.trim().length}/{COMPANY_DESCRIPTION_LIMITS.max} karaktere (minimumi {COMPANY_DESCRIPTION_LIMITS.min})
                       </p>
                     </div>
 
@@ -436,61 +440,69 @@ const EmployerRegister = () => {
                 )}
 
                 {step === 3 && (
-                  <div className="space-y-6">
+                  <div className="space-y-6" data-testid="register-pricing-step">
                     <div className="text-center space-y-2">
-                      <h3 className="text-lg font-semibold text-foreground">Zgjedh Planin</h3>
+                      <h3 className="text-lg font-semibold text-foreground">Si funksionon pagesa</h3>
                       <p className="text-muted-foreground">
-                        Posto punët e para falas dhe paguaj vetëm kur ke nevojë
+                        Regjistrimi është falas. Paguani vetëm kur publikoni një punë.
                       </p>
                     </div>
 
-                    <div className="grid gap-4">
-                      <Card className="border-primary bg-light-blue/20">
-                        <CardContent className="p-6">
-                          <div className="flex items-center justify-between mb-4">
-                            <div>
-                              <h4 className="font-semibold text-foreground">Plan Bazë</h4>
-                              <p className="text-sm text-muted-foreground">Perfekt për të filluar</p>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-2xl font-bold text-primary">€5</span>
-                              <span className="text-muted-foreground">/punë</span>
-                            </div>
-                          </div>
-                          <ul className="text-sm space-y-2 text-muted-foreground">
-                            <li>✓ 1 punë falas për të testuar</li>
-                            <li>✓ Aplikues të pafund</li>
-                            <li>✓ Dashboard i thjeshtë</li>
-                            <li>✓ Mbështetje me email</li>
+                    {/* Prices come from the server (GET /api/configuration/public) —
+                        exactly what checkout charges. No free first post: free
+                        posting exists only when an admin grants it. */}
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Card className="border-primary/40">
+                        <CardContent className="p-5">
+                          <h4 className="font-semibold text-foreground">Postim standard</h4>
+                          <p className="mt-2">
+                            <span className="text-2xl font-bold text-primary" data-testid="price-standard">
+                              {listingPrices ? formatEuro(listingPrices.standard) : '… €'}
+                            </span>
+                            <span className="text-muted-foreground"> / {LISTING_DURATION_DAYS} ditë</span>
+                          </p>
+                          <ul className="mt-3 text-sm space-y-1.5 text-muted-foreground">
+                            <li>✓ Aktiv për {LISTING_DURATION_DAYS} ditë</li>
+                            <li>✓ Aplikime të pakufizuara</li>
+                            <li>✓ Menaxhim i aplikuesve në panel</li>
+                          </ul>
+                        </CardContent>
+                      </Card>
+                      <Card className="border-primary">
+                        <CardContent className="p-5">
+                          <h4 className="font-semibold text-foreground">Postim i promovuar</h4>
+                          <p className="mt-2">
+                            <span className="text-2xl font-bold text-primary" data-testid="price-promoted">
+                              {listingPrices ? formatEuro(listingPrices.promoted) : '… €'}
+                            </span>
+                            <span className="text-muted-foreground"> / {LISTING_DURATION_DAYS} ditë</span>
+                          </p>
+                          <ul className="mt-3 text-sm space-y-1.5 text-muted-foreground">
+                            <li>✓ Gjithçka e postimit standard</li>
+                            <li>✓ Shfaqet te &ldquo;Punë të Promovuara&rdquo; në krye të faqes së punëve</li>
                           </ul>
                         </CardContent>
                       </Card>
                     </div>
 
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <p className="text-sm text-muted-foreground">Metoda e Pagesës (Demo)</p>
-                        <div className="relative">
-                          <CreditCard className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            placeholder="**** **** **** 1234"
-                            className="pl-10"
-                            disabled
-                          />
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          * Kjo është vetëm demo. Nuk do të ngarkohesh ende.
-                        </p>
-                      </div>
+                    <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground space-y-2">
+                      <p className="flex items-start gap-2">
+                        <CreditCard className="h-4 w-4 mt-0.5 flex-shrink-0 text-primary" />
+                        <span>Pagesa bëhet me kartë, në mënyrë të sigurt përmes Stripe, në momentin që publikoni punën. Nuk ka abonim dhe asnjë tarifë automatike; ripostimi i një pune kushton sa një postim i ri.</span>
+                      </p>
+                      <p className="flex items-start gap-2">
+                        <ShieldCheck className="h-4 w-4 mt-0.5 flex-shrink-0 text-primary" />
+                        <span>Pas regjistrimit ekipi ynë verifikon kompaninë. Mund të kyçeni menjëherë; punët publikohen pasi llogaria të jetë verifikuar.</span>
+                      </p>
+                    </div>
 
-                      <div className="flex gap-3">
-                        <Button type="button" variant="outline" onClick={prevStep} className="flex-1">
-                          Kthehu Mbrapa
-                        </Button>
-                        <Button type="submit" disabled={isLoading} className="flex-1">
-                          {isLoading ? "Duke krijuar llogarinë..." : "Fillo me Plan Bazë"}
-                        </Button>
-                      </div>
+                    <div className="flex gap-3">
+                      <Button type="button" variant="outline" onClick={prevStep} className="flex-1">
+                        Kthehu Mbrapa
+                      </Button>
+                      <Button type="submit" disabled={isLoading} className="flex-1">
+                        {isLoading ? "Duke krijuar llogarinë..." : "Krijo llogarinë"}
+                      </Button>
                     </div>
                   </div>
                 )}

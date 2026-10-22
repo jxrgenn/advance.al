@@ -38,6 +38,9 @@ describe('Phase 19.A.1 — Models Batch 3', () => {
     });
 
     it('email is unique', async () => {
+      // Unique indexes are built asynchronously on a fresh database; wait for
+      // them, otherwise the duplicate slips in before the index exists.
+      await QuickUser.init();
       await QuickUser.create({
         firstName: 'A', lastName: 'B', email: 'unique@example.com',
         location: 'Tiranë', interests: ['Teknologji']

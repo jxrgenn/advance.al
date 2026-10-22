@@ -3,8 +3,18 @@ import { Container } from "@mantine/core";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { ArrowRight, Search } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function JobSearchHero() {
+  // A signed-in visitor gets a link to their own area instead of "Krijo Llogari".
+  const { isAuthenticated, user } = useAuth();
+  const accountLink = !isAuthenticated
+    ? { to: "/login?tab=register&type=jobseeker", label: "Krijo Llogari" }
+    : user?.userType === "employer"
+      ? { to: "/employer-dashboard", label: "Paneli im" }
+      : user?.userType === "admin"
+        ? { to: "/admin", label: "Paneli i administratorit" }
+        : { to: "/profile", label: "Profili im" };
   return (
     <section className="w-full relative overflow-hidden">
       {/* Animated gradient background */}
@@ -115,8 +125,8 @@ export function JobSearchHero() {
                   className="text-base md:text-lg px-8 py-7 border-2 bg-background/80 backdrop-blur-sm hover:bg-background/90 hover:border-primary/50 shadow-lg hover:shadow-xl transition-all duration-300 group"
                   asChild
                 >
-                  <Link to="/login?tab=register&type=jobseeker" className="relative z-10">
-                    Krijo Llogari
+                  <Link to={accountLink.to} className="relative z-10">
+                    {accountLink.label}
                   </Link>
                 </Button>
               </motion.div>

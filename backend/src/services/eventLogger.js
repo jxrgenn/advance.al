@@ -2,6 +2,7 @@
  * Fire-and-forget engagement event logger.
  *
  * Wraps Event.create with:
+ *   - Anonymous views are not logged (#71) — Job.viewCount has the aggregate.
  *   - View deduplication: a `view` event from the same userId+jobId within
  *     VIEW_DEDUP_WINDOW_MS (default 10 min) is suppressed. Prevents N inflated
  *     views from refresh, modal open/close, or rapid back-button navigation.
@@ -30,6 +31,15 @@ export function logEvent(opts) {
   setImmediate(async () => {
     try {
       if (!opts.jobId || !opts.type) return;
+
+      // #71: a view by nobody we can attribute (logged-out visitor, or a
+      // logged-in employer/admin — jobs.js passes userId:null for them) is
+      // not stored. It could not be deduplicated, so every refresh by every
+      // anonymous visitor inserted a document (plus five index entries) on
+      // the 512 MB free-tier cluster, and it carries no signal the event log
+      // exists for (per-user engagement): the per-job aggregate is already
+      // counted in Job.viewCount.
+      if (opts.type === 'view' && !opts.userId && !opts.quickUserId) return;
 
       // Deduplicate view events within window. Save/unsave/apply are always
       // logged — those have meaningful semantic transitions per occurrence.

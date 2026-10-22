@@ -92,12 +92,12 @@ describe('cvParsingService — calculateExperienceFromHistory', () => {
     expect(r).toBe('0-1 vjet');
   });
 
-  it('uses endDate when isCurrentJob is false but endDate is malformed → falls back to now()', () => {
+  it('does not count a PAST job whose endDate is malformed (64: used to run until now → 10+ vjet)', () => {
     const r = calculateExperienceFromHistory([
       { startDate: '2010-01', endDate: 'bogus-date', isCurrentJob: false },
+      { startDate: '2020-01', endDate: '2021-07', isCurrentJob: false }, // 18 months
     ]);
-    // Falls into the !DATE_REGEX.test(endDate) branch → end = now() → 10+ years
-    expect(r).toBe('10+ vjet');
+    expect(r).toBe('1-2 vjet');
   });
 });
 

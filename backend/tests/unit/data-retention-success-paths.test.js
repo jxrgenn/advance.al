@@ -94,12 +94,15 @@ describe('dataRetention — success branches', () => {
     const count = await archiveOldApplications();
     expect(count).toBe(1);
 
+    // 74: archived = archivedAt; withdrawn means "the candidate withdrew"
     const reloadedOld = await Application.findById(oldApp._id);
-    expect(reloadedOld.withdrawn).toBe(true);
-    expect(reloadedOld.withdrawalReason).toBe('auto-archived');
+    expect(reloadedOld.withdrawn).toBe(false);
+    expect(reloadedOld.withdrawalReason).toBeUndefined();
+    expect(reloadedOld.archivedAt).toBeInstanceOf(Date);
 
     const reloadedRecent = await Application.findById(recentApp._id);
-    expect(reloadedRecent.withdrawn).toBeFalsy();
+    expect(reloadedRecent.withdrawn).toBe(false);
+    expect(reloadedRecent.archivedAt).toBeUndefined();
   });
 
   it('runRetentionPolicies orchestrates both cleanups (L61-66)', async () => {

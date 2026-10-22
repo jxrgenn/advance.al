@@ -21,12 +21,14 @@
  * only injected via test-only hooks.
  */
 
+import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
+
 /**
  * Build a stub openai client with canned responses.
  *
  * @param {object} opts
  * @param {object} opts.cv - canned CV-extraction response (parsed JSON)
- * @param {Array<number>} opts.embedding - canned embedding vector (1536 floats)
+ * @param {Array<number>} opts.embedding - canned embedding vector (default: EMBEDDING_DIMS floats)
  * @param {Error} opts.throwOnCompletion - if set, completions.create rejects with this
  * @param {Error} opts.throwOnEmbedding - if set, embeddings.create rejects with this
  * @returns {object} OpenAI-shaped stub
@@ -64,7 +66,7 @@ export function makeOpenAIStub(opts = {}) {
     ],
   };
 
-  const embedding = opts.embedding ?? Array.from({ length: 1536 }, (_, i) => (i % 17) / 100);
+  const embedding = opts.embedding ?? Array.from({ length: EMBEDDING_DIMS }, (_, i) => (i % 17) / 100);
 
   return {
     chat: {

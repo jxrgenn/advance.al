@@ -9,7 +9,6 @@
  *   GET    /api/applications/employer/all       (employer — all apps)
  *   GET    /api/applications/:id                (participant only)
  *   PATCH  /api/applications/:id/status         (employer state machine)
- *   POST   /api/applications/:id/message        (participant comm)
  *   DELETE /api/applications/:id                (jobseeker withdraws)
  */
 
@@ -236,31 +235,6 @@ describe('Applications API - Integration Tests', () => {
         .send({ status: 'viewed' });
 
       expect(response.status).toBe(404);
-    });
-  });
-
-  describe('POST /api/applications/:id/message', () => {
-    it('participants can post a message; outsider cannot', async () => {
-      const { user: employer } = await createVerifiedEmployer();
-      const job = await createJob(employer);
-      const { user: applicant } = await createJobseeker({ emailVerified: true });
-      const { user: outsider } = await createJobseeker({ emailVerified: true });
-      const application = await Application.create({
-        jobId: job._id, jobSeekerId: applicant._id, employerId: employer._id, applicationMethod: 'one_click'
-      });
-
-      const ok = await request(app)
-        .post(`/api/applications/${application._id}/message`)
-        .set(createAuthHeaders(applicant))
-        .send({ message: 'A question about the role', messageType: 'text' });
-      expect(ok.status).toBe(200);
-
-      const blocked = await request(app)
-        .post(`/api/applications/${application._id}/message`)
-        .set(createAuthHeaders(outsider))
-        .send({ message: 'Trying to spy', messageType: 'text' });
-      // Route returns 403 for non-participant (canMessage=false).
-      expect(blocked.status).toBe(403);
     });
   });
 

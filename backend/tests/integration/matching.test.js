@@ -20,6 +20,7 @@ import {
 } from '../factories/user.factory.js';
 import { createJob } from '../factories/job.factory.js';
 import { createAuthHeaders } from '../helpers/auth.helper.js';
+import CandidateMatch from '../../src/models/CandidateMatch.js';
 
 describe('Matching API - Integration Tests', () => {
   let originalMockFlag;
@@ -204,12 +205,30 @@ describe('Matching API - Integration Tests', () => {
       const { user: emp } = await createVerifiedEmployer();
       const { user: cand } = await createJobseeker();
       const job = await createJob(emp);
+      await CandidateMatch.create({ jobId: job._id, candidateId: cand._id, matchScore: 70, expiresAt: new Date(Date.now() + 3600e3) });
       const response = await request(app)
         .post('/api/matching/track-contact')
         .set(createAuthHeaders(emp))
         .send({ jobId: job._id.toString(), candidateId: cand._id.toString(), contactMethod: 'phone' });
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
+      const row = await CandidateMatch.findOne({ jobId: job._id, candidateId: cand._id }).lean();
+      expect(row.contacted).toBe(true);
+      expect(row.contactMethod).toBe('phone');
+    });
+
+    // 85: a candidate that is not in this job's match list was reported as tracked.
+    it('404 when the candidate is not in the match list of the job', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const { user: cand } = await createJobseeker();
+      const job = await createJob(emp);
+      const response = await request(app)
+        .post('/api/matching/track-contact')
+        .set(createAuthHeaders(emp))
+        .send({ jobId: job._id.toString(), candidateId: cand._id.toString(), contactMethod: 'phone' });
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({ success: false, message: 'Kandidati nuk është në listën e përputhjeve për këtë punë' });
+      expect(await CandidateMatch.countDocuments({ jobId: job._id })).toBe(0);
     });
   });
 

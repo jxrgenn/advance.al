@@ -201,6 +201,25 @@ npm run test:watch
 npm run test:ci
 ```
 
+#### The full suite: `npm run test:all` / `npm run test:shard -- 2/6`
+
+Run the whole backend suite with `npm run test:all` (from `backend/`), or one
+sixth of it with `npm run test:shard -- <n>/6` — the CI workflow
+(`.github/workflows/qa-tests.yml`) runs exactly those 6 shards in parallel.
+Do **not** use `--runInBand` for the full suite: under
+`--experimental-vm-modules` Jest keeps every test file's module graph alive
+(measured ~65 MB per file that imports `server.js`, ~11 MB for `mongoose`
+alone, ~2.6 MB for an empty test), so one process grows until it OOMs (24 files
+→ 1.9 GB). `test`/`test:all`/`test:shard` run in ONE worker that Jest recycles
+when it exceeds `--workerIdleMemoryLimit=1536MB` — same one-file-at-a-time
+isolation as `--runInBand`, bounded memory.
+
+Environment: a test run reads only `backend/.env.test` (`TEST_ENV_FILE=...`
+overrides the path; CI has none and sets variables in the workflow). The
+production `backend/.env` is never loaded under `NODE_ENV=test`
+(`src/config/env.js`). `SILENT_TESTS=true` mutes console.log/info/debug/warn.
+In-memory MongoDB runs mongod `7.0.24` (`MONGOMS_VERSION` overrides).
+
 ### Coverage Report
 
 ```bash

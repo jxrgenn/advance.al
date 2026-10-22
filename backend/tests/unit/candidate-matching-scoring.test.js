@@ -36,11 +36,13 @@ const mkCandidate = (override = {}) => ({
   },
 });
 
+// Jobs carry seniority (junior|mid|senior|lead) and location.remote /
+// remoteType — the fields the Job schema really has (83).
 const mkJob = (override = {}) => ({
   title: override.title || '',
   requirements: override.requirements || [],
-  experience: override.experience || '',
-  location: { city: override.city || '' },
+  seniority: override.seniority,
+  location: { city: override.city || '', remote: override.remote === true, remoteType: override.remoteType || 'none' },
   jobType: override.jobType || 'full-time',
   salary: override.salary || { min: 0, max: 0 },
 });
@@ -113,52 +115,37 @@ describe('calculateSkillsMatch', () => {
   });
 });
 
+// 83: compared against job.seniority — junior 0-2y, mid 2-5y, senior 5-10y,
+// lead 10y+ (there is no job.experience; it made this 0/15 for everyone).
 describe('calculateExperienceMatch', () => {
-  it('returns 0 when either experience is empty', () => {
-    expect(service.calculateExperienceMatch(mkCandidate(), mkJob({ experience: '2-5 vjet' }))).toBe(0);
+  it('returns 0 when either side is unknown', () => {
+    expect(service.calculateExperienceMatch(mkCandidate(), mkJob({ seniority: 'mid' }))).toBe(0);
     expect(service.calculateExperienceMatch(mkCandidate({ experience: '2-5 vjet' }), mkJob())).toBe(0);
+    expect(service.calculateExperienceMatch(mkCandidate({ experience: 'unknown' }), mkJob({ seniority: 'mid' }))).toBe(0);
   });
 
-  it('returns 15 for exact experience-bucket match', () => {
-    const c = mkCandidate({ experience: '2-5 vjet' });
-    const j = mkJob({ experience: '2-5 vjet' });
-    expect(service.calculateExperienceMatch(c, j)).toBe(15);
+  it('returns 15 when the candidate is inside the seniority range', () => {
+    expect(service.calculateExperienceMatch(mkCandidate({ experience: '2-5 vjet' }), mkJob({ seniority: 'mid' }))).toBe(15);
   });
 
-  it('returns 13 when candidate has up to 2 yrs MORE than required', () => {
-    // candidate 2-5 (3.5), job 1-2 (1.5) → diff=2
-    const c = mkCandidate({ experience: '2-5 vjet' });
-    const j = mkJob({ experience: '1-2 vjet' });
-    expect(service.calculateExperienceMatch(c, j)).toBe(13);
+  it('returns 13 when the candidate has up to 2 yrs MORE than the range', () => {
+    // 2-5 (3.5) vs junior [0,2] → 1.5 above
+    expect(service.calculateExperienceMatch(mkCandidate({ experience: '2-5 vjet' }), mkJob({ seniority: 'junior' }))).toBe(13);
   });
 
-  it('returns 7 for very-overqualified candidates (diff > 5 yrs)', () => {
-    const c = mkCandidate({ experience: '10+ vjet' }); // 12
-    const j = mkJob({ experience: '0-1 vjet' }); // 0.5  → diff = 11.5
-    expect(service.calculateExperienceMatch(c, j)).toBe(7);
+  it('returns 7 for very-overqualified candidates (> 5 yrs above)', () => {
+    // 10+ (12) vs junior [0,2] → 10 above
+    expect(service.calculateExperienceMatch(mkCandidate({ experience: '10+ vjet' }), mkJob({ seniority: 'junior' }))).toBe(7);
   });
 
-  it('returns 12 when candidate is 1yr underqualified', () => {
-    // candidate 1-2 (1.5), job 2-5 (3.5) → diff=2 (≤2 returns 8 in underqualified branch — let's check 1-2 vs 2-5)
-    // Actually diff=2 hits the second underqualified bucket (8 pts).
-    // For 12 pts (≤1 diff) we need: candidate 2-5 (3.5), job 5-10 (7.5) — no that's 4 diff.
-    // candidate 0-1 (0.5), job 1-2 (1.5) → diff=1 → 12 pts
-    const c = mkCandidate({ experience: '0-1 vjet' });
-    const j = mkJob({ experience: '1-2 vjet' });
-    expect(service.calculateExperienceMatch(c, j)).toBe(12);
+  it('returns 12 when the candidate is under 1 yr short of the range', () => {
+    // 1-2 (1.5) vs mid [2,5] → 0.5 short
+    expect(service.calculateExperienceMatch(mkCandidate({ experience: '1-2 vjet' }), mkJob({ seniority: 'mid' }))).toBe(12);
   });
 
-  it('returns 0 when candidate is critically underqualified (>3 yrs short)', () => {
-    const c = mkCandidate({ experience: '0-1 vjet' });
-    const j = mkJob({ experience: '5-10 vjet' });
-    expect(service.calculateExperienceMatch(c, j)).toBe(0);
-  });
-
-  it('handles unknown experience strings as 0 yrs', () => {
-    const c = mkCandidate({ experience: 'unknown' });
-    const j = mkJob({ experience: 'unknown' });
-    // both default to 0 → exact match → 15
-    expect(service.calculateExperienceMatch(c, j)).toBe(15);
+  it('returns 0 when the candidate is critically underqualified (>3 yrs short)', () => {
+    // 0-1 (0.5) vs senior [5,10] → 4.5 short
+    expect(service.calculateExperienceMatch(mkCandidate({ experience: '0-1 vjet' }), mkJob({ seniority: 'senior' }))).toBe(0);
   });
 });
 
@@ -174,15 +161,15 @@ describe('calculateLocationMatch', () => {
     expect(service.calculateLocationMatch(c, j)).toBe(15);
   });
 
-  it('returns 12 when different city but job is remote', () => {
+  it('returns 12 when different city but job is remote (location.remote)', () => {
     const c = mkCandidate({ city: 'Vlorë' });
-    const j = mkJob({ city: 'Tiranë', jobType: 'remote' });
+    const j = mkJob({ city: 'Tiranë', remote: true, remoteType: 'full' });
     expect(service.calculateLocationMatch(c, j)).toBe(12);
   });
 
-  it('returns 12 when different city but job is hybrid', () => {
+  it('returns 12 when different city but job is hybrid (location.remoteType)', () => {
     const c = mkCandidate({ city: 'Vlorë' });
-    const j = mkJob({ city: 'Tiranë', jobType: 'hybrid' });
+    const j = mkJob({ city: 'Tiranë', remoteType: 'hybrid' });
     expect(service.calculateLocationMatch(c, j)).toBe(12);
   });
 
@@ -357,7 +344,7 @@ describe('calculateMatchScore — aggregator', () => {
       title: 'Software Engineer',
       city: 'Tiranë',
       requirements: ['React', 'Node'],
-      experience: '2-5 vjet',
+      seniority: 'mid',
       salary: { min: 12000, max: 24000 },
     });
     const r = service.calculateMatchScore(c, j);

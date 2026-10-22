@@ -9,6 +9,11 @@
  * Pre-send guard: for rows with userId+userType, re-fetch the user and skip if
  * they've unsubscribed / been suspended since enqueue. Closes the race where
  * a user clicks unsubscribe between match-scan and the eventual retry.
+ * Exception: account_action mail (warning / suspension / ban notice) is never
+ * cancelled — it is addressed to exactly the user whose status changed.
+ *
+ * Retries reuse the row's Resend idempotency key, and overlapping ticks are
+ * skipped (a slow tick must not pick the same rows up twice).
  *
  * Backoff schedule (indexed by `attempts` after the failed retry):
  *   1m → 5m → 30m → 2h → 6h → 24h → 24h → 24h → DEAD
@@ -58,9 +63,21 @@ export function getOutboxStats() {
   };
 }
 
+// Emails that must reach the person whatever their account state:
+//   account_action — the warning / suspension / ban / termination notice is
+//     sent to a user who is (by then) suspended, banned or deleted; cancelling
+//     it on that basis meant they were never told why.
+const ALWAYS_DELIVER_TAGS = new Set(['account_action']);
+// Account-security mail still goes to a suspended/banned (but not deleted)
+// account: the owner may need it to recover access after the sanction ends.
+const DELIVER_WHILE_SANCTIONED_TAGS = new Set(['password_reset', 'password-changed']);
+const JOB_ALERT_TAGS = ['job_match', 'job_alerts_digest'];
+
 // Re-check user preferences. Returns true if the row should NOT be sent (cancel + skip).
 async function _shouldCancelForUser(row) {
   if (!row.userId || !row.userType) return false;
+  const tags = row.tags || [];
+  if (tags.some(t => ALWAYS_DELIVER_TAGS.has(t))) return false;
   try {
     if (row.userType === 'quickuser') {
       const qu = await QuickUser.findById(row.userId).select('isActive');
@@ -68,10 +85,11 @@ async function _shouldCancelForUser(row) {
     } else if (row.userType === 'user') {
       const u = await User.findById(row.userId)
         .select('isDeleted status profile.jobSeekerProfile.notifications.jobAlerts');
-      if (!u || u.isDeleted || ['deleted', 'suspended', 'banned'].includes(u.status)) return true;
+      if (!u || u.isDeleted || u.status === 'deleted') return true;
+      if (['suspended', 'banned'].includes(u.status) && !tags.some(t => DELIVER_WHILE_SANCTIONED_TAGS.has(t))) return true;
       // For job_match-tagged sends, also honor the jobAlerts pref. Other tags
       // (password_reset, verification) MUST go through regardless of marketing pref.
-      if ((row.tags || []).includes('job_match') || (row.tags || []).includes('job_alerts_digest')) {
+      if (tags.some(t => JOB_ALERT_TAGS.includes(t))) {
         if (u.profile?.jobSeekerProfile?.notifications?.jobAlerts === false) return true;
       }
     }
@@ -88,7 +106,22 @@ async function _shouldCancelForUser(row) {
 /**
  * Drain one tick. Returns stats { processed, sent, queuedAgain, cancelled, dead, errors }.
  */
+let _draining = false;
+
 export async function drainOnce() {
+  if (_draining) {
+    logger.warn('emailOutboxDrain: previous tick still running — skipping this tick');
+    return { processed: 0, sent: 0, queuedAgain: 0, cancelled: 0, dead: 0, errors: 0, skipped: true };
+  }
+  _draining = true;
+  try {
+    return await _drainOnce();
+  } finally {
+    _draining = false;
+  }
+}
+
+async function _drainOnce() {
   const now = new Date();
   const due = await EmailOutbox.find({
     status: 'pending',
@@ -116,6 +149,11 @@ export async function drainOnce() {
         row.status = 'sent';
         row.sentAt = new Date();
         row.lastAttemptAt = new Date();
+        if (result.alreadyDelivered) {
+          // Resend already had this idempotency key (409 invalid_idempotent_request):
+          // the original attempt was delivered.
+          row.lastError = 'already delivered by an earlier attempt (idempotency key reused)';
+        }
         await row.save();
         stats.sent++;
         continue;

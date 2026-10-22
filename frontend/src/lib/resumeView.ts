@@ -37,6 +37,8 @@ export function isInlineViewable(resumeType?: string | null): boolean {
 export interface ResumeViewResult {
   format: ResumeFormat;
   opened: 'inline' | 'downloaded';
+  /** The browser blocked the new tab — the PDF was downloaded instead. */
+  popupBlocked?: boolean;
 }
 
 interface SniffResult {
@@ -74,12 +76,24 @@ function sniffFormat(bytes: Uint8Array): SniffResult {
  *   - Legacy local-disk paths (dev only) → prefix with API base.
  *   - Anything else → pass through.
  */
+// 134: a signed URL stays valid until `expiresAt` (5 min). Reuse it instead
+// of signing again for every "Shiko CV" / "Shkarko CV" click — each sign
+// counts against the per-user hourly budget on the server.
+const SIGNED_URL_SAFETY_MS = 30_000;
+const signedUrlCache = new Map<string, { url: string; expiresAtMs: number }>();
+
 async function resolveResumeUrl(cvUrl: string): Promise<string> {
   if (!cvUrl) throw new Error('CV URL not found');
   if (cvUrl.includes('cloudinary.com')) {
+    const cached = signedUrlCache.get(cvUrl);
+    if (cached && cached.expiresAtMs - Date.now() > SIGNED_URL_SAFETY_MS) return cached.url;
+    signedUrlCache.delete(cvUrl);
     const r = await usersApi.signResumeUrl(cvUrl);
     if (!r.success || !r.data?.url) {
       throw new Error(r.message || 'Nuk keni qasje në këtë CV');
+    }
+    if (typeof r.data.expiresAt === 'number') {
+      signedUrlCache.set(cvUrl, { url: r.data.url, expiresAtMs: r.data.expiresAt * 1000 });
     }
     return r.data.url;
   }
@@ -98,7 +112,11 @@ async function resolveResumeUrl(cvUrl: string): Promise<string> {
 async function fetchTypedBlob(cvUrl: string): Promise<{ blob: Blob; format: ResumeFormat; ext: string }> {
   const signedUrl = await resolveResumeUrl(cvUrl);
   const res = await fetch(signedUrl);
-  if (!res.ok) throw new Error(`CV nuk u gjet (${res.status})`);
+  if (!res.ok) {
+    // A cached link may have been revoked/expired early — sign again next time.
+    signedUrlCache.delete(cvUrl);
+    throw new Error(`CV nuk u gjet (${res.status})`);
+  }
   const buf = await res.arrayBuffer();
   const head = new Uint8Array(buf.slice(0, Math.min(4, buf.byteLength)));
   const { format, mime, ext } = sniffFormat(head);
@@ -106,32 +124,74 @@ async function fetchTypedBlob(cvUrl: string): Promise<{ blob: Blob; format: Resu
 }
 
 /**
+ * Open an empty tab NOW, while the click's user activation is still valid.
+ * The CV is fetched afterwards (sign + download take a few hundred ms), and a
+ * window.open() made after those awaits is swallowed by popup blockers —
+ * Safari always, Chrome/Firefox once activation expires (155).
+ */
+function openPlaceholderTab(): Window | null {
+  let w: Window | null = null;
+  try {
+    w = window.open('', '_blank');
+  } catch {
+    return null;
+  }
+  if (!w) return null;
+  try {
+    w.document.title = 'CV';
+    w.document.body.style.fontFamily = 'system-ui, sans-serif';
+    w.document.body.style.padding = '24px';
+    w.document.body.textContent = 'Duke hapur CV-në…';
+  } catch {
+    // Cross-origin quirks — the tab is still usable for navigation.
+  }
+  return w;
+}
+
+function triggerDownload(blobUrl: string, filename: string) {
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+/**
  * "Shiko CV" handler. Opens the CV inline in a new tab when the browser can
  * render it (PDF); falls back to a download with the right extension when it
- * can't (DOCX/DOC). Returns metadata so callers can show a "downloaded
- * instead" toast for the DOCX case.
+ * can't (DOCX/DOC) or when the browser blocked the tab (`popupBlocked`).
+ * Returns metadata so callers can explain a download.
+ *
+ * Must be called synchronously from the click handler (before any await) —
+ * the tab is opened before the first await.
  */
 export async function viewResume(cvUrl: string): Promise<ResumeViewResult> {
-  const { blob, format, ext } = await fetchTypedBlob(cvUrl);
+  const tab = openPlaceholderTab();
+  let result;
+  try {
+    result = await fetchTypedBlob(cvUrl);
+  } catch (err) {
+    tab?.close();
+    throw err;
+  }
+  const { blob, format, ext } = result;
   const blobUrl = URL.createObjectURL(blob);
 
-  if (format === 'pdf') {
-    window.open(blobUrl, '_blank');
+  if (format === 'pdf' && tab && !tab.closed) {
+    tab.location.href = blobUrl;
     // Generous TTL — the new tab needs the URL alive long enough for the
     // PDF viewer to fetch+render. 60s is plenty.
     setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
     return { format, opened: 'inline' };
   }
 
-  // DOCX / DOC / unknown — browsers can't preview these. Download.
-  const link = document.createElement('a');
-  link.href = blobUrl;
-  link.download = `CV${ext || ''}`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  // DOCX / DOC / unknown can't be previewed; a PDF whose tab was blocked (or
+  // closed by the user meanwhile) is downloaded instead of silently lost.
+  tab?.close();
+  triggerDownload(blobUrl, `CV${ext || ''}`);
   setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000);
-  return { format, opened: 'downloaded' };
+  return { format, opened: 'downloaded', popupBlocked: format === 'pdf' };
 }
 
 /**
@@ -143,11 +203,6 @@ export async function downloadResume(cvUrl: string, filenameBase: string): Promi
   const { blob, ext } = await fetchTypedBlob(cvUrl);
   const blobUrl = URL.createObjectURL(blob);
   const safe = (filenameBase || 'CV').replace(/[^\w.-]+/g, '_');
-  const link = document.createElement('a');
-  link.href = blobUrl;
-  link.download = `${safe}${ext || '.pdf'}`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  triggerDownload(blobUrl, `${safe}${ext || '.pdf'}`);
   setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000);
 }

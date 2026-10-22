@@ -1,8 +1,7 @@
+// FIRST import: loads backend/.env for local development before any other
+// module reads its configuration (skipped under the test runner — see env.js).
+import './src/config/env.js';
 import * as Sentry from '@sentry/node';
-import dotenv from 'dotenv';
-
-// Load environment variables early so SENTRY_DSN is available
-dotenv.config();
 
 // Initialize Sentry before anything else
 if (process.env.SENTRY_DSN) {
@@ -21,7 +20,6 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
-import rateLimit from 'express-rate-limit';
 import { mkdirSync } from 'fs';
 import path from 'path';
 import { connectDB } from './src/config/database.js';
@@ -56,6 +54,8 @@ import paymentRoutes from './src/routes/payments.js';
 import stripeWebhookRoutes from './src/routes/stripeWebhook.js';
 import { Job, SystemConfiguration } from './src/models/index.js';
 import { redis } from './src/config/redis.js';
+import { createApiLimiter } from './src/middleware/apiRateLimit.js';
+import { createScheduler, dailyAtUtcHour } from './src/services/scheduler.js';
 
 // Startup validation — fail fast if critical env vars are missing
 const requiredEnvVars = ['JWT_SECRET', 'JWT_REFRESH_SECRET'];
@@ -211,22 +211,11 @@ app.use((err, req, res, next) => {
 // payment confirmations must still land during maintenance.
 app.use('/api/payments/stripe/webhook', stripeWebhookRoutes);
 
-// Rate Limiting - Environment-aware configuration
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes default
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // 100 requests per window default
-  message: {
-    error: 'Shumë kërkesa nga kjo IP, ju lutemi provoni përsëri më vonë.',
-    retryAfter: Math.ceil((parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000) / 1000)
-  },
-  standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
-  legacyHeaders: false, // Disable `X-RateLimit-*` headers
-  // Skip rate limiting in development
-  skip: (req) => process.env.NODE_ENV === 'development'
-});
-
-// Apply rate limiting to all API routes
-app.use('/api/', limiter);
+// Site-wide API budget (#61) — keyed per USER when the request carries a
+// valid session token, per IP otherwise, with budgets sized for real SPA
+// traffic (see src/middleware/apiRateLimit.js). Expensive endpoints keep
+// their own, much tighter per-route limiters. Skipped in development.
+app.use('/api/', createApiLimiter());
 
 // Logging Middleware
 if (process.env.NODE_ENV === 'development') {
@@ -255,6 +244,59 @@ try {
 
 // NOTE: Local uploads served through authenticated endpoint only (not static)
 // Cloudinary handles file serving in production
+
+// #60: the HTTP server destroys a socket after HTTP_SOCKET_TIMEOUT_MS (30 s)
+// without activity, and waiting on OpenAI produces none — a CV generation
+// that legitimately took longer was cut (the proxy answered 502) while the
+// server finished, burned the user's quota and saved a CV nobody saw. The
+// routes that wait on AI synchronously get a longer socket timeout; the AI
+// calls themselves are bounded below it (openaiService: 100 s deadline incl.
+// retries → 504/503 with a clear message).
+const AI_ROUTE_TIMEOUT_MS = parseInt(process.env.AI_ROUTE_TIMEOUT_MS || '150000', 10);
+const LONG_RUNNING_ROUTES = new Set([
+  'POST /api/cv/generate',
+  'POST /api/users/parse-resume',
+  'POST /api/admin/backfill-user-embeddings',
+]);
+app.use((req, res, next) => {
+  const routeKey = `${req.method} ${req.path.replace(/\/+$/, '').toLowerCase()}`;
+  if (LONG_RUNNING_ROUTES.has(routeKey)) {
+    req.setTimeout(AI_ROUTE_TIMEOUT_MS);
+  }
+  next();
+});
+
+// Dev-only: serve the local-disk CV fallback. Without Cloudinary credentials
+// (local development only — production refuses uploads instead) the upload
+// routes store `/uploads/resumes/<file>`, and the frontend opens those through
+// GET /api/users/resume/:filename — which returns 410 since Round O-B, so the
+// CV a developer just uploaded could never be viewed. Mounted only when
+// NODE_ENV=development AND Cloudinary is not configured; everywhere else the
+// users router keeps answering 410. Filenames are the multer names
+// `resume-<24 hex>-<ms>-<random>.<ext>`; anything else is a 404, and the
+// path is resolved inside uploads/resumes (no traversal).
+if (process.env.NODE_ENV === 'development'
+    && !(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET)) {
+  const RESUME_DIR = path.join(process.cwd(), 'uploads', 'resumes');
+  const LOCAL_RESUME_NAME = /^resume-[a-f0-9]{24}-\d+-\d+\.(pdf|docx|doc)$/i;
+  const RESUME_TYPES = {
+    pdf: 'application/pdf',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    doc: 'application/msword',
+  };
+  app.get('/api/users/resume/:filename', (req, res) => {
+    const name = req.params.filename;
+    const m = LOCAL_RESUME_NAME.exec(name || '');
+    if (!m) return res.status(404).json({ success: false, message: 'CV nuk u gjet' });
+    res.setHeader('Content-Type', RESUME_TYPES[m[1].toLowerCase()]);
+    res.setHeader('Content-Disposition', `inline; filename="${name}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.sendFile(name, { root: RESUME_DIR }, (err) => {
+      if (err && !res.headersSent) res.status(404).json({ success: false, message: 'CV nuk u gjet' });
+    });
+  });
+  logger.warn('DEV: serving local CV uploads at GET /api/users/resume/:filename (Cloudinary not configured)');
+}
 
 // Health Check Route — minimal in production, detailed in dev
 app.get('/health', async (req, res) => {
@@ -421,6 +463,7 @@ const activeIntervals = [];
 // Each cron pushes its promise on tick-start, removes on settle. Shutdown's
 // Promise.allSettled prevents losing the email being sent right at shutdown.
 const inflightCronWork = [];
+const scheduler = createScheduler();
 
 // Start Server (skipped in test mode — tests use supertest against the imported app)
 if (process.env.NODE_ENV !== 'test') {
@@ -429,42 +472,97 @@ const server = app.listen(PORT, () => {
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
   logger.info(`Health check: http://localhost:${PORT}/health`);
 
-  // Periodic task: auto-lift expired user suspensions (every 15 minutes)
-  import('./src/models/index.js').then(({ User }) => {
-    activeIntervals.push(setInterval(async () => {
-      try {
+  // Hourly/daily jobs run on the restart-safe scheduler (#63): their next run
+  // time is persisted in Mongo (cronstates), so a job that is due runs shortly
+  // after boot and one that just ran waits for its slot — Render restarts no
+  // longer reset a daily job to "24h from now" (it never fired). Runs are
+  // claimed atomically (no double-run across a deploy overlap); failed runs
+  // retry after 30 min.
+  const DAY = 24 * 60 * 60 * 1000;
+  const HOUR = 60 * 60 * 1000;
+  scheduler
+    .add({
+      name: 'suspension-lift',
+      intervalMs: 15 * 60 * 1000,
+      run: async () => {
+        const { User } = await import('./src/models/index.js');
         await User.checkExpiredSuspensions();
-      } catch (err) {
-        logger.error('Error checking expired suspensions:', err.message);
-      }
-    }, 15 * 60 * 1000));
-  }).catch(() => {});
+      },
+    })
+    .add({
+      name: 'job-expiry',
+      intervalMs: HOUR,
+      run: async () => {
+        const result = await Job.updateMany(
+          { status: 'active', expiresAt: { $lt: new Date() }, isDeleted: { $ne: true } },
+          { $set: { status: 'expired' } }
+        );
+        if (result.modifiedCount > 0) {
+          logger.info(`Job expiry cron: marked ${result.modifiedCount} jobs as expired`);
+        }
+        // #117: the bulk expiry bypasses the post-save Location.jobCount hook
+        // (and renewals re-increment) — recount from the live jobs every run
+        // so the stored counters can't drift.
+        await Job.recountLocationJobs();
+      },
+    })
+    .add({
+      name: 'data-retention',
+      intervalMs: DAY,
+      run: async () => {
+        const { runRetentionPolicies } = await import('./src/services/dataRetention.js');
+        await runRetentionPolicies();
+      },
+    })
+    .add({
+      // Permanently delete soft-deleted accounts after the 30-day retention
+      // promised by the privacy policy.
+      name: 'account-cleanup',
+      intervalMs: DAY,
+      run: async () => {
+        const { purgeDeletedAccounts } = await import('./src/services/accountCleanup.js');
+        const count = await purgeDeletedAccounts();
+        logger.info(count > 0 ? `Account cleanup: ${count} accounts permanently deleted` : 'Account cleanup: no accounts to purge');
+      },
+    })
+    .add({
+      // Emails employers whose jobs are stuck in pending_payment (3 stages,
+      // idempotent per stage).
+      name: 'payment-reminders',
+      intervalMs: parseInt(process.env.PAYMENT_REMINDER_INTERVAL_MS || `${HOUR}`, 10),
+      run: async () => {
+        const { sendDuePaymentReminders } = await import('./src/services/paymentReminderWorker.js');
+        await sendDuePaymentReminders();
+      },
+    })
+    .add({
+      // Alerts admins about pending_payment jobs older than
+      // PAYMENT_TIMEOUT_AFTER_DAYS (each job alerted once).
+      name: 'payment-timeouts',
+      intervalMs: parseInt(process.env.PAYMENT_TIMEOUT_INTERVAL_MS || `${DAY}`, 10),
+      run: async () => {
+        const { alertDuePaymentTimeouts } = await import('./src/services/paymentTimeoutWorker.js');
+        await alertDuePaymentTimeouts();
+      },
+    });
 
-  // Periodic task: expire active jobs past their expiresAt (every hour)
-  activeIntervals.push(setInterval(async () => {
-    try {
-      const result = await Job.updateMany(
-        { status: 'active', expiresAt: { $lt: new Date() }, isDeleted: { $ne: true } },
-        { $set: { status: 'expired' } }
-      );
-      if (result.modifiedCount > 0) {
-        logger.info(`Job expiry cron: marked ${result.modifiedCount} jobs as expired`);
-      }
-    } catch (err) {
-      logger.error('Job expiry cron error:', err.message);
-    }
-  }, 60 * 60 * 1000)); // Every hour
-
-  // Data retention: run daily
-  import('./src/services/dataRetention.js').then(({ runRetentionPolicies }) => {
-    activeIntervals.push(setInterval(() => {
-      runRetentionPolicies().catch(err => logger.error('Retention error:', err.message));
-    }, 24 * 60 * 60 * 1000));
-    // Run once on startup after a delay
-    setTimeout(() => {
-      runRetentionPolicies().catch(err => logger.error('Retention error:', err.message));
-    }, 60000);
-  }).catch(() => {});
+  // Discord daily digest — at DISCORD_DIGEST_HOUR_UTC (default 07:00 UTC =
+  // 09:00 Albania) every day; a day missed while the service was down is
+  // sent at the next boot. No-op without DISCORD_WEBHOOK_DIGEST.
+  if (process.env.DISCORD_WEBHOOK_DIGEST) {
+    const digestAt = dailyAtUtcHour(parseInt(process.env.DISCORD_DIGEST_HOUR_UTC || '7', 10));
+    scheduler.add({
+      name: 'discord-digest',
+      intervalMs: DAY,
+      nextRunAfter: digestAt,
+      firstRunAt: digestAt,
+      run: async () => {
+        const { runDailyDigest } = await import('./src/workers/discordDigestWorker.js');
+        await runDailyDigest();
+      },
+    });
+  }
+  scheduler.start({ initialDelayMs: 20_000, jitterMs: 20_000 });
 
   // Job-alerts digest flush — runs every 15 min by default. Sends one consolidated
   // email per jobseeker whose oldest queued match crossed the digest window.
@@ -509,24 +607,6 @@ const server = app.listen(PORT, () => {
     }, interval));
   }).catch(() => {});
 
-  // Payment-reminder worker: emails employers whose jobs are stuck in
-  // pending_payment. L1 escalates across 3 stages (24h/72h/7d). Idempotent.
-  import('./src/services/paymentReminderWorker.js').then(({ sendDuePaymentReminders }) => {
-    const interval = parseInt(process.env.PAYMENT_REMINDER_INTERVAL_MS || `${60 * 60 * 1000}`, 10);
-    activeIntervals.push(setInterval(() => {
-      sendDuePaymentReminders().catch(err => logger.error('Payment reminder worker error:', err.message));
-    }, interval));
-  }).catch(() => {});
-
-  // Payment-timeout worker: alerts admin about pending_payment jobs older
-  // than PAYMENT_TIMEOUT_AFTER_DAYS (default 14). Each job alerted once.
-  import('./src/services/paymentTimeoutWorker.js').then(({ alertDuePaymentTimeouts }) => {
-    const interval = parseInt(process.env.PAYMENT_TIMEOUT_INTERVAL_MS || `${24 * 60 * 60 * 1000}`, 10);
-    activeIntervals.push(setInterval(() => {
-      alertDuePaymentTimeouts().catch(err => logger.error('Payment timeout worker error:', err.message));
-    }, interval));
-  }).catch(() => {});
-
   // Payments reconcile worker (lost webhooks, stale checkouts, half-applied
   // activations, needsRefund digest). Default every 15 min. Never crashes.
   import('./src/services/payments/reconcileWorker.js').then(({ reconcileOnce }) => {
@@ -548,47 +628,6 @@ const server = app.listen(PORT, () => {
     runPaymentsBootCheck().catch(err => logger.error('Payments boot check error:', err.message));
   }).catch(() => {});
 
-  // Discord daily digest — first run at the next 07:00 UTC (09:00 Albania),
-  // then every 24h. No-op if DISCORD_WEBHOOK_DIGEST isn't set.
-  import('./src/workers/discordDigestWorker.js').then(({ runDailyDigest, msUntilNextRun }) => {
-    if (!process.env.DISCORD_WEBHOOK_DIGEST) return;
-    setTimeout(() => {
-      runDailyDigest().catch(err => logger.error('Discord digest error:', err.message));
-      activeIntervals.push(setInterval(() => {
-        runDailyDigest().catch(err => logger.error('Discord digest error:', err.message));
-      }, 24 * 60 * 60 * 1000));
-    }, msUntilNextRun());
-  }).catch(() => {});
-
-  // Account cleanup: permanently delete soft-deleted accounts after 30-day retention (privacy policy)
-  import('./src/services/accountCleanup.js').then(({ purgeDeletedAccounts }) => {
-    // Run daily
-    activeIntervals.push(setInterval(async () => {
-      try {
-        const count = await purgeDeletedAccounts();
-        if (count > 0) {
-          logger.info(`Account cleanup: ${count} accounts permanently deleted`);
-        } else {
-          logger.info('Account cleanup: no accounts to purge');
-        }
-      } catch (err) {
-        logger.error('Account cleanup error:', err.message);
-      }
-    }, 24 * 60 * 60 * 1000));
-    // Run once on startup after a 30-second delay (don't block startup)
-    setTimeout(async () => {
-      try {
-        const count = await purgeDeletedAccounts();
-        if (count > 0) {
-          logger.info(`Account cleanup: ${count} accounts permanently deleted`);
-        } else {
-          logger.info('Account cleanup: no accounts to purge');
-        }
-      } catch (err) {
-        logger.error('Account cleanup error:', err.message);
-      }
-    }, 30000);
-  }).catch(() => {});
 });
 
 // Graceful Shutdown — must be AFTER server is defined
@@ -596,11 +635,12 @@ const shutdown = async (signal) => {
   logger.info(`${signal} received, shutting down gracefully`);
   // Clear periodic intervals so no NEW work starts.
   activeIntervals.forEach(id => clearInterval(id));
+  scheduler.stop();
   // Round P: await any in-flight cron work (digest flush, outbox drain) up to 8s
   // so we don't drop the email being sent right at shutdown. After 8s we proceed
   // anyway; the 10s force-exit below is the final backstop.
   try {
-    const settled = Promise.allSettled([...inflightCronWork]);
+    const settled = Promise.allSettled([...inflightCronWork, ...scheduler.inflight()]);
     const timeout = new Promise(resolve => setTimeout(resolve, 8000));
     await Promise.race([settled, timeout]);
   } catch (_) { /* never block shutdown on errors here */ }
@@ -626,8 +666,9 @@ process.on('uncaughtException', (err) => {
   shutdown('uncaughtException');
 });
 
-// Request-level timeout (30s default — prevents hung connections)
-server.setTimeout(30000);
+// Socket inactivity timeout (30 s default — prevents hung connections). The
+// AI routes above raise it for their own requests (AI_ROUTE_TIMEOUT_MS).
+server.setTimeout(parseInt(process.env.HTTP_SOCKET_TIMEOUT_MS || '30000', 10));
 } // end NODE_ENV !== 'test' guard
 
 export default app;

@@ -18,7 +18,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
-import { Search, MapPin, Filter, Briefcase, Loader2, Calendar, DollarSign, Clock, Building, Bookmark, GraduationCap, Users, Award, ChevronDown, X } from "lucide-react";
+import { Search, MapPin, Filter, Briefcase, Loader2, Calendar, DollarSign, Clock, Building, Bookmark, GraduationCap, Users, Award, ChevronDown, X, SlidersHorizontal } from "lucide-react";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { jobTypeLabel } from "@/lib/labels";
 import { useToast } from "@/hooks/use-toast";
 import { jobsApi, locationsApi, applicationsApi, usersApi, Job, Location } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -32,73 +34,228 @@ import {
   formatSalaryFilterLabel,
 } from "@/lib/salary";
 
+// ---------------------------------------------------------------------------
+// The URL is the source of truth for the listing: page, search and every
+// filter are read from it on mount, written back on every change, and
+// re-read when the user navigates Back/Forward. A shared or bookmarked
+// /jobs?page=2&city=Durrës opens exactly that, and Back from a job opened
+// on page 2 returns to page 2 (it used to reset to page 1 and rewrite the
+// URL to /jobs).
+// ---------------------------------------------------------------------------
+
+type CoreFilterState = {
+  diaspora: boolean;
+  ngaShtepia: boolean;
+  partTime: boolean;
+  administrata: boolean;
+  sezonale: boolean;
+};
+
+type AdvancedFilterState = {
+  salaryRange: [number, number];
+  currency: string;
+  experience: string;
+  company: string;
+  remote: boolean;
+  categories: string[];
+  postedWithin: string;
+  sortBy: string;
+};
+
+type ListingState = {
+  search: string;
+  cities: string[];
+  jobType: string;
+  core: CoreFilterState;
+  advanced: AdvancedFilterState;
+  page: number;
+};
+
+const CORE_FILTER_KEYS = ['diaspora', 'ngaShtepia', 'partTime', 'administrata', 'sezonale'] as const;
+const EXPERIENCE_VALUES = ['entry', 'mid', 'senior', 'lead'];
+const POSTED_WITHIN_VALUES = ['today', 'week', 'month'];
+const SORT_VALUES = ['newest', 'oldest', 'salary', 'title'];
+const MAX_PAGE = 1000;
+// Search runs from 3 characters while typing (Enter / "Kërko" runs any length).
+const MIN_LIVE_SEARCH_LENGTH = 3;
+
+const emptyCoreFilters = (): CoreFilterState => ({
+  diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false,
+});
+
+const defaultAdvancedFilters = (): AdvancedFilterState => ({
+  salaryRange: defaultSalaryRange('EUR'),
+  currency: 'EUR',
+  experience: '',
+  company: '',
+  remote: false,
+  categories: [],
+  postedWithin: '',
+  sortBy: 'newest',
+});
+
+// Every query parameter the listing owns. Anything else in the URL (utm_*,
+// ?signup=…) is left untouched when the listing rewrites it.
+const LISTING_PARAMS = [
+  'search', 'city', 'jobType', 'category', 'company', 'page', 'sort', 'experience',
+  'posted', 'remote', 'minSalary', 'maxSalary', 'currency', ...CORE_FILTER_KEYS,
+];
+
+const readListingUrl = (search: string): ListingState => {
+  const sp = new URLSearchParams(search);
+  const list = (key: string) => (sp.get(key) || '').split(',').map(v => v.trim()).filter(Boolean);
+  const oneOf = (key: string, allowed: string[]) => {
+    const v = sp.get(key) || '';
+    return allowed.includes(v) ? v : '';
+  };
+  const positive = (key: string) => {
+    const n = Number(sp.get(key));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const currency = sp.get('currency') === 'ALL' ? 'ALL' : 'EUR';
+  const { max } = salaryFilterConfig(currency);
+  let low = Math.min(positive('minSalary') ?? 0, max);
+  let high = Math.min(positive('maxSalary') ?? max, max);
+  if (low > high) [low, high] = [high, low];
+  const page = parseInt(sp.get('page') || '1', 10);
+  const core = emptyCoreFilters();
+  CORE_FILTER_KEYS.forEach(k => { core[k] = sp.get(k) === 'true'; });
+  return {
+    search: sp.get('search') || '',
+    cities: list('city'),
+    jobType: sp.get('jobType') || '',
+    core,
+    advanced: {
+      salaryRange: [low, high],
+      currency,
+      experience: oneOf('experience', EXPERIENCE_VALUES),
+      company: sp.get('company') || '',
+      remote: sp.get('remote') === 'true',
+      categories: list('category'),
+      postedWithin: oneOf('posted', POSTED_WITHIN_VALUES),
+      sortBy: oneOf('sort', SORT_VALUES) || 'newest',
+    },
+    page: Number.isFinite(page) && page >= 1 ? Math.min(page, MAX_PAGE) : 1,
+  };
+};
+
+const buildListingSearch = (currentSearch: string, state: ListingState): string => {
+  const sp = new URLSearchParams(currentSearch);
+  LISTING_PARAMS.forEach(k => sp.delete(k));
+  const adv = state.advanced;
+  if (state.search) sp.set('search', state.search);
+  if (state.cities.length > 0) sp.set('city', state.cities.join(','));
+  if (state.jobType) sp.set('jobType', state.jobType);
+  if (adv.categories.length > 0) sp.set('category', adv.categories.join(','));
+  if (adv.company) sp.set('company', adv.company);
+  CORE_FILTER_KEYS.forEach(k => { if (state.core[k]) sp.set(k, 'true'); });
+  if (adv.remote) sp.set('remote', 'true');
+  if (adv.experience) sp.set('experience', adv.experience);
+  if (adv.postedWithin) sp.set('posted', adv.postedWithin);
+  if (adv.sortBy && adv.sortBy !== 'newest') sp.set('sort', adv.sortBy);
+  const salary = salaryFilterQuery(adv.salaryRange, adv.currency);
+  if (salary.minSalary) sp.set('minSalary', String(salary.minSalary));
+  if (salary.maxSalary) sp.set('maxSalary', String(salary.maxSalary));
+  if (salary.currency) sp.set('currency', salary.currency);
+  if (state.page > 1) sp.set('page', String(state.page));
+  const qs = sp.toString();
+  return qs ? `?${qs}` : '';
+};
+
+const sameSearch = (a: string, b: string) =>
+  new URLSearchParams(a).toString() === new URLSearchParams(b).toString();
+
+/** GET /api/jobs query for a listing state. */
+const listingQueryParams = (state: ListingState): Record<string, string | number | undefined> => {
+  const adv = state.advanced;
+  const queryParams: Record<string, string | number | undefined> = {
+    search: state.search || undefined,
+    city: state.cities.length > 0 ? state.cities.join(',') : undefined,
+    jobType: state.jobType || undefined,
+    page: state.page,
+    limit: 10,
+  };
+  // Salary range — MONTHLY bounds + currency, only when the user moved the
+  // slider off its full range (the backend converts ×12 to the stored
+  // annual unit and matches the same currency only).
+  Object.assign(queryParams, salaryFilterQuery(adv.salaryRange, adv.currency));
+  if (adv.company) queryParams.company = adv.company;
+  if (adv.remote) queryParams.remote = 'true';
+  if (adv.categories.length > 0) queryParams.categories = adv.categories.join(',');
+  if (adv.experience) queryParams.experience = adv.experience;
+  CORE_FILTER_KEYS.forEach(k => { if (state.core[k]) queryParams[k] = 'true'; });
+  if (adv.postedWithin) {
+    const days = adv.postedWithin === 'today' ? 1 : adv.postedWithin === 'week' ? 7 : 30;
+    queryParams.postedAfter = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  }
+  switch (adv.sortBy) {
+    case 'oldest': queryParams.sortBy = 'postedAt'; queryParams.sortOrder = 'asc'; break;
+    case 'salary': queryParams.sortBy = 'salary'; queryParams.sortOrder = 'desc'; break;
+    case 'title': queryParams.sortBy = 'title'; queryParams.sortOrder = 'asc'; break;
+    default: queryParams.sortBy = 'postedAt'; queryParams.sortOrder = 'desc';
+  }
+  return queryParams;
+};
+
+// Albanian search suggestions (the search matches title, description,
+// category and city, accent-insensitively).
+const JOB_TITLE_SUGGESTIONS = [
+  'Zhvillues Software', 'Marketing Dixhital', 'Kontabilist', 'Shitës',
+  'Recepsionist', 'Kamarier', 'Kuzhinier', 'Shofer', 'Infermier', 'Mësues',
+  'Inxhinier', 'Menaxher Projekti', 'Analist të Dhënash', 'Dizajner Grafik',
+  'Shërbim Klienti', 'Burime Njerëzore', 'Operator Call Center', 'Arkëtar',
+];
+
 const Index = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  // Read once, at mount, from the URL (deep links, Back from a job page).
+  const [initialListing] = useState(() => readListingUrl(location.search));
+
   const [jobs, setJobs] = useState<Job[]>([]);
   const [premiumJobs, setPremiumJobs] = useState<Job[]>([]);
-  const [recommendations, setRecommendations] = useState<Job[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [savedJobsMap, setSavedJobsMap] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
-  const [selectedType, setSelectedType] = useState("");
+  // `searchQuery` is the text in the box; `appliedSearch` is what the list
+  // and the URL show (debounced while typing).
+  const [searchQuery, setSearchQuery] = useState(initialListing.search);
+  const [appliedSearch, setAppliedSearch] = useState(initialListing.search);
+  const [selectedLocations, setSelectedLocations] = useState<string[]>(initialListing.cities);
+  const [selectedType, setSelectedType] = useState(initialListing.jobType);
+  const [currentPage, setCurrentPage] = useState(initialListing.page);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   // Core Platform Filters State
-  const [coreFilters, setCoreFilters] = useState({
-    diaspora: false,
-    ngaShtepia: false,
-    partTime: false,
-    administrata: false,
-    sezonale: false
-  });
+  const [coreFilters, setCoreFilters] = useState<CoreFilterState>(initialListing.core);
 
-  // Advanced filters state. The salary slider is MONTHLY in the selected
-  // currency; the untouched slider (whole range) means "no salary filter" —
-  // see lib/salary.ts for the single active-rule / query / label helpers.
-  // ?company= / ?category= deep links (company profile "see all jobs", the
-  // "Shiko punë të hapura në …" button on an expired job) are read in the
-  // initializer — setting them from an effect came too late: the first
-  // listing request had already gone out without them.
-  const [advancedFilters, setAdvancedFilters] = useState(() => {
-    const sp = new URLSearchParams(window.location.search);
-    return {
-      salaryRange: defaultSalaryRange('EUR'),
-      currency: 'EUR',
-      experience: '',
-      company: sp.get('company') || '',
-      remote: false,
-      categories: (sp.get('category') || '').split(',').map(c => c.trim()).filter(Boolean),
-      postedWithin: '',
-      sortBy: 'newest'
-    };
-  });
+  // Advanced filters. The salary slider is MONTHLY in the selected currency;
+  // the untouched slider (whole range) means "no salary filter" — see
+  // lib/salary.ts for the single active-rule / query / label helpers.
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilterState>(initialListing.advanced);
 
   // Filter UI state
   const [showAllFilters, setShowAllFilters] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const previousExpandedCategoryRef = useRef<string | null>(null);
-  
+
   // Pending filters - these are what users configure before applying
   const [pendingAdvancedFilters, setPendingAdvancedFilters] = useState(advancedFilters);
   const [pendingCoreFilters, setPendingCoreFilters] = useState(coreFilters);
-  
+
   // Auto-save when category closes
   useEffect(() => {
     const prev = previousExpandedCategoryRef.current;
     // When a category closes (expandedCategory changes from a value to null or different value)
     if (prev !== null && expandedCategory !== prev) {
-      // Category was closed, auto-apply the pending filters
       const hasChanges = JSON.stringify(pendingAdvancedFilters) !== JSON.stringify(advancedFilters) ||
                         JSON.stringify(pendingCoreFilters) !== JSON.stringify(coreFilters);
-      
       if (hasChanges) {
-        // Auto-apply filters — pass overrides to avoid stale closure
         setAdvancedFilters(pendingAdvancedFilters);
         setCoreFilters(pendingCoreFilters);
-        setPagination(prev => ({ ...prev, currentPage: 1 }));
-        loadJobs(1, false, { advancedFilters: pendingAdvancedFilters, coreFilters: pendingCoreFilters });
+        setCurrentPage(1);
       }
     }
     previousExpandedCategoryRef.current = expandedCategory;
@@ -115,25 +272,6 @@ const Index = () => {
 
   const { toast } = useToast();
   const { isAuthenticated, user } = useAuth();
-  const location = useLocation();
-  const navigate = useNavigate();
-
-  // Initialize the remaining filters from URL parameters (company / category
-  // are read in the advancedFilters initializer above)
-  useEffect(() => {
-    const sp = new URLSearchParams(location.search);
-
-    const searchParam = sp.get('search');
-    const pageParam = sp.get('page');
-    const jobTypeParam = sp.get('jobType');
-    const cityParam = sp.get('city');
-
-    if (searchParam) setSearchQuery(searchParam);
-    if (pageParam) setPagination(prev => ({ ...prev, currentPage: parseInt(pageParam) || 1 }));
-    if (jobTypeParam) setSelectedType(jobTypeParam);
-    if (cityParam) setSelectedLocations(cityParam.split(','));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Load locations and premium jobs on mount
   useEffect(() => {
@@ -141,157 +279,92 @@ const Index = () => {
     loadPremiumJobs();
   }, []);
 
-  // Load recommendations when user authentication changes
+  // Debounced live search: applies the typed text (and goes back to page 1)
+  // once it is empty or at least MIN_LIVE_SEARCH_LENGTH characters long.
   useEffect(() => {
-    loadRecommendations();
-  }, [isAuthenticated, user]);
+    if (searchQuery === appliedSearch) return;
+    const len = searchQuery.trim().length;
+    if (len > 0 && len < MIN_LIVE_SEARCH_LENGTH) return;
+    const t = setTimeout(() => {
+      setAppliedSearch(searchQuery);
+      setCurrentPage(1);
+    }, len > 0 ? 250 : 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
 
-  // Enhanced debounced search with loading states
+  const listingState: ListingState = {
+    search: appliedSearch,
+    cities: selectedLocations,
+    jobType: selectedType,
+    core: coreFilters,
+    advanced: advancedFilters,
+    page: currentPage,
+  };
+  const listingKey = JSON.stringify(listingState);
+
+  // How the next URL write is recorded: page changes push a history entry
+  // (Back goes to the previous page), filter / search changes replace.
+  const historyModeRef = useRef<'push' | 'replace'>('replace');
+  // The last search string this component wrote (or read) — lets the
+  // URL → state effect tell our own writes from Back/Forward navigation.
+  const lastSyncedSearchRef = useRef(location.search);
+  const requestSeqRef = useRef(0);
+  const lastLoadedSearchRef = useRef<string | null>(null);
+
+  // state → URL, then load. One place, so the list, the URL and the
+  // pagination can never disagree.
   useEffect(() => {
-    // Don't search if query is too short
-    if (searchQuery.length > 0 && searchQuery.length < 3) {
-      return;
+    const nextSearch = buildListingSearch(location.search, listingState);
+    if (!sameSearch(nextSearch, location.search)) {
+      lastSyncedSearchRef.current = nextSearch;
+      navigate(
+        { pathname: location.pathname, search: nextSearch },
+        { replace: historyModeRef.current !== 'push', state: location.state }
+      );
     }
+    historyModeRef.current = 'replace';
+    loadJobs(listingState);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listingKey]);
 
-    // Set search loading state
-    if (searchQuery.length >= 3) {
-      setSearchLoading(true);
-    }
+  // URL → state: Back / Forward (or a link to /jobs?…) while this page is
+  // mounted. Our own writes are recognised and ignored.
+  useEffect(() => {
+    if (sameSearch(location.search, lastSyncedSearchRef.current)) return;
+    lastSyncedSearchRef.current = location.search;
+    const s = readListingUrl(location.search);
+    setSearchQuery(s.search);
+    setAppliedSearch(s.search);
+    setSelectedLocations(s.cities);
+    setSelectedType(s.jobType);
+    setCoreFilters(s.core);
+    setAdvancedFilters(s.advanced);
+    setPendingCoreFilters(s.core);
+    setPendingAdvancedFilters(s.advanced);
+    setCurrentPage(s.page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search]);
 
-    const debounceTimeout = setTimeout(() => {
-      loadJobs(1, searchQuery.length >= 3); // Reset to page 1 for new searches
-    }, searchQuery.length >= 3 ? 200 : 0); // 200ms — snappy; debounce still
-    // collapses a typing burst into a single request.
-
-    return () => clearTimeout(debounceTimeout);
-  }, [searchQuery, selectedLocations, selectedType, coreFilters]);
-
-  const loadJobs = async (page = 1, isSearch = false, filterOverrides?: { advancedFilters?: typeof advancedFilters; coreFilters?: typeof coreFilters }) => {
+  const loadJobs = async (state: ListingState) => {
+    const seq = ++requestSeqRef.current;
+    const isSearch = lastLoadedSearchRef.current !== null && state.search !== lastLoadedSearchRef.current;
     try {
-      // Use different loading states for search vs general loading
       if (isSearch) {
         setSearchLoading(true);
       } else {
         setLoading(true);
       }
 
-      // Use overrides if provided (to avoid stale closure from React state batching)
-      const activeAdvancedFilters = filterOverrides?.advancedFilters ?? advancedFilters;
-      const activeCoreFilters = filterOverrides?.coreFilters ?? coreFilters;
-
-      // Build query params with advanced filters
-      const queryParams: any = {
-        search: searchQuery || undefined,
-        city: selectedLocations.length > 0 ? selectedLocations.join(',') : undefined,
-        jobType: selectedType || undefined,
-        page,
-        limit: 10
-      };
-
-      // Add advanced filters if they exist
-      // Salary range — MONTHLY bounds + currency, only when the user moved the
-      // slider off its full range (the backend converts ×12 to the stored
-      // annual unit and matches the same currency only).
-      Object.assign(queryParams, salaryFilterQuery(activeAdvancedFilters.salaryRange, activeAdvancedFilters.currency));
-
-      if (activeAdvancedFilters.company) {
-        queryParams.company = activeAdvancedFilters.company;
-      }
-
-      if (activeAdvancedFilters.remote) {
-        queryParams.remote = 'true';
-      }
-
-      // Categories - send as comma-separated for OR logic
-      if (activeAdvancedFilters.categories && activeAdvancedFilters.categories.length > 0) {
-        queryParams.categories = activeAdvancedFilters.categories.join(',');
-      }
-
-      // Experience - map to backend seniority
-      if (activeAdvancedFilters.experience) {
-        queryParams.experience = activeAdvancedFilters.experience;
-      }
-
-      // Add core platform filters
-      if (activeCoreFilters.diaspora) {
-        queryParams.diaspora = 'true';
-      }
-      if (activeCoreFilters.ngaShtepia) {
-        queryParams.ngaShtepia = 'true';
-      }
-      if (activeCoreFilters.partTime) {
-        queryParams.partTime = 'true';
-      }
-      if (activeCoreFilters.administrata) {
-        queryParams.administrata = 'true';
-      }
-      if (activeCoreFilters.sezonale) {
-        queryParams.sezonale = 'true';
-      }
-
-      if (activeAdvancedFilters.postedWithin) {
-        const now = new Date();
-        let dateFrom;
-
-        switch (activeAdvancedFilters.postedWithin) {
-          case 'today':
-            dateFrom = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-            break;
-          case 'week':
-            dateFrom = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-            break;
-          case 'month':
-            dateFrom = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-            break;
-        }
-
-        if (dateFrom) {
-          queryParams.postedAfter = dateFrom.toISOString();
-        }
-      }
-
-      // Set sorting
-      switch (activeAdvancedFilters.sortBy) {
-        case 'newest':
-          queryParams.sortBy = 'postedAt';
-          queryParams.sortOrder = 'desc';
-          break;
-        case 'oldest':
-          queryParams.sortBy = 'postedAt';
-          queryParams.sortOrder = 'asc';
-          break;
-        case 'salary':
-          queryParams.sortBy = 'salary';
-          queryParams.sortOrder = 'desc';
-          break;
-        case 'title':
-          queryParams.sortBy = 'title';
-          queryParams.sortOrder = 'asc';
-          break;
-        default:
-          queryParams.sortBy = 'postedAt';
-          queryParams.sortOrder = 'desc';
-      }
-
-      const response = await jobsApi.getJobs(queryParams);
+      const response = await jobsApi.getJobs(listingQueryParams(state));
+      // A newer request was started meanwhile (fast clicks / typing) — its
+      // answer wins; never let an older, slower response overwrite it.
+      if (seq !== requestSeqRef.current) return;
 
       if (response.success && response.data) {
+        lastLoadedSearchRef.current = state.search;
         setJobs(response.data.jobs);
         setPagination(response.data.pagination);
-
-        // Persist active filters in URL
-        const urlParams = new URLSearchParams();
-        if (searchQuery) urlParams.set('search', searchQuery);
-        if (selectedLocations.length > 0) urlParams.set('city', selectedLocations.join(','));
-        if (selectedType) urlParams.set('jobType', selectedType);
-        if (advancedFilters.categories.length > 0) urlParams.set('category', advancedFilters.categories.join(','));
-        if (advancedFilters.company) urlParams.set('company', advancedFilters.company);
-        if (page > 1) urlParams.set('page', String(page));
-        const qs = urlParams.toString();
-        const newPath = qs ? `${location.pathname}?${qs}` : location.pathname;
-        if (newPath !== `${location.pathname}${location.search}`) {
-          navigate(newPath, { replace: true });
-        }
 
         // Bulk check saved status for all loaded jobs (non-blocking)
         if (isAuthenticated && user?.userType === 'jobseeker' && response.data.jobs.length > 0) {
@@ -304,6 +377,7 @@ const Index = () => {
         }
       }
     } catch (error: any) {
+      if (seq !== requestSeqRef.current) return;
       console.error('Error loading jobs:', error);
       toast({
         title: "Gabim",
@@ -311,8 +385,10 @@ const Index = () => {
         variant: "destructive"
       });
     } finally {
-      setLoading(false);
-      setSearchLoading(false);
+      if (seq === requestSeqRef.current) {
+        setLoading(false);
+        setSearchLoading(false);
+      }
     }
   };
 
@@ -324,22 +400,6 @@ const Index = () => {
       }
     } catch (error) {
       console.error('Error loading locations:', error);
-    }
-  };
-
-  const loadRecommendations = async () => {
-    if (!isAuthenticated || user?.userType !== 'jobseeker') {
-      return;
-    }
-
-    try {
-      const response = await jobsApi.getRecommendations({ limit: 10 });
-      if (response.success && response.data) {
-        setRecommendations(response.data.recommendations || []);
-      }
-    } catch (error) {
-      console.error('Error loading recommendations:', error);
-      // Don't show error to user for recommendations
     }
   };
 
@@ -383,7 +443,7 @@ const Index = () => {
     // A job with custom questions (or unknown question info) cannot be
     // quick-applied — the API rejects skipped required answers. Send the user
     // to the full apply form on the job page instead (O-27 follow-up).
-    const listedJob = [...jobs, ...recommendations, ...premiumJobs].find(j => j._id === jobId);
+    const listedJob = [...jobs, ...premiumJobs].find(j => j._id === jobId);
     if (needsApplyForm(listedJob)) {
       const { to, state } = applyFormRoute(listedJob, jobId);
       navigate(to, { state });
@@ -414,31 +474,38 @@ const Index = () => {
   };
 
   const handlePageChange = (page: number) => {
-    loadJobs(page);
+    if (page < 1 || page === currentPage) return;
+    historyModeRef.current = 'push';
+    setCurrentPage(page);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Enter / "Kërko" / a suggestion: apply now, whatever the length.
   const handleInstantSearch = (query: string) => {
     setSearchQuery(query);
     setShowSuggestions(false);
-    // The useEffect will handle the debounced search
+    if (query !== appliedSearch) {
+      setAppliedSearch(query);
+      setCurrentPage(1);
+    }
   };
 
-  // Sample job title suggestions
-  const jobTitleSuggestions = [
-    'Software Developer', 'Digital Marketing', 'React Developer',
-    'Frontend Developer', 'Backend Developer', 'Marketing Manager',
-    'Project Manager', 'Data Analyst', 'UX Designer', 'Product Manager',
-    'Sales Manager', 'Content Writer', 'Graphic Designer', 'Accountant',
-    'HR Manager', 'Business Analyst', 'Full Stack Developer', 'DevOps Engineer'
-  ];
-
   const getFilteredSuggestions = () => {
-    if (!searchQuery.trim()) return jobTitleSuggestions.slice(0, 8);
+    if (!searchQuery.trim()) return JOB_TITLE_SUGGESTIONS.slice(0, 8);
     const queryLower = searchQuery.toLowerCase();
-    return jobTitleSuggestions
+    return JOB_TITLE_SUGGESTIONS
       .filter(title => title.toLowerCase().includes(queryLower))
       .slice(0, 8);
+  };
+
+  const updateLocations = (next: string[]) => {
+    setSelectedLocations(next);
+    setCurrentPage(1);
+  };
+
+  const updateJobType = (next: string) => {
+    setSelectedType(next);
+    setCurrentPage(1);
   };
 
   const handleCoreFilterChange = (filterKey: string, value: boolean) => {
@@ -447,19 +514,21 @@ const Index = () => {
       ...prev,
       [filterKey]: value
     }));
+    setPendingCoreFilters(prev => ({
+      ...prev,
+      [filterKey]: value
+    }));
+    setCurrentPage(1);
   };
 
   const clearFilters = () => {
     setSearchQuery("");
+    setAppliedSearch("");
     setSelectedLocations([]);
     setSelectedType("");
-    setCoreFilters({
-      diaspora: false,
-      ngaShtepia: false,
-      partTime: false,
-      administrata: false,
-      sezonale: false
-    });
+    setCoreFilters(emptyCoreFilters());
+    setPendingCoreFilters(emptyCoreFilters());
+    setCurrentPage(1);
   };
 
   const handleShowFilters = () => {
@@ -474,16 +543,20 @@ const Index = () => {
     }
   };
 
-  const handleApplyFilters = async () => {
-    // Copy pending filters to active filters
+  const openMobileFilters = () => {
+    setPendingAdvancedFilters(advancedFilters);
+    setPendingCoreFilters(coreFilters);
+    setMobileFiltersOpen(true);
+  };
+
+  const handleApplyFilters = () => {
+    // Copy pending filters to active filters — the listing effect reloads.
     setAdvancedFilters(pendingAdvancedFilters);
     setCoreFilters(pendingCoreFilters);
     setShowAllFilters(false);
+    setMobileFiltersOpen(false);
     setExpandedCategory(null);
-    setPagination(prev => ({ ...prev, currentPage: 1 }));
-
-    // Pass overrides to avoid stale closure — React batches setState, so loadJobs would read old values
-    await loadJobs(1, false, { advancedFilters: pendingAdvancedFilters, coreFilters: pendingCoreFilters });
+    setCurrentPage(1);
 
     toast({
       title: "Filtrat u aplikuan",
@@ -491,39 +564,21 @@ const Index = () => {
     });
   };
 
-  const handleResetFilters = async () => {
-    // Reset both active and pending filters
-    const defaultAdvancedFilters = {
-      salaryRange: defaultSalaryRange('EUR'),
-      currency: 'EUR',
-      experience: '',
-      company: '',
-      remote: false,
-      categories: [] as string[],
-      postedWithin: '',
-      sortBy: 'newest'
-    };
-    const defaultCoreFilters = {
-      diaspora: false,
-      ngaShtepia: false,
-      partTime: false,
-      administrata: false,
-      sezonale: false
-    };
-
-    setAdvancedFilters(defaultAdvancedFilters);
-    setCoreFilters(defaultCoreFilters);
-    setPendingAdvancedFilters(defaultAdvancedFilters);
-    setPendingCoreFilters(defaultCoreFilters);
+  const handleResetFilters = () => {
+    const resetAdvanced = defaultAdvancedFilters();
+    const resetCore = emptyCoreFilters();
+    setAdvancedFilters(resetAdvanced);
+    setCoreFilters(resetCore);
+    setPendingAdvancedFilters(resetAdvanced);
+    setPendingCoreFilters(resetCore);
     setShowAllFilters(false);
+    setMobileFiltersOpen(false);
     setExpandedCategory(null);
     setSelectedLocations([]);
     setSelectedType('');
     setSearchQuery('');
-    setPagination(prev => ({ ...prev, currentPage: 1 }));
-
-    // Pass reset filters as overrides to avoid stale closure
-    await loadJobs(1, false, { advancedFilters: defaultAdvancedFilters, coreFilters: defaultCoreFilters });
+    setAppliedSearch('');
+    setCurrentPage(1);
 
     toast({
       title: "Filtrat u rivendosën",
@@ -541,10 +596,9 @@ const Index = () => {
   };
 
   // Immediately apply filter removal when X is clicked on active filter badge
-  const handleRemoveFilter = async (filterType: string, value?: any) => {
+  const handleRemoveFilter = (filterType: string, value?: string) => {
     const updatedPendingFilters = { ...pendingAdvancedFilters };
-    const updatedCoreFilters = { ...pendingCoreFilters };
-    
+
     switch (filterType) {
       case 'experience':
         updatedPendingFilters.experience = '';
@@ -567,187 +621,36 @@ const Index = () => {
         }
         break;
     }
-    
-    // Apply immediately
+
     setPendingAdvancedFilters(updatedPendingFilters);
     setAdvancedFilters(updatedPendingFilters);
-    setPendingCoreFilters(updatedCoreFilters);
-    setCoreFilters(updatedCoreFilters);
-    setPagination(prev => ({ ...prev, currentPage: 1 }));
-    // Pass the updated filters explicitly — setState is async, so reading
-    // state inside loadJobs would still see the removed filter.
-    await loadJobs(1, false, { advancedFilters: updatedPendingFilters, coreFilters: updatedCoreFilters });
+    setCoreFilters(pendingCoreFilters);
+    setCurrentPage(1);
   };
 
-  // Merge recommendations with regular jobs intelligently.
-  // Memoized so JobCard children don't see a fresh array on every re-render
-  // (the array reference change otherwise breaks React.memo for JobCard).
-  const mergedJobs = useMemo(() => {
-    const recommendationIds = new Set(recommendations.map(job => job._id));
-    // A non-default sort counts as an active filter: when the user explicitly
-    // sorts, the backend order MUST be preserved — prepending recommendations
-    // (which are cosine-ranked, not re-sorted) would hide the chosen sort.
-    const hasActiveFilters = searchQuery || selectedLocations.length > 0 || selectedType ||
-      Object.values(coreFilters).some(Boolean) ||
-      advancedFilters.company ||
-      advancedFilters.experience ||
-      advancedFilters.remote ||
-      advancedFilters.categories.length > 0 ||
-      advancedFilters.postedWithin ||
-      (advancedFilters.sortBy && advancedFilters.sortBy !== 'newest') ||
-      isSalaryFilterActive(advancedFilters.salaryRange, advancedFilters.currency);
+  const activeFilterCount =
+    selectedLocations.length +
+    (selectedType ? 1 : 0) +
+    Object.values(coreFilters).filter(Boolean).length +
+    (advancedFilters.experience ? 1 : 0) +
+    (advancedFilters.company ? 1 : 0) +
+    (advancedFilters.remote ? 1 : 0) +
+    advancedFilters.categories.length +
+    (advancedFilters.postedWithin ? 1 : 0) +
+    (advancedFilters.sortBy && advancedFilters.sortBy !== 'newest' ? 1 : 0) +
+    (isSalaryFilterActive(advancedFilters.salaryRange, advancedFilters.currency) ? 1 : 0);
 
-    if (hasActiveFilters) {
-      return jobs.map(job => ({ ...job, isRecommended: recommendationIds.has(job._id) }));
-    }
-
-    const regularJobs = jobs.filter(job => !recommendationIds.has(job._id));
-    const recommendedJobs = recommendations.map(job => ({ ...job, isRecommended: true }));
-    return [...recommendedJobs, ...regularJobs];
-  }, [jobs, recommendations, searchQuery, selectedLocations, selectedType, coreFilters, advancedFilters]);
-
+  // The listing is the backend's order, unchanged on every page. Owner ruling
+  // (roadmap 7E.2): no recommendations on the jobs page — they used to be
+  // prepended to page 1 here, which also repeated them on later pages.
+  const mergedJobs = jobs;
   const getMergedJobs = () => mergedJobs;
 
   const isJobsRoute = location.pathname === "/jobs";
 
-  return (
-    <div className="min-h-screen bg-background">
-      <SEO
-        title={isJobsRoute ? "Të gjitha punët" : undefined}
-        description={
-          isJobsRoute
-            ? "Shfletoni të gjitha punët aktive në Shqipëri — Tiranë, Durrës, Vlorë, Shkodër, Elbasan e më shumë. Filtrim sipas qytetit, kategorisë dhe lloji i punës."
-            : undefined
-        }
-        path={isJobsRoute ? "/jobs" : "/"}
-        jsonLd={{
-          "@context": "https://schema.org",
-          "@type": "ItemList",
-          "name": isJobsRoute ? "Punët aktive në Advance.al" : "Pozicione të zgjedhura",
-          "itemListElement": jobs.slice(0, 10).map((j, i) => ({
-            "@type": "ListItem",
-            "position": i + 1,
-            "url": `https://advance.al/jobs/${(j as any).slug || j._id}`,
-            "name": j.title,
-          })),
-        }}
-      />
-      <Navigation />
-
-      <div className="container py-8">
-        {/* Premium Jobs Carousel — no wrapper div, sticky needs tall parent */}
-        {premiumJobs.length > 0 && (
-          <PremiumJobsCarousel jobs={premiumJobs} />
-        )}
-
-        {/* Search Bar - Wellfound Style */}
-        <div className="mx-auto max-w-7xl mb-8">
-          <div className="flex flex-col gap-3 rounded-3xl bg-white p-4 shadow-md md:flex-row md:items-center md:gap-0 lg:pl-8">
-            {/* Job Title Search with Suggestions */}
-            <div className="relative flex flex-1 items-center rounded-xl border border-neutral-200 px-3 md:border-0">
-              <Search className="mr-1 h-4 w-4 flex-shrink-0 text-black" />
-              <Input
-                ref={searchInputRef}
-                type="text"
-                placeholder="Titulli i punës"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => setShowSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleInstantSearch(searchQuery);
-                  }
-                }}
-                className="flex-1 border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-2"
-              />
-              {searchLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />}
-
-              {/* Search Suggestions Dropdown */}
-              {showSuggestions && getFilteredSuggestions().length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-neutral-200 rounded-xl shadow-lg z-50 max-h-64 overflow-y-auto">
-                  {getFilteredSuggestions().map((suggestion, index) => (
-                    <div
-                      key={index}
-                      className="px-4 py-2.5 hover:bg-slate-50 cursor-pointer transition-colors text-sm"
-                      onClick={() => {
-                        setSearchQuery(suggestion);
-                        handleInstantSearch(suggestion);
-                      }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Search className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span>{suggestion}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Separator */}
-            <div className="mx-0 hidden h-12 w-px bg-gray-400 md:mx-4 md:block" />
-
-            {/* Location Select */}
-            <div className="relative flex flex-1 items-center rounded-xl border border-neutral-200 px-3 md:border-0">
-              <MapPin className="mr-1 h-5 w-5 flex-shrink-0 text-black" />
-              <Select
-                value={selectedLocations.length === 1 ? selectedLocations[0] : selectedLocations.length > 1 ? "_multiple_" : ""}
-                onValueChange={(value) => {
-                  if (value === "_all_") {
-                    setSelectedLocations([]);
-                  } else if (value) {
-                    setSelectedLocations(selectedLocations.includes(value)
-                      ? selectedLocations.filter(c => c !== value)
-                      : [...selectedLocations, value]
-                    );
-                  }
-                }}
-              >
-                <SelectTrigger aria-label="Zgjidhni vendndodhjen" className="flex-1 border-0 shadow-none focus:ring-0 focus:ring-offset-0 h-auto px-0">
-                  <SelectValue placeholder={selectedLocations.length > 0 ? `${selectedLocations.length} qytete` : "Vendndodhja"} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all_">Të gjitha qytetet</SelectItem>
-                  {locations.map((location) => (
-                    <SelectItem key={location.city} value={location.city}>
-                      {location.city}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Search Button */}
-            <Button
-              onClick={() => handleInstantSearch(searchQuery)}
-              className="ml-0 rounded-xl bg-black px-8 py-3.5 font-medium text-white transition-colors hover:bg-gray-800 md:ml-4 md:mt-0"
-            >
-              Kërko
-            </Button>
-          </div>
-        </div>
-
-        {/* 3-Column Layout: Filters (20%) - Jobs (60%) - Announcements (20%) */}
-        <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 mb-8">
-          {/* Left Sidebar - Core Filters (20%) */}
-          <div className="lg:col-span-2">
-            {/* Sticky wrapper holds BOTH the quick filters and the expanded
-                advanced panel so they stick together — the expanded panel's
-                top stays flush against the bottom of the quick filters
-                instead of scrolling away behind them. overflow-y-auto lets a
-                tall expanded panel scroll within the viewport. */}
-            <div className={`hidden lg:block sticky z-10 max-h-[calc(100vh-11rem)] overflow-y-auto ${premiumJobs.length > 0 ? 'top-[9.5rem]' : 'top-20'}`}>
-              <CoreFilters
-                filters={coreFilters}
-                onFilterChange={handleCoreFilterChange}
-                onShowAllFilters={handleShowFilters}
-                showAllFilters={showAllFilters}
-              />
-
-              {/* Expandable Filter Section - Below CoreFilters */}
-              {showAllFilters && (
-                <div className="border-t border-b py-4 bg-background mt-4 shadow-sm">
+  // The advanced-filter panel, shared by the desktop sidebar and the mobile
+  // "Filtra" drawer (one copy of the controls, same pending → apply logic).
+  const advancedFilterPanel = (
                 <div className="w-full">
                   {/* Active Filters Display */}
                   {(pendingAdvancedFilters.categories.length > 0 || pendingAdvancedFilters.experience || pendingAdvancedFilters.company || pendingAdvancedFilters.remote || pendingAdvancedFilters.postedWithin || isSalaryFilterActive(pendingAdvancedFilters.salaryRange, pendingAdvancedFilters.currency)) && (
@@ -1083,6 +986,147 @@ const Index = () => {
                     </div>
                   </div>
                 </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-background">
+      <SEO
+        title={isJobsRoute ? "Të gjitha punët" : undefined}
+        description={
+          isJobsRoute
+            ? "Shfletoni të gjitha punët aktive në Shqipëri — Tiranë, Durrës, Vlorë, Shkodër, Elbasan e më shumë. Filtrim sipas qytetit, kategorisë dhe lloji i punës."
+            : undefined
+        }
+        path={isJobsRoute ? "/jobs" : "/"}
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "ItemList",
+          "name": isJobsRoute ? "Punët aktive në Advance.al" : "Pozicione të zgjedhura",
+          "itemListElement": jobs.slice(0, 10).map((j, i) => ({
+            "@type": "ListItem",
+            "position": i + 1,
+            "url": `https://advance.al/jobs/${(j as any).slug || j._id}`,
+            "name": j.title,
+          })),
+        }}
+      />
+      <Navigation />
+
+      <div className="container py-8">
+        {/* Premium Jobs Carousel — no wrapper div, sticky needs tall parent */}
+        {premiumJobs.length > 0 && (
+          <PremiumJobsCarousel jobs={premiumJobs} />
+        )}
+
+        {/* Search Bar - Wellfound Style */}
+        <div className="mx-auto max-w-7xl mb-8">
+          <div className="flex flex-col gap-3 rounded-3xl bg-white p-4 shadow-md md:flex-row md:items-center md:gap-0 lg:pl-8">
+            {/* Job Title Search with Suggestions */}
+            <div className="relative flex flex-1 items-center rounded-xl border border-neutral-200 px-3 md:border-0">
+              <Search className="mr-1 h-4 w-4 flex-shrink-0 text-black" />
+              <Input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Titulli i punës"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleInstantSearch(searchQuery);
+                  }
+                }}
+                className="flex-1 border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-2"
+              />
+              {searchLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />}
+
+              {/* Search Suggestions Dropdown */}
+              {showSuggestions && getFilteredSuggestions().length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-neutral-200 rounded-xl shadow-lg z-50 max-h-64 overflow-y-auto">
+                  {getFilteredSuggestions().map((suggestion, index) => (
+                    <div
+                      key={index}
+                      className="px-4 py-2.5 hover:bg-slate-50 cursor-pointer transition-colors text-sm"
+                      onClick={() => {
+                        setSearchQuery(suggestion);
+                        handleInstantSearch(suggestion);
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span>{suggestion}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Separator */}
+            <div className="mx-0 hidden h-12 w-px bg-gray-400 md:mx-4 md:block" />
+
+            {/* Location Select */}
+            <div className="relative flex flex-1 items-center rounded-xl border border-neutral-200 px-3 md:border-0">
+              <MapPin className="mr-1 h-5 w-5 flex-shrink-0 text-black" />
+              <Select
+                value={selectedLocations.length === 1 ? selectedLocations[0] : selectedLocations.length > 1 ? "_multiple_" : ""}
+                onValueChange={(value) => {
+                  if (value === "_all_") {
+                    updateLocations([]);
+                  } else if (value) {
+                    updateLocations(selectedLocations.includes(value)
+                      ? selectedLocations.filter(c => c !== value)
+                      : [...selectedLocations, value]
+                    );
+                  }
+                }}
+              >
+                <SelectTrigger aria-label="Zgjidhni vendndodhjen" className="flex-1 border-0 shadow-none focus:ring-0 focus:ring-offset-0 h-auto px-0">
+                  <SelectValue placeholder={selectedLocations.length > 0 ? `${selectedLocations.length} qytete` : "Vendndodhja"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_all_">Të gjitha qytetet</SelectItem>
+                  {locations.map((location) => (
+                    <SelectItem key={location.city} value={location.city}>
+                      {location.city}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Search Button */}
+            <Button
+              onClick={() => handleInstantSearch(searchQuery)}
+              className="ml-0 rounded-xl bg-black px-8 py-3.5 font-medium text-white transition-colors hover:bg-gray-800 md:ml-4 md:mt-0"
+            >
+              Kërko
+            </Button>
+          </div>
+        </div>
+
+        {/* 3-Column Layout: Filters (20%) - Jobs (60%) - Announcements (20%) */}
+        <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 mb-8">
+          {/* Left Sidebar - Core Filters (20%) */}
+          <div className="lg:col-span-2">
+            {/* Sticky wrapper holds BOTH the quick filters and the expanded
+                advanced panel so they stick together — the expanded panel's
+                top stays flush against the bottom of the quick filters
+                instead of scrolling away behind them. overflow-y-auto lets a
+                tall expanded panel scroll within the viewport. */}
+            <div className={`hidden lg:block sticky z-10 max-h-[calc(100vh-11rem)] overflow-y-auto ${premiumJobs.length > 0 ? 'top-[9.5rem]' : 'top-20'}`}>
+              <CoreFilters
+                filters={coreFilters}
+                onFilterChange={handleCoreFilterChange}
+                onShowAllFilters={handleShowFilters}
+                showAllFilters={showAllFilters}
+              />
+
+              {/* Expandable Filter Section - Below CoreFilters */}
+              {showAllFilters && (
+                <div className="border-t border-b py-4 bg-background mt-4 shadow-sm">
+                  {advancedFilterPanel}
               </div>
               )}
             </div>
@@ -1090,8 +1134,43 @@ const Index = () => {
 
           {/* Main Content - Job Listings (80% - expanded since right sidebar is disabled) */}
           <div className="lg:col-span-8">
+            {/* Mobile / tablet: the sidebar filters are hidden below lg —
+                open the same controls in a drawer. */}
+            <div className="lg:hidden mb-4 flex items-center gap-2" data-testid="mobile-filters-bar">
+              <Button variant="outline" onClick={openMobileFilters} className="gap-2" data-testid="mobile-filters-button">
+                <SlidersHorizontal className="h-4 w-4" />
+                Filtra
+                {activeFilterCount > 0 && (
+                  <Badge className="ml-1 h-5 min-w-5 px-1.5 justify-center">{activeFilterCount}</Badge>
+                )}
+              </Button>
+              {activeFilterCount > 0 && (
+                <Button variant="ghost" size="sm" onClick={handleResetFilters}>
+                  Pastro
+                </Button>
+              )}
+            </div>
+            <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
+              {/* Starts below the fixed 4rem navigation (z-[9998]), which would
+                  otherwise cover the drawer's title and close button. */}
+              <SheetContent side="left" className="!top-16 h-[calc(100dvh-4rem)] w-[88vw] max-w-sm overflow-y-auto p-4 sm:p-6" data-testid="mobile-filters-sheet">
+                <SheetHeader className="text-left mb-4 pr-6">
+                  <SheetTitle>Filtra</SheetTitle>
+                  <SheetDescription>Filtrat e shpejtë aplikohen menjëherë; të tjerat me &ldquo;Apliko Filtrat&rdquo;.</SheetDescription>
+                </SheetHeader>
+                <CoreFilters
+                  filters={coreFilters}
+                  onFilterChange={handleCoreFilterChange}
+                />
+                <div className="border-t mt-4 pt-4">
+                  <h3 className="text-lg font-semibold text-foreground mb-3">Të gjitha filtrat</h3>
+                  {advancedFilterPanel}
+                </div>
+              </SheetContent>
+            </Sheet>
+
             {/* Recently Viewed Jobs - Show when not filtering and user is authenticated */}
-            {!loading && !searchQuery && selectedLocations.length === 0 && !selectedType && !Object.values(coreFilters).some(Boolean) && isAuthenticated && (
+            {!loading && !appliedSearch && selectedLocations.length === 0 && !selectedType && !Object.values(coreFilters).some(Boolean) && isAuthenticated && (
               <RecentlyViewedJobs className="mb-6" limit={4} />
             )}
 
@@ -1106,14 +1185,14 @@ const Index = () => {
               <Badge
                 key={city}
                 className="cursor-pointer bg-blue-100 text-blue-800 hover:bg-blue-200"
-                onClick={() => setSelectedLocations(selectedLocations.filter(c => c !== city))}
+                onClick={() => updateLocations(selectedLocations.filter(c => c !== city))}
               >
                 {city} ×
               </Badge>
             ))}
             {selectedType && (
-              <Badge className="cursor-pointer bg-purple-100 text-purple-800 hover:bg-purple-200" onClick={() => setSelectedType("")}>
-                {selectedType} ×
+              <Badge className="cursor-pointer bg-purple-100 text-purple-800 hover:bg-purple-200" onClick={() => updateJobType("")}>
+                {jobTypeLabel(selectedType) || selectedType} ×
               </Badge>
             )}
             {coreFilters.diaspora && (
@@ -1128,7 +1207,7 @@ const Index = () => {
             )}
             {coreFilters.partTime && (
               <Badge className="cursor-pointer bg-pink-100 text-pink-800 hover:bg-pink-200" onClick={() => handleCoreFilterChange('partTime', false)}>
-                Part Time ×
+                Kohë e pjesshme ×
               </Badge>
             )}
             {coreFilters.administrata && (
@@ -1169,7 +1248,7 @@ const Index = () => {
                   {getMergedJobs().reduce((acc: JSX.Element[], job, index) => {
                     // Add job card
                     acc.push(
-                      <JobCard key={job._id} job={job} onApply={handleApply} isRecommended={job.isRecommended} initialSaved={savedJobsMap[job._id]} />
+                      <JobCard key={job._id} job={job} onApply={handleApply} initialSaved={savedJobsMap[job._id]} />
                     );
 
                     // Add banner every 4 jobs for all users
@@ -1211,8 +1290,8 @@ const Index = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handlePageChange(pagination.currentPage - 1)}
-                      disabled={!pagination.hasPrevPage}
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage <= 1}
                     >
                       Mëparshmi
                     </Button>
@@ -1220,7 +1299,7 @@ const Index = () => {
                     <div className="flex items-center gap-2">
                       {(() => {
                         const maxVisible = 5;
-                        let start = Math.max(1, pagination.currentPage - Math.floor(maxVisible / 2));
+                        let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
                         let end = Math.min(pagination.totalPages, start + maxVisible - 1);
                         if (end - start + 1 < maxVisible) {
                           start = Math.max(1, end - maxVisible + 1);
@@ -1230,7 +1309,8 @@ const Index = () => {
                           return (
                             <Button
                               key={page}
-                              variant={pagination.currentPage === page ? "default" : "outline"}
+                              variant={currentPage === page ? "default" : "outline"}
+                              aria-current={currentPage === page ? "page" : undefined}
                               size="sm"
                               onClick={() => handlePageChange(page)}
                             >
@@ -1244,8 +1324,8 @@ const Index = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handlePageChange(pagination.currentPage + 1)}
-                      disabled={!pagination.hasNextPage}
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage >= pagination.totalPages}
                     >
                       Tjetri
                     </Button>

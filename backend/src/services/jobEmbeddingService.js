@@ -1,10 +1,16 @@
-import OpenAI from 'openai';
 import pLimit from 'p-limit';
 import Job from '../models/Job.js';
 import JobQueue from '../models/JobQueue.js';
 import debugLogger from './debugLogger.js';
 import errorSanitizer from './errorSanitizer.js';
+import { clearEmbeddingStale } from './embeddingStaleness.js';
 import { EMBEDDING_MODEL, EMBEDDING_DIMS, isValidEmbeddingVector } from '../utils/embeddingConfig.js';
+import {
+  createOpenAIClient,
+  isRetryableOpenAIError,
+  retryDelayMs,
+  OpenAINotConfiguredError,
+} from '../lib/openaiClient.js';
 
 /**
  * Job Embedding Service
@@ -40,14 +46,21 @@ import { EMBEDDING_MODEL, EMBEDDING_DIMS, isValidEmbeddingVector } from '../util
  * ============================================================================
  */
 
+// Job categories whose titles may carry a software role hint (88).
+const ROLE_HINT_CATEGORIES = new Set(['Teknologji', 'Dizajn', 'Inxhinieri']);
+
 class JobEmbeddingService {
   constructor() {
-    // Initialize OpenAI client
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
-    });
+    // OpenAI client: created lazily on first use (see the `openai` getter) —
+    // with OPENAI_API_KEY unset the SDK constructor throws, which used to
+    // crash the server at import time; with it empty every call 401'd.
+    this._client = undefined;
 
-    // Rate limiter for OpenAI API calls
+    // Concurrency bound for OpenAI calls. It now really holds (#94): the
+    // limited function awaits the SDK request itself, and the SDK aborts the
+    // request on its own timeout, so a slot is released only when the HTTP
+    // call is actually over (the old Promise.race freed the slot while the
+    // request — and the SDK's hidden retries — kept running for minutes).
     const maxConcurrent = parseInt(process.env.EMBEDDING_MAX_CONCURRENT || '3');
     this.limit = pLimit(maxConcurrent);
 
@@ -59,7 +72,11 @@ class JobEmbeddingService {
     // Pass dimensions to OpenAI only when caller explicitly set it (3-small
     // doesn't support the parameter at smaller sizes the same way).
     this.embeddingDims = process.env.OPENAI_EMBEDDING_DIMS ? EMBEDDING_DIMS : null;
+    // One retry policy (#94): per-request timeout enforced by the SDK (abort),
+    // SDK retries off, retries done by callOpenAIWithRetry for retryable
+    // errors only (429 except insufficient_quota, 5xx, connection, timeout).
     this.apiTimeout = parseInt(process.env.OPENAI_API_TIMEOUT || '30000');
+    this.maxAttempts = parseInt(process.env.OPENAI_EMBED_MAX_ATTEMPTS || '3', 10);
     this.batchSize = parseInt(process.env.EMBEDDING_BATCH_SIZE || '500');
     this.similarityTopN = parseInt(process.env.SIMILARITY_TOP_N || '10');
     this.similarityMinScore = parseFloat(process.env.SIMILARITY_MIN_SCORE || '0.55');
@@ -73,6 +90,27 @@ class JobEmbeddingService {
     this.openai = client;
   }
 
+  get openai() {
+    if (this._client === undefined) {
+      this._client = createOpenAIClient({ timeout: this.apiTimeout, maxRetries: 0 });
+    }
+    return this._client;
+  }
+
+  set openai(client) {
+    this._client = client;
+  }
+
+  /**
+   * True when embeddings can be generated (OPENAI_API_KEY configured, or a
+   * test client injected). Every automatic trigger (fireEmbedding, the retry
+   * worker) checks this first and skips silently when false — no OpenAI
+   * call, no 401 in the logs, records left as they are for when a key is set.
+   */
+  isAvailable() {
+    return !!this.openai;
+  }
+
   /**
    * ========================================
    * QUEUEING OPERATIONS
@@ -80,6 +118,10 @@ class JobEmbeddingService {
    */
 
   /**
+   * LEGACY (#98): writes a JobQueue row for workers/embeddingWorker.js, which
+   * is not deployed — no live route calls this any more. Use
+   * fireEmbedding({ kind: 'job', ... }) (embeddingTrigger.js) instead.
+   *
    * Queue a job for embedding generation (non-blocking)
    * @param {ObjectId} jobId
    * @param {number} priority - 1-10 (lower = higher priority)
@@ -192,9 +234,15 @@ class JobEmbeddingService {
    */
   async generateEmbedding(jobId) {
     const debugId = debugLogger.generateDebugId();
+    // Read time of this attempt: the stale marker is cleared only if no
+    // change landed after it (#92), and the retry worker's per-job cooldown
+    // keys on it (a permanently failing job is retried hourly, not every tick).
+    const attemptStartedAt = new Date();
+    let textTooShort = false;
 
     try {
       debugLogger.start(debugId, 'EMBEDDING', 'generate', { jobId });
+      await Job.updateOne({ _id: jobId }, { $set: { 'embedding.lastAttemptedAt': attemptStartedAt } });
 
       // Fetch job
       const job = await Job.findById(jobId);
@@ -222,6 +270,7 @@ class JobEmbeddingService {
 
       // Validate text
       if (!text || text.length < 10) {
+        textTooShort = true;
         throw new Error('Job text too short for embedding');
       }
 
@@ -260,11 +309,13 @@ class JobEmbeddingService {
         $set: {
           'embedding.vector': vector,
           'embedding.model': this.model,
+          'embedding.dims': vector.length,
           'embedding.generatedAt': new Date(),
           'embedding.status': 'completed',
           'embedding.error': null
         }
       });
+      await clearEmbeddingStale('job', jobId, attemptStartedAt);
 
       debugLogger.success(debugId, 'EMBEDDING', 'generate', {
         jobId,
@@ -283,6 +334,8 @@ class JobEmbeddingService {
         },
         $inc: { 'embedding.retries': 1 }
       });
+      // Nothing to re-embed until the job's text changes (which re-marks it).
+      if (textTooShort) await clearEmbeddingStale('job', jobId, attemptStartedAt);
 
       throw error;
     }
@@ -296,8 +349,14 @@ class JobEmbeddingService {
   prepareTextForEmbedding(job) {
     const parts = [];
 
-    // Extract role type from title (Frontend, Backend, Full Stack, etc.)
-    const roleType = this.extractRoleType(job.title);
+    // Extract role type from title (Frontend, Backend, Full Stack, etc.).
+    // 88: only for jobs in a software / design / engineering category — a
+    // "Restaurant Server" or a phone shop's "Agjent shitjesh … mobile" was
+    // embedded as "This is a Backend / Mobile Developer position" and pulled
+    // next to developer profiles (similar jobs, match notifications).
+    const roleType = (!job.category || ROLE_HINT_CATEGORIES.has(job.category))
+      ? this.extractRoleType(job.title)
+      : null;
 
     // Title (most important - include twice for weight)
     if (job.title) {
@@ -374,7 +433,8 @@ class JobEmbeddingService {
 
     // Mobile roles — checked FIRST so "React Native" doesn't get misclassified
     // as Frontend by the bare "react" keyword in the Frontend check below.
-    if (t.includes('mobile') || /\b(ios|android|flutter)\b/.test(t) ||
+    // (88: a bare "mobile" is not enough — "Shitës telefonash mobile".)
+    if (/\bmobile\s+(app|apps|developer|engineer|dev)\b/.test(t) || /\b(ios|android|flutter)\b/.test(t) ||
         t.includes('react native')) {
       return 'Mobile Developer';
     }
@@ -394,7 +454,8 @@ class JobEmbeddingService {
     // Backend roles
     if (t.includes('backend') || t.includes('back-end') || t.includes('back end') ||
         t.includes('api developer') ||
-        (/\bserver\b/.test(t) && !t.includes('full'))) {
+        // 88: "server" alone is a waiter ("Restaurant Server")
+        /\bserver[- ]side\b|\bserver\s+(developer|engineer)\b/.test(t)) {
       return 'Backend Developer';
     }
 
@@ -432,8 +493,10 @@ class JobEmbeddingService {
 
     // Generic software engineer — English + Albanian title patterns.
     // `zhvillues` = developer, `programues` = programmer (Albanian).
+    // 88: "Business Developer" / "Property Developer" are not software roles.
+    const nonSoftwareDeveloper = /\b(business|sales|biznes|property|real estate)\b/.test(t);
     if (t.includes('software engineer') || t.includes('software developer') ||
-        t.includes('programmer') || t.includes('developer') ||
+        t.includes('programmer') || (t.includes('developer') && !nonSoftwareDeveloper) ||
         t.includes('zhvillues') || t.includes('programues')) {
       return 'Software Engineer';
     }
@@ -442,61 +505,67 @@ class JobEmbeddingService {
   }
 
   /**
-   * Call OpenAI API with retry logic
+   * Call the OpenAI embeddings API — bounded and with a single retry policy.
+   *
+   *   - each attempt is limited to `apiTimeout` ms by the SDK, which aborts
+   *     the HTTP request (no orphaned requests outliving their p-limit slot);
+   *   - SDK-internal retries are off; this loop retries only errors a retry
+   *     can fix (isRetryableOpenAIError), at most `maxAttempts` attempts in
+   *     total, backing off 1 s, 2 s, ... (Retry-After honored, max 10 s);
+   *   - the p-limit slot is held only during the request, not the backoff.
+   *
    * @param {string} text
    * @param {string} debugId
+   * @param {number} [attempt=1]       first attempt number (kept for callers)
+   * @param {number} [maxAttempts]     total attempts, default OPENAI_EMBED_MAX_ATTEMPTS (3)
    * @returns {Promise<Array<number>>}
    */
-  async callOpenAIWithRetry(text, debugId, attempt = 1, maxAttempts = 3) {
-    try {
-      debugLogger.log(debugId, 'info', 'EMBEDDING', 'openai_call', {
-        attempt,
-        textLength: text.length,
-        model: this.model
-      });
+  async callOpenAIWithRetry(text, debugId, attempt = 1, maxAttempts = this.maxAttempts) {
+    const client = this.openai;
+    if (!client) throw new OpenAINotConfiguredError('embeddings');
 
-      // Use rate limiter
-      const embedRequest = { model: this.model, input: text };
-      if (this.embeddingDims) embedRequest.dimensions = this.embeddingDims;
-      const result = await this.limit(() =>
-        Promise.race([
-          this.openai.embeddings.create(embedRequest),
-          this.timeout(this.apiTimeout)
-        ])
-      );
+    const embedRequest = { model: this.model, input: text };
+    if (this.embeddingDims) embedRequest.dimensions = this.embeddingDims;
 
-      debugLogger.log(debugId, 'success', 'EMBEDDING', 'openai_response', {
-        attempt,
-        dataLength: result.data?.length,
-        model: result.model,
-        usage: result.usage
-      });
-
-      const vector = result.data[0].embedding;
-
-      return vector;
-    } catch (error) {
-      debugLogger.error(debugId, 'EMBEDDING', 'openai_call', error, {
-        attempt,
-        maxAttempts,
-        errorType: errorSanitizer.getErrorType(error),
-        retryable: errorSanitizer.isRetryable(error)
-      });
-
-      // Retry logic
-      if (attempt < maxAttempts && errorSanitizer.isRetryable(error)) {
-        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000); // Exponential backoff, max 10s
-        debugLogger.log(debugId, 'warning', 'EMBEDDING', 'openai_retry', {
-          attempt,
-          nextAttempt: attempt + 1,
-          delayMs: delay
+    for (let current = attempt; ; current++) {
+      try {
+        debugLogger.log(debugId, 'info', 'EMBEDDING', 'openai_call', {
+          attempt: current,
+          textLength: text.length,
+          model: this.model
         });
 
-        await this.sleep(delay);
-        return this.callOpenAIWithRetry(text, debugId, attempt + 1, maxAttempts);
-      }
+        const result = await this.limit(() =>
+          client.embeddings.create(embedRequest, { timeout: this.apiTimeout, maxRetries: 0 })
+        );
 
-      throw error;
+        debugLogger.log(debugId, 'success', 'EMBEDDING', 'openai_response', {
+          attempt: current,
+          dataLength: result.data?.length,
+          model: result.model,
+          usage: result.usage
+        });
+
+        return result.data[0].embedding;
+      } catch (error) {
+        const retryable = isRetryableOpenAIError(error);
+        debugLogger.error(debugId, 'EMBEDDING', 'openai_call', error, {
+          attempt: current,
+          maxAttempts,
+          errorType: errorSanitizer.getErrorType(error),
+          retryable
+        });
+
+        if (!retryable || current >= maxAttempts) throw error;
+
+        const delay = retryDelayMs(error, current - attempt + 1);
+        debugLogger.log(debugId, 'warning', 'EMBEDDING', 'openai_retry', {
+          attempt: current,
+          nextAttempt: current + 1,
+          delayMs: delay
+        });
+        await this.sleep(delay);
+      }
     }
   }
 
@@ -663,6 +732,28 @@ class JobEmbeddingService {
         }
       });
 
+      // 80: reciprocal update. A job's list used to contain only jobs that
+      // existed when IT was embedded — nothing ever added newer jobs, so as
+      // its neighbours expired the list emptied out. Each neighbour now gets
+      // this job too (kept sorted, capped at similarityTopN). Best effort: the
+      // read path also tops a short list up from the category/city fallback.
+      if (topSimilar.length > 0) {
+        try {
+          const ops = [];
+          for (const s of topSimilar) {
+            ops.push({ updateOne: { filter: { _id: s.jobId }, update: { $pull: { similarJobs: { jobId: job._id } } }, timestamps: false } });
+            ops.push({ updateOne: {
+              filter: { _id: s.jobId },
+              update: { $push: { similarJobs: { $each: [{ jobId: job._id, score: s.score, computedAt }], $sort: { score: -1 }, $slice: this.similarityTopN } } },
+              timestamps: false,
+            } });
+          }
+          await Job.bulkWrite(ops, { ordered: true });
+        } catch (err) {
+          debugLogger.warning(debugId, 'EMBEDDING', 'compute_similarity', 'Reciprocal similar-jobs update failed', { jobId, error: err.message });
+        }
+      }
+
       debugLogger.success(debugId, 'EMBEDDING', 'compute_similarity', {
         jobId,
         similarJobsCount: topSimilar.length,
@@ -792,32 +883,50 @@ class JobEmbeddingService {
    * @param {ObjectId} jobId
    * @returns {Promise<Array>} Similar jobs
    */
-  async getSimilarJobsFallback(jobId) {
+  async getSimilarJobsFallback(jobOrId, { limit = 10, excludeIds = [] } = {}) {
     const debugId = debugLogger.generateDebugId();
+    // A job document / lean object (has its fields) or just its id. Note an
+    // ObjectId also answers ._id (Mongoose adds that getter), so test fields.
+    const given = jobOrId && typeof jobOrId === 'object'
+      && (jobOrId.category !== undefined || jobOrId.location !== undefined) ? jobOrId : null;
+    const jobId = given ? given._id : jobOrId;
 
     try {
       debugLogger.start(debugId, 'EMBEDDING', 'fallback', { jobId });
 
-      const job = await Job.findById(jobId);
+      const job = given || await Job.findById(jobId).select('category location').lean();
 
       if (!job) {
         throw new Error(`Job ${jobId} not found`);
       }
 
-      // Simple matching: same category and/or location
-      const similarJobs = await Job.find({
-        _id: { $ne: jobId },
-        isDeleted: false,
-        status: 'active',
-        $or: [
-          { category: job.category },
-          { 'location.city': job.location?.city }
-        ]
-      })
-        .limit(10)
-        .sort({ postedAt: -1 })
-        .select('_id title category location postedAt')
+      // 81: same liveness rule as the cached path (an expired job stays
+      // 'active' until the hourly cron), the fields the card renders (company,
+      // salary, job type, slug), and SAME-CATEGORY jobs first — a same-city
+      // job in an unrelated category only fills the remaining places.
+      const exclude = [jobId, ...excludeIds];
+      const base = { _id: { $nin: exclude }, isDeleted: false, status: 'active', expiresAt: { $gt: new Date() } };
+      const find = (filter, n) => Job.find(filter)
+        .sort({ postedAt: -1, _id: -1 })
+        .limit(n)
+        // (embedding.vector is select:false in the schema; excluding the
+        // parent 'embedding' here too is a MongoDB "path collision" error)
+        .select('-similarJobs -similarityMetadata')
+        .populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.location')
         .lean();
+
+      const sameCategory = job.category ? await find({ ...base, category: job.category }, limit) : [];
+      let similarJobs = sameCategory;
+      if (similarJobs.length < limit && job.location?.city) {
+        const taken = similarJobs.map(j => j._id);
+        const sameCity = await find({
+          ...base,
+          _id: { $nin: [...exclude, ...taken] },
+          'location.city': job.location.city,
+          ...(job.category && { category: { $ne: job.category } }),
+        }, limit - similarJobs.length);
+        similarJobs = [...similarJobs, ...sameCity];
+      }
 
       debugLogger.success(debugId, 'EMBEDDING', 'fallback', {
         jobId,

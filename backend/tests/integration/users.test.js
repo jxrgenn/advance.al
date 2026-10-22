@@ -94,7 +94,7 @@ describe('Users API - Integration Tests', () => {
         .set(createAuthHeaders(user))
         .send({
           employerProfile: {
-            description: 'New desc',
+            description: 'New description of the company, long enough to be accepted',
             verified: true,
             verificationStatus: 'approved'
           }
@@ -103,7 +103,7 @@ describe('Users API - Integration Tests', () => {
       const dbUser = await User.findById(user._id);
       expect(dbUser.profile.employerProfile.verified).toBe(false);
       expect(dbUser.profile.employerProfile.verificationStatus).toBe('pending');
-      expect(dbUser.profile.employerProfile.description).toBe('New desc');
+      expect(dbUser.profile.employerProfile.description).toBe('New description of the company, long enough to be accepted');
     });
 
     it('cannot self-set freePostingEnabled (top-level User field, not destructured)', async () => {

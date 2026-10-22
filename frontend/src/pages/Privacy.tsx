@@ -153,10 +153,11 @@ const Privacy = () => {
               </div>
 
               <div>
-                <h4 className="font-semibold text-foreground mb-2">Të Dhëna Pagese (në të ardhmen)</h4>
+                <h4 className="font-semibold text-foreground mb-2">Të Dhëna Pagese</h4>
                 <p className="text-sm ml-2">
-                  Kur shërbimet me pagesë aktivizohen, pagesat do të përpunohen përmes Paysera. Ne nuk ruajmë
-                  numrat e kartave të kreditit ose të dhëna të plota bankare në serverët tanë.
+                  Pagesat me kartë për publikimin e punëve përpunohen nga Stripe. Ne nuk ruajmë
+                  numrat e kartave të kreditit ose të dhëna të plota bankare në serverët tanë; ruajmë
+                  të dhënat e porosisë (shuma, data, statusi i pagesës dhe identifikuesi i pagesës te Stripe).
                 </p>
               </div>
             </CardContent>
@@ -355,8 +356,8 @@ const Privacy = () => {
                   <p className="text-xs">Monitorimi i gabimeve teknike dhe performancës</p>
                 </div>
                 <div className="bg-muted/50 p-3 rounded-lg">
-                  <p className="font-medium text-foreground text-sm">Paysera (Lituani) — në të ardhmen</p>
-                  <p className="text-xs">Përpunimi i pagesave kur shërbimet me pagesë aktivizohen</p>
+                  <p className="font-medium text-foreground text-sm">Stripe</p>
+                  <p className="text-xs">Përpunimi i pagesave me kartë për publikimin e punëve</p>
                 </div>
                 <div className="bg-muted/50 p-3 rounded-lg">
                   <p className="font-medium text-foreground text-sm">Railway / Vercel</p>

@@ -200,13 +200,17 @@ reportSchema.virtual('priorityScore').get(function() {
   return priorityScores[this.priority] || 0;
 });
 
+// User names live under profile.* (a User has no top-level firstName /
+// lastName) — populate these paths, not 'firstName lastName'.
+const REPORT_USER_NAME_FIELDS = 'profile.firstName profile.lastName profile.employerProfile.companyName';
+
 // Static method to get reports by status
 reportSchema.statics.getByStatus = function(status, options = {}) {
   const query = status === 'all' ? {} : { status };
   return this.find(query)
-    .populate('reportedUser', 'firstName lastName email userType profile.profilePicture')
-    .populate('reportingUser', 'firstName lastName email userType')
-    .populate('assignedAdmin', 'firstName lastName email')
+    .populate('reportedUser', `${REPORT_USER_NAME_FIELDS} email userType status profile.profilePicture`)
+    .populate('reportingUser', `${REPORT_USER_NAME_FIELDS} email userType status`)
+    .populate('assignedAdmin', `${REPORT_USER_NAME_FIELDS} email`)
     .sort(options.sort || { createdAt: -1 })
     .limit(options.limit || 20)
     .skip(options.skip || 0);
@@ -222,8 +226,8 @@ reportSchema.statics.getReportsForUser = function(userId, includeAsReporter = fa
     ];
   }
   return this.find(query)
-    .populate('reportingUser', 'firstName lastName email userType')
-    .populate('assignedAdmin', 'firstName lastName email')
+    .populate('reportingUser', `${REPORT_USER_NAME_FIELDS} email userType status`)
+    .populate('assignedAdmin', `${REPORT_USER_NAME_FIELDS} email`)
     .sort({ createdAt: -1 });
 };
 
@@ -317,7 +321,7 @@ reportSchema.methods.resolve = async function(action, reason, adminId, duration 
 };
 
 // Instance method to reopen/edit resolved report
-reportSchema.methods.reopen = async function(adminId, reason = 'Report reopened for review') {
+reportSchema.methods.reopen = async function(adminId, reason = 'Raporti u rihap për rishikim.') {
   const User = mongoose.model('User');
   const Notification = mongoose.model('Notification');
 
@@ -329,11 +333,13 @@ reportSchema.methods.reopen = async function(adminId, reason = 'Report reopened 
     if (reportedUser.status === 'suspended' || reportedUser.status === 'banned') {
       await reportedUser.liftSuspension();
 
-      // Create notification about account restoration
+      // Create notification about account restoration. The admin's reopen
+      // reason is an internal note (it is stored in internalNotes below) —
+      // it is not shown to the user.
       await Notification.createAccountActionNotification(
         this.reportedUser,
         'account_restored',
-        `Llogaria juaj është riaktivizuar. Raporti që çoi në pezullimin/mbylljen e llogarisë është rishikuar. ${reason}`,
+        'Llogaria juaj është riaktivizuar. Raporti që çoi në pezullimin/mbylljen e llogarisë është rishikuar.',
         null,
         this._id
       );

@@ -44,12 +44,12 @@ const CookieConsent = () => {
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
           <Cookie className="h-5 w-5 text-primary flex-shrink-0 hidden sm:block" />
           <p className="text-sm text-gray-600 text-center sm:text-left flex-1">
-            Kjo faqe perdor cookies per funksionimin baze te platformes.{" "}
+            Kjo faqe përdor cookies për funksionimin bazë të platformës.{" "}
             <Link
               to="/privacy"
               className="text-primary hover:underline font-medium"
             >
-              Politika e Privatesise
+              Politika e Privatësisë
             </Link>
           </p>
           <button

@@ -83,6 +83,33 @@ describe('notificationService — send orchestration', () => {
     // success may be false (email service disabled in test) but metadata still set
   });
 
+  // A QuickUser alert counts as sent only when the provider accepted it.
+  const withAcceptingResend = async (fn) => {
+    const prevEnabled = resendEmailService.enabled;
+    const prevResend = resendEmailService.resend;
+    resendEmailService.enabled = true;
+    resendEmailService.resend = { emails: { send: async () => ({ data: { id: 'fake' }, error: null }) } };
+    try { return await fn(); } finally {
+      resendEmailService.enabled = prevEnabled;
+      resendEmailService.resend = prevResend;
+    }
+  };
+
+  it('sendJobNotificationToUser with the email service disabled: not sent, nothing recorded', async () => {
+    const qu = await QuickUser.create({
+      firstName: 'A', lastName: 'B', email: 'disabled@example.com',
+      location: 'Tiranë', interests: ['Teknologji'],
+    });
+    const { user: emp } = await createEmployer();
+    const job = await createJob(emp, { title: 'React Dev' });
+
+    const r = await notificationService.sendJobNotificationToUser(qu, job);
+    expect(r.success).toBe(false);
+    expect(r.error).toBe('email service disabled');
+    const refreshed = await QuickUser.findById(qu._id).lean();
+    expect([refreshed.lastNotifiedAt, refreshed.notificationCount, refreshed.notifiedJobIds]).toEqual([null, 0, []]);
+  });
+
   it('sendJobNotificationToUser sends email to QuickUser', async () => {
     const qu = await QuickUser.create({
       firstName: 'A', lastName: 'B', email: 'qu@example.com',
@@ -91,8 +118,9 @@ describe('notificationService — send orchestration', () => {
     const { user: emp } = await createEmployer();
     const job = await createJob(emp, { title: 'React Dev' });
 
-    const r = await notificationService.sendJobNotificationToUser(qu, job);
+    const r = await withAcceptingResend(() => notificationService.sendJobNotificationToUser(qu, job));
     expect(r.success).toBe(true);
+    expect(r.sent).toBe(true);
     expect(r.notifications.length).toBeGreaterThanOrEqual(1);
     expect(r.notifications.some(n => n.type === 'email')).toBe(true);
     // SMS NOT sent because user.preferences.smsNotifications=false (default)
@@ -114,7 +142,7 @@ describe('notificationService — send orchestration', () => {
     const { user: emp } = await createEmployer();
     const job = await createJob(emp);
 
-    const r = await notificationService.sendJobNotificationToUser(qu, job);
+    const r = await withAcceptingResend(() => notificationService.sendJobNotificationToUser(qu, job));
     expect(r.success).toBe(true);
     expect(r.notifications.some(n => n.type === 'sms')).toBe(true);
   });
@@ -129,7 +157,7 @@ describe('notificationService — send orchestration', () => {
     const { user: emp } = await createEmployer();
     const job = await createJob(emp);
 
-    const r = await notificationService.sendJobNotificationToUser(qu, job);
+    const r = await withAcceptingResend(() => notificationService.sendJobNotificationToUser(qu, job));
     expect(r.success).toBe(true);
     expect(r.notifications.some(n => n.type === 'sms')).toBe(false);
   });

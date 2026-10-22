@@ -20,6 +20,7 @@ const verificationLimiter = rateLimit({
   skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
   message: {
     success: false,
+    message: 'Shumë kërkesa për verifikim, ju lutemi provoni përsëri pas 15 minutash.',
     error: 'Shumë kërkesa për verifikim, ju lutemi provoni përsëri pas 15 minutash.',
   }
 });
@@ -31,6 +32,7 @@ const codeVerificationLimiter = rateLimit({
   skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
   message: {
     success: false,
+    message: 'Shumë tentativa verifikimi, ju lutemi provoni përsëri pas 15 minutash.',
     error: 'Shumë tentativa verifikimi, ju lutemi provoni përsëri pas 15 minutash.',
   }
 });

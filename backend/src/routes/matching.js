@@ -8,6 +8,13 @@ import logger from '../config/logger.js';
 
 const router = express.Router();
 
+// Candidate matching has no real payment provider yet: the only purchase path
+// is the mock grant, which exists only outside production with
+// ENABLE_MOCK_PAYMENTS=true. The purchase route and the /access answer both
+// read this, so the dashboard never offers a purchase the API will refuse.
+const isMatchingPurchaseAvailable = () =>
+  process.env.ENABLE_MOCK_PAYMENTS === 'true' && process.env.NODE_ENV !== 'production';
+
 /**
  * GET /api/matching/jobs/:jobId/candidates
  * Get top matching candidates for a job
@@ -111,7 +118,7 @@ router.post('/jobs/:jobId/purchase', validateObjectId('jobId'), authenticate, re
     // Payment gateway not yet integrated. The mock purchase grants paid
     // access for free, so it is impossible in production whatever
     // ENABLE_MOCK_PAYMENTS says (fail closed; bootCheck logs the flag).
-    if (process.env.ENABLE_MOCK_PAYMENTS !== 'true' || process.env.NODE_ENV === 'production') {
+    if (!isMatchingPurchaseAvailable()) {
       return res.status(503).json({
         success: false,
         message: 'Sistemi i pagesave do të jetë i disponueshëm së shpejti'
@@ -180,6 +187,13 @@ router.post('/track-contact', authenticate, requireEmployer, async (req, res) =>
     // Track the contact
     const result = await candidateMatchingService.trackContact(jobId, candidateId, contactMethod);
 
+    if (result.notFound) {
+      return res.status(404).json({ success: false, message: result.message });
+    }
+    if (!result.success) {
+      throw new Error(result.message || 'Error tracking contact');
+    }
+
     res.json(result);
 
   } catch (error) {
@@ -206,7 +220,9 @@ router.get('/jobs/:jobId/access', validateObjectId('jobId'), authenticate, requi
       success: true,
       data: {
         jobId,
-        hasAccess
+        hasAccess,
+        // false in production: the feature cannot be bought yet ("coming soon").
+        purchaseAvailable: isMatchingPurchaseAvailable()
       }
     });
 

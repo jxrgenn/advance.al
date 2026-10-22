@@ -10,6 +10,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
+import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
 import jobEmbeddingService from '../../src/services/jobEmbeddingService.js';
 import Job from '../../src/models/Job.js';
@@ -17,7 +18,7 @@ import { createVerifiedEmployer } from '../factories/user.factory.js';
 import { createJob } from '../factories/job.factory.js';
 
 function vectorAt(axis = 0, magnitude = 1) {
-  const v = new Array(1536).fill(0.001);
+  const v = new Array(EMBEDDING_DIMS).fill(0.001);
   v[axis] = magnitude;
   return v;
 }
@@ -27,7 +28,7 @@ async function jobWithEmbedding(emp, axis, overrides = {}) {
   job.embedding = {
     vector: vectorAt(axis),
     model: 'text-embedding-3-small',
-    dimensions: 1536,
+    dimensions: EMBEDDING_DIMS,
     generatedAt: new Date(),
     status: 'completed',
     retries: 0,

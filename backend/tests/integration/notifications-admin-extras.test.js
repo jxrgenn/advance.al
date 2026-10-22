@@ -102,14 +102,25 @@ describe('notifications.js — admin endpoint extras', () => {
         lastNotifiedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
       });
 
-      const r = await request(app)
-        .post('/api/notifications/manual-notify')
-        .set(createAuthHeaders(admin))
-        .send({ quickUserId: qu._id.toString(), jobId: job._id.toString() });
-      // JUSTIFIED: 200 happy; 400 if canReceiveNotification gate flips; 500 if
-      // Resend daily-quota saturation in shared inbox. All exercise the
-      // admin-handler + notification-eligibility branches.
-      expect([200, 400, 500]).toContain(r.status);
+      // Deterministic provider at the system boundary (the shared test key
+      // may be over its daily quota): the email is accepted.
+      const { default: resendEmailService } = await import('../../src/lib/resendEmailService.js');
+      const prev = { enabled: resendEmailService.enabled, resend: resendEmailService.resend };
+      resendEmailService.enabled = true;
+      resendEmailService.resend = { emails: { send: async () => ({ data: { id: 'fake' }, error: null }) } };
+      let r;
+      try {
+        r = await request(app)
+          .post('/api/notifications/manual-notify')
+          .set(createAuthHeaders(admin))
+          .send({ quickUserId: qu._id.toString(), jobId: job._id.toString() });
+      } finally {
+        resendEmailService.enabled = prev.enabled;
+        resendEmailService.resend = prev.resend;
+      }
+      expect(r.status).toBe(200);
+      expect(r.body.message).toBe('Njoftimi u dërgua me sukses');
+      expect(r.body.data.sent).toBe(true);
     });
 
     it('returns 404 when quickuser not found', async () => {

@@ -362,9 +362,14 @@ async function processNotifications(bulkNotification, targetUsers) {
 
       await Promise.allSettled(
         batch.map(async (user) => {
-          try {
-            // Create in-app notification if enabled
-            if (bulkNotification.deliveryChannels.inApp) {
+          // The two channels are independent: an in-app save failure must not
+          // cancel the email (and vice versa). Each gets its own try/catch and
+          // its own error log entry.
+          let anyDelivered = false;
+
+          // Create in-app notification if enabled
+          if (bulkNotification.deliveryChannels.inApp) {
+            try {
               const notification = new Notification({
                 userId: user._id,
                 type: 'general',
@@ -380,31 +385,37 @@ async function processNotifications(bulkNotification, targetUsers) {
 
               await notification.save();
               deliveredCount++;
+              anyDelivered = true;
+            } catch (error) {
+              logger.error(`Error creating in-app notification for user ${user._id}:`, error.message);
+              await bulkNotification.logError(error, user._id, 'in-app').catch(() => {});
             }
+          }
 
-            // Send email if enabled and user has email
-            if (bulkNotification.deliveryChannels.email && user.email) {
-              emailsSent++;
-              await sendBulkNotificationEmail(user.email, {
+          // Send email if enabled and user has email
+          if (bulkNotification.deliveryChannels.email && user.email) {
+            emailsSent++;
+            try {
+              const result = await sendBulkNotificationEmail(user.email, {
                 title: bulkNotification.title,
                 message: bulkNotification.message,
                 type: bulkNotification.type,
                 userName: `${user.profile?.firstName || ''} ${user.profile?.lastName || ''}`.trim() || 'Përdorues'
               });
+              if (result && result.success === false) {
+                // Email service disabled (no RESEND_API_KEY): not delivered.
+                throw new Error(`Email not sent: ${result.message || result.error || 'unknown'}`);
+              }
               emailsDelivered++;
-            }
-
-            sentCount++;
-
-          } catch (error) {
-            logger.error(`Error processing notification for user ${user._id}:`, error.message);
-            // Determine the channel based on the error
-            const channel = error.message.includes('email') || error.message.includes('Resend') ? 'email' : 'in-app';
-            await bulkNotification.logError(error, user._id, channel);
-            if (error.message.includes('email')) {
+              anyDelivered = true;
+            } catch (error) {
+              logger.error(`Error sending bulk email to user ${user._id}:`, error.message);
               emailsFailed++;
+              await bulkNotification.logError(error, user._id, 'email').catch(() => {});
             }
           }
+
+          if (anyDelivered) sentCount++;
         })
       );
 

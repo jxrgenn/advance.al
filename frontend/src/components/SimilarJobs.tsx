@@ -2,10 +2,12 @@ import { useState, useEffect, memo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MapPin, Building, Euro, Clock, ArrowRight, Loader2 } from "lucide-react";
+import { MapPin, Building, Clock, ArrowRight, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Job, jobsApi } from "@/lib/api";
-import { formatSalary } from "@/lib/salary";
+import SalaryDisplay from "@/components/SalaryDisplay";
+import { formatTimeAgoSq } from "@/lib/relativeTime";
+import { jobTypeLabel } from "@/lib/labels";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface SimilarJobsProps {
@@ -69,17 +71,7 @@ const SimilarJobs = ({ currentJob, limit = 4 }: SimilarJobsProps) => {
     return 'bg-gray-100 text-gray-600';
   };
 
-  const formatPostedDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - date.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 1) return "1 ditë më parë";
-    if (diffDays < 7) return `${diffDays} ditë më parë`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)} javë më parë`;
-    return `${Math.floor(diffDays / 30)} muaj më parë`;
-  };
+  const formatPostedDate = (dateString: string) => formatTimeAgoSq(dateString);
 
   const handleJobClick = (jobId: string) => {
     navigate(`/jobs/${jobId}`);
@@ -150,14 +142,14 @@ const SimilarJobs = ({ currentJob, limit = 4 }: SimilarJobsProps) => {
 
               {/* Salary & Date */}
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-3">
-                {job.salary?.showPublic && (job.salary.min || job.salary.max) ? (
-                  <div className="flex items-center">
-                    <Euro className="h-3 w-3 mr-1" />
-                    <span className="font-medium text-green-700">{formatSalary(job.salary, user?.preferences?.salaryViewPeriod)}</span>
-                  </div>
-                ) : (
-                  <div></div>
-                )}
+                <SalaryDisplay
+                  salary={job.salary}
+                  period={user?.preferences?.salaryViewPeriod}
+                  className="flex items-center min-w-0"
+                  iconClassName="h-3 w-3 mr-1 flex-shrink-0"
+                  amountClassName="font-medium text-green-700"
+                  negotiableClassName=""
+                />
                 <div className="flex items-center">
                   <Clock className="h-3 w-3 mr-1" />
                   <span>{formatPostedDate(job.postedAt)}</span>
@@ -167,7 +159,7 @@ const SimilarJobs = ({ currentJob, limit = 4 }: SimilarJobsProps) => {
               {/* Job Type & Similarity Score */}
               <div className="flex items-center justify-between">
                 <Badge variant="outline" className="text-xs">
-                  {job.jobType}
+                  {jobTypeLabel(job.jobType)}
                 </Badge>
                 <div className="flex items-center gap-2">
                   {/* Similarity tier — categorical label from the embedding

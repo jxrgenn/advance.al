@@ -1,11 +1,36 @@
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, convertInchesToTwip } from 'docx';
 
+// docx colors are hex WITHOUT '#'.
 const COLORS = {
-  primary: '#1e3a8a', // Dark blue
-  secondary: '#64748b', // Slate gray
-  accent: '#0ea5e9', // Sky blue
-  text: '#1e293b' // Dark slate
+  primary: '1e3a8a', // Dark blue
+  secondary: '64748b', // Slate gray
+  accent: '0ea5e9', // Sky blue
+  text: '1e293b' // Dark slate
 };
+
+/**
+ * A paragraph whose TEXT carries the formatting (#65). In docx v9 a
+ * Paragraph's `run` option styles only the paragraph mark, and `bold` /
+ * `italics` are not Paragraph options at all — the visible text run was
+ * unformatted (name, title, dates, "Arritje:" all came out in the default
+ * body style). Formatting goes on a TextRun.
+ */
+function styledParagraph(text, runStyle = {}, paragraphOptions = {}) {
+  return new Paragraph({
+    ...paragraphOptions,
+    children: [new TextRun({ text: String(text ?? ''), ...runStyle })],
+  });
+}
+
+/** "start - end" / "start - Present"; '' when there is no date at all. */
+function dateRange(entry, presentLabel) {
+  const start = entry.startDate || '';
+  const end = entry.current ? presentLabel : (entry.endDate || '');
+  if (!start && !end) return '';
+  if (!start) return end;
+  if (!end) return start;
+  return `${start} - ${end}`;
+}
 
 /**
  * Generate a professional Word document CV from structured data
@@ -20,88 +45,50 @@ export async function generateCVDocument(cvData, language = 'sq') {
 
   // Candidate Name - LEFT ALIGNED
   sections.push(
-    new Paragraph({
-      text: cvData.personalInfo?.fullName || labels.yourName,
-      alignment: AlignmentType.LEFT,
-      spacing: { after: 100 },
-      run: {
-        color: COLORS.primary,
-        size: 36,
-        bold: true
-      }
-    })
+    styledParagraph(cvData.personalInfo?.fullName || labels.yourName,
+      { color: COLORS.primary, size: 36, bold: true },
+      { alignment: AlignmentType.LEFT, spacing: { after: 100 } })
   );
 
   // Professional Title if available - LEFT ALIGNED
   if (cvData.personalInfo?.title) {
     sections.push(
-      new Paragraph({
-        text: cvData.personalInfo.title,
-        alignment: AlignmentType.LEFT,
-        spacing: { after: 200 },
-        run: {
-          size: 24,
-          color: COLORS.accent,
-          bold: true
-        }
-      })
+      styledParagraph(cvData.personalInfo.title,
+        { size: 24, color: COLORS.accent, bold: true },
+        { alignment: AlignmentType.LEFT, spacing: { after: 200 } })
     );
   }
 
   // Contact Information - LEFT ALIGNED, ONE PER LINE
   if (cvData.personalInfo?.email) {
     sections.push(
-      new Paragraph({
-        text: `${labels.email}: ${cvData.personalInfo.email}`,
-        alignment: AlignmentType.LEFT,
-        spacing: { after: 60 },
-        run: {
-          size: 20,
-          color: COLORS.text
-        }
-      })
+      styledParagraph(`${labels.email}: ${cvData.personalInfo.email}`,
+        { size: 20, color: COLORS.text },
+        { alignment: AlignmentType.LEFT, spacing: { after: 60 } })
     );
   }
 
   if (cvData.personalInfo?.phone) {
     sections.push(
-      new Paragraph({
-        text: `${labels.phone}: ${cvData.personalInfo.phone}`,
-        alignment: AlignmentType.LEFT,
-        spacing: { after: 60 },
-        run: {
-          size: 20,
-          color: COLORS.text
-        }
-      })
+      styledParagraph(`${labels.phone}: ${cvData.personalInfo.phone}`,
+        { size: 20, color: COLORS.text },
+        { alignment: AlignmentType.LEFT, spacing: { after: 60 } })
     );
   }
 
   if (cvData.personalInfo?.address) {
     sections.push(
-      new Paragraph({
-        text: `${labels.address}: ${cvData.personalInfo.address}`,
-        alignment: AlignmentType.LEFT,
-        spacing: { after: 60 },
-        run: {
-          size: 20,
-          color: COLORS.text
-        }
-      })
+      styledParagraph(`${labels.address}: ${cvData.personalInfo.address}`,
+        { size: 20, color: COLORS.text },
+        { alignment: AlignmentType.LEFT, spacing: { after: 60 } })
     );
   }
 
   if (cvData.personalInfo?.linkedIn) {
     sections.push(
-      new Paragraph({
-        text: `LinkedIn: ${cvData.personalInfo.linkedIn}`,
-        alignment: AlignmentType.LEFT,
-        spacing: { after: 300 },
-        run: {
-          size: 20,
-          color: COLORS.text
-        }
-      })
+      styledParagraph(`LinkedIn: ${cvData.personalInfo.linkedIn}`,
+        { size: 20, color: COLORS.text },
+        { alignment: AlignmentType.LEFT, spacing: { after: 300 } })
     );
   }
 
@@ -125,40 +112,25 @@ export async function generateCVDocument(cvData, language = 'sq') {
       sections.push(
         new Paragraph({
           children: [
-            new TextRun({ text: exp.position, bold: true, size: 24 }),
-            new TextRun({ text: ` - ${exp.company}`, size: 24 })
+            new TextRun({ text: exp.position || '', bold: true, size: 24 }),
+            ...(exp.company ? [new TextRun({ text: ` - ${exp.company}`, size: 24 })] : [])
           ],
           spacing: { before: 200, after: 100 }
         })
       );
 
       // Date range
-      const dateRange = exp.current
-        ? `${exp.startDate} - ${labels.present}`
-        : `${exp.startDate} - ${exp.endDate || ''}`;
-
-      sections.push(
-        new Paragraph({
-          text: dateRange,
-          italics: true,
-          spacing: { after: 100 },
-          run: {
-            color: COLORS.secondary
-          }
-        })
-      );
+      const expDates = dateRange(exp, labels.present);
+      if (expDates) {
+        sections.push(
+          styledParagraph(expDates, { italics: true, color: COLORS.secondary }, { spacing: { after: 100 } })
+        );
+      }
 
       // Location
       if (exp.location) {
         sections.push(
-          new Paragraph({
-            text: exp.location,
-            spacing: { after: 100 },
-            run: {
-              color: COLORS.secondary,
-              italics: true
-            }
-          })
+          styledParagraph(exp.location, { italics: true, color: COLORS.secondary }, { spacing: { after: 100 } })
         );
       }
 
@@ -177,21 +149,11 @@ export async function generateCVDocument(cvData, language = 'sq') {
       // Achievements
       if (exp.achievements?.length > 0) {
         sections.push(
-          new Paragraph({
-            text: labels.achievements + ':',
-            bold: true,
-            spacing: { before: 100 }
-          })
+          styledParagraph(labels.achievements + ':', { bold: true }, { spacing: { before: 100 } })
         );
         exp.achievements.forEach(achievement => {
           sections.push(
-            new Paragraph({
-              text: `✓ ${achievement}`,
-              spacing: { before: 50 },
-              run: {
-                color: COLORS.accent
-              }
-            })
+            styledParagraph(`✓ ${achievement}`, { color: COLORS.accent }, { spacing: { before: 50 } })
           );
         });
       }
@@ -207,36 +169,31 @@ export async function generateCVDocument(cvData, language = 'sq') {
       sections.push(
         new Paragraph({
           children: [
-            new TextRun({ text: edu.degree, bold: true, size: 24 }),
-            new TextRun({ text: ` - ${edu.fieldOfStudy}`, size: 24 })
+            new TextRun({ text: edu.degree || '', bold: true, size: 24 }),
+            // Guarded like the PDF renderer: no dangling "Bachelor - ".
+            ...(edu.fieldOfStudy ? [new TextRun({ text: ` - ${edu.fieldOfStudy}`, size: 24 })] : [])
           ],
           spacing: { before: 200, after: 100 }
         })
       );
 
       // Institution
-      sections.push(
-        new Paragraph({
-          text: edu.institution,
-          spacing: { after: 50 }
-        })
-      );
+      if (edu.institution) {
+        sections.push(
+          new Paragraph({
+            text: edu.institution,
+            spacing: { after: 50 }
+          })
+        );
+      }
 
       // Date range
-      const eduDateRange = edu.current
-        ? `${edu.startDate} - ${labels.present}`
-        : `${edu.startDate} - ${edu.endDate || ''}`;
-
-      sections.push(
-        new Paragraph({
-          text: eduDateRange,
-          italics: true,
-          spacing: { after: 50 },
-          run: {
-            color: COLORS.secondary
-          }
-        })
-      );
+      const eduDates = dateRange(edu, labels.present);
+      if (eduDates) {
+        sections.push(
+          styledParagraph(eduDates, { italics: true, color: COLORS.secondary }, { spacing: { after: 50 } })
+        );
+      }
 
       // GPA and honors
       if (edu.gpa || edu.honors) {
@@ -244,13 +201,7 @@ export async function generateCVDocument(cvData, language = 'sq') {
         if (edu.gpa) extras.push(`${labels.gpa}: ${edu.gpa}`);
         if (edu.honors) extras.push(edu.honors);
         sections.push(
-          new Paragraph({
-            text: extras.join(' | '),
-            spacing: { after: 200 },
-            run: {
-              color: COLORS.secondary
-            }
-          })
+          styledParagraph(extras.join(' | '), { color: COLORS.secondary }, { spacing: { after: 200 } })
         );
       }
     });
@@ -348,13 +299,7 @@ export async function generateCVDocument(cvData, language = 'sq') {
       if (ref.email || ref.phone) {
         const contact = [ref.email, ref.phone].filter(Boolean).join(' | ');
         sections.push(
-          new Paragraph({
-            text: contact,
-            spacing: { after: 100 },
-            run: {
-              color: COLORS.secondary
-            }
-          })
+          styledParagraph(contact, { color: COLORS.secondary }, { spacing: { after: 100 } })
         );
       }
     });
@@ -386,17 +331,9 @@ export async function generateCVDocument(cvData, language = 'sq') {
  * @returns {Paragraph}
  */
 function createSectionHeading(text) {
-  return new Paragraph({
-    text: text,
-    heading: HeadingLevel.HEADING_2,
-    thematicBreak: true,
-    spacing: { before: 400, after: 200 },
-    run: {
-      color: COLORS.primary,
-      bold: true,
-      size: 28
-    }
-  });
+  return styledParagraph(text,
+    { color: COLORS.primary, bold: true, size: 28 },
+    { heading: HeadingLevel.HEADING_2, thematicBreak: true, spacing: { before: 400, after: 200 } });
 }
 
 // Albanian labels

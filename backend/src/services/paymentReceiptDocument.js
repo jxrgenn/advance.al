@@ -10,6 +10,7 @@
 // compliance task. This is "evidence of receipt" only.
 
 import { Document, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel, convertInchesToTwip } from 'docx';
+import { formatAlbanianDate, albanianYear } from '../lib/albanianDate.js';
 
 const COLORS = {
   primary: '#16a34a',  // green — matches the receipt-email accent
@@ -28,9 +29,11 @@ function fmtAmount(eur) {
   return `€${Number(eur || 0).toFixed(2)}`;
 }
 
+// Calendar day in Tirana ("3 tetor 2026") — same as the receipt email, not
+// the server's UTC day (a 23:30 payment used to print the previous date).
 function fmtDate(date) {
   const d = date instanceof Date ? date : new Date(date || Date.now());
-  return d.toLocaleDateString('sq-AL', { year: 'numeric', month: 'long', day: 'numeric' });
+  return formatAlbanianDate(d) || formatAlbanianDate(new Date());
 }
 
 function row(label, value) {
@@ -133,7 +136,7 @@ export async function generatePaymentReceiptDocx({ employerName, jobTitle, amoun
     spacing: { before: 200 },
     children: [
       new TextRun({
-        text: `© ${new Date().getFullYear()} advance.al — Platforma e Punës në Shqipëri`,
+        text: `© ${albanianYear()} advance.al — Platforma e Punës në Shqipëri`,
         size: 16,
         color: COLORS.muted,
       }),

@@ -100,14 +100,16 @@ describe('Phase 19.A.1 — Models Batch 1', () => {
       expect(cities).not.toContain('Tiranë');
     });
 
-    it('getPopularLocations static returns ordered by jobCount desc, limited', async () => {
-      await Location.updateOne({ city: 'Tiranë' }, { $set: { jobCount: 50 } });
-      await Location.updateOne({ city: 'Durrës' }, { $set: { jobCount: 30 } });
-      await Location.updateOne({ city: 'Vlorë' }, { $set: { jobCount: 10 } });
+    it('getPopularLocations static returns ordered by live open-job count desc, limited (#117)', async () => {
+      const { createVerifiedEmployer } = await import('../factories/user.factory.js');
+      const { createJob } = await import('../factories/job.factory.js');
+      const { user: emp } = await createVerifiedEmployer();
+      for (let i = 0; i < 3; i++) await createJob(emp, { city: 'Tiranë' });
+      for (let i = 0; i < 2; i++) await createJob(emp, { city: 'Durrës' });
+      await createJob(emp, { city: 'Vlorë' });
+      await Location.updateOne({ city: 'Vlorë' }, { $set: { jobCount: 999 } }); // stale counter ignored
       const list = await Location.getPopularLocations(2);
-      expect(list).toHaveLength(2);
-      expect(list[0].city).toBe('Tiranë');
-      expect(list[1].city).toBe('Durrës');
+      expect(list.map(l => [l.city, l.jobCount])).toEqual([['Tiranë', 3], ['Durrës', 2]]);
     });
   });
 

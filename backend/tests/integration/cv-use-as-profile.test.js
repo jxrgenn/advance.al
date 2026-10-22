@@ -14,6 +14,7 @@
 import fs from 'fs';
 import path from 'path';
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
+import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
 import request from 'supertest';
 import app from '../../server.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
@@ -76,7 +77,7 @@ describe('AI CV — use as profile CV (O-70) + cleanup/quota (O-71)', () => {
     // fireEmbedding('cv-generate') runs after every generation — keep it offline.
     realEmbeddingsClient = jobEmbeddingService.openai;
     jobEmbeddingService.openai = {
-      embeddings: { create: async (req) => ({ data: [{ embedding: new Array(req.dimensions || 1536).fill(0.001) }], usage: { total_tokens: 1 } }) },
+      embeddings: { create: async (req) => ({ data: [{ embedding: new Array(req.dimensions || EMBEDDING_DIMS).fill(0.001) }], usage: { total_tokens: 1 } }) },
     };
   });
 
@@ -119,20 +120,33 @@ describe('AI CV — use as profile CV (O-70) + cleanup/quota (O-71)', () => {
     // Review #1: only attempts that never got an OpenAI completion are free.
     // A billed completion counts even when it is unusable — refunding those
     // allowed unlimited paid calls.
-    it('no completion (OpenAI API error after retries) → 500 and the daily unit is refunded', async () => {
+    // #60: upstream outage after the retries → 503 with a clear Albanian
+    // message (was a generic 500); no completion, so the unit is refunded.
+    it('no completion (OpenAI 5xx after retries) → 503 "nuk është i disponueshëm" and the daily unit is refunded', async () => {
       const { user } = await createJobseeker({ email: 'o71-apierr@example.com' });
       _setOpenAIClient(throwingStub(() => new OpenAI.InternalServerError(500, { message: 'upstream' }, 'upstream', {})));
+      const r = await generate(user);
+      expect(r.status).toBe(503);
+      expect(r.body.message).toBe('Shërbimi i AI për CV-të nuk është i disponueshëm për momentin. Provoni përsëri pas pak minutash.');
+      expect(await peek(`cv:${user._id}`)).toBe(0);
+    }, 30000);
+
+    it('a non-retryable API error (401 bad key) → 500 at once, unit refunded', async () => {
+      const { user } = await createJobseeker({ email: 'o71-401@example.com' });
+      _setOpenAIClient(throwingStub(() => new OpenAI.AuthenticationError(401, { message: 'Incorrect API key' }, 'Incorrect API key', {})));
       const r = await generate(user);
       expect(r.status).toBe(500);
       expect(r.body.message).toBe('Gabim në gjenerimin e CV');
       expect(await peek(`cv:${user._id}`)).toBe(0);
     }, 30000);
 
-    it('client-side timeout counts (OpenAI may still bill the generation) → 500, unit kept', async () => {
+    // #60: the deadline-bounded call answers 504 instead of the socket being cut.
+    it('client-side timeout counts (OpenAI may still bill the generation) → 504, unit kept', async () => {
       const { user } = await createJobseeker({ email: 'o71-timeout@example.com' });
       _setOpenAIClient(throwingStub(() => new OpenAI.APIConnectionTimeoutError()));
       const r = await generate(user);
-      expect(r.status).toBe(500);
+      expect(r.status).toBe(504);
+      expect(r.body.message).toBe('Gjenerimi i CV-së po zgjat më shumë se zakonisht. Provoni përsëri pas pak minutash.');
       expect(await peek(`cv:${user._id}`)).toBe(1);
     }, 30000);
 
@@ -325,7 +339,11 @@ describe('AI CV — use as profile CV (O-70) + cleanup/quota (O-71)', () => {
       }
     });
 
-    it('Cloudinary: stored private; an employer with an application signs and downloads the exact PDF', async () => {
+    // Real Cloudinary upload: runs where the dev-cloud credentials exist
+    // (.env.test); CI's PR-triggered jobs have no Cloudinary secrets (same
+    // gating as cloudinary-real.test.js) — it used to fail there (O-79).
+    const itWithCloudinary = CLOUDINARY_KEYS.every((k) => process.env[k]) ? it : it.skip;
+    itWithCloudinary('Cloudinary: stored private; an employer with an application signs and downloads the exact PDF', async () => {
       _setOpenAIClient(chatStub(JSON.stringify(STUB_CV)));
       const { user } = await createJobseeker({ email: 'o70-cloud@example.com' });
       const { user: emp } = await createVerifiedEmployer();

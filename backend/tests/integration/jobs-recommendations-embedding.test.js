@@ -2,7 +2,7 @@
  * Integration tests for /api/jobs/recommendations after PR-B rewire.
  *
  * Covers:
- *   - embedding path is used when user has a completed 1536-dim vector
+ *   - embedding path is used when user has a completed EMBEDDING_DIMS-length vector
  *   - heuristic fallback when user has no embedding / corrupted vector
  *   - hybrid boosts (skills overlap, seniority match, location, salary, tier)
  *     actually shift rankings
@@ -84,7 +84,7 @@ describe('GET /api/jobs/recommendations — embedding path (PR-B)', () => {
     await closeTestDB();
   });
 
-  it('uses embedding path when jobseeker has a completed 1536-dim vector', async () => {
+  it('uses embedding path when jobseeker has a completed EMBEDDING_DIMS-length vector', async () => {
     const { user: js } = await createJobseeker({ email: 'emb-basic@test.com' });
     await setUserEmbedding(js._id, spikedVector(7));
 

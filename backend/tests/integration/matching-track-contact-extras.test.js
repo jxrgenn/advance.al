@@ -15,6 +15,7 @@ import { seedLocations } from '../fixtures/locations.fixture.js';
 import { createJobseeker, createVerifiedEmployer } from '../factories/user.factory.js';
 import { createJob } from '../factories/job.factory.js';
 import { createAuthHeaders } from '../helpers/auth.helper.js';
+import CandidateMatch from '../../src/models/CandidateMatch.js';
 
 describe('matching.js — POST /track-contact extras', () => {
   beforeAll(async () => {
@@ -79,6 +80,8 @@ describe('matching.js — POST /track-contact extras', () => {
     const { user: emp } = await createVerifiedEmployer();
     const { user: cand } = await createJobseeker();
     const job = await createJob(emp);
+    // The candidate must be in the job's match list (85).
+    await CandidateMatch.create({ jobId: job._id, candidateId: cand._id, matchScore: 60, expiresAt: new Date(Date.now() + 3600e3) });
 
     const r = await request(app)
       .post('/api/matching/track-contact')
@@ -89,5 +92,6 @@ describe('matching.js — POST /track-contact extras', () => {
         contactMethod: 'whatsapp',
       });
     expect(r.status).toBe(200);
+    expect((await CandidateMatch.findOne({ jobId: job._id, candidateId: cand._id }).lean()).contactMethod).toBe('whatsapp');
   });
 });

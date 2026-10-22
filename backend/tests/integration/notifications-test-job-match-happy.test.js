@@ -55,9 +55,10 @@ describe('notifications.js — POST /test-job-match happy path', () => {
 
     expect(r.status).toBe(200);
     expect(r.body.success).toBe(true);
-    expect(r.body.data).toBeDefined();
-    // notifyMatchingUsers returns an object describing the dispatch result;
-    // exact shape depends on whether email service was reachable. We assert
-    // the route's own success contract — the 200 OK with data envelope.
+    // A dry run: matching only, nothing sent or recorded.
+    expect(r.body.data.dryRun).toBe(true);
+    expect(r.body.data.stats.notificationsSent).toBe(0);
+    const users = await QuickUser.find({ email: /^match-/ }).lean();
+    expect(users.map(u => [u.lastNotifiedAt, u.notificationCount, u.pendingJobAlerts.length])).toEqual([[null, 0, 0], [null, 0, 0]]);
   });
 });

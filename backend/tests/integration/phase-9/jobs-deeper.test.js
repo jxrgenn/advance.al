@@ -5,7 +5,7 @@
  * /recommendations, /:id/similar.
  */
 
-import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll, afterEach, jest } from '@jest/globals';
 import request from 'supertest';
 import app from '../../../server.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../../setup/testDb.js';
@@ -16,6 +16,7 @@ import {
 import { createJob, createJobs } from '../../factories/job.factory.js';
 import { createAuthHeaders } from '../../helpers/auth.helper.js';
 import { Job } from '../../../src/models/index.js';
+import jobEmbeddingService from '../../../src/services/jobEmbeddingService.js';
 
 describe('Phase 9 — Jobs Deeper Coverage', () => {
   beforeAll(async () => {
@@ -102,21 +103,44 @@ describe('Phase 9 — Jobs Deeper Coverage', () => {
     });
 
     it('updating title queues embedding regen and clears similarJobs array', async () => {
+      // Deterministic (W2-4b (d)): the regeneration itself is replaced by a
+      // spy, so the asserted state can't be overwritten by a real OpenAI call
+      // finishing (→ 'completed') or failing (placeholder key → 'failed')
+      // inside a fixed sleep. We wait for the kick to ARRIVE instead of
+      // sleeping, then assert the durable effects of the edit.
+      jest.spyOn(jobEmbeddingService, 'isAvailable').mockReturnValue(true);
+      const generate = jest.spyOn(jobEmbeddingService, 'generateEmbedding').mockResolvedValue([]);
+      jest.spyOn(jobEmbeddingService, 'computeSimilarities').mockResolvedValue([]);
       const { user: emp } = await createVerifiedEmployer();
       const job = await createJob(emp);
       // Seed similarJobs to verify it gets cleared
       await Job.updateOne({ _id: job._id }, { similarJobs: [{ score: 0.8, jobId: job._id }] });
+      const editedAt = Date.now();
 
-      await request(app)
+      const r = await request(app)
         .put(`/api/jobs/${job._id}`)
         .set(createAuthHeaders(emp))
         .send({ title: 'New Title Triggers Embedding Regen' });
+      expect(r.status).toBe(200);
 
-      // setImmediate is async; give it a tick
-      await new Promise(r => setTimeout(r, 200));
-      const dbJob = await Job.findById(job._id);
+      for (let i = 0; i < 100 && generate.mock.calls.length === 0; i++) {
+        await new Promise(res => setTimeout(res, 20));
+      }
+      expect(generate).toHaveBeenCalledTimes(1);
+      expect(String(generate.mock.calls[0][0])).toBe(String(job._id));
+
+      // The route's own reset (similarJobs cleared, status pending) runs in a
+      // setImmediate scheduled before the kick — poll until it has landed.
+      let dbJob;
+      for (let i = 0; i < 100; i++) {
+        dbJob = await Job.findById(job._id).lean();
+        if (dbJob.embedding?.status === 'pending' && dbJob.similarJobs.length === 0) break;
+        await new Promise(res => setTimeout(res, 20));
+      }
       expect(dbJob.similarJobs).toEqual([]);
-      expect(dbJob.embedding?.status).toBe('pending');
+      expect(dbJob.embedding.status).toBe('pending');
+      // #92: the change is recorded durably until a generation covers it.
+      expect(dbJob.embedding.staleSince.getTime()).toBeGreaterThanOrEqual(editedAt);
     });
   });
 

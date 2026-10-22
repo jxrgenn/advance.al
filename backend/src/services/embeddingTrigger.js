@@ -7,9 +7,9 @@
  * scores, notifications never fired. Switched to inline generation matching the
  * jobseeker pattern that always worked. Inline = web process does:
  *   1. generate embedding (one OpenAI call, ~500ms-2s)
- *   2. compute similarity cache (writes notification.status='pending' first)
- *   3. fan-out notifications (if notifyUsers)
- *   4. write notification.status='sent' / 'failed'
+ *   2. compute similarity cache
+ *   3. fan-out notifications (if notifyUsers) — claimed via services/jobFanOut.js
+ *   4. write notification.status='sent' / 'failed' (only if the claim is still ours)
  * All inside setImmediate so the request-thread already replied. Errors are
  * non-fatal — embeddingRetryWorker sweeps stuck records every 10 min.
  *
@@ -50,6 +50,49 @@ export function fireEmbedding({ kind, id, reason, extraMetadata = {} }) {
   }
   setImmediate(async () => {
     const idStr = String(id);
+    const known = kind === 'job' || kind === 'jobseeker' || kind === 'quickuser';
+
+    // #92: record that this entity's vector is out of date BEFORE anything
+    // can drop the kick (daily cap, in-flight cap, missing API key, a restart
+    // mid-generation). A successful generation clears the marker; otherwise
+    // embeddingRetryWorker picks the record up. The old vector stays in use
+    // until the new one replaces it.
+    // Not awaited: the kick itself must not wait on this write (callers and
+    // tests expect the generation to start within the same tick). The marker
+    // carries the kick's own timestamp, which is never later than the
+    // generation's read time, so a generation can only clear it once it is
+    // written; in the rare case the write lands after that clear, the marker
+    // stays and the worker re-embeds once more — never the other way round.
+    if (known) {
+      const kickedAt = new Date();
+      import('./embeddingStaleness.js')
+        .then(({ markEmbeddingStale }) => markEmbeddingStale(kind, id, kickedAt))
+        .catch(() => { /* markEmbeddingStale logs its own failures */ });
+    }
+
+    // Same idea for the job-alert announcement: reserve it (idle → 'pending')
+    // BEFORE the kick can be dropped, so the retry sweep recovers it however
+    // old the job's postedAt is (e.g. a paid listing approved days after
+    // payment). See services/jobFanOut.js.
+    if (kind === 'job' && extraMetadata.notifyUsers === true) {
+      try {
+        const { reserveJobFanOut } = await import('./jobFanOut.js');
+        await reserveJobFanOut(id);
+      } catch (err) {
+        logger.warn('fireEmbedding: announcement reservation failed', { id: idStr, reason, error: err.message });
+      }
+    }
+
+    // No OPENAI_API_KEY: skip silently — no OpenAI call, no 401 in the logs.
+    // The stale marker above lets the retry worker catch up once a key is set.
+    if (known) {
+      const { default: jobSvc } = await import('./jobEmbeddingService.js');
+      if (!jobSvc.isAvailable()) {
+        logger.debug('fireEmbedding: OpenAI not configured — skipped', { kind, id: idStr, reason });
+        return;
+      }
+    }
+
     // Daily-quota gate (per-entity). Skip for CV-gen + payment-activation
     // signals — legitimate one-shot triggers we never want to drop (a paid
     // post's notify fan-out rides on this kick).
@@ -112,7 +155,6 @@ export function fireEmbedding({ kind, id, reason, extraMetadata = {} }) {
 // logged; the retry worker handles recovery on the next 10-min sweep.
 async function _processJob(id, idStr, reason, extraMetadata) {
   const { default: jobSvc } = await import('./jobEmbeddingService.js');
-  const { default: Job } = await import('../models/Job.js');
 
   // Step 1: embedding (mandatory; without this the rest is impossible)
   try {
@@ -131,39 +173,19 @@ async function _processJob(id, idStr, reason, extraMetadata) {
   }
 
   // Step 3: fan-out match notifications (only if caller asked).
-  // Wrapped in notification.status writes so a crash here is recoverable.
+  // runJobFanOut claims the announcement atomically (compare-and-swap on
+  // job.notification), so this inline run and the retry sweep can never
+  // both announce the job, and a fan-out that reports { success:false } is
+  // recorded as 'failed' (retried by the sweep) instead of 'sent'.
   if (extraMetadata.notifyUsers === true) {
     try {
-      await Job.updateOne(
-        { _id: id },
-        {
-          $set: { 'notification.status': 'pending', 'notification.lastAttemptAt': new Date() },
-          $inc: { 'notification.attempts': 1 },
-        }
-      );
-      const { default: notificationService } = await import('../lib/notificationService.js');
-      const populatedJob = await Job.findById(id)
-        .select('+embedding.vector')
-        .populate('employerId', 'profile.employerProfile.companyName profile.firstName profile.lastName profile.location');
-      if (!populatedJob) {
-        logger.warn('notify fan-out: job vanished before fan-out', { jobId: idStr });
-        return;
+      const { runJobFanOut } = await import('./jobFanOut.js');
+      const outcome = await runJobFanOut(id, { mode: 'inline' });
+      if (!outcome.claimed) {
+        logger.info('notify fan-out: not claimed (already announced, owned by another run, or job not live)', { jobId: idStr, reason });
       }
-      const result = await notificationService.notifyMatchingUsers(populatedJob);
-      const matchedCount = (result?.stats?.notificationsSent || 0)
-        + (result?.stats?.jobseekersQueuedForDigest || 0);
-      await Job.updateOne(
-        { _id: id },
-        { $set: { 'notification.status': 'sent', 'notification.matchedCount': matchedCount, 'notification.lastError': null } }
-      );
     } catch (err) {
       logger.warn('notify fan-out failed — retry worker will catch', { jobId: idStr, error: err.message });
-      try {
-        await Job.updateOne(
-          { _id: id },
-          { $set: { 'notification.status': 'failed', 'notification.lastError': err.message?.slice(0, 500) } }
-        );
-      } catch (_) { /* best effort */ }
     }
   }
 }

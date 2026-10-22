@@ -30,6 +30,7 @@ import { createJob } from '../factories/job.factory.js';
 import { createAuthHeaders } from '../helpers/auth.helper.js';
 import Application from '../../src/models/Application.js';
 import User from '../../src/models/User.js';
+import { RESUME_SIGN_MAX_PER_HOUR } from '../../src/routes/users.js';
 
 // Build a Cloudinary authenticated-type resume URL where the filename encodes
 // the owner's userId. The resume-sign endpoint validates this pattern.
@@ -264,13 +265,16 @@ describe('POST /api/users/resume/sign — rate limiting (Round O-B)', () => {
     await closeTestDB();
   });
 
-  it('caps a single user at 30 sign requests/hour — 31st returns 429', async () => {
+  // 134: the budget was 30/hr, which locked an employer out of CVs after
+  // screening ~15-30 applicants ("Shiko" + "Shkarko" each cost one). It is
+  // now RESUME_SIGN_MAX_PER_HOUR (300) — still a cap on runaway loops.
+  it('caps a single user at 300 sign requests/hour — 301st returns 429', async () => {
+    expect(RESUME_SIGN_MAX_PER_HOUR).toBe(300);
     const { user: owner } = await createJobseeker();
     const url = buildResumeUrl(owner._id.toString());
     const headers = createAuthHeaders(owner);
 
-    // First 30 are allowed.
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < RESUME_SIGN_MAX_PER_HOUR; i++) {
       const r = await request(app)
         .post('/api/users/resume/sign')
         .set(headers)
@@ -278,12 +282,11 @@ describe('POST /api/users/resume/sign — rate limiting (Round O-B)', () => {
       expect(r.status).toBe(200);
     }
 
-    // 31st trips the per-user limiter.
-    const r31 = await request(app)
+    const over = await request(app)
       .post('/api/users/resume/sign')
       .set(headers)
       .send({ resumeUrl: url });
-    expect(r31.status).toBe(429);
-    expect(r31.body.success).toBe(false);
-  }, 30000);
+    expect(over.status).toBe(429);
+    expect(over.body).toEqual({ success: false, message: 'Shumë kërkesa për nënshkrim URL-je. Provoni përsëri pas një ore.' });
+  }, 120000);
 });

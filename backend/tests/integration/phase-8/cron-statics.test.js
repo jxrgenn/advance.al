@@ -133,7 +133,9 @@ describe('Phase 8 — Cron Statics', () => {
   });
 
   describe('archiveOldApplications (data retention)', () => {
-    it('marks rejected/hired applications older than 1 year as withdrawn=true', async () => {
+    // 74: archived = archivedAt, NOT withdrawn (which means "the candidate
+    // withdrew" and hid the application from both dashboards).
+    it('marks rejected/hired applications older than 1 year with archivedAt (withdrawn stays false)', async () => {
       const { user: emp } = await createVerifiedEmployer();
       const job = await createJob(emp);
       const { user: js } = await createJobseeker({ emailVerified: true });
@@ -150,10 +152,11 @@ describe('Phase 8 — Cron Statics', () => {
       );
 
       const count = await archiveOldApplications();
-      expect(count).toBeGreaterThanOrEqual(1);
+      expect(count).toBe(1);
 
       const dbApp = await Application.findById(oldRejected._id);
-      expect(dbApp.withdrawn).toBe(true);
+      expect(dbApp.withdrawn).toBe(false);
+      expect(dbApp.archivedAt).toBeInstanceOf(Date);
     });
 
     it('does NOT archive recent applications', async () => {
@@ -165,9 +168,10 @@ describe('Phase 8 — Cron Statics', () => {
         status: 'rejected'
       });
 
-      await archiveOldApplications();
+      expect(await archiveOldApplications()).toBe(0);
       const dbApp = await Application.findById(recent._id);
       expect(dbApp.withdrawn).toBe(false);
+      expect(dbApp.archivedAt).toBeUndefined();
     });
   });
 

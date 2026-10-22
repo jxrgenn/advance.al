@@ -34,6 +34,7 @@ import Footer from "@/components/Footer";
 import { validateForm, postJobRules, formatValidationErrors } from "@/lib/formValidation";
 import { TextAreaWithCounter, InputWithCounter } from "@/components/CharacterCounter";
 import { JOB_CATEGORY_OPTIONS } from "@/constants/jobCategories";
+import { JOB_TYPE_OPTIONS } from "@/lib/labels";
 
 const JOB_DRAFT_KEY = 'postjob-draft';
 
@@ -1091,6 +1092,7 @@ const PostJob = () => {
             <SimpleGrid cols={2} spacing="md" data-tutorial="category">
               <Select
                 label="Kategoria"
+                allowDeselect={false}
                 placeholder="Zgjidhni kategorinë"
                 {...jobForm.getInputProps('category')}
                 data={JOB_CATEGORY_OPTIONS}
@@ -1099,13 +1101,10 @@ const PostJob = () => {
               />
               <Select
                 label="Lloji i Punës"
+                allowDeselect={false}
                 placeholder="Zgjidhni llojin"
                 {...jobForm.getInputProps('jobType')}
-                data={[
-                  { value: 'full-time', label: 'Full-time' },
-                  { value: 'part-time', label: 'Part-time' },
-                  { value: 'internship', label: 'Praktikë' }
-                ]}
+                data={JOB_TYPE_OPTIONS}
                 required
               />
             </SimpleGrid>
@@ -1138,6 +1137,7 @@ const PostJob = () => {
             <Box data-tutorial="location">
               <Select
                 label="Qyteti"
+                allowDeselect={false}
                 placeholder="Zgjidhni qytetin"
                 {...jobForm.getInputProps('city')}
                 data={locations.map(location => ({ value: location.city, label: location.city }))}
@@ -1196,6 +1196,7 @@ const PostJob = () => {
                   />
                   <Select
                     label="Monedha"
+                    allowDeselect={false}
                     {...jobForm.getInputProps('salaryCurrency')}
                     // EUR / ALL only — the Job schema rejects any other currency.
                     data={[

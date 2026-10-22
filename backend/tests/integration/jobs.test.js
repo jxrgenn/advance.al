@@ -462,11 +462,13 @@ describe('Jobs API - Integration Tests', () => {
     });
 
     // QA Round 2 (S1): employer phone/whatsapp are gated behind authentication.
-    it('hides employer phone/whatsapp from logged-out callers, shows them when authenticated', async () => {
+    it('hides employer phone/whatsapp from logged-out callers, shows enabled channels when authenticated', async () => {
       const { user: employer } = await createVerifiedEmployer();
       await User.findByIdAndUpdate(employer._id, {
         'profile.employerProfile.phone': '+355691234567',
         'profile.employerProfile.whatsapp': '+355681234567',
+        'profile.employerProfile.contactPreferences.enablePhoneContact': true,
+        'profile.employerProfile.contactPreferences.enableWhatsAppContact': true,
       });
       const job = await createJob(employer);
 
@@ -489,6 +491,41 @@ describe('Jobs API - Integration Tests', () => {
       const authEmp = authed.body.data.job.employerId;
       expect(authEmp.profile.employerProfile.phone).toBe('+355691234567');
       expect(authEmp.profile.employerProfile.whatsapp).toBe('+355681234567');
+    });
+
+    // An authenticated viewer sees ONLY the channels the employer switched on
+    // (contactPreferences); the account email only via "Kontakt me email".
+    it('shows a logged-in viewer only the contact channels the employer enabled', async () => {
+      const { user: employer } = await createVerifiedEmployer();
+      await User.findByIdAndUpdate(employer._id, {
+        'profile.employerProfile.phone': '+355691234567',
+        'profile.employerProfile.whatsapp': '+355681234567',
+        'profile.employerProfile.contactPreferences.enablePhoneContact': false,
+        'profile.employerProfile.contactPreferences.enableWhatsAppContact': true,
+        'profile.employerProfile.contactPreferences.enableEmailContact': false,
+      });
+      const job = await createJob(employer);
+      const { user: seeker } = await createJobseeker();
+
+      const first = await request(app).get(`/api/jobs/${job._id}`).set(createAuthHeaders(seeker));
+      expect(first.status).toBe(200);
+      const emp1 = first.body.data.job.employerId;
+      expect(emp1.profile.employerProfile.phone).toBeUndefined();
+      expect(emp1.profile.employerProfile.whatsapp).toBe('+355681234567');
+      expect(emp1.email).toBeUndefined();
+
+      await User.findByIdAndUpdate(employer._id, {
+        'profile.employerProfile.contactPreferences.enableWhatsAppContact': false,
+        'profile.employerProfile.contactPreferences.enableEmailContact': true,
+      });
+      const second = await request(app).get(`/api/jobs/${job._id}`).set(createAuthHeaders(seeker));
+      const emp2 = second.body.data.job.employerId;
+      expect(emp2.profile.employerProfile.phone).toBeUndefined();
+      expect(emp2.profile.employerProfile.whatsapp).toBeUndefined();
+      expect(emp2.email).toBe(employer.email);
+
+      const anon = await request(app).get(`/api/jobs/${job._id}`).set(createPublicHeaders());
+      expect(anon.body.data.job.employerId.email).toBeUndefined();
     });
 
     it('should increment view count', async () => {

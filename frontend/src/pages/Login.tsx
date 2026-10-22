@@ -6,9 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Mail, Lock, AlertCircle, Briefcase, User, Eye, EyeOff } from "lucide-react";
+import { Mail, Lock, AlertCircle, Briefcase, User, Eye, EyeOff, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, hasSessionEndedNotice, clearSessionEndedNotice } from "@/contexts/AuthContext";
 import SEO from "@/components/SEO";
 
 // O-73: only follow `from` when it is an in-app path. Router state can't be
@@ -37,6 +37,10 @@ const Login = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // Set when the server ended this browser's session (e.g. the password was
+  // changed from another device) — read once on mount.
+  const [sessionEnded] = useState(() => hasSessionEndedNotice());
+  useEffect(() => { clearSessionEndedNotice(); }, []);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -163,6 +167,15 @@ const Login = () => {
 
       <div className="container flex items-center justify-center min-h-[calc(100vh-4rem)] py-12 pt-12">
         <div className="w-full max-w-md">
+          {sessionEnded && !error && (
+            <Alert className="mb-6 border-amber-300 bg-amber-50 text-amber-900" data-testid="session-ended-notice">
+              <Info className="h-4 w-4 !text-amber-700" />
+              <AlertDescription>
+                Sesioni juaj përfundoi. Kjo ndodh kur fjalëkalimi ndryshohet nga një pajisje tjetër
+                ose kur sesioni skadon. Ju lutemi kyçuni përsëri.
+              </AlertDescription>
+            </Alert>
+          )}
           {error && (
             <Alert variant="destructive" className="mb-6">
               <AlertCircle className="h-4 w-4" />

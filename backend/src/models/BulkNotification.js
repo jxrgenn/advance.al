@@ -189,15 +189,24 @@ bulkNotificationSchema.methods.updateDeliveryStats = function(updates) {
 };
 
 // Method to log delivery error
+// Atomic $push instead of push + save(): the bulk sender logs errors for many
+// recipients concurrently, and parallel save() calls on one document throw
+// ParallelSaveError (losing the log entry). The in-memory copy is left alone
+// so a later save() of other fields cannot re-push or clobber these entries.
 bulkNotificationSchema.methods.logError = function(error, userId = null, channel = null) {
-  this.errorLog.push({
-    timestamp: new Date(),
-    error: error.toString(),
-    userId,
-    channel
-  });
-  this.markModified('errorLog');
-  return this.save();
+  return this.constructor.updateOne(
+    { _id: this._id },
+    {
+      $push: {
+        errorLog: {
+          timestamp: new Date(),
+          error: String(error?.message || error).slice(0, 1000),
+          userId,
+          channel
+        }
+      }
+    }
+  );
 };
 
 // Method to mark as sent
@@ -208,10 +217,10 @@ bulkNotificationSchema.methods.markAsSent = function() {
 };
 
 // Method to mark as failed
-bulkNotificationSchema.methods.markAsFailed = function(error) {
+bulkNotificationSchema.methods.markAsFailed = async function(error) {
   this.status = 'failed';
   if (error) {
-    this.logError(error);
+    await this.logError(error);
   }
   return this.save();
 };

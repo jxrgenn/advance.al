@@ -3,11 +3,13 @@ import multer from 'multer';
 import { body, validationResult } from 'express-validator';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { Application, Job, User, Notification, SystemConfiguration } from '../models/index.js';
+import { APPLICANT_FIELDS, STATUS_TRANSITIONS } from '../models/Application.js';
 import { authenticate, requireJobSeeker, requireEmployer } from '../middleware/auth.js';
 import resendEmailService from '../lib/resendEmailService.js';
 import { cacheDelete } from '../config/redis.js';
 import mongoose from 'mongoose';
 import { sanitizeLimit, validateObjectId, stripHtml, isObjectIdString } from '../utils/sanitize.js';
+import { stripHiddenSalary } from '../lib/salary.js';
 import logger from '../config/logger.js';
 import { notifyDiscord, deriveRequestSignals } from '../services/discordNotifier.js';
 import { findUnsafeKey, UNSAFE_KEY_MESSAGE } from '../middleware/rejectMongoOperators.js';
@@ -93,6 +95,36 @@ const handleApplyMultipart = (req, res, next) => {
 // 500 with a CastError. Mirrors Application.schema status enum.
 const ALLOWED_APP_STATUSES = ['pending', 'viewed', 'shortlisted', 'rejected', 'hired'];
 
+// Albanian status names for user-facing messages (never the raw enum keys).
+const STATUS_LABELS = {
+  pending: 'Në pritje',
+  viewed: 'Shikuar',
+  shortlisted: 'Në listë të shkurtër',
+  rejected: 'Refuzuar',
+  hired: 'Punësuar',
+};
+
+// Route limits mirror the schema limits (45): over-long input is a 400 with a
+// message, never a Mongoose ValidationError → 500.
+const MAX_EMPLOYER_NOTES_LENGTH = 1000; // Application.employerNotes
+const MAX_WITHDRAWAL_REASON_LENGTH = 500; // Application.withdrawalReason
+
+const isMongooseValidationError = (error) =>
+  error?.name === 'ValidationError' || error?.name === 'CastError';
+
+/**
+ * Listing sort (43): the requested key is the PRIMARY key, then newest
+ * application first, then _id — a total order, so pages never overlap.
+ */
+const listingSort = (sortBy, sortOrder) => {
+  const key = ['appliedAt', 'status', 'createdAt'].includes(sortBy) ? sortBy : 'appliedAt';
+  const dir = sortOrder === 'asc' ? 1 : -1;
+  const sort = { [key]: dir };
+  if (key !== 'appliedAt') sort.appliedAt = -1;
+  sort._id = dir;
+  return sort;
+};
+
 // Per-user rate limit on /apply — blocks rapid mass applications.
 // Keyed on req.user.id so VPN/IP rotation can't bypass it.
 const applyLimiter = rateLimit({
@@ -105,20 +137,6 @@ const applyLimiter = rateLimit({
   message: {
     success: false,
     message: 'Keni aplikuar në shumë vende shumë shpejt. Provoni përsëri pas një ore.'
-  }
-});
-
-// Per-user rate limit on /message — prevents stored-spam in employer dashboards.
-const messageLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 60, // 1 message/min average
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req.ip),
-  skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
-  message: {
-    success: false,
-    message: 'Po dërgoni shumë mesazhe shumë shpejt. Provoni përsëri pas një ore.'
   }
 });
 
@@ -424,7 +442,7 @@ router.post('/apply', authenticate, requireJobSeeker, applyLimiter, handleApplyM
 
     // The application was not created → don't leave its CV behind.
     if (storedResume) {
-      deleteStoredResume(storedResume.url).catch(() => {});
+      deleteStoredResume(storedResume.url, req.user._id).catch(() => {});
     }
 
     // Handle duplicate application error
@@ -434,7 +452,10 @@ router.post('/apply', authenticate, requireJobSeeker, applyLimiter, handleApplyM
         message: 'Ju keni aplikuar tashmë për këtë punë'
       });
     }
-    
+    if (isMongooseValidationError(error)) {
+      return res.status(400).json({ success: false, message: 'Të dhënat e aplikimit nuk janë të vlefshme' });
+    }
+
     res.status(500).json({
       success: false,
       message: 'Gabim në dërgimin e aplikimit'
@@ -487,17 +508,12 @@ router.get('/my-applications', authenticate, requireJobSeeker, async (req, res) 
     const safePage = Math.max(1, parseInt(page) || 1);
     const skip = (safePage - 1) * safeLimit;
 
-    // Sort whitelist to prevent injection
-    const allowedSorts = ['appliedAt', 'status', 'createdAt'];
-    const safeSortBy = allowedSorts.includes(sortBy) ? sortBy : 'appliedAt';
-    const sortOptions = { [safeSortBy]: sortOrder === 'desc' ? -1 : 1 };
-
     // Run count + find in parallel
     const countFilter = { jobSeekerId: req.user._id, withdrawn: false, ...filters };
     const [totalApplications, paginatedApplications] = await Promise.all([
       Application.countDocuments(countFilter),
       Application.getJobSeekerApplications(req.user._id, filters)
-        .sort(sortOptions)
+        .sort(listingSort(sortBy, sortOrder))
         .skip(skip)
         .limit(safeLimit)
         .lean()
@@ -547,10 +563,7 @@ router.get('/job/:jobId', validateObjectId('jobId'), authenticate, requireEmploy
     const safePage2 = Math.max(1, parseInt(page) || 1);
     const skip = (safePage2 - 1) * safeLimit2;
 
-    const sortOptions = {};
-    const allowedSorts2 = ['appliedAt', 'status', 'createdAt'];
-    const safeSortBy2 = allowedSorts2.includes(sortBy) ? sortBy : 'appliedAt';
-    sortOptions[safeSortBy2] = sortOrder === 'desc' ? -1 : 1;
+    const sortOptions = listingSort(sortBy, sortOrder);
 
     const appFilter = {
       jobId,
@@ -564,7 +577,7 @@ router.get('/job/:jobId', validateObjectId('jobId'), authenticate, requireEmploy
       Job.findOne({ _id: jobId, employerId: req.user._id, isDeleted: false })
         .select('title location category').lean(),
       Application.find(appFilter)
-        .populate('jobSeekerId', 'profile.firstName profile.lastName profile.jobSeekerProfile profile.location')
+        .populate('jobSeekerId', APPLICANT_FIELDS)
         .sort(sortOptions)
         .skip(skip)
         .limit(safeLimit2)
@@ -632,23 +645,32 @@ router.get('/employer/all', authenticate, requireEmployer, async (req, res) => {
     const safePage3 = Math.max(1, parseInt(page) || 1);
     const skip = (safePage3 - 1) * safeLimit3;
 
-    const allowedSorts3 = ['appliedAt', 'status', 'createdAt'];
-    const safeSortBy3 = allowedSorts3.includes(sortBy) ? sortBy : 'appliedAt';
-    const sortOptions = { [safeSortBy3]: sortOrder === 'desc' ? -1 : 1 };
+    // One filter for the page AND its total (44): the count used to take the
+    // raw ?status (e.g. "garbage" → total 0 while the list returned all).
+    const countQuery = { employerId: req.user._id, withdrawn: false, ...filters };
 
-    // Run count + find in parallel
-    // B-025 fix: only spread jobId into countQuery after validity check (else
-    // an invalid ObjectId reaches Application.countDocuments → CastError → 500).
-    const validJobId = jobId && mongoose.isValidObjectId(jobId) ? jobId : null;
-    const countQuery = { employerId: req.user._id, withdrawn: false, ...(status && { status }), ...(validJobId && { jobId: validJobId }) };
-    const [totalApplications, paginatedApplications] = await Promise.all([
+    // Dashboard counters (50) come from the server over ALL of this
+    // employer's active applications — independent of the page and of the
+    // status/job filter — instead of being counted from a truncated list.
+    const allMine = { employerId: req.user._id, withdrawn: false };
+    const [totalApplications, paginatedApplications, byStatusAgg, byJobAgg] = await Promise.all([
       Application.countDocuments(countQuery),
       Application.getEmployerApplications(req.user._id, filters)
-        .sort(sortOptions)
+        .sort(listingSort(sortBy, sortOrder))
         .skip(skip)
         .limit(safeLimit3)
-        .lean()
+        .lean(),
+      Application.aggregate([{ $match: allMine }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
+      Application.aggregate([{ $match: allMine }, { $group: { _id: '$jobId', n: { $sum: 1 } } }]),
     ]);
+
+    const byStatus = Object.fromEntries(ALLOWED_APP_STATUSES.map(s => [s, 0]));
+    for (const { _id, n } of byStatusAgg) {
+      const key = ALLOWED_APP_STATUSES.includes(_id) ? _id : 'pending';
+      byStatus[key] += n;
+    }
+    const byJob = Object.fromEntries(byJobAgg.filter(g => g._id).map(g => [String(g._id), g.n]));
+    const total = Object.values(byStatus).reduce((a, b) => a + b, 0);
 
     const totalPages = Math.ceil(totalApplications / safeLimit3);
 
@@ -662,7 +684,8 @@ router.get('/employer/all', authenticate, requireEmployer, async (req, res) => {
           totalApplications,
           hasNextPage: safePage3 < totalPages,
           hasPrevPage: safePage3 > 1
-        }
+        },
+        counts: { total, byStatus, byJob }
       }
     });
 
@@ -680,10 +703,7 @@ router.get('/employer/all', authenticate, requireEmployer, async (req, res) => {
 // @access  Private (Application owner or job owner)
 router.get('/:id', validateObjectId('id'), authenticate, async (req, res) => {
   try {
-    const application = await Application.findById(req.params.id)
-      .populate('jobId', 'title description requirements benefits location category salary customQuestions')
-      .populate('jobSeekerId', 'profile.firstName profile.lastName profile.jobSeekerProfile profile.location profile.phone')
-      .populate('employerId', 'profile.employerProfile.companyName profile.location');
+    const application = await Application.findById(req.params.id);
 
     if (!application) {
       return res.status(404).json({
@@ -692,9 +712,10 @@ router.get('/:id', validateObjectId('id'), authenticate, async (req, res) => {
       });
     }
 
-    // Check if user has permission to view
-    const canView = application.jobSeekerId._id.equals(req.user._id) || 
-                   application.employerId._id.equals(req.user._id);
+    // Permission on the raw ids, before populating: a purged party used to
+    // populate as null and crash this check (500).
+    const isEmployer = application.employerId?.equals(req.user._id) === true;
+    const canView = isEmployer || application.jobSeekerId?.equals(req.user._id) === true;
 
     if (!canView) {
       return res.status(403).json({
@@ -703,18 +724,31 @@ router.get('/:id', validateObjectId('id'), authenticate, async (req, res) => {
       });
     }
 
-    // Mark as viewed if employer is viewing
-    if (application.employerId._id.equals(req.user._id)) {
+    // Employer opening a pending application marks it viewed — atomically,
+    // and with the same candidate notification as the explicit "Shëno si të
+    // shikuar" (36). The response carries the resulting status; the
+    // dashboard syncs its list row from it.
+    if (isEmployer) {
       await application.markAsViewed();
-      await application.markMessagesAsRead(req.user._id);
-    } else {
-      // Mark messages as read for job seeker
-      await application.markMessagesAsRead(req.user._id);
+    }
+
+    await application.populate([
+      { path: 'jobId', select: 'title slug description requirements benefits location category salary customQuestions' },
+      { path: 'jobSeekerId', select: APPLICANT_FIELDS },
+      { path: 'employerId', select: 'profile.employerProfile.companyName profile.location' },
+    ]);
+
+    const out = application.toJSON();
+    if (!isEmployer) {
+      // The candidate's view: never the employer's private notes, and a
+      // salary the employer hid keeps only its flags (lib/salary.js).
+      delete out.employerNotes;
+      if (out.jobId?.salary?.showPublic === false) out.jobId.salary = stripHiddenSalary(out.jobId.salary);
     }
 
     res.json({
       success: true,
-      data: { application }
+      data: { application: out }
     });
 
   } catch (error) {
@@ -731,13 +765,25 @@ router.get('/:id', validateObjectId('id'), authenticate, async (req, res) => {
 // @access  Private (Job owner only)
 router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmployer, async (req, res) => {
   try {
-    const { status, notes: rawNotes = '' } = req.body;
-    const notes = stripHtml(rawNotes);
+    const { status, notes: rawNotes } = req.body || {};
 
     if (!['viewed', 'shortlisted', 'rejected', 'hired'].includes(status)) {
       return res.status(400).json({
         success: false,
         message: 'Statusi duhet të jetë: viewed, shortlisted, rejected, ose hired'
+      });
+    }
+
+    // Optional private employer notes (stored as employerNotes, never shown
+    // to the candidate). Same limit as the schema (45).
+    if (rawNotes !== undefined && rawNotes !== null && typeof rawNotes !== 'string') {
+      return res.status(400).json({ success: false, message: 'Shënimet duhet të jenë tekst' });
+    }
+    const notes = rawNotes ? stripHtml(rawNotes).trim() : '';
+    if (notes.length > MAX_EMPLOYER_NOTES_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        message: `Shënimet nuk mund të kenë më shumë se ${MAX_EMPLOYER_NOTES_LENGTH} karaktere`
       });
     }
 
@@ -754,39 +800,61 @@ router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmploye
       });
     }
 
-    // Validate status transitions
-    const validTransitions = {
-      pending: ['viewed', 'shortlisted', 'rejected'],
-      viewed: ['shortlisted', 'rejected'],
-      shortlisted: ['hired', 'rejected'],
-      rejected: [],
-      hired: ['shortlisted']
-    };
-
     const currentStatus = application.status || 'pending';
-    const allowed = validTransitions[currentStatus] || [];
+    const allowed = STATUS_TRANSITIONS[currentStatus] || [];
     if (!allowed.includes(status)) {
       return res.status(400).json({
         success: false,
-        message: `Nuk mund të ndryshoni statusin nga "${currentStatus}" në "${status}"`
+        message: `Nuk mund të ndryshoni statusin nga "${STATUS_LABELS[currentStatus] || currentStatus}" në "${STATUS_LABELS[status]}"`,
+        data: { currentStatus }
       });
     }
 
-    await application.updateStatus(status, notes);
+    // Conditional update (35): applies only if the application is still in
+    // the status we validated. If another tab / device / the auto-view
+    // changed it in between, nothing is written, no notification or email
+    // goes out, and the employer is told to refresh.
+    const updated = await Application.transitionStatus({
+      applicationId: application._id,
+      employerId: req.user._id,
+      fromStatus: currentStatus,
+      toStatus: status,
+      notes,
+    });
 
-    // Send email notification to applicant (non-blocking)
+    if (!updated) {
+      const now = await Application.findOne({ _id: application._id, employerId: req.user._id }).select('status withdrawn').lean();
+      if (!now || now.withdrawn) {
+        return res.status(404).json({ success: false, message: 'Aplikimi nuk u gjet' });
+      }
+      return res.status(409).json({
+        success: false,
+        message: `Statusi i aplikimit u ndryshua ndërkohë në "${STATUS_LABELS[now.status] || now.status}". Rifreskoni dhe provoni përsëri.`,
+        data: { currentStatus: now.status }
+      });
+    }
+
+    // Send email notification to applicant (non-blocking).
+    // - The company name lives on the employer account (Job has no
+    //   companyName path — reading job.companyName always gave '').
+    // - `notes` are the employer's private notes (stored as employerNotes) and
+    //   are NOT emailed to the candidate.
+    // - hired → shortlisted (a hire taken back) gets its own wording.
     if (['shortlisted', 'rejected', 'hired'].includes(status)) {
+      const previousStatus = currentStatus;
       setImmediate(async () => {
         try {
           const applicant = await User.findById(application.jobSeekerId);
-          const job = await Job.findById(application.jobId);
+          const job = await Job.findById(application.jobId)
+            .select('title employerId')
+            .populate('employerId', 'profile.employerProfile.companyName');
           if (applicant && job) {
-            const companyName = job.companyName || '';
+            const companyName = job.employerId?.profile?.employerProfile?.companyName || '';
             await resendEmailService.sendApplicationStatusEmail(
               applicant,
-              { title: job.title, companyName },
+              { _id: job._id, title: job.title, companyName },
               status,
-              notes
+              { previousStatus }
             );
           }
         } catch (err) {
@@ -808,11 +876,14 @@ router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmploye
     res.json({
       success: true,
       message: statusMessages[status],
-      data: { application }
+      data: { application: updated }
     });
 
   } catch (error) {
     logger.error('Update application status error:', error.message);
+    if (isMongooseValidationError(error)) {
+      return res.status(400).json({ success: false, message: 'Të dhëna të pavlefshme' });
+    }
     res.status(500).json({
       success: false,
       message: 'Gabim në përditësimin e statusit'
@@ -820,177 +891,80 @@ router.patch('/:id/status', validateObjectId('id'), authenticate, requireEmploye
   }
 });
 
-// @route   POST /api/applications/:id/message
-// @desc    Send message about application
-// @access  Private (Application participants only)
-router.post('/:id/message', validateObjectId('id'), authenticate, messageLimiter, async (req, res) => {
-  try {
-    // Soft gate: require verified email to send messages
-    if (!req.user.emailVerified) {
-      return res.status(403).json({
-        success: false,
-        message: 'Ju duhet të verifikoni emailin tuaj përpara se të dërgoni mesazhe.'
-      });
-    }
-
-    const { message, type = 'text' } = req.body;
-
-    // Sanitize message to prevent stored XSS
-    const sanitizedMessage = stripHtml(message || '');
-
-    if (!sanitizedMessage || sanitizedMessage.trim().length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Mesazhi nuk mund të jetë bosh'
-      });
-    }
-
-    if (sanitizedMessage.length > 5000) {
-      return res.status(400).json({
-        success: false,
-        message: 'Mesazhi nuk mund të jetë më i gjatë se 5000 karaktere'
-      });
-    }
-
-    if (!['text', 'interview_invite', 'offer', 'rejection'].includes(type)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Lloji i mesazhit nuk është i vlefshëm'
-      });
-    }
-
-    const application = await Application.findById(req.params.id);
-
-    if (!application) {
-      return res.status(404).json({
-        success: false,
-        message: 'Aplikimi nuk u gjet'
-      });
-    }
-
-    // Check if user has permission to send message
-    const canMessage = application.jobSeekerId.equals(req.user._id) || 
-                      application.employerId.equals(req.user._id);
-
-    if (!canMessage) {
-      return res.status(403).json({
-        success: false,
-        message: 'Nuk keni të drejtë të dërgoni mesazh për këtë aplikim'
-      });
-    }
-
-    await application.addMessage(req.user._id, sanitizedMessage.trim(), type);
-
-    // Create message_received in-app notification for the other party (non-blocking)
-    setImmediate(async () => {
-      try {
-        const isEmployerSending = application.employerId.equals(req.user._id);
-        const recipientId = isEmployerSending ? application.jobSeekerId : application.employerId;
-        const senderName = `${req.user.profile?.firstName || ''} ${req.user.profile?.lastName || ''}`.trim() || 'Dikush';
-
-        await Notification.create({
-          userId: recipientId,
-          type: 'message_received',
-          title: 'Mesazh i ri',
-          message: `${senderName} ju dërgoi një mesazh në lidhje me aplikimin tuaj.`,
-          data: {
-            applicationId: application._id,
-            senderId: req.user._id,
-            senderName,
-            messageType: type
-          },
-          relatedApplication: application._id,
-          relatedJob: application.jobId
-        });
-      } catch (err) {
-        logger.error('Error creating message_received notification:', err);
-      }
-    });
-
-    // Send email notification to the other party (non-blocking)
-    setImmediate(async () => {
-      try {
-        // Populate application with full details
-        await application.populate([
-          { path: 'jobId', select: 'title' },
-          { path: 'jobSeekerId', select: 'email profile.firstName profile.lastName' },
-          { path: 'employerId', select: 'email profile.firstName profile.lastName profile.employerProfile.companyName' }
-        ]);
-
-        // Determine sender and recipient
-        const isEmployerSending = application.employerId._id.equals(req.user._id);
-        const sender = isEmployerSending ? application.employerId.profile : application.jobSeekerId.profile;
-        const recipient = isEmployerSending ? application.jobSeekerId : application.employerId;
-
-        // Prepare job data
-        const jobData = {
-          title: application.jobId.title,
-          companyName: application.employerId.profile.employerProfile?.companyName || 'N/A'
-        };
-
-        // Send email
-        await resendEmailService.sendApplicationMessageEmail(
-          {
-            email: recipient.email,
-            firstName: recipient.profile.firstName,
-            lastName: recipient.profile.lastName
-          },
-          {
-            firstName: sender.firstName,
-            lastName: sender.lastName
-          },
-          jobData,
-          sanitizedMessage.trim(),
-          type
-        );
-
-      } catch (error) {
-        logger.error('Error sending application message email:', error.message);
-      }
-    });
-
-    res.json({
-      success: true,
-      message: 'Mesazhi u dërgua me sukses'
-    });
-
-  } catch (error) {
-    logger.error('Send message error:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Gabim në dërgimin e mesazhit'
-    });
-  }
-});
+// POST /api/applications/:id/message was REMOVED (48): no screen could send
+// or read application messages (the candidate's "Lexo mesazhet" opened a 404
+// page, the e-mail CTA linked to a 404, nothing ever marked a message read),
+// while the live endpoint let either party e-mail the other through the
+// platform. Candidates and employers use the contact channels instead
+// (employer: applicant e-mail/phone; candidate: "Kontakto" per the employer's
+// contact preferences). The Application.messages field is kept for old data.
 
 // @route   DELETE /api/applications/:id
 // @desc    Withdraw application (job seekers only)
 // @access  Private (Application owner only)
 router.delete('/:id', validateObjectId('id'), authenticate, requireJobSeeker, async (req, res) => {
   try {
-    const { reason = '' } = req.body || {};
+    const { reason: rawReason } = req.body || {};
 
-    const application = await Application.findOne({
-      _id: req.params.id,
+    // Optional reason, same limit as the schema (45).
+    if (rawReason !== undefined && rawReason !== null && typeof rawReason !== 'string') {
+      return res.status(400).json({ success: false, message: 'Arsyeja duhet të jetë tekst' });
+    }
+    const reason = rawReason ? stripHtml(rawReason).trim() : '';
+    if (reason.length > MAX_WITHDRAWAL_REASON_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        message: `Arsyeja nuk mund të ketë më shumë se ${MAX_WITHDRAWAL_REASON_LENGTH} karaktere`
+      });
+    }
+
+    // One conditional update (35): only the call that actually withdraws an
+    // active, still-undecided application succeeds and decrements the job's
+    // applicationCount. Returns the application as it was before.
+    const application = await Application.withdrawForSeeker({
+      applicationId: req.params.id,
       jobSeekerId: req.user._id,
-      withdrawn: false
+      reason,
     });
 
     if (!application) {
+      const existing = await Application.findOne({ _id: req.params.id, jobSeekerId: req.user._id, withdrawn: false })
+        .select('status').lean();
+      if (existing && ['hired', 'rejected'].includes(existing.status)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Nuk mund të tërhiqni një aplikim që është pranuar ose refuzuar'
+        });
+      }
       return res.status(404).json({
         success: false,
         message: 'Aplikimi nuk u gjet'
       });
     }
 
-    if (['hired', 'rejected'].includes(application.status)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Nuk mund të tërhiqni një aplikim që është pranuar ose refuzuar'
+    // 49: a shortlisted candidate withdrawing is news the employer acts on
+    // (they may be planning an interview) — tell them instead of letting the
+    // row silently disappear.
+    if (application.status === 'shortlisted') {
+      setImmediate(async () => {
+        try {
+          const job = await Job.findById(application.jobId).select('title').lean();
+          const name = `${req.user.profile?.firstName || ''} ${req.user.profile?.lastName || ''}`.trim() || 'Një kandidat';
+          const jobTitle = job?.title || 'një pozicion';
+          await Notification.create({
+            userId: application.employerId,
+            type: 'general',
+            title: 'Një kandidat tërhoqi aplikimin',
+            message: `${name} (në listën tuaj të shkurtër) tërhoqi aplikimin për pozicionin "${jobTitle}".`,
+            data: { applicationId: application._id, jobId: application.jobId, jobTitle, applicantName: name },
+            relatedApplication: application._id,
+            relatedJob: application.jobId
+          });
+        } catch (err) {
+          logger.error('Error creating withdrawal notification:', err.message);
+        }
       });
     }
-
-    await application.withdraw(reason);
 
     // Review #8 (GDPR): the CV attached to this application was only for
     // this employer — once withdrawn nobody may open it (resume/sign already
@@ -1000,7 +974,7 @@ router.delete('/:id', validateObjectId('id'), authenticate, requireJobSeeker, as
     if (application.resumeUrl) {
       const attachedCv = application.resumeUrl;
       await Application.updateOne({ _id: application._id }, { $unset: { resumeUrl: 1, resumeType: 1 } });
-      await deleteStoredResume(attachedCv);
+      await deleteStoredResume(attachedCv, application.jobSeekerId);
     }
 
     // F-10 fix: invalidate admin:dashboard cache on withdraw
@@ -1013,6 +987,9 @@ router.delete('/:id', validateObjectId('id'), authenticate, requireJobSeeker, as
 
   } catch (error) {
     logger.error('Withdraw application error:', error.message);
+    if (isMongooseValidationError(error)) {
+      return res.status(400).json({ success: false, message: 'Të dhëna të pavlefshme' });
+    }
     res.status(500).json({
       success: false,
       message: 'Gabim në tërheqjen e aplikimit'

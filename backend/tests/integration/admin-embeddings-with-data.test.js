@@ -6,7 +6,7 @@
  * jobs with various embedding states to actually exercise those branches.
  */
 
-import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll, afterEach, jest } from '@jest/globals';
 import request from 'supertest';
 import app from '../../server.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
@@ -16,6 +16,18 @@ import { createJob } from '../factories/job.factory.js';
 import { createAuthHeaders } from '../helpers/auth.helper.js';
 import Job from '../../src/models/Job.js';
 import JobQueue from '../../src/models/JobQueue.js';
+import jobEmbeddingService from '../../src/services/jobEmbeddingService.js';
+
+const waitFor = async (fn, ms = 3000) => {
+  for (const end = Date.now() + ms; Date.now() < end;) { if (await fn()) return true; await new Promise(r => setTimeout(r, 25)); }
+  return false;
+};
+// Regeneration is stubbed (no OpenAI call); returns the ids it was asked for.
+function stubGeneration() {
+  jest.spyOn(jobEmbeddingService, 'isAvailable').mockReturnValue(true);
+  jest.spyOn(jobEmbeddingService, 'computeSimilarities').mockResolvedValue([]);
+  return jest.spyOn(jobEmbeddingService, 'generateEmbedding').mockResolvedValue([]);
+}
 
 async function seedJobs(emp, count = 3) {
   const jobs = [];
@@ -64,10 +76,14 @@ describe('admin/embeddings.js — with seeded data', () => {
     expect(r.body.data.coverage.totalJobs).toBe(3);
   });
 
-  it('POST /recompute-all queues all non-deleted jobs', async () => {
+  // #92/#98: no JobQueue rows (no consumer); every job is marked stale and one
+  // background sweep regenerates them sequentially (no in-flight-cap drops).
+  it('POST /recompute-all marks all non-deleted jobs stale and one sweep regenerates each', async () => {
+    const generate = stubGeneration();
     const { user: admin } = await createAdmin();
     const { user: emp } = await createVerifiedEmployer();
-    await seedJobs(emp, 3);
+    const jobs = await seedJobs(emp, 3);
+    const before = Date.now();
 
     const r = await request(app)
       .post('/api/admin/embeddings/recompute-all')
@@ -77,12 +93,18 @@ describe('admin/embeddings.js — with seeded data', () => {
     expect(r.body.success).toBe(true);
     expect(r.body.data.queued).toBe(3);
     expect(r.body.data.total).toBe(3);
+    expect(r.body.data.sweepStarted).toBe(true);
 
-    const queueCount = await JobQueue.countDocuments({ taskType: 'generate_embedding' });
-    expect(queueCount).toBe(3);
+    const stale = await Job.find({ _id: { $in: jobs.map(j => j._id) } }).lean();
+    expect(stale.every(j => j.embedding.staleSince.getTime() >= before - 5)).toBe(true);
+    expect(await JobQueue.countDocuments({})).toBe(0);
+
+    expect(await waitFor(() => generate.mock.calls.length === 3)).toBe(true);
+    expect(generate.mock.calls.map(c => String(c[0])).sort()).toEqual(jobs.map(j => String(j._id)).sort());
   });
 
   it('POST /retry-failed resets and re-queues only failed jobs', async () => {
+    stubGeneration(); // the background sweep must not race the assertions below
     const { user: admin } = await createAdmin();
     const { user: emp } = await createVerifiedEmployer();
     const jobs = await seedJobs(emp, 4);
@@ -106,7 +128,8 @@ describe('admin/embeddings.js — with seeded data', () => {
     expect(j0.embedding.retries).toBe(0);
   });
 
-  it('POST /queue-job/:jobId queues a specific job', async () => {
+  it('POST /queue-job/:jobId triggers generation for a specific job', async () => {
+    const generate = stubGeneration();
     const { user: admin } = await createAdmin();
     const { user: emp } = await createVerifiedEmployer();
     const job = await createJob(emp);
@@ -120,9 +143,13 @@ describe('admin/embeddings.js — with seeded data', () => {
     expect(r.body.data.jobId).toBe(job._id.toString());
     expect(r.body.data.priority).toBe(1);
 
-    const queueItem = await JobQueue.findOne({ jobId: job._id, taskType: 'generate_embedding' });
-    expect(queueItem).toBeTruthy();
-    expect(queueItem.priority).toBe(1);
+    // One inline kick, no JobQueue row (#98); the kick stamps the stale
+    // marker first so a dropped kick is still repaired by the retry worker.
+    expect(await waitFor(() => generate.mock.calls.length === 1)).toBe(true);
+    expect(String(generate.mock.calls[0][0])).toBe(String(job._id));
+    expect(await JobQueue.countDocuments({ jobId: job._id })).toBe(0);
+    const fresh = await Job.findById(job._id).lean();
+    expect(fresh.embedding.staleSince).toBeInstanceOf(Date);
   });
 
   it('POST /queue-job/:jobId returns 404 for non-existent job', async () => {

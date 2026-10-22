@@ -19,6 +19,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach, jest } from '@jest/globals';
+import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
 import mongoose from 'mongoose';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
 import { seedLocations } from '../fixtures/locations.fixture.js';
@@ -52,15 +53,17 @@ describe('notificationService — notifyMatchingUsers + notifyUserAboutMatchingJ
       expect(r.stats.totalUsers).toBe(0);
     });
 
-    it('falls back to keyword-only when semantic throws (L305-307)', async () => {
+    it('semantic throws → keyword path still runs, but the fan-out reports failure so it is retried', async () => {
       const { user: emp } = await createVerifiedEmployer();
       const job = await createJob(emp);
       jest.spyOn(userEmbeddingService, 'findSemanticMatchesForJob')
         .mockRejectedValueOnce(new Error('embedding service down'));
-      jest.spyOn(QuickUser, 'findMatchesForJob').mockResolvedValueOnce([]);
+      const keyword = jest.spyOn(QuickUser, 'findMatchesForJob').mockResolvedValueOnce([]);
 
       const r = await notificationService.notifyMatchingUsers(job);
-      expect(r.success).toBe(true);
+      expect(keyword).toHaveBeenCalledTimes(1);
+      expect(r.success).toBe(false);
+      expect(r.error).toBe('semantic matching failed: embedding service down');
       expect(r.stats.totalUsers).toBe(0);
     });
 
@@ -81,7 +84,9 @@ describe('notificationService — notifyMatchingUsers + notifyUserAboutMatchingJ
         .mockResolvedValueOnce({ success: false, error: 'send fail' });
 
       const r = await notificationService.notifyMatchingUsers(job);
-      expect(r.success).toBe(true);
+      // The only delivery failed → the fan-out failed (retried by the sweep).
+      expect(r.success).toBe(false);
+      expect(r.error).toBe('all 1 deliveries failed');
       expect(r.stats.totalUsers).toBe(1);
       expect(r.stats.errors).toBe(1);
       expect(r.stats.notificationsSent).toBe(0);
@@ -101,12 +106,25 @@ describe('notificationService — notifyMatchingUsers + notifyUserAboutMatchingJ
         .mockResolvedValueOnce({ quickUsers: [], jobSeekers: [] });
       jest.spyOn(QuickUser, 'findMatchesForJob').mockResolvedValueOnce([qu]);
       jest.spyOn(notificationService, 'sendJobNotificationToUser')
-        .mockResolvedValueOnce({ success: true });
+        .mockResolvedValueOnce({ success: true, sent: true });
 
       const r = await notificationService.notifyMatchingUsers(job);
       expect(r.success).toBe(true);
       expect(r.stats.notificationsSent).toBe(1);
       expect(r.stats.errors).toBe(0);
+    });
+
+    it('counts a match queued for the subscriber’s next digest separately from sends', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const job = await createJob(emp);
+      const qu = await QuickUser.create({ email: `qu3-${Date.now()}@example.com`, firstName: 'Q', lastName: 'L', location: 'Tiranë', preferences: {} });
+      jest.spyOn(userEmbeddingService, 'findSemanticMatchesForJob').mockResolvedValueOnce({ quickUsers: [], jobSeekers: [] });
+      jest.spyOn(QuickUser, 'findMatchesForJob').mockResolvedValueOnce([qu]);
+      jest.spyOn(notificationService, 'sendJobNotificationToUser').mockResolvedValueOnce({ success: true, sent: false, queued: true });
+
+      const r = await notificationService.notifyMatchingUsers(job);
+      expect(r.success).toBe(true);
+      expect([r.stats.notificationsSent, r.stats.quickUsersQueuedForDigest, r.stats.errors]).toEqual([0, 1, 0]);
     });
 
     it('counts errors when queueing a full jobseeker for digest fails', async () => {
@@ -120,11 +138,13 @@ describe('notificationService — notifyMatchingUsers + notifyUserAboutMatchingJ
       jest.spyOn(userEmbeddingService, 'findSemanticMatchesForJob')
         .mockResolvedValueOnce({ quickUsers: [], jobSeekers: [{ user: js, score: 0.8 }] });
       jest.spyOn(QuickUser, 'findMatchesForJob').mockResolvedValueOnce([]);
-      jest.spyOn(User, 'findByIdAndUpdate')
+      jest.spyOn(User, 'updateOne')
         .mockRejectedValueOnce(new Error('digest queue write fail'));
 
       const r = await notificationService.notifyMatchingUsers(job);
-      expect(r.success).toBe(true);
+      // The only target could not be queued → failed fan-out (retried later).
+      expect(r.success).toBe(false);
+      expect(r.error).toBe('all 1 deliveries failed');
       expect(r.stats.totalUsers).toBe(1);
       expect(r.stats.errors).toBe(1);
     });
@@ -171,7 +191,7 @@ describe('notificationService — notifyMatchingUsers + notifyUserAboutMatchingJ
       // Manually mark embedding completed with a vector
       await QuickUser.updateOne(
         { _id: qu._id },
-        { $set: { 'embedding.status': 'completed', 'embedding.vector': new Array(1536).fill(0.1) } }
+        { $set: { 'embedding.status': 'completed', 'embedding.vector': new Array(EMBEDDING_DIMS).fill(0.1) } }
       );
       jest.spyOn(userEmbeddingService, 'findMatchingJobsForUser').mockResolvedValueOnce([]);
 
@@ -183,7 +203,7 @@ describe('notificationService — notifyMatchingUsers + notifyUserAboutMatchingJ
       expect(r.matchCount).toBe(0);
     });
 
-    it('sends digest email when matches found', async () => {
+    it('sends digest email when matches found (a job whose employer account is gone is skipped)', async () => {
       const qu = await QuickUser.create({
         email: `qu-match-${Date.now()}@example.com`,
         firstName: 'Q',
@@ -193,7 +213,7 @@ describe('notificationService — notifyMatchingUsers + notifyUserAboutMatchingJ
       });
       await QuickUser.updateOne(
         { _id: qu._id },
-        { $set: { 'embedding.status': 'completed', 'embedding.vector': new Array(1536).fill(0.1) } }
+        { $set: { 'embedding.status': 'completed', 'embedding.vector': new Array(EMBEDDING_DIMS).fill(0.1) } }
       );
       const fakeMatches = [
         { job: { _id: new mongoose.Types.ObjectId(), title: 'Dev', location: { city: 'Tiranë' }, employerId: { profile: { employerProfile: { companyName: 'Co' } } } }, score: 0.9 },
@@ -207,7 +227,8 @@ describe('notificationService — notifyMatchingUsers + notifyUserAboutMatchingJ
         userId: qu._id.toString(),
       });
       expect(r.success).toBe(true);
-      expect(r.matchCount).toBe(2);
+      // 'Eng' has employerId: null (orphan) → not advertised
+      expect(r.matchCount).toBe(1);
       expect(r.email).toBe(qu.email);
     });
   });
@@ -229,7 +250,7 @@ describe('notificationService — notifyMatchingUsers + notifyUserAboutMatchingJ
         { _id: js._id },
         { $set: {
           'profile.jobSeekerProfile.embedding.status': 'completed',
-          'profile.jobSeekerProfile.embedding.vector': new Array(1536).fill(0.1),
+          'profile.jobSeekerProfile.embedding.vector': new Array(EMBEDDING_DIMS).fill(0.1),
         } }
       );
       const fakeMatches = [

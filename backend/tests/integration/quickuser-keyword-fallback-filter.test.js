@@ -9,13 +9,14 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
+import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
 import { createEmployer } from '../factories/user.factory.js';
 import { createJob } from '../factories/job.factory.js';
 import QuickUser from '../../src/models/QuickUser.js';
 
 function vectorAt(axis = 0) {
-  const v = new Array(1536).fill(0.001);
+  const v = new Array(EMBEDDING_DIMS).fill(0.001);
   v[axis] = 1;
   return v;
 }
@@ -51,7 +52,7 @@ describe('QuickUser.findMatchesForJob — embedding.status partition', () => {
       embedding: {
         vector: vectorAt(5),
         model: 'text-embedding-3-small',
-        dimensions: 1536,
+        dimensions: EMBEDDING_DIMS,
         generatedAt: new Date(),
         status: 'completed',
       },
@@ -113,7 +114,7 @@ describe('QuickUser.findMatchesForJob — embedding.status partition', () => {
     const job = await buildJob();
     await QuickUser.create(baseQuickUser({
       email: 'qu-completed@example.com',
-      embedding: { vector: vectorAt(5), status: 'completed', dimensions: 1536, model: 'text-embedding-3-small', generatedAt: new Date() },
+      embedding: { vector: vectorAt(5), status: 'completed', dimensions: EMBEDDING_DIMS, model: 'text-embedding-3-small', generatedAt: new Date() },
     }));
     await QuickUser.create(baseQuickUser({
       email: 'qu-failed@example.com',

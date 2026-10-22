@@ -45,7 +45,7 @@ const CoreFilters: React.FC<CoreFiltersProps> = ({
     },
     {
       key: 'partTime',
-      label: 'Part Time',
+      label: 'Kohë e pjesshme',
       icon: Clock
     },
     {

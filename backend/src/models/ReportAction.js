@@ -235,11 +235,15 @@ reportActionSchema.virtual('severity').get(function() {
   return severityLevels[this.actionType] || 0;
 });
 
+// User names live under profile.* (a User has no top-level firstName /
+// lastName) — populate these paths, not 'firstName lastName'.
+const ACTION_USER_NAME_FIELDS = 'profile.firstName profile.lastName profile.employerProfile.companyName';
+
 // Static method to get action history for a report
 reportActionSchema.statics.getReportHistory = function(reportId, options = {}) {
   return this.find({ report: reportId })
-    .populate('performedBy', 'firstName lastName email userType')
-    .populate('targetUser', 'firstName lastName email userType')
+    .populate('performedBy', `${ACTION_USER_NAME_FIELDS} email userType`)
+    .populate('targetUser', `${ACTION_USER_NAME_FIELDS} email userType`)
     .sort({ createdAt: options.desc !== false ? -1 : 1 })
     .limit(options.limit || 50);
 };
@@ -254,7 +258,7 @@ reportActionSchema.statics.getAdminActions = function(adminId, options = {}) {
     createdAt: { $gte: startDate, $lte: endDate }
   })
     .populate('report', 'category status priority')
-    .populate('targetUser', 'firstName lastName email userType')
+    .populate('targetUser', `${ACTION_USER_NAME_FIELDS} email userType`)
     .sort({ createdAt: -1 })
     .limit(options.limit || 100);
 };
@@ -266,7 +270,7 @@ reportActionSchema.statics.getUserViolationHistory = function(userId) {
     actionType: { $in: ['user_warned', 'user_suspended', 'user_banned'] }
   })
     .populate('report', 'category description createdAt')
-    .populate('performedBy', 'firstName lastName email')
+    .populate('performedBy', `${ACTION_USER_NAME_FIELDS} email`)
     .sort({ createdAt: -1 });
 };
 

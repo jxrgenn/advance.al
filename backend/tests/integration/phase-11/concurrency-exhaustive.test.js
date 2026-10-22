@@ -157,8 +157,10 @@ describe('Phase 11 — Exhaustive Concurrency', () => {
     });
   });
 
-  describe('Application messages — concurrent thread additions', () => {
-    it('5 concurrent message posts all persist in the messages array', async () => {
+  // Application messaging was removed (48). The concurrency that matters on
+  // an application now is the status machine (35).
+  describe('Application status — concurrent transitions', () => {
+    it('5 concurrent "shortlisted" PATCHes from pending: exactly one applies', async () => {
       const { user: emp } = await createVerifiedEmployer({ emailVerified: true });
       const job = await createJob(emp);
       const { user: applicant } = await createJobseeker({ emailVerified: true });
@@ -166,16 +168,20 @@ describe('Phase 11 — Exhaustive Concurrency', () => {
         jobId: job._id, jobSeekerId: applicant._id, employerId: emp._id, applicationMethod: 'one_click'
       });
 
-      await Promise.all(
-        Array.from({ length: 5 }, (_, i) =>
-          request(app).post(`/api/applications/${application._id}/message`)
+      const results = await Promise.all(
+        Array.from({ length: 5 }, () =>
+          request(app).patch(`/api/applications/${application._id}/status`)
             .set(createAuthHeaders(emp))
-            .send({ message: `msg ${i}`, type: 'text' })
+            .send({ status: 'shortlisted' })
         )
       );
 
+      const statuses = results.map((r) => r.status);
+      expect(statuses.filter((s) => s === 200)).toHaveLength(1);
+      // the others either lost the race (409) or already saw "shortlisted" (400)
+      expect(statuses.filter((s) => s === 409 || s === 400)).toHaveLength(4);
       const dbApp = await Application.findById(application._id);
-      expect(dbApp.messages.length).toBe(5);
+      expect(dbApp.status).toBe('shortlisted');
     });
   });
 

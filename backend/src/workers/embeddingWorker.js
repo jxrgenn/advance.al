@@ -1,6 +1,15 @@
 #!/usr/bin/env node
 
 /**
+ * ⚠️ LEGACY — NOT DEPLOYED (#98). Nothing starts this process (package.json
+ * `start` runs server.js only; Render runs one web service). Since Round P
+ * embeddings are generated inline by services/embeddingTrigger.js and
+ * repaired by services/embeddingRetryWorker.js (server.js cron). No live
+ * route writes JobQueue rows any more. Kept only as a standalone script for
+ * draining legacy JobQueue rows by hand; do not build features on it.
+ */
+
+/**
  * Embedding Worker Process
  *
  * Background worker that processes the embedding queue:

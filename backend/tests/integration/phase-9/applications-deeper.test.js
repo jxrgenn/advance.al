@@ -1,7 +1,7 @@
 /**
  * Phase 9 — Applications deeper coverage
  *
- * Adds tests for: GET /job/:jobId, /employer/all, POST /:id/message message-thread.
+ * Adds tests for: GET /job/:jobId, /employer/all.
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
@@ -146,102 +146,7 @@ describe('Phase 9 — Applications Deeper Coverage', () => {
     });
   });
 
-  describe('POST /api/applications/:id/message — full thread coverage', () => {
-    it('jobseeker→employer message creates a notification for employer', async () => {
-      const { user: emp } = await createVerifiedEmployer();
-      const job = await createJob(emp);
-      const { user: applicant } = await createJobseeker({ emailVerified: true });
-      const application = await Application.create({
-        jobId: job._id, jobSeekerId: applicant._id, employerId: emp._id, applicationMethod: 'one_click'
-      });
-
-      await request(app)
-        .post(`/api/applications/${application._id}/message`)
-        .set(createAuthHeaders(applicant))
-        .send({ message: 'Question about role', messageType: 'text' });
-
-      // Allow async notification creation
-      await new Promise(r => setTimeout(r, 200));
-      const notif = await Notification.findOne({ userId: emp._id });
-      expect(notif).toBeTruthy();
-    });
-
-    it('employer→jobseeker message stored in thread', async () => {
-      const { user: emp } = await createVerifiedEmployer({ emailVerified: true });
-      const job = await createJob(emp);
-      const { user: applicant } = await createJobseeker({ emailVerified: true });
-      const application = await Application.create({
-        jobId: job._id, jobSeekerId: applicant._id, employerId: emp._id, applicationMethod: 'one_click'
-      });
-
-      const response = await request(app)
-        .post(`/api/applications/${application._id}/message`)
-        .set(createAuthHeaders(emp))
-        .send({ message: 'Welcome to interview', type: 'interview_invite' });
-
-      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-      expect([200, 201]).toContain(response.status);
-
-      const dbApp = await Application.findById(application._id);
-      expect(dbApp.messages.length).toBeGreaterThan(0);
-      expect(dbApp.messages.some(m => m.type === 'interview_invite')).toBe(true);
-    });
-
-    it('non-participant outsider rejected → 403/404', async () => {
-      const { user: emp } = await createVerifiedEmployer();
-      const job = await createJob(emp);
-      const { user: applicant } = await createJobseeker({ emailVerified: true });
-      const { user: outsider } = await createJobseeker({ emailVerified: true });
-      const application = await Application.create({
-        jobId: job._id, jobSeekerId: applicant._id, employerId: emp._id, applicationMethod: 'one_click'
-      });
-
-      const response = await request(app)
-        .post(`/api/applications/${application._id}/message`)
-        .set(createAuthHeaders(outsider))
-        .send({ message: 'spy', messageType: 'text' });
-
-      // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
-      expect([403, 404]).toContain(response.status);
-    });
-
-    it('rejects unverified-email user', async () => {
-      const { user: emp } = await createVerifiedEmployer();
-      const job = await createJob(emp);
-      const { user: applicant } = await createJobseeker({ emailVerified: false });
-      const application = await Application.create({
-        jobId: job._id, jobSeekerId: applicant._id, employerId: emp._id, applicationMethod: 'one_click'
-      });
-
-      const response = await request(app)
-        .post(`/api/applications/${application._id}/message`)
-        .set(createAuthHeaders(applicant))
-        .send({ message: 'hi', messageType: 'text' });
-
-      expect(response.status).toBe(403);
-    });
-
-    it('all 4 message types accepted', async () => {
-      const { user: emp } = await createVerifiedEmployer({ emailVerified: true });
-      const job = await createJob(emp);
-      const { user: applicant } = await createJobseeker({ emailVerified: true });
-      const application = await Application.create({
-        jobId: job._id, jobSeekerId: applicant._id, employerId: emp._id, applicationMethod: 'one_click'
-      });
-
-      for (const messageType of ['text', 'interview_invite', 'offer', 'rejection']) {
-        const response = await request(app)
-          .post(`/api/applications/${application._id}/message`)
-          .set(createAuthHeaders(emp))
-          .send({ message: `msg ${messageType}`, type: messageType });
-        // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-        expect([200, 201]).toContain(response.status);
-      }
-
-      const dbApp = await Application.findById(application._id);
-      expect(dbApp.messages.length).toBe(4);
-    });
-  });
+  // POST /:id/message was removed (48) — see w2-applications-integrity.test.js.
 
   describe('GET /api/applications/applied-jobs', () => {
     it('returns IDs of jobs the user applied to', async () => {

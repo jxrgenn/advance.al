@@ -201,12 +201,14 @@ describe('accountCleanup.purgeDeletedAccounts (replSet — supports transactions
   it('deletes a real local file under uploads/ on jobseeker purge', async () => {
     const uploadsDir = path.resolve(process.cwd(), 'uploads');
     if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-    const filename = `cleanup-test-${Date.now()}.txt`;
+    const { user } = await createJobseeker();
+    // Dev uploads are named <kind>-<ownerId>-<suffix>; the purge only deletes
+    // files of the purged user (W2-2 ownership guard).
+    const filename = `resume-${user._id}-${Date.now()}.txt`;
     const fullPath = path.join(uploadsDir, filename);
     fs.writeFileSync(fullPath, 'test content');
     expect(fs.existsSync(fullPath)).toBe(true);
 
-    const { user } = await createJobseeker();
     user.profile.jobSeekerProfile.resume = `/uploads/${filename}`;
     user.markModified('profile');
     await softDelete(user, daysAgo(PURGE_DAYS + 1));
@@ -277,11 +279,13 @@ describe('accountCleanup.purgeDeletedAccounts (replSet — supports transactions
     const cloudinaryModule = await import('../../src/config/cloudinary.js');
     const cloudinary = cloudinaryModule.default;
     const spy = jest.spyOn(cloudinary.uploader, 'destroy').mockResolvedValue({ result: 'ok' });
+    const cloud = process.env.CLOUDINARY_CLOUD_NAME;
 
     try {
       const { user } = await createJobseeker();
-      user.profile.jobSeekerProfile.resume = 'https://res.cloudinary.com/dk6jrzkts/raw/authenticated/v123/advance-al/cvs/resume-67890abcdef67890abcdef67-1747000000.pdf';
-      user.profile.jobSeekerProfile.profilePhoto = 'https://res.cloudinary.com/dk6jrzkts/image/upload/v123/advance-al/photos/photo-67890abcdef67890abcdef67.jpg';
+      const id = user._id.toString();
+      user.profile.jobSeekerProfile.resume = `https://res.cloudinary.com/${cloud}/raw/authenticated/v123/advance-al/cvs/resume-${id}-1747000000.pdf`;
+      user.profile.jobSeekerProfile.profilePhoto = `https://res.cloudinary.com/${cloud}/image/upload/v123/advance-al/profile-photos/photo-${id}-1747000000.jpg`;
       user.markModified('profile');
       await softDelete(user, daysAgo(PURGE_DAYS + 1));
 
@@ -291,14 +295,36 @@ describe('accountCleanup.purgeDeletedAccounts (replSet — supports transactions
       // Resume: 'raw' resource_type (detected from .pdf), type:'authenticated'
       // (detected from URL path). publicId is the folder + filename without ext.
       expect(spy).toHaveBeenCalledWith(
-        'advance-al/cvs/resume-67890abcdef67890abcdef67-1747000000',
-        { resource_type: 'raw', type: 'authenticated' }
+        `advance-al/cvs/resume-${id}-1747000000`,
+        { resource_type: 'raw', type: 'authenticated', invalidate: true }
       );
       // Photo: 'image' resource_type, type:'upload' (photos stay public).
       expect(spy).toHaveBeenCalledWith(
-        'advance-al/photos/photo-67890abcdef67890abcdef67',
-        { resource_type: 'image', type: 'upload' }
+        `advance-al/profile-photos/photo-${id}-1747000000`,
+        { resource_type: 'image', type: 'upload', invalidate: true }
       );
+      expect(spy).toHaveBeenCalledTimes(2);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // W2-2: a URL on the purged account that is NOT one of its own uploads
+  // (another user's id, another cloud, another folder) is never destroyed.
+  it('does not destroy Cloudinary assets that are not the purged user\'s own uploads', async () => {
+    const { jest } = await import('@jest/globals');
+    const cloudinary = (await import('../../src/config/cloudinary.js')).default;
+    const spy = jest.spyOn(cloudinary.uploader, 'destroy').mockResolvedValue({ result: 'ok' });
+    const cloud = process.env.CLOUDINARY_CLOUD_NAME;
+    try {
+      const { user } = await createJobseeker();
+      user.profile.jobSeekerProfile.resume = `https://res.cloudinary.com/${cloud}/raw/authenticated/v1/advance-al/cvs/resume-67890abcdef67890abcdef67-1747000000`;
+      user.profile.jobSeekerProfile.profilePhoto = `https://res.cloudinary.com/some-other-cloud/image/upload/v1/advance-al/profile-photos/photo-${user._id}-1.jpg`;
+      user.markModified('profile');
+      await softDelete(user, daysAgo(PURGE_DAYS + 1));
+
+      expect(await purgeDeletedAccounts()).toBe(1);
+      expect(spy).not.toHaveBeenCalled();
     } finally {
       spy.mockRestore();
     }

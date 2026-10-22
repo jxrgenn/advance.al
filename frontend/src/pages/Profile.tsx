@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import ApplicationStatusTimeline from "@/components/ApplicationStatusTimeline";
 import { Button } from "@/components/ui/button";
@@ -14,13 +15,17 @@ import { Switch } from "@/components/ui/switch";
 import { User, Mail, Phone, MapPin, Upload, FileText, Briefcase, Award, Loader2, RefreshCw, Lightbulb, X, Play, Trash2, Lock, Sparkles, Check, AlertTriangle, Globe, Download, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { usersApi, applicationsApi, authApi } from "@/lib/api";
+import { usersApi, applicationsApi, authApi, locationsApi, Location } from "@/lib/api";
+import { EXPERIENCE_OPTIONS, experienceLabel, ACTIVE_APPLICATION_STATUSES, parseSkillsText, mapProfileFieldErrors } from "@/lib/profileUtils";
 import { viewResume, downloadResume, isInlineViewable, DOCX_VIEW_TOOLTIP } from "@/lib/resumeView";
 import { isCVParsingInProgress } from "@/lib/cvParsingMarker";
-import { validateForm, profileValidationRules, formatValidationErrors, validatePassword, cleanAlbanianPhoneInput } from "@/lib/formValidation";
+import { validateForm, profileValidationRules, formatValidationErrors, validatePassword, cleanAlbanianPhoneInput, RESUME_UPLOAD, IMAGE_UPLOAD, uploadProblem } from "@/lib/formValidation";
+import { DEGREE_OPTIONS, degreeLabel, periodLabel, isOngoing } from "@/lib/profileHistory";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { InputWithCounter, TextAreaWithCounter } from "@/components/CharacterCounter";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+
+const PROFILE_TABS = ['personal', 'experience', 'applications', 'settings'] as const;
 
 const Profile = () => {
   // Reset scroll lock on unmount
@@ -37,7 +42,51 @@ const Profile = () => {
   const [hasChanges, setHasChanges] = useState(false);
   const [applications, setApplications] = useState<any[]>([]);
   const [loadingApplications, setLoadingApplications] = useState(true);
-  const [currentTab, setCurrentTab] = useState("personal");
+  // 29/147: the applications list is paginated (10 per page) and the counters
+  // come from the server (/users/stats aggregates ALL active applications) —
+  // previously both were computed from the newest 10 only.
+  const [applicationsPage, setApplicationsPage] = useState(1);
+  const [applicationsPagination, setApplicationsPagination] = useState<{ currentPage: number; totalPages: number; totalApplications: number } | null>(null);
+  const [applicationStats, setApplicationStats] = useState<{ total: number; pending: number; inReview: number; hired: number } | null>(null);
+  // The open tab follows ?tab= (notification bell and the status e-mail link
+  // to /profile?tab=applications); unknown values are ignored. Switching tabs
+  // writes it back with history REPLACE (no back-button spam).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromParam = (value: string | null) =>
+    value && (PROFILE_TABS as readonly string[]).includes(value) ? value : null;
+  const [currentTab, setCurrentTab] = useState(() => tabFromParam(searchParams.get('tab')) ?? "personal");
+  const currentTabRef = useRef(currentTab);
+  currentTabRef.current = currentTab;
+  // A tab chosen by a link is scrolled into view (on phones the tabs sit
+  // below the profile card and the stats) — not on ordinary tab clicks.
+  const scrollToTabsRef = useRef((tabFromParam(searchParams.get('tab')) ?? 'personal') !== 'personal');
+  // URL → tab: also when a link is followed while /profile is already open.
+  useEffect(() => {
+    const fromUrl = tabFromParam(searchParams.get('tab'));
+    if (fromUrl && fromUrl !== currentTabRef.current) {
+      setCurrentTab(fromUrl);
+      scrollToTabsRef.current = true;
+    }
+  }, [searchParams]);
+  useEffect(() => {
+    if (!scrollToTabsRef.current) return;
+    const el = document.getElementById('profile-tabs');
+    if (el) {
+      scrollToTabsRef.current = false;
+      // 80px clears the sticky navigation bar.
+      window.scrollTo({ top: Math.max(0, el.getBoundingClientRect().top + window.scrollY - 80), behavior: 'smooth' });
+    }
+  });
+  // tab → URL. Depends on the tab only (reads the live URL), so it never
+  // overwrites a ?tab= that just arrived from a link.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const wanted = currentTab === 'personal' ? null : currentTab;
+    if ((params.get('tab') ?? null) === wanted) return;
+    if (wanted) params.set('tab', wanted);
+    else params.delete('tab');
+    setSearchParams(params, { replace: true });
+  }, [currentTab]);
 
   // Tutorial system state
   const [showTutorial, setShowTutorial] = useState(false);
@@ -263,7 +312,7 @@ const Profile = () => {
     {
       selector: '[data-tutorial="applications-summary"]',
       title: "Përmbledhje e Aplikimeve",
-      content: "Kur keni aplikime, këtu shfaqet një përmbledhje e shpejtë: sa gjithsej, sa në pritje, sa aktive, dhe sa të pranuara.",
+      content: "Kur keni aplikime, këtu shfaqet një përmbledhje e shpejtë: sa gjithsej, sa në pritje, sa në shqyrtim, dhe sa të pranuara.",
       position: "bottom" as const,
       tab: "applications",
       requiresTab: "applications"
@@ -275,20 +324,57 @@ const Profile = () => {
     lastName: '',
     email: '',
     phone: '',
-    location: '',
+    city: '',
+    region: '',
     bio: '',
     title: '',
     experience: '',
     skills: [] as string[],
     availability: ''
   });
+  // O-77: the skills box keeps the RAW text while typing (commas, spaces,
+  // multi-word skills); it is parsed into a list on blur and on save.
+  const [skillsText, setSkillsText] = useState('');
+  // 149: city is picked from the canonical Location list (same as signup).
+  const [locations, setLocations] = useState<Location[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Inline per-field validation errors for the personal/professional form.
   // Keyed by formData field name; shown under each field and cleared on edit.
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  // 142: unsaved edits survive background refreshUser() calls (5-min poll,
+  // job-alert toggle, CV/photo upload). The form is (re)seeded from `user`
+  // only on first load, on a user switch, or when it has no unsaved edits.
+  const hasChangesRef = useRef(false);
+  const settingsDirtyRef = useRef(false);
+  const seededForUserRef = useRef<string | null>(null);
+  // Review #8: the server values the form was last seeded with. Save sends
+  // only the fields that differ from these, so a form left open (or a second
+  // tab) can't overwrite a newer change made elsewhere to fields this form
+  // didn't touch.
+  const savedFormRef = useRef<Record<string, unknown> | null>(null);
+  const markDirty = (dirty: boolean) => {
+    hasChangesRef.current = dirty;
+    setHasChanges(dirty);
+  };
+  const touchSettings = () => { settingsDirtyRef.current = true; };
 
   const { toast } = useToast();
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, logout } = useAuth();
+
+  useEffect(() => {
+    let cancelled = false;
+    locationsApi.getLocations()
+      .then((r) => { if (!cancelled && r.success && r.data) setLocations(r.data.locations); })
+      .catch(() => { /* the select falls back to the stored city */ });
+    return () => { cancelled = true; };
+  }, []);
+  // A legacy free-text city (saved before the list was enforced) stays
+  // selectable, so the form can still be saved without changing it.
+  const storedCity = user?.profile?.location?.city || '';
+  const cityOptions: { city: string; region: string }[] =
+    storedCity && !locations.some((l) => l.city === storedCity)
+      ? [{ city: storedCity, region: user?.profile?.location?.region || '' }, ...locations]
+      : locations;
 
   // Scroll to top on mount
   useEffect(() => {
@@ -302,57 +388,105 @@ const Profile = () => {
         setCurrentCV(user.profile.jobSeekerProfile.resume);
         setCurrentCVType(user.profile.jobSeekerProfile.resumeType || null);
       }
-      
-      // Initialize form data with user data
-      setFormData({
-        firstName: user.profile?.firstName || '',
-        lastName: user.profile?.lastName || '',
-        email: user.email || '',
-        phone: user.profile?.phone || '',
-        location: `${user.profile?.location?.city || ''}, ${user.profile?.location?.region || ''}`.replace(', ,', '').replace(/^,\s*|,\s*$/g, ''),
-        bio: user.profile?.jobSeekerProfile?.bio || '',
-        title: user.profile?.jobSeekerProfile?.title || '',
-        experience: user.profile?.jobSeekerProfile?.experience || '',
-        skills: user.profile?.jobSeekerProfile?.skills || [],
-        availability: user.profile?.jobSeekerProfile?.availability || ''
-      });
 
-      // Initialize job alerts toggle
+      // 142: a refresh of the SAME user must not wipe unsaved edits.
+      const sameUser = seededForUserRef.current === user._id;
+      seededForUserRef.current = user._id;
+
+      if (!sameUser || !hasChangesRef.current) {
+        const skills = user.profile?.jobSeekerProfile?.skills || [];
+        const seeded = {
+          firstName: user.profile?.firstName || '',
+          lastName: user.profile?.lastName || '',
+          email: user.email || '',
+          phone: user.profile?.phone || '',
+          city: user.profile?.location?.city || '',
+          region: user.profile?.location?.region || '',
+          bio: user.profile?.jobSeekerProfile?.bio || '',
+          title: user.profile?.jobSeekerProfile?.title || '',
+          experience: user.profile?.jobSeekerProfile?.experience || '',
+          skills,
+          availability: user.profile?.jobSeekerProfile?.availability || ''
+        };
+        setFormData(seeded);
+        setSkillsText(skills.join(', '));
+        savedFormRef.current = seeded;
+      }
+
+      // Initialize job alerts toggle (saved immediately on change — always
+      // mirrors the server)
       setJobAlertsEnabled(user.profile?.jobSeekerProfile?.notifications?.jobAlerts ?? false);
 
-      // Initialize settings tab state
-      const salary = user.profile?.jobSeekerProfile?.desiredSalary;
-      if (salary && (salary.min > 0 || salary.max > 0)) {
-        setShowSalaryPreference(true);
-        setDesiredSalaryMin(salary.min?.toString() || '');
-        setDesiredSalaryMax(salary.max?.toString() || '');
-        setDesiredSalaryCurrency(salary.currency || 'ALL');
-      } else {
-        setShowSalaryPreference(false);
+      // Initialize settings tab state (own dirty flag — 142)
+      if (!sameUser || !settingsDirtyRef.current) {
+        const salary = user.profile?.jobSeekerProfile?.desiredSalary;
+        if (salary && (salary.min > 0 || salary.max > 0)) {
+          setShowSalaryPreference(true);
+          setDesiredSalaryMin(salary.min?.toString() || '');
+          setDesiredSalaryMax(salary.max?.toString() || '');
+          setDesiredSalaryCurrency(salary.currency || 'ALL');
+        } else {
+          setShowSalaryPreference(false);
+        }
+        setTutorialsEnabled(user.preferences?.tutorialsEnabled ?? true);
+        setSalaryViewPeriod(user.preferences?.salaryViewPeriod === 'yearly' ? 'yearly' : 'monthly');
       }
-      setTutorialsEnabled(user.preferences?.tutorialsEnabled ?? true);
-      setSalaryViewPeriod(user.preferences?.salaryViewPeriod === 'yearly' ? 'yearly' : 'monthly');
     }
   }, [user]);
 
   // Load user applications
-  const loadApplications = async () => {
+  const APPLICATIONS_PER_PAGE = 10;
+  const loadApplicationStats = async () => {
+    try {
+      const r = await usersApi.getUserStats();
+      const st = r.success ? r.data?.stats : null;
+      if (st) {
+        setApplicationStats({
+          total: st.totalApplications || 0,
+          pending: st.pendingApplications || 0,
+          inReview: (st.viewedApplications || 0) + (st.shortlistedApplications || 0),
+          hired: st.hiredApplications || 0,
+        });
+      }
+    } catch {
+      // Counters fall back to the loaded page — non-critical.
+    }
+  };
+
+  const loadApplications = async (page = applicationsPage) => {
     if (!user || user.userType !== 'jobseeker') return;
     
     try {
       setLoadingApplications(true);
-      const response = await applicationsApi.getMyApplications({});
+      loadApplicationStats();
+      const response = await applicationsApi.getMyApplications({ page, limit: APPLICATIONS_PER_PAGE });
       
       if (response.success && response.data) {
+        const pageInfo = response.data.pagination;
+        // The page emptied (e.g. its last application was withdrawn) → previous page.
+        if ((response.data.applications || []).length === 0 && page > 1 && pageInfo?.totalApplications > 0) {
+          setApplicationsPage(pageInfo.totalPages || 1);
+          return loadApplications(pageInfo.totalPages || 1);
+        }
         setApplications(response.data.applications || []);
+        setApplicationsPagination(pageInfo ? {
+          currentPage: pageInfo.currentPage,
+          totalPages: pageInfo.totalPages,
+          totalApplications: pageInfo.totalApplications,
+        } : null);
+        setApplicationsPage(page);
       } else {
         console.error('Failed to load applications:', response);
         setApplications([]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading applications:', error);
       setApplications([]);
-      toast({ title: 'Gabim', description: 'Nuk mundën të ngarkoheshin aplikimet', variant: 'destructive' });
+      // A 401 means the session just ended (e.g. password changed on another
+      // device): the login page explains that — no extra red toast on top.
+      if (error?.status !== 401) {
+        toast({ title: 'Gabim', description: 'Nuk mundën të ngarkoheshin aplikimet', variant: 'destructive' });
+      }
     } finally {
       setLoadingApplications(false);
     }
@@ -404,6 +538,7 @@ const Profile = () => {
       }
       const response = await usersApi.updateProfile(updateData);
       if (response.success) {
+        settingsDirtyRef.current = false; // let the refresh re-seed from the saved values
         await refreshUser();
         toast({ title: 'Cilësimet u ruajtën me sukses' });
       } else {
@@ -453,16 +588,21 @@ const Profile = () => {
       const response = await usersApi.deleteAccount(deletePassword);
       if (response.success) {
         toast({ title: 'Llogaria u fshi me sukses' });
+        // 164: end the session before leaving — usersApi.deleteAccount has
+        // dropped the stored tokens (the server revoked them and cleared the
+        // cookies); logout() resets the React auth state.
+        await logout();
         window.location.href = '/';
-      } else {
-        throw new Error(response.message);
+        return;
       }
+      throw new Error(response.message);
     } catch (error: any) {
+      // 148: a mistyped password is a 400 — the user stays logged in and can
+      // retype it without reopening the confirmation.
       toast({ title: 'Gabim në fshirjen e llogarisë', description: error.message, variant: 'destructive' });
+      setDeletePassword('');
     } finally {
       setDeletingAccount(false);
-      setShowDeleteConfirm(false);
-      setDeletePassword('');
     }
   };
 
@@ -504,12 +644,11 @@ const Profile = () => {
   const handleUploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      toast({ title: 'Vetëm skedarë imazhi lejohen', variant: 'destructive' });
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast({ title: 'Imazhi nuk duhet të jetë më i madh se 5MB', variant: 'destructive' });
+    // 150: same type/size rule as the server (JPG/PNG/WebP, 5MB).
+    const photoProblem = uploadProblem(file, IMAGE_UPLOAD);
+    if (photoProblem) {
+      toast({ title: photoProblem, variant: 'destructive' });
+      if (photoInputRef.current) photoInputRef.current.value = '';
       return;
     }
     setUploadingPhoto(true);
@@ -531,19 +670,21 @@ const Profile = () => {
     }
   };
 
-  // Load applications when user is available
+  // Load applications when user is available. Keyed on the identity, not the
+  // object: refreshUser() installs a new `user` object every 5 minutes, which
+  // used to reload (and flash) the Applications tab each time (142).
   useEffect(() => {
     if (user && user.userType === 'jobseeker') {
       loadApplications();
     }
-  }, [user]);
-  
+  }, [user?._id, user?.userType]);
+
   const handleInputChange = (field: string, value: string | string[]) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }));
-    setHasChanges(true);
+    markDirty(true);
     // Clear this field's inline error as soon as the user edits it.
     setFieldErrors(prev => {
       if (!prev[field]) return prev;
@@ -552,10 +693,19 @@ const Profile = () => {
       return next;
     });
   };
-  
-  const handleSkillsChange = (skillsString: string) => {
-    const skillsArray = skillsString.split(',').map(skill => skill.trim()).filter(skill => skill.length > 0);
-    handleInputChange('skills', skillsArray);
+
+  // O-77: keep exactly what the user typed (commas, spaces, multi-word
+  // skills); the list is derived from it on blur and on save.
+  const handleSkillsChange = (text: string) => {
+    setSkillsText(text);
+    handleInputChange('skills', parseSkillsText(text));
+  };
+
+  // Tidy the box on blur: "React,node.js ,  Excel" → "React, node.js, Excel".
+  const handleSkillsBlur = () => {
+    const parsed = parseSkillsText(skillsText);
+    const tidy = parsed.join(', ');
+    if (tidy !== skillsText) setSkillsText(tidy);
   };
 
   // Immediately save the job alerts toggle when it changes
@@ -613,11 +763,12 @@ const Profile = () => {
       );
       personalValidation.errors.forEach((e) => { newErrors[e.field] = e.message; });
 
+      const skills = parseSkillsText(skillsText);
       if (user?.userType === 'jobseeker') {
         const professionalValidation = validateForm(
           {
             headline: formData.title,
-            skills: formData.skills
+            skills
           },
           profileValidationRules.professional
         );
@@ -625,6 +776,13 @@ const Profile = () => {
         professionalValidation.errors.forEach((e) => {
           newErrors[e.field === 'headline' ? 'title' : e.field] = e.message;
         });
+        const tooLong = skills.find((s) => s.length > 50);
+        if (tooLong && !newErrors.skills) {
+          newErrors.skills = `Çdo aftësi duhet të ketë deri në 50 karaktere ("${tooLong.slice(0, 20)}…")`;
+        }
+      }
+      if (!formData.city.trim()) {
+        newErrors.city = 'Zgjidhni qytetin';
       }
 
       if (Object.keys(newErrors).length > 0) {
@@ -639,34 +797,45 @@ const Profile = () => {
       }
       setFieldErrors({});
 
-      // Prepare update data
-      const updateData = {
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        phone: formData.phone || undefined,
-        location: {
-          city: formData.location.split(',')[0]?.trim() || '',
-          region: formData.location.split(',')[1]?.trim() || formData.location.split(',')[0]?.trim() || ''
-        }
-      };
+      // Prepare update data — ONLY the fields that differ from the values the
+      // form was seeded with (review #8). 158: an emptied phone is sent as ''
+      // so the server actually removes it. 149: only the city is sent — the
+      // server takes the region from the Location record. O-76: an untouched
+      // select ('') is never sent.
+      const base = savedFormRef.current || {};
+      const changed = (key: string, value: unknown) => base[key] !== value;
+      const updateData: Record<string, unknown> = {};
+      if (changed('firstName', formData.firstName)) updateData.firstName = formData.firstName;
+      if (changed('lastName', formData.lastName)) updateData.lastName = formData.lastName;
+      if (changed('phone', formData.phone)) updateData.phone = formData.phone || '';
+      if (changed('city', formData.city)) updateData.location = { city: formData.city };
 
-      // Add job seeker specific data
       if (user?.userType === 'jobseeker') {
-        updateData.jobSeekerProfile = {
-          bio: formData.bio,
-          title: formData.title,
-          experience: formData.experience,
-          skills: formData.skills,
-          availability: formData.availability
-        };
+        const jsp: Record<string, unknown> = {};
+        if (changed('bio', formData.bio)) jsp.bio = formData.bio;
+        if (changed('title', formData.title)) jsp.title = formData.title;
+        const baseSkills = Array.isArray(base.skills) ? (base.skills as string[]) : [];
+        if (skills.join('\u0000') !== baseSkills.join('\u0000')) jsp.skills = skills;
+        if (formData.experience && changed('experience', formData.experience)) jsp.experience = formData.experience;
+        if (formData.availability && changed('availability', formData.availability)) jsp.availability = formData.availability;
+        if (Object.keys(jsp).length > 0) updateData.jobSeekerProfile = jsp;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        // Edited and then reverted — nothing to send.
+        markDirty(false);
+        toast({ title: "Asnjë ndryshim", description: "Të dhënat janë njësoj si ato të ruajtura." });
+        return;
       }
 
       // Update profile via API
       const response = await usersApi.updateProfile(updateData);
 
       if (response.success && response.data?.user) {
+        // Clean form first, so the refresh below re-seeds it from the saved
+        // (server-normalised) values.
+        markDirty(false);
         await refreshUser();
-        setHasChanges(false);
 
         toast({
           title: "Profili u ruajt!",
@@ -677,9 +846,13 @@ const Profile = () => {
       }
     } catch (error: any) {
       console.error('Profile save error:', error);
+      // Show the server's field errors inline (not just "Gabime në validim").
+      const serverErrors = mapProfileFieldErrors(error?.response?.errors);
+      if (Object.keys(serverErrors).length > 0) setFieldErrors(serverErrors);
+      const firstServerError = Object.values(serverErrors)[0];
       toast({
         title: "Gabim",
-        description: error.message || "Nuk mund të ruhet profili",
+        description: firstServerError || error.message || "Nuk mund të ruhet profili",
         variant: "destructive"
       });
     } finally {
@@ -695,24 +868,11 @@ const Profile = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Validate file type (PDF + DOCX/DOC)
-    const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword'];
-    if (!allowedTypes.includes(file.type)) {
-      toast({
-        title: "Gabim",
-        description: "Ju lutem ngarkoni vetëm skedarë PDF ose Word (DOCX)",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast({
-        title: "Gabim",
-        description: "Skedari është shumë i madh. Madhësia maksimale është 5MB",
-        variant: "destructive"
-      });
+    // Same type/size rule as the server (PDF/DOCX/DOC, 5MB).
+    const cvProblem = uploadProblem(file, RESUME_UPLOAD);
+    if (cvProblem) {
+      toast({ title: "Gabim", description: cvProblem, variant: "destructive" });
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
@@ -764,13 +924,10 @@ const Profile = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword'];
-    if (!allowedTypes.includes(file.type)) {
-      toast({ title: "Gabim", description: "Ju lutem ngarkoni vetëm skedarë PDF ose Word (DOCX)", variant: "destructive" });
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast({ title: "Gabim", description: "Skedari është shumë i madh. Madhësia maksimale është 5MB", variant: "destructive" });
+    const parseProblem = uploadProblem(file, RESUME_UPLOAD);
+    if (parseProblem) {
+      toast({ title: "Gabim", description: parseProblem, variant: "destructive" });
+      if (parseFileInputRef.current) parseFileInputRef.current.value = '';
       return;
     }
 
@@ -790,8 +947,10 @@ const Profile = () => {
           setParsedCVData(response.data.parsedData);
           // Initialize selection states
           setSelectedProfileFields({ title: true, bio: true, experience: true, skills: true });
-          setSelectedWorkEntries((response.data.parsedData.workExperience || []).map(() => true));
-          setSelectedEducationEntries((response.data.parsedData.education || []).map(() => true));
+          // 166: entries that look like ones already on the profile start
+          // UNchecked — re-parsing the same CV used to add them all again.
+          setSelectedWorkEntries((response.data.parsedData.workExperience || []).map((w: any) => !isDuplicateWork(w)));
+          setSelectedEducationEntries((response.data.parsedData.education || []).map((e: any) => !isDuplicateEducation(e)));
           setShowCVPreviewModal(true);
         } else {
           toast({
@@ -829,8 +988,9 @@ const Profile = () => {
 
   const isDuplicateEducation = (entry: any) => {
     const existing = user?.profile?.jobSeekerProfile?.education || [];
+    // Legacy edited entries hold the institution in `school`.
     return existing.some((e: any) =>
-      e.institution?.toLowerCase()?.trim() === entry.institution?.toLowerCase()?.trim() &&
+      (e.school || e.institution)?.toLowerCase()?.trim() === entry.institution?.toLowerCase()?.trim() &&
       e.degree?.toLowerCase()?.trim() === entry.degree?.toLowerCase()?.trim()
     );
   };
@@ -866,7 +1026,10 @@ const Profile = () => {
           if (profileUpdate.title) setFormData(prev => ({ ...prev, title: profileUpdate.title }));
           if (profileUpdate.bio) setFormData(prev => ({ ...prev, bio: profileUpdate.bio }));
           if (profileUpdate.experience) setFormData(prev => ({ ...prev, experience: profileUpdate.experience }));
-          if (profileUpdate.skills) setFormData(prev => ({ ...prev, skills: profileUpdate.skills }));
+          if (profileUpdate.skills) {
+            setFormData(prev => ({ ...prev, skills: profileUpdate.skills }));
+            setSkillsText(profileUpdate.skills.join(', '));
+          }
         } else {
           errorCount++;
         }
@@ -971,7 +1134,10 @@ const Profile = () => {
       location: work.location || '',
       startDate: work.startDate ? new Date(work.startDate).toISOString().slice(0, 7) : '',
       endDate: work.endDate ? new Date(work.endDate).toISOString().slice(0, 7) : '',
-      isCurrentJob: !work.endDate,
+      // 156: the stored flag decides — a past job with an unknown end date
+      // is not "current" (and a legacy entry flagged current that has an end
+      // date is treated as ended).
+      isCurrentJob: isOngoing(work),
       description: work.description || '',
       achievements: work.achievements || ''
     });
@@ -993,7 +1159,7 @@ const Profile = () => {
       location: edu.location || '',
       startDate: edu.startDate ? new Date(edu.startDate).toISOString().slice(0, 7) : '',
       endDate: edu.endDate ? new Date(edu.endDate).toISOString().slice(0, 7) : '',
-      isCurrentStudy: !edu.endDate,
+      isCurrentStudy: isOngoing(edu),
       gpa: edu.gpa || '',
       description: edu.description || ''
     });
@@ -1066,13 +1232,17 @@ const Profile = () => {
         // Refresh user data
         await refreshUser();
       } else {
-        throw new Error(response.error || 'Gabim gjatë shtimit të përvojës');
+        throw new Error(response.message || 'Gabim gjatë shtimit të përvojës');
       }
     } catch (error: any) {
       console.error('Error adding work experience:', error);
+      // 139: the server names the invalid field(s) — show them.
+      const fieldErrors: string[] = Array.isArray(error?.response?.errors)
+        ? error.response.errors.map((e: any) => (typeof e === 'string' ? e : e?.message)).filter(Boolean)
+        : [];
       toast({
         title: "Gabim",
-        description: error.message || "Nuk mundëm të shtojmë përvojën. Ju lutem provoni përsëri.",
+        description: fieldErrors.length ? fieldErrors.join(' · ') : (error.message || "Nuk mundëm të shtojmë përvojën. Ju lutem provoni përsëri."),
         variant: "destructive"
       });
     } finally {
@@ -1147,13 +1317,16 @@ const Profile = () => {
         // Refresh user data
         await refreshUser();
       } else {
-        throw new Error(response.error || 'Gabim gjatë shtimit të arsimimit');
+        throw new Error(response.message || 'Gabim gjatë shtimit të arsimimit');
       }
     } catch (error: any) {
       console.error('Error adding education:', error);
+      const fieldErrors: string[] = Array.isArray(error?.response?.errors)
+        ? error.response.errors.map((e: any) => (typeof e === 'string' ? e : e?.message)).filter(Boolean)
+        : [];
       toast({
         title: "Gabim",
-        description: error.message || "Nuk mundëm të shtojmë arsimimin. Ju lutem provoni përsëri.",
+        description: fieldErrors.length ? fieldErrors.join(' · ') : (error.message || "Nuk mundëm të shtojmë arsimimin. Ju lutem provoni përsëri."),
         variant: "destructive"
       });
     } finally {
@@ -1676,12 +1849,14 @@ const Profile = () => {
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Aplikime</span>
-                  <Badge variant="secondary">{applications.length}</Badge>
+                  <Badge variant="secondary">{applicationStats?.total ?? applicationsPagination?.totalApplications ?? applications.length}</Badge>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Aktive</span>
                   <Badge variant="default">
-                    {applications.filter(app => ['pending', 'viewed', 'shortlisted'].includes(app.status)).length}
+                    {applicationStats
+                      ? applicationStats.pending + applicationStats.inReview
+                      : applications.filter(app => ACTIVE_APPLICATION_STATUSES.includes(app.status)).length}
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between">
@@ -1710,7 +1885,7 @@ const Profile = () => {
               strings or wide grids from forcing horizontal page scroll between
               tab switches on mobile. */}
           <div className="lg:col-span-2 min-w-0 overflow-x-hidden">
-            <Tabs defaultValue="personal" className="space-y-6" value={currentTab} onValueChange={setCurrentTab}>
+            <Tabs id="profile-tabs" defaultValue="personal" className="space-y-6" value={currentTab} onValueChange={setCurrentTab}>
               <TabsList data-tutorial="tabs" className="w-full overflow-x-auto flex-wrap h-auto">
                 <TabsTrigger value="personal">Informacion Personal</TabsTrigger>
                 <TabsTrigger value="experience" data-tutorial="work-experience-tab">Përvojë Pune</TabsTrigger>
@@ -1794,18 +1969,39 @@ const Profile = () => {
                       )}
                     </div>
 
+                    {/* 149: the city comes from the same canonical list as
+                        signup — job alerts and matching compare cities exactly. */}
                     <div className="space-y-2">
-                      <Label htmlFor="location">Vendndodhja</Label>
-                      <div className="relative">
-                        <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input 
-                          id="location" 
-                          value={formData.location}
-                          onChange={(e) => handleInputChange('location', e.target.value)}
-                          placeholder="Tiranë, Shqipëri"
-                          className="pl-10"
-                        />
-                      </div>
+                      <Label htmlFor="city">Qyteti</Label>
+                      <Select
+                        value={formData.city}
+                        onValueChange={(value) => {
+                          const loc = cityOptions.find((l) => l.city === value);
+                          handleInputChange('city', value);
+                          setFormData((prev) => ({ ...prev, region: loc?.region || '' }));
+                        }}
+                      >
+                        <SelectTrigger
+                          id="city"
+                          aria-invalid={!!fieldErrors.city}
+                          className={fieldErrors.city ? 'border-red-500 focus:ring-red-500' : ''}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <SelectValue placeholder="Zgjidhni qytetin" />
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {cityOptions.map((loc) => (
+                            <SelectItem key={loc.city} value={loc.city}>
+                              {loc.region && loc.region !== loc.city ? `${loc.city} (${loc.region})` : loc.city}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {fieldErrors.city && (
+                        <p className="text-xs text-red-600 dark:text-red-400">{fieldErrors.city}</p>
+                      )}
                     </div>
 
                       <div className="space-y-2">
@@ -1838,30 +2034,41 @@ const Profile = () => {
 
                     <div className="space-y-2" data-tutorial="experience-level">
                       <Label htmlFor="experience">Përvojë Pune</Label>
-                      <Select value={formData.experience || 'none'} onValueChange={(value) => handleInputChange('experience', value)}>
-                        <SelectTrigger>
+                      {/* O-76: an unset level shows the placeholder (it used to
+                          display "Nuk kam përvojë" while nothing was stored);
+                          "Nuk kam përvojë" ('none') is now a real, saveable choice. */}
+                      <Select value={formData.experience} onValueChange={(value) => handleInputChange('experience', value)}>
+                        <SelectTrigger id="experience" className={fieldErrors.experience ? 'border-red-500 focus:ring-red-500' : ''}>
                           <SelectValue placeholder="Zgjidh nivelin e përvojës" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="none">Nuk kam përvojë</SelectItem>
-                          <SelectItem value="0-1 vjet">0-1 vjet</SelectItem>
-                          <SelectItem value="1-2 vjet">1-2 vjet</SelectItem>
-                          <SelectItem value="2-5 vjet">2-5 vjet</SelectItem>
-                          <SelectItem value="5-10 vjet">5-10 vjet</SelectItem>
-                          <SelectItem value="10+ vjet">10+ vjet</SelectItem>
+                          {EXPERIENCE_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
+                      {fieldErrors.experience && (
+                        <p className="text-xs text-red-600 dark:text-red-400">{fieldErrors.experience}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2" data-tutorial="skills">
                       <Label htmlFor="skills">Aftësitë (të ndara me presje)</Label>
                       <Input
                         id="skills"
-                        value={formData.skills.join(', ')}
+                        value={skillsText}
                         onChange={(e) => handleSkillsChange(e.target.value)}
-                        placeholder="React, JavaScript, Python, Marketing, etc."
+                        onBlur={handleSkillsBlur}
+                        placeholder="p.sh. Microsoft Excel, Shërbim klienti, React"
                         className={fieldErrors.skills ? 'border-red-500 focus-visible:ring-red-500' : ''}
                       />
+                      {formData.skills.length > 0 && !fieldErrors.skills && (
+                        <div className="flex flex-wrap gap-1.5" aria-label="Aftësitë që do të ruhen">
+                          {formData.skills.map((skill) => (
+                            <Badge key={skill.toLowerCase()} variant="secondary" className="font-normal">{skill}</Badge>
+                          ))}
+                        </div>
+                      )}
                       {fieldErrors.skills && (
                         <p className="text-xs text-red-600 dark:text-red-400">{fieldErrors.skills}</p>
                       )}
@@ -1870,7 +2077,7 @@ const Profile = () => {
                     <div className="space-y-2">
                       <Label htmlFor="availability">Disponueshmëria</Label>
                       <Select value={formData.availability} onValueChange={(value) => handleInputChange('availability', value)}>
-                        <SelectTrigger>
+                        <SelectTrigger id="availability">
                           <SelectValue placeholder="Kur mund të fillosh punë?" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1981,7 +2188,12 @@ const Profile = () => {
                                   // sniffs magic bytes, opens PDFs inline (DOCX
                                   // falls back to download — see resumeView.ts).
                                   const r = await viewResume(currentCV);
-                                  if (r.opened === 'downloaded' && r.format !== 'pdf') {
+                                  if (r.popupBlocked) {
+                                    toast({
+                                      title: 'CV u shkarkua',
+                                      description: 'Shfletuesi bllokoi hapjen e një skede të re — CV-ja u shkarkua në vend të kësaj.',
+                                    });
+                                  } else if (r.opened === 'downloaded' && r.format !== 'pdf') {
                                     toast({
                                       title: 'CV u shkarkua',
                                       description: 'Skedarët .docx/.doc nuk mund të hapen direkt në shfletues — u shkarkua në vend të kësaj.',
@@ -2127,7 +2339,7 @@ const Profile = () => {
                               <h3 className="font-semibold text-foreground">{work.position}</h3>
                             </div>
                             <p className="text-muted-foreground text-sm">
-                              {work.company}{work.location ? ` • ${work.location}` : ''} • {new Date(work.startDate).getFullYear()} - {work.endDate ? new Date(work.endDate).getFullYear() : 'Tani'}
+                              {[work.company, work.location, periodLabel(work)].filter(Boolean).join(' • ')}
                             </p>
                             {work.description && (
                               <p className="text-sm mt-1 text-muted-foreground line-clamp-2">{work.description}</p>
@@ -2174,9 +2386,9 @@ const Profile = () => {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               <Award className="h-4 w-4 text-secondary flex-shrink-0" />
-                              <h3 className="font-semibold text-foreground">{edu.degree}{edu.fieldOfStudy ? ` — ${edu.fieldOfStudy}` : ''}</h3>
+                              <h3 className="font-semibold text-foreground">{degreeLabel(edu.degree)}{edu.fieldOfStudy ? ` — ${edu.fieldOfStudy}` : ''}</h3>
                             </div>
-                            <p className="text-muted-foreground text-sm">{edu.school || edu.institution}{edu.location ? ` • ${edu.location}` : ''} • {edu.year}</p>
+                            <p className="text-muted-foreground text-sm">{[edu.school || edu.institution, edu.location, periodLabel(edu)].filter(Boolean).join(' • ')}</p>
                             {edu.description && (
                               <p className="text-sm mt-1 text-muted-foreground line-clamp-2">{edu.description}</p>
                             )}
@@ -2222,7 +2434,7 @@ const Profile = () => {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={loadApplications}
+                        onClick={() => loadApplications()}
                         disabled={loadingApplications}
                         className="flex items-center gap-2"
                         data-tutorial="refresh-button"
@@ -2260,25 +2472,28 @@ const Profile = () => {
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/30 rounded-lg" data-tutorial="applications-summary">
                           <div className="text-center">
                             <div className="text-2xl font-bold text-primary">
-                              {applications.length}
+                              {applicationStats?.total ?? applicationsPagination?.totalApplications ?? applications.length}
                             </div>
                             <div className="text-sm text-muted-foreground">Gjithsej</div>
                           </div>
                           <div className="text-center">
                             <div className="text-2xl font-bold text-yellow-600">
-                              {applications.filter(app => app.status === 'pending').length}
+                              {applicationStats?.pending ?? applications.filter(app => app.status === 'pending').length}
                             </div>
                             <div className="text-sm text-muted-foreground">Në pritje</div>
                           </div>
+                          {/* 163: "Aktive" (open = pending + viewed + shortlisted) is
+                              the sidebar counter; this tile is the viewed/shortlisted
+                              part of it, so it gets its own name. */}
                           <div className="text-center">
                             <div className="text-2xl font-bold text-blue-600">
-                              {applications.filter(app => app.status === 'viewed' || app.status === 'shortlisted').length}
+                              {applicationStats?.inReview ?? applications.filter(app => app.status === 'viewed' || app.status === 'shortlisted').length}
                             </div>
-                            <div className="text-sm text-muted-foreground">Aktive</div>
+                            <div className="text-sm text-muted-foreground">Në shqyrtim</div>
                           </div>
                           <div className="text-center">
                             <div className="text-2xl font-bold text-green-600">
-                              {applications.filter(app => app.status === 'hired').length}
+                              {applicationStats?.hired ?? applications.filter(app => app.status === 'hired').length}
                             </div>
                             <div className="text-sm text-muted-foreground">Të pranuara</div>
                           </div>
@@ -2294,6 +2509,31 @@ const Profile = () => {
                             />
                           ))}
                         </div>
+
+                        {/* 29/147: every application is reachable (10 per page). */}
+                        {applicationsPagination && applicationsPagination.totalPages > 1 && (
+                          <div className="flex items-center justify-between gap-2 pt-2" data-testid="applications-pager">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={loadingApplications || applicationsPagination.currentPage <= 1}
+                              onClick={() => loadApplications(applicationsPagination.currentPage - 1)}
+                            >
+                              Mëparshmi
+                            </Button>
+                            <span className="text-sm text-muted-foreground">
+                              Faqja {applicationsPagination.currentPage} nga {applicationsPagination.totalPages}
+                            </span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={loadingApplications || applicationsPagination.currentPage >= applicationsPagination.totalPages}
+                              onClick={() => loadApplications(applicationsPagination.currentPage + 1)}
+                            >
+                              Tjetri
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </CardContent>
@@ -2321,7 +2561,7 @@ const Profile = () => {
                         <input
                           type="file"
                           ref={photoInputRef}
-                          accept="image/*"
+                          accept={IMAGE_UPLOAD.accept}
                           className="hidden"
                           onChange={handleUploadPhoto}
                         />
@@ -2333,7 +2573,7 @@ const Profile = () => {
                           {uploadingPhoto ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                           {uploadingPhoto ? 'Duke ngarkuar...' : 'Ngarko Foto'}
                         </Button>
-                        <p className="text-xs text-muted-foreground mt-1">JPG, PNG deri në 5MB</p>
+                        <p className="text-xs text-muted-foreground mt-1">{IMAGE_UPLOAD.hint}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -2353,7 +2593,7 @@ const Profile = () => {
                             <Label className="text-sm font-medium">Paga e Dëshiruar (mujore)</Label>
                             <p className="text-xs text-muted-foreground">Vendos rangon e pagës që dëshironi</p>
                           </div>
-                          <Switch checked={showSalaryPreference} onCheckedChange={setShowSalaryPreference} />
+                          <Switch checked={showSalaryPreference} onCheckedChange={(v) => { touchSettings(); setShowSalaryPreference(v); }} />
                         </div>
                         {showSalaryPreference && (
                           <div className="grid grid-cols-3 gap-3 mt-2">
@@ -2361,23 +2601,23 @@ const Profile = () => {
                               <Label className="text-xs text-muted-foreground">Min</Label>
                               <Input
                                 type="number"
-                                placeholder="p.sh. 50000"
+                                placeholder={desiredSalaryCurrency === 'EUR' ? 'p.sh. 600' : 'p.sh. 60000'}
                                 value={desiredSalaryMin}
-                                onChange={(e) => setDesiredSalaryMin(e.target.value)}
+                                onChange={(e) => { touchSettings(); setDesiredSalaryMin(e.target.value); }}
                               />
                             </div>
                             <div>
                               <Label className="text-xs text-muted-foreground">Max</Label>
                               <Input
                                 type="number"
-                                placeholder="p.sh. 80000"
+                                placeholder={desiredSalaryCurrency === 'EUR' ? 'p.sh. 900' : 'p.sh. 90000'}
                                 value={desiredSalaryMax}
-                                onChange={(e) => setDesiredSalaryMax(e.target.value)}
+                                onChange={(e) => { touchSettings(); setDesiredSalaryMax(e.target.value); }}
                               />
                             </div>
                             <div>
                               <Label className="text-xs text-muted-foreground">Monedha</Label>
-                              <Select value={desiredSalaryCurrency} onValueChange={setDesiredSalaryCurrency}>
+                              <Select value={desiredSalaryCurrency} onValueChange={(v) => { touchSettings(); setDesiredSalaryCurrency(v); }}>
                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="ALL">ALL (Lekë)</SelectItem>
@@ -2404,7 +2644,7 @@ const Profile = () => {
                         <Label className="text-sm font-medium">Tutorialët udhëzues</Label>
                         <p className="text-xs text-muted-foreground">Shfaq butonat e tutorialit nëpër faqe</p>
                       </div>
-                      <Switch checked={tutorialsEnabled} onCheckedChange={setTutorialsEnabled} />
+                      <Switch checked={tutorialsEnabled} onCheckedChange={(v) => { touchSettings(); setTutorialsEnabled(v); }} />
                     </div>
                     {user?.userType === 'jobseeker' && (
                       <div className="flex items-center justify-between">
@@ -2412,7 +2652,7 @@ const Profile = () => {
                           <Label className="text-sm font-medium">Shfaq pagat</Label>
                           <p className="text-xs text-muted-foreground">Si dëshiron t'i shohësh pagat e punëve</p>
                         </div>
-                        <Select value={salaryViewPeriod} onValueChange={(v) => setSalaryViewPeriod(v as 'monthly' | 'yearly')}>
+                        <Select value={salaryViewPeriod} onValueChange={(v) => { touchSettings(); setSalaryViewPeriod(v as 'monthly' | 'yearly'); }}>
                           <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="monthly">Mujore</SelectItem>
@@ -2531,7 +2771,7 @@ const Profile = () => {
                 <Card className="border-destructive/50">
                   <CardHeader>
                     <CardTitle className="text-destructive">Fshi Llogarinë</CardTitle>
-                    <CardDescription>Kjo veprim është i pakthyeshëm. Të gjitha të dhënat tuaja do të fshihen.</CardDescription>
+                    <CardDescription>Ky veprim është i pakthyeshëm. Aplikimet tuaja tërhiqen menjëherë dhe të gjitha të dhënat tuaja fshihen përfundimisht brenda 30 ditëve.</CardDescription>
                   </CardHeader>
                   <CardContent>
                     {!showDeleteConfirm ? (
@@ -2582,6 +2822,7 @@ const Profile = () => {
                 <Label htmlFor="position">Pozicioni *</Label>
                 <Input
                   id="position"
+                  maxLength={100}
                   value={workExperienceForm.position}
                   onChange={(e) => setWorkExperienceForm(prev => ({ ...prev, position: e.target.value }))}
                   placeholder="p.sh. Senior Software Engineer"
@@ -2592,6 +2833,7 @@ const Profile = () => {
                 <Label htmlFor="company">Kompania *</Label>
                 <Input
                   id="company"
+                  maxLength={100}
                   value={workExperienceForm.company}
                   onChange={(e) => setWorkExperienceForm(prev => ({ ...prev, company: e.target.value }))}
                   placeholder="p.sh. Albanian Software Solutions"
@@ -2792,12 +3034,9 @@ const Profile = () => {
                     <SelectValue placeholder="Zgjidhni gradën" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="diploma_shkollore">Diplomë e shkollës së mesme</SelectItem>
-                    <SelectItem value="certificate">Certifikatë profesionale</SelectItem>
-                    <SelectItem value="bachelors">Bachelor (Licencë)</SelectItem>
-                    <SelectItem value="masters">Master</SelectItem>
-                    <SelectItem value="phd">Doktoraturë (PhD)</SelectItem>
-                    <SelectItem value="other">Tjetër</SelectItem>
+                    {DEGREE_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -2805,6 +3044,7 @@ const Profile = () => {
                 <Label htmlFor="field">Fusha e studimit *</Label>
                 <Input
                   id="field"
+                  maxLength={100}
                   value={educationForm.fieldOfStudy}
                   onChange={(e) => setEducationForm(prev => ({ ...prev, fieldOfStudy: e.target.value }))}
                   placeholder="p.sh. Shkenca Kompjuterike, Inxhinieri, Biznes"
@@ -2818,6 +3058,7 @@ const Profile = () => {
               <Label htmlFor="institution">Institucioni *</Label>
               <Input
                 id="institution"
+                maxLength={100}
                 value={educationForm.institution}
                 onChange={(e) => setEducationForm(prev => ({ ...prev, institution: e.target.value }))}
                 placeholder="p.sh. Universiteti i Tiranës, Universiteti Politeknik"
@@ -3077,9 +3318,9 @@ const Profile = () => {
                       />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium">Niveli i përvojës</p>
-                        <p className="text-sm text-muted-foreground">{parsedCVData.experience}</p>
+                        <p className="text-sm text-muted-foreground">{experienceLabel(parsedCVData.experience)}</p>
                         {formData.experience && formData.experience !== parsedCVData.experience && (
-                          <p className="text-xs text-orange-600 mt-1">Aktual: {formData.experience}</p>
+                          <p className="text-xs text-orange-600 mt-1">Aktual: {experienceLabel(formData.experience)}</p>
                         )}
                       </div>
                     </label>
@@ -3178,7 +3419,7 @@ const Profile = () => {
                           className="mt-1 h-4 w-4 rounded border-gray-300"
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium">{edu.degree}</p>
+                          <p className="text-sm font-medium">{degreeLabel(edu.degree)}</p>
                           <p className="text-sm text-muted-foreground">
                             {edu.institution}
                             {edu.fieldOfStudy ? ` — ${edu.fieldOfStudy}` : ''}

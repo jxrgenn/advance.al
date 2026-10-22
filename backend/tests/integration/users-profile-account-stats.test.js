@@ -143,13 +143,13 @@ describe('users.js — profile / account / stats / public-profile / DELETE resum
           employerProfile: {
             companyName: 'HACKED',
             industry: 'HACKED',
-            description: 'Legit description',
+            description: 'Legit description of the company, long enough for the rule',
           },
         });
       expect(r.status).toBe(200);
       const refreshed = await User.findById(user._id);
       expect(refreshed.profile.employerProfile.companyName).toBe(originalName);
-      expect(refreshed.profile.employerProfile.description).toBe('Legit description');
+      expect(refreshed.profile.employerProfile.description).toBe('Legit description of the company, long enough for the rule');
     });
 
     it('unverified employer can set companyName + industry (unverifiedAllowed includes them)', async () => {
@@ -228,13 +228,20 @@ describe('users.js — profile / account / stats / public-profile / DELETE resum
       expect(r.status).toBe(400);
     });
 
-    it('rejects when password wrong (L518-523)', async () => {
+    // 148: a wrong confirmation password is a 400 (validation), not a 401 —
+    // the frontend treats every 401 as an expired session and logged the user
+    // out for a typo. The account must stay intact.
+    it('rejects a wrong password with 400 and keeps the account (148)', async () => {
       const { user } = await createJobseeker({ email: 'delbadpw@example.com' });
       const r = await request(app)
         .delete('/api/users/account')
         .set(createAuthHeaders(user))
         .send({ password: 'WrongPass1' });
-      expect(r.status).toBe(401);
+      expect(r.status).toBe(400);
+      expect(r.body.message).toBe('Fjalëkalimi i gabuar');
+      const fresh = await User.findById(user._id).lean();
+      expect(fresh.isDeleted).toBe(false);
+      expect(fresh.status).toBe('active');
     });
 
     it('soft-deletes account with correct password', async () => {

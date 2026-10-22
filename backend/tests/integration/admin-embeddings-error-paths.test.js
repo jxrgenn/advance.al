@@ -80,21 +80,19 @@ describe('admin/embeddings.js — outer catch + happy paths', () => {
     expect(r.body.message).toMatch(/recomputing/);
   });
 
-  it('POST /recompute-all increments errors when queueEmbeddingGeneration throws (L262-263)', async () => {
+  // #98: recompute-all no longer writes JobQueue rows; it marks the jobs stale
+  // in one updateMany — when that write fails the route answers 500.
+  it('POST /recompute-all returns 500 when marking the jobs stale fails', async () => {
     const { user: admin } = await createAdmin();
     const { user: emp } = await createVerifiedEmployer();
-    const job = await createJob(emp);
-    jest.spyOn(jobEmbeddingService, 'queueEmbeddingGeneration')
-      .mockRejectedValueOnce(new Error('queue fail'));
+    await createJob(emp);
+    jest.spyOn(Job, 'updateMany').mockRejectedValueOnce(new Error('mark stale fail'));
 
     const r = await request(app)
       .post('/api/admin/embeddings/recompute-all')
       .set(createAuthHeaders(admin));
-    expect(r.status).toBe(200);
-    expect(r.body.data.errors).toBe(1);
-    expect(r.body.data.queued).toBe(0);
-    expect(r.body.data.total).toBe(1);
-    void job;
+    expect(r.status).toBe(500);
+    expect(r.body.message).toBe('Error recomputing embeddings');
   });
 
   it('POST /retry-failed returns 500 when Job.find throws (L328-329)', async () => {
@@ -111,21 +109,19 @@ describe('admin/embeddings.js — outer catch + happy paths', () => {
     expect(r.body.message).toMatch(/retrying/);
   });
 
-  it('POST /retry-failed increments errors when queueEmbeddingGeneration throws (L313-314)', async () => {
+  it('POST /retry-failed returns 500 when the status reset fails', async () => {
     const { user: admin } = await createAdmin();
     const { user: emp } = await createVerifiedEmployer();
     const job = await createJob(emp);
     await Job.updateOne({ _id: job._id }, { $set: { 'embedding.status': 'failed' } });
-
-    jest.spyOn(jobEmbeddingService, 'queueEmbeddingGeneration')
-      .mockRejectedValueOnce(new Error('queue fail'));
+    jest.spyOn(Job, 'updateMany').mockRejectedValueOnce(new Error('reset fail'));
 
     const r = await request(app)
       .post('/api/admin/embeddings/retry-failed')
       .set(createAuthHeaders(admin));
-    expect(r.status).toBe(200);
-    expect(r.body.data.errors).toBe(1);
-    expect(r.body.data.queued).toBe(0);
+    expect(r.status).toBe(500);
+    expect(r.body.message).toBe('Error retrying failed jobs');
+    expect((await Job.findById(job._id).lean()).embedding.status).toBe('failed');
   });
 
   it('POST /clear-old-queue deletes old completed/failed items', async () => {
@@ -179,17 +175,16 @@ describe('admin/embeddings.js — outer catch + happy paths', () => {
     expect(r.status).toBe(404);
   });
 
-  it('POST /queue-job/:jobId returns 500 when queueEmbeddingGeneration throws (L429-430)', async () => {
+  it('POST /queue-job/:jobId returns 500 when the job lookup throws', async () => {
     const { user: admin } = await createAdmin();
     const { user: emp } = await createVerifiedEmployer();
     const job = await createJob(emp);
-    jest.spyOn(jobEmbeddingService, 'queueEmbeddingGeneration')
-      .mockRejectedValueOnce(new Error('queue fail'));
+    jest.spyOn(Job, 'findById').mockRejectedValueOnce(new Error('lookup fail'));
     const r = await request(app)
       .post(`/api/admin/embeddings/queue-job/${job._id}`)
       .set(createAuthHeaders(admin));
     expect(r.status).toBe(500);
-    expect(r.body.message).toMatch(/queuing job/);
+    expect(r.body.message).toBe('Error queuing job');
   });
 
   it('DELETE /queue-item/:queueId returns 404 for non-existent', async () => {

@@ -16,11 +16,15 @@ import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader
 import { Switch } from "@/components/ui/switch";
 import ReportUserModal from "@/components/ReportUserModal";
 import { useToast } from "@/hooks/use-toast";
-import { ApiError, jobsApi, applicationsApi, usersApi, locationsApi, matchingApi, Job, Application, Location, CandidateMatch, User } from "@/lib/api";
+import { ApiError, jobsApi, applicationsApi, usersApi, locationsApi, matchingApi, Job, Application, Location, CandidateMatch, User, EmployerApplicationCounts } from "@/lib/api";
+import { experienceLabel } from "@/lib/profileUtils";
+import { degreeLabel, periodLabel } from "@/lib/profileHistory";
 import { viewResume, downloadResume, isInlineViewable, DOCX_VIEW_TOOLTIP } from "@/lib/resumeView";
 import { useAuth } from "@/contexts/AuthContext";
-import { validateForm, employerDashboardSettingsRules, formatValidationErrors, isValidAlbanianPhone, normalizeAlbanianPhone, ALBANIAN_PHONE_MESSAGE, cleanAlbanianPhoneInput } from "@/lib/formValidation";
+import { validateForm, employerDashboardSettingsRules, formatValidationErrors, isValidAlbanianPhone, normalizeAlbanianPhone, ALBANIAN_PHONE_MESSAGE, cleanAlbanianPhoneInput, COMPANY_DESCRIPTION_LIMITS, IMAGE_UPLOAD, uploadProblem } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
+import { jobTypeLabel, jobStatusLabel } from "@/lib/labels";
+import { formatAlbanianDate } from "@/lib/albanianDate";
 import { TextAreaWithCounter } from "@/components/CharacterCounter";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
@@ -31,9 +35,30 @@ const EmployerDashboard = () => {
   }, []);
 
   const [jobs, setJobs] = useState<Job[]>([]);
+  // Applicants tab (50): the server filters and pages; `applications` holds
+  // the pages loaded so far for the current status/job filter, and every
+  // counter comes from the server (`applicationCounts`) — the list used to be
+  // one request capped at 200 with all totals counted from that truncated list.
   const [applications, setApplications] = useState<Application[]>([]);
   const [applicationStatusFilter, setApplicationStatusFilter] = useState<string>('all');
   const [applicationJobFilter, setApplicationJobFilter] = useState<string>('all');
+  const [applicationCounts, setApplicationCounts] = useState<EmployerApplicationCounts>({ total: 0, byStatus: { pending: 0, viewed: 0, shortlisted: 0, rejected: 0, hired: 0 }, byJob: {} });
+  const [filteredApplicationsTotal, setFilteredApplicationsTotal] = useState(0);
+  const [applicationsPage, setApplicationsPage] = useState(1);
+  const [applicationsHasMore, setApplicationsHasMore] = useState(false);
+  const [loadingApplications, setLoadingApplications] = useState(false);
+  const [loadingMoreApplications, setLoadingMoreApplications] = useState(false);
+  // Latest applicants request — an older response (filter clicked twice
+  // quickly) must not overwrite a newer one.
+  const applicationsRequestRef = useRef(0);
+  // The application whose details are open (a slow detail response for a
+  // previously opened applicant must not replace the current one).
+  const detailRequestRef = useRef<string | null>(null);
+  // Latest list / filter, readable from handlers created on older renders.
+  const applicationsRef = useRef<Application[]>(applications);
+  applicationsRef.current = applications;
+  const applicationStatusFilterRef = useRef(applicationStatusFilter);
+  applicationStatusFilterRef.current = applicationStatusFilter;
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     activeJobs: 0,
@@ -47,6 +72,8 @@ const EmployerDashboard = () => {
   const [locations, setLocations] = useState<Location[]>([]);
   const [updatingApplications, setUpdatingApplications] = useState<Set<string>>(new Set());
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
+  const selectedApplicationRef = useRef<Application | null>(selectedApplication);
+  selectedApplicationRef.current = selectedApplication;
   const [applicationModalOpen, setApplicationModalOpen] = useState(false);
   const [loadingApplicationDetails, setLoadingApplicationDetails] = useState(false);
   const [downloadingCV, setDownloadingCV] = useState(false);
@@ -75,7 +102,13 @@ const EmployerDashboard = () => {
   // prevents the "no candidates" flash when opening the modal for a different
   // job (the global candidateMatches state would otherwise show 0 briefly).
   const [matchesLastFetchedFor, setMatchesLastFetchedFor] = useState<string | null>(null);
+  // Job whose candidates the modal currently shows (97): a slower response
+  // for a previously opened job is ignored instead of replacing the list.
+  const matchingJobRef = useRef<string | null>(null);
   const [hasMatchingAccess, setHasMatchingAccess] = useState<Record<string, boolean>>({});
+  // Whether the API can sell candidate matching at all (false in production
+  // until a real payment path exists — the modal then says "coming soon").
+  const [matchingPurchaseAvailable, setMatchingPurchaseAvailable] = useState(false);
   const [purchasingAccess, setPurchasingAccess] = useState(false);
 
   // Contact modal state
@@ -98,8 +131,10 @@ const EmployerDashboard = () => {
   // Use ref to track scroll lock state - refs can be read synchronously by event listeners
   const isScrollLockedRef = useRef(false);
   const [searchParams] = useSearchParams();
-  const tabFromUrl = (['jobs', 'applicants', 'settings'] as const).includes(searchParams.get('tab') as any)
-    ? (searchParams.get('tab') as 'jobs' | 'applicants' | 'settings')
+  // Notification links (Navigation) use ?tab=applications — same tab.
+  const rawTab = searchParams.get('tab') === 'applications' ? 'applicants' : searchParams.get('tab');
+  const tabFromUrl = (['jobs', 'applicants', 'settings'] as const).includes(rawTab as any)
+    ? (rawTab as 'jobs' | 'applicants' | 'settings')
     : null;
   const [currentTab, setCurrentTab] = useState<'jobs' | 'applicants' | 'settings'>(tabFromUrl || 'jobs');
 
@@ -115,9 +150,7 @@ const EmployerDashboard = () => {
 
   // Pagination state
   const [visibleJobsCount, setVisibleJobsCount] = useState(5);
-  const [visibleApplicationsCount, setVisibleApplicationsCount] = useState(5);
   const JOBS_PER_PAGE = 5;
-  const APPLICATIONS_PER_PAGE = 5;
 
   const [profileData, setProfileData] = useState({
     companyName: '',
@@ -129,8 +162,8 @@ const EmployerDashboard = () => {
     region: '',
     phone: '',
     whatsapp: '',
-    enablePhoneContact: true,
-    enableWhatsAppContact: true,
+    enablePhoneContact: false,
+    enableWhatsAppContact: false,
     enableEmailContact: false
   });
 
@@ -247,7 +280,7 @@ const EmployerDashboard = () => {
     {
       selector: '[data-tutorial="company-logo"]',
       title: "Logo e Kompanisë",
-      content: "Ngarkoni logon e kompanisë suaj. Kjo do të shfaqet në postimet e punës dhe profilin e kompanisë. Formati: JPG ose PNG, deri në 5MB.",
+      content: "Ngarkoni logon e kompanisë suaj. Kjo do të shfaqet në postimet e punës dhe profilin e kompanisë. Formati: JPG, PNG ose WebP, deri në 5MB.",
       position: "top" as const,
       shouldScroll: false
     },
@@ -295,15 +328,95 @@ const EmployerDashboard = () => {
     ? jobs
     : jobs.filter(job => job.status === jobStatusFilter);
 
-  // Client-side filtered applications based on status + job filter
-  const filteredApplications = applications.filter(app => {
-    if (applicationStatusFilter !== 'all' && app.status !== applicationStatusFilter) return false;
-    if (applicationJobFilter !== 'all') {
-      const jobId = typeof app.jobId === 'string' ? app.jobId : app.jobId?._id;
-      if (jobId !== applicationJobFilter) return false;
+  // One page of the employer's applications for the given filters, from the
+  // server (status / job filtering and counting happen there).
+  const APPLICATIONS_PAGE_SIZE = 10;
+  const fetchApplicationsPage = async (
+    page: number,
+    filters: { status: string; jobId: string },
+    { append }: { append: boolean }
+  ) => {
+    const requestId = ++applicationsRequestRef.current;
+    const response = await applicationsApi.getEmployerApplications({
+      page,
+      limit: APPLICATIONS_PAGE_SIZE,
+      status: filters.status !== 'all' ? filters.status : undefined,
+      jobId: filters.jobId !== 'all' ? filters.jobId : undefined,
+    });
+    if (requestId !== applicationsRequestRef.current) return; // a newer request won
+    if (!response.success || !response.data) {
+      throw new Error(response.message || 'Failed to load applications');
     }
-    return true;
-  });
+    const { applications: pageItems = [], pagination, counts } = response.data;
+    setApplications(prev => {
+      if (!append) return pageItems;
+      const seen = new Set(prev.map(a => a._id));
+      return [...prev, ...pageItems.filter(a => !seen.has(a._id))];
+    });
+    setApplicationsPage(page);
+    setApplicationsHasMore(!!pagination?.hasNextPage);
+    setFilteredApplicationsTotal(pagination?.totalApplications ?? pageItems.length);
+    if (counts) {
+      setApplicationCounts(counts);
+      setStats(prev => ({ ...prev, totalApplicants: counts.total }));
+    }
+  };
+
+  const reloadApplications = async (filters: { status: string; jobId: string }) => {
+    try {
+      setLoadingApplications(true);
+      await fetchApplicationsPage(1, filters, { append: false });
+    } catch (error: any) {
+      console.error('Error loading applications:', error);
+      toast({ title: "Gabim", description: error.message || "Nuk mund të ngarkohen aplikimet", variant: "destructive" });
+    } finally {
+      setLoadingApplications(false);
+    }
+  };
+
+  const loadMoreApplications = async () => {
+    try {
+      setLoadingMoreApplications(true);
+      await fetchApplicationsPage(applicationsPage + 1, { status: applicationStatusFilter, jobId: applicationJobFilter }, { append: true });
+    } catch (error: any) {
+      console.error('Error loading more applications:', error);
+      toast({ title: "Gabim", description: error.message || "Nuk mund të ngarkohen aplikimet", variant: "destructive" });
+    } finally {
+      setLoadingMoreApplications(false);
+    }
+  };
+
+  /**
+   * Bring an application's status in the list, the open modal and the
+   * counters in line with what the server says (36: the dashboard used to
+   * ignore server responses, so a row stayed "Në pritje" after the details
+   * view marked it viewed and the next action failed).
+   */
+  const syncApplicationStatus = (applicationId: string, newStatus: Application['status'], extra: Partial<Application> = {}) => {
+    // Refs, not the render's closure: this also runs from confirm-dialog
+    // actions created on an earlier render.
+    const listed = applicationsRef.current.find(app => app._id === applicationId);
+    const open = selectedApplicationRef.current;
+    const previous = listed?.status ?? (open?._id === applicationId ? open.status : undefined);
+    const leavesFilter = applicationStatusFilterRef.current !== 'all' && newStatus !== applicationStatusFilterRef.current;
+    setApplications(prev => leavesFilter
+      ? prev.filter(app => app._id !== applicationId)
+      : prev.map(app => (app._id === applicationId ? { ...app, ...extra, status: newStatus } : app)));
+    if (leavesFilter && listed) {
+      setFilteredApplicationsTotal(prev => Math.max(0, prev - 1));
+    }
+    setSelectedApplication(prev => (prev && prev._id === applicationId ? { ...prev, ...extra, status: newStatus } : prev));
+    if (previous && previous !== newStatus) {
+      setApplicationCounts(prev => ({
+        ...prev,
+        byStatus: {
+          ...prev.byStatus,
+          [previous]: Math.max(0, (prev.byStatus[previous] || 0) - 1),
+          [newStatus]: (prev.byStatus[newStatus] || 0) + 1,
+        },
+      }));
+    }
+  };
 
   // Reset visible count when filter changes
   const handleJobStatusFilterChange = (value: string) => {
@@ -313,7 +426,12 @@ const EmployerDashboard = () => {
 
   const handleApplicationStatusFilterChange = (value: string) => {
     setApplicationStatusFilter(value);
-    setVisibleApplicationsCount(APPLICATIONS_PER_PAGE);
+    reloadApplications({ status: value, jobId: applicationJobFilter });
+  };
+
+  const handleApplicationJobFilterChange = (value: string) => {
+    setApplicationJobFilter(value);
+    reloadApplications({ status: applicationStatusFilter, jobId: value });
   };
 
   useEffect(() => {
@@ -336,8 +454,12 @@ const EmployerDashboard = () => {
         region: user.profile.location?.region || '',
         phone: user.profile.employerProfile?.phone || '',
         whatsapp: user.profile.employerProfile?.whatsapp || '',
-        enablePhoneContact: user.profile.employerProfile?.contactPreferences?.enablePhoneContact ?? true,
-        enableWhatsAppContact: user.profile.employerProfile?.contactPreferences?.enableWhatsAppContact ?? true,
+        // A phone/WhatsApp channel only works with its number: show it ON
+        // only when it is enabled AND the number exists. Accounts created
+        // with both ON and no numbers (old signup default) could not save
+        // any setting until they added a WhatsApp number.
+        enablePhoneContact: (user.profile.employerProfile?.contactPreferences?.enablePhoneContact ?? false) && !!user.profile.employerProfile?.phone,
+        enableWhatsAppContact: (user.profile.employerProfile?.contactPreferences?.enableWhatsAppContact ?? false) && !!user.profile.employerProfile?.whatsapp,
         enableEmailContact: user.profile.employerProfile?.contactPreferences?.enableEmailContact ?? false
       });
       // Pre-tick the "same as phone" box when the saved numbers already match.
@@ -358,14 +480,15 @@ const EmployerDashboard = () => {
     try {
       setLoading(true);
 
-      // Load both jobs and applications in parallel
-      const [jobsResponse, applicationsResponse] = await Promise.all([
+      // Jobs + the first page of applications (current filters) in parallel.
+      // The applicants total comes from the server counters (50).
+      const [jobsResponse] = await Promise.all([
         jobsApi.getEmployerJobs({ limit: 200 }),
-        applicationsApi.getEmployerApplications({ limit: 200 })
+        fetchApplicationsPage(1, { status: applicationStatusFilter, jobId: applicationJobFilter }, { append: false })
+          .catch((error) => console.error('Failed to load applications:', error)),
       ]);
 
       let employerJobs: Job[] = [];
-      let employerApplications: Application[] = [];
 
       if (jobsResponse.success && jobsResponse.data) {
         employerJobs = jobsResponse.data.jobs || [];
@@ -374,24 +497,16 @@ const EmployerDashboard = () => {
         console.error('Failed to load jobs:', jobsResponse);
       }
 
-      if (applicationsResponse.success && applicationsResponse.data) {
-        employerApplications = applicationsResponse.data.applications || [];
-        setApplications(employerApplications);
-      } else {
-        console.error('Failed to load applications:', applicationsResponse);
-      }
-
       // Calculate stats from real data
       const activeJobs = employerJobs.filter(job => job.status === 'active').length;
       const totalViews = employerJobs.reduce((sum, job) => sum + (job.viewCount || 0), 0);
-      const totalApplications = employerApplications.length; // Use actual applications count
 
-      setStats({
+      setStats(prev => ({
+        ...prev,
         activeJobs,
-        totalApplicants: totalApplications,
         monthlyViews: totalViews,
         growth: 0 // Will implement growth calculation later
-      });
+      }));
 
     } catch (error) {
       console.error('Error loading dashboard data:', error);
@@ -732,12 +847,11 @@ const EmployerDashboard = () => {
   const handleUploadLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      toast({ title: 'Vetëm skedarë imazhi lejohen', variant: 'destructive' });
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast({ title: 'Imazhi nuk duhet të jetë më i madh se 5MB', variant: 'destructive' });
+    // Same type/size rule as the server (127).
+    const problem = uploadProblem(file, IMAGE_UPLOAD);
+    if (problem) {
+      toast({ title: problem, variant: 'destructive' });
+      if (logoInputRef.current) logoInputRef.current.value = '';
       return;
     }
     setUploadingLogo(true);
@@ -764,7 +878,14 @@ const EmployerDashboard = () => {
       setSavingProfile(true);
 
       // Validate form data
-      const validationResult = validateForm(profileData, employerDashboardSettingsRules);
+      // An unchanged stored description is not re-validated: an account
+      // created under an older rule (e.g. a 44-char legacy description) must
+      // still be able to save its other settings — same as the server.
+      const storedDescription = user?.profile?.employerProfile?.description || '';
+      const settingsRules = profileData.description === storedDescription
+        ? { ...employerDashboardSettingsRules, description: {} }
+        : employerDashboardSettingsRules;
+      const validationResult = validateForm(profileData, settingsRules);
 
       if (!validationResult.isValid) {
         toast({
@@ -802,15 +923,18 @@ const EmployerDashboard = () => {
         return;
       }
 
+      // O-76: website / phone / WhatsApp are optional — an emptied field is
+      // sent as '' so the server removes the stored value (undefined was
+      // silently ignored, and website '' used to fail the whole save).
       const updateData = {
         employerProfile: {
           companyName: profileData.companyName,
           description: profileData.description,
-          website: profileData.website,
+          website: profileData.website.trim(),
           industry: profileData.industry,
           companySize: profileData.companySize,
-          phone: profileData.phone ? normalizeAlbanianPhone(profileData.phone) : undefined,
-          whatsapp: whatsappValue ? normalizeAlbanianPhone(whatsappValue) : undefined,
+          phone: profileData.phone ? normalizeAlbanianPhone(profileData.phone) : '',
+          whatsapp: whatsappValue ? normalizeAlbanianPhone(whatsappValue) : '',
           contactPreferences: {
             enablePhoneContact: profileData.enablePhoneContact,
             enableWhatsAppContact: profileData.enableWhatsAppContact,
@@ -836,9 +960,13 @@ const EmployerDashboard = () => {
       }
     } catch (error: any) {
       console.error('Error updating profile:', error);
+      // Name the failing field instead of the bare "Gabime në validim".
+      const fieldErrors: string[] = Array.isArray(error?.response?.errors)
+        ? error.response.errors.map((e: any) => (typeof e === 'string' ? e : e?.message)).filter(Boolean)
+        : [];
       toast({
         title: "Gabim",
-        description: error.message || "Nuk mund të përditësohet profili",
+        description: fieldErrors.length ? fieldErrors.join(' · ') : (error.message || "Nuk mund të përditësohet profili"),
         variant: "destructive"
       });
     } finally {
@@ -919,19 +1047,19 @@ const EmployerDashboard = () => {
       // Add to updating set
       setUpdatingApplications(prev => new Set(prev).add(applicationId));
 
-      const response = await applicationsApi.updateApplicationStatus(
-        applicationId,
-        newStatus,
-        `Status changed to ${newStatus} by employer`
-      );
+      // No automatic note: the employer's private notes field used to get an
+      // English "Status changed to … by employer" line on every change.
+      const response = await applicationsApi.updateApplicationStatus(applicationId, newStatus);
 
       if (response.success) {
-        // Update the application in the local state
-        setApplications(prev => prev.map(app =>
-          app._id === applicationId
-            ? { ...app, status: newStatus as Application['status'] }
-            : app
-        ));
+        // Apply what the SERVER stored to the list row, the open modal and
+        // the counters (36).
+        const saved = response.data?.application;
+        syncApplicationStatus(
+          applicationId,
+          (saved?.status || newStatus) as Application['status'],
+          saved?.respondedAt ? { respondedAt: saved.respondedAt } : {}
+        );
 
         const statusMessages: Record<string, string> = {
           'viewed': 'Aplikimi u shënua si i shikuar',
@@ -950,6 +1078,11 @@ const EmployerDashboard = () => {
 
     } catch (error: any) {
       console.error('❌ Error updating application status:', error);
+      // 409 (changed meanwhile in another tab / device) or 400 (the action no
+      // longer fits): the server says which status the application has now —
+      // show that instead of the stale one, so the menu offers valid actions.
+      const currentStatus = error instanceof ApiError ? error.response?.data?.currentStatus : undefined;
+      if (currentStatus) syncApplicationStatus(applicationId, currentStatus);
       toast({
         title: "Gabim",
         description: error.message || "Nuk mund të përditësohet statusi i aplikimit",
@@ -1005,6 +1138,7 @@ const EmployerDashboard = () => {
       setLoadingApplicationDetails(true);
       setExpandedWorkHistory(false);
       setExpandedEducation(false);
+      detailRequestRef.current = applicationId;
 
       // Find the application in current list first (for immediate display)
       const currentApp = applications.find(app => app._id === applicationId);
@@ -1013,10 +1147,17 @@ const EmployerDashboard = () => {
         setApplicationModalOpen(true);
       }
 
-      // Fetch detailed application data with full population
+      // Fetch detailed application data with full population. Opening a
+      // pending application marks it viewed on the server — the list row
+      // and the counters follow the returned status (36).
       const response = await applicationsApi.getApplication(applicationId);
+      if (detailRequestRef.current !== applicationId) return; // another applicant was opened meanwhile
       if (response.success && response.data) {
-        setSelectedApplication(response.data.application);
+        const detailed = response.data.application;
+        setSelectedApplication(detailed);
+        if (currentApp && detailed?.status && detailed.status !== currentApp.status) {
+          syncApplicationStatus(applicationId, detailed.status);
+        }
       } else {
         throw new Error(response.message || 'Failed to load application details');
       }
@@ -1079,6 +1220,8 @@ const EmployerDashboard = () => {
   // Candidate Matching Handlers
   const handleViewCandidates = async (job: Job) => {
     try {
+      matchingJobRef.current = job._id;
+      const isCurrent = () => matchingJobRef.current === job._id;
       setSelectedJobForMatching(job);
       setMatchingModalOpen(true);
       setLoadingMatches(true);
@@ -1089,14 +1232,18 @@ const EmployerDashboard = () => {
 
       // Check if employer has access to this job
       const accessResponse = await matchingApi.checkAccess(job._id);
+      // 97: the employer opened another job meanwhile — this response is stale.
+      if (!isCurrent()) return;
 
       if (accessResponse.success && accessResponse.data) {
         const hasAccess = accessResponse.data.hasAccess;
         setHasMatchingAccess(prev => ({ ...prev, [job._id]: hasAccess }));
+        setMatchingPurchaseAvailable(accessResponse.data.purchaseAvailable === true);
 
         if (hasAccess) {
           // Employer has access - fetch matching candidates
           const matchesResponse = await matchingApi.getMatchingCandidates(job._id, 15);
+          if (!isCurrent()) return;
 
           if (matchesResponse.success && matchesResponse.data) {
             setCandidateMatches(matchesResponse.data.matches);
@@ -1112,6 +1259,7 @@ const EmployerDashboard = () => {
       }
 
     } catch (error: any) {
+      if (matchingJobRef.current !== job._id) return;
       console.error('❌ Error loading candidate matches:', error);
       toast({
         title: "Gabim",
@@ -1119,7 +1267,7 @@ const EmployerDashboard = () => {
         variant: "destructive"
       });
     } finally {
-      setLoadingMatches(false);
+      if (matchingJobRef.current === job._id) setLoadingMatches(false);
     }
   };
 
@@ -1136,6 +1284,8 @@ const EmployerDashboard = () => {
 
         // Now fetch the candidates
         const matchesResponse = await matchingApi.getMatchingCandidates(jobId, 15);
+        // 97: don't fill another job's modal with this job's candidates.
+        if (matchingJobRef.current !== jobId) return;
 
         if (matchesResponse.success && matchesResponse.data) {
           setCandidateMatches(matchesResponse.data.matches);
@@ -1144,7 +1294,7 @@ const EmployerDashboard = () => {
           setMatchesLastFetchedFor(jobId);
 
           toast({
-            title: "Pagesa u krye me sukses!",
+            title: "Aksesi u aktivizua",
             description: `U gjetën ${matchesResponse.data.matches.length} kandidatë që përputhen me këtë punë`,
           });
         }
@@ -1173,9 +1323,12 @@ const EmployerDashboard = () => {
     const jobTitle = selectedJobForMatching?.title || '';
     const companyName = user?.profile?.employerProfile?.companyName || 'kompania jonë';
 
+    // 97: these candidates were suggested by matching — they did NOT apply,
+    // so the message introduces the position instead of mentioning "your
+    // application".
     let template = '';
     if (method === 'email' || method === 'whatsapp') {
-      template = `Përshëndetje ${candidateName},\n\nJu kontaktojmë lidhur me aplikimin tuaj për pozicionin "${jobTitle}" në ${companyName}.\n\nDo të donim të planifikonim një intervistë me ju për të diskutuar më tej rreth mundësisë së punësimit. A jeni të disponueshëm për një takim në ditët në vijim?\n\nJu faleminderit për interesimin tuaj.\n\nMe respekt,\n${companyName}`;
+      template = `Përshëndetje ${candidateName},\n\nJu shkruajmë nga ${companyName}. Profili juaj në advance.al përputhet me pozicionin "${jobTitle}" që kemi të hapur dhe do të donim t'ju njihnim.\n\nA do të ishit të interesuar për një bisedë ose intervistë në ditët në vijim?\n\nMe respekt,\n${companyName}`;
     }
 
     setContactMessage(template);
@@ -1186,19 +1339,23 @@ const EmployerDashboard = () => {
     if (!selectedCandidate || !contactType || !selectedJobForMatching) return;
 
     try {
-      // Track the contact in backend
-      await matchingApi.trackContact(selectedJobForMatching._id, selectedCandidate._id, contactType);
-
-      // Update local state to mark as contacted
-      setCandidateMatches(prev => prev.map(match =>
-        match.candidateId._id === selectedCandidate._id
-          ? { ...match, contacted: true, contactMethod: contactType }
-          : match
-      ));
+      // Track the contact in backend — best effort: a tracking failure (e.g.
+      // the match list was refreshed meanwhile) must not stop the contact.
+      try {
+        await matchingApi.trackContact(selectedJobForMatching._id, selectedCandidate._id, contactType);
+        // Update local state to mark as contacted
+        setCandidateMatches(prev => prev.map(match =>
+          match.candidateId._id === selectedCandidate._id
+            ? { ...match, contacted: true, contactMethod: contactType }
+            : match
+        ));
+      } catch (trackError) {
+        console.error('Contact tracking failed:', trackError);
+      }
 
       // Perform actual contact action
       if (contactType === 'email') {
-        const subject = encodeURIComponent(`Rreth aplikimit tuaj në ${selectedJobForMatching.title}`);
+        const subject = encodeURIComponent(`Mundësi pune: ${selectedJobForMatching.title}`);
         const body = encodeURIComponent(contactMessage);
         window.location.href = `mailto:${selectedCandidate.contactInfo}?subject=${subject}&body=${body}`;
       } else if (contactType === 'phone') {
@@ -1231,10 +1388,10 @@ const EmployerDashboard = () => {
 
       <div className="container py-8">
         <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+                <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Paneli i Punëdhënësit</h1>
               </div>
               <p className="text-muted-foreground mt-1">
                 {user?.profile?.employerProfile?.companyName ? (
@@ -1246,7 +1403,7 @@ const EmployerDashboard = () => {
                 )}
               </p>
             </div>
-            <Button onClick={() => navigate('/post-job')}>
+            <Button onClick={() => navigate('/post-job')} className="self-start sm:self-auto flex-shrink-0">
               <Plus className="mr-2 h-4 w-4" />
               Posto Punë të Re
             </Button>
@@ -1381,7 +1538,7 @@ const EmployerDashboard = () => {
                 </Card>
               )}
 
-              {currentTab === 'applicants' && applications.length > 0 && user?.preferences?.tutorialsEnabled !== false && (
+              {currentTab === 'applicants' && applicationCounts.total > 0 && user?.preferences?.tutorialsEnabled !== false && (
                 <Card className="border-primary/20 bg-primary/5">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between flex-wrap gap-3">
@@ -1519,7 +1676,7 @@ const EmployerDashboard = () => {
                       {filteredJobs.slice(0, visibleJobsCount).map((job, index) => (
                       <div 
                         key={job._id} 
-                        className="flex items-center justify-between p-3 sm:p-4 border rounded-lg"
+                        className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-3 sm:p-4 border rounded-lg"
                         data-tutorial={index === 0 ? "job-card" : undefined}
                       >
                         <div className="flex-1 min-w-0 space-y-1">
@@ -1536,18 +1693,15 @@ const EmployerDashboard = () => {
                                   : 'text-xs flex-shrink-0'
                               }
                             >
-                              {job.status === 'active' ? 'Aktive' :
-                                job.status === 'pending_payment' ? 'Pritet pagesa' :
-                                  job.status === 'paused' ? 'Pezulluar' :
-                                    job.status === 'closed' ? 'Mbyllur' :
-                                      job.status === 'expired' ? 'Skaduar' : 'Draft'}
+                              {/* "Mbyllur — rimbursuar" etc. when the job was closed for the employer */}
+                              {jobStatusLabel(job.status, job.closedReason)}
                             </Badge>
                           </div>
                           <div className="text-xs sm:text-sm text-muted-foreground truncate">
                             {job.location?.city}, {job.location?.region}
                           </div>
-                          <div className="text-xs sm:text-sm text-muted-foreground flex items-center gap-2">
-                            <span>{job.jobType}</span>
+                          <div className="text-xs sm:text-sm text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span className="whitespace-nowrap">{jobTypeLabel(job.jobType)}</span>
                             <span>•</span>
                             <span className="inline-flex items-center gap-1 font-medium text-primary">
                               <Users className="h-3 w-3" />
@@ -1555,11 +1709,11 @@ const EmployerDashboard = () => {
                             </span>
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            Postuar: {new Date(job.postedAt).toLocaleDateString('sq-AL')}
+                            Postuar: <span className="whitespace-nowrap">{formatAlbanianDate(job.postedAt)}</span>
                           </div>
                         </div>
                         <div
-                          className="flex items-center gap-1 sm:gap-2 ml-2 flex-shrink-0"
+                          className="flex flex-wrap items-center gap-1 sm:gap-2 sm:ml-2 flex-shrink-0"
                           data-tutorial={index === 0 ? "job-actions" : undefined}
                         >
                           {job.status === 'pending_payment' && (
@@ -1656,7 +1810,7 @@ const EmployerDashboard = () => {
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     <span className="ml-2 text-muted-foreground">Duke ngarkuar aplikuesit...</span>
                   </div>
-                ) : applications.length === 0 ? (
+                ) : applicationCounts.total === 0 ? (
                   <div className="text-center py-8">
                     <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-foreground mb-2">Nuk ka aplikime akoma</h3>
@@ -1668,13 +1822,13 @@ const EmployerDashboard = () => {
                     <div className="flex flex-col gap-3 mb-4">
                       <div className="flex flex-wrap gap-2">
                         {[
-                          { value: 'all', label: 'Të gjitha', count: applications.length },
-                          { value: 'pending', label: 'Në pritje', count: applications.filter(a => a.status === 'pending').length },
-                          { value: 'viewed', label: 'Shikuar', count: applications.filter(a => a.status === 'viewed').length },
-                          { value: 'shortlisted', label: 'Në listë', count: applications.filter(a => a.status === 'shortlisted').length },
-                          { value: 'rejected', label: 'Refuzuar', count: applications.filter(a => a.status === 'rejected').length },
-                          { value: 'hired', label: 'Punësuar', count: applications.filter(a => a.status === 'hired').length },
-                        ].filter(f => f.value === 'all' || f.count > 0).map(filter => (
+                          { value: 'all', label: 'Të gjitha', count: applicationCounts.total },
+                          { value: 'pending', label: 'Në pritje', count: applicationCounts.byStatus.pending || 0 },
+                          { value: 'viewed', label: 'Shikuar', count: applicationCounts.byStatus.viewed || 0 },
+                          { value: 'shortlisted', label: 'Në listë', count: applicationCounts.byStatus.shortlisted || 0 },
+                          { value: 'rejected', label: 'Refuzuar', count: applicationCounts.byStatus.rejected || 0 },
+                          { value: 'hired', label: 'Punësuar', count: applicationCounts.byStatus.hired || 0 },
+                        ].filter(f => f.value === 'all' || f.count > 0 || f.value === applicationStatusFilter).map(filter => (
                           <Button
                             key={filter.value}
                             size="sm"
@@ -1693,7 +1847,7 @@ const EmployerDashboard = () => {
                       {jobs.length > 1 && (
                         <div className="flex items-center gap-2">
                           <Briefcase className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <Select value={applicationJobFilter} onValueChange={(v) => { setApplicationJobFilter(v); setVisibleApplicationsCount(APPLICATIONS_PER_PAGE); }}>
+                          <Select value={applicationJobFilter} onValueChange={handleApplicationJobFilterChange}>
                             <SelectTrigger className="h-8 text-xs w-auto min-w-[180px] max-w-[300px]">
                               <SelectValue placeholder="Filtro sipas punës" />
                             </SelectTrigger>
@@ -1701,7 +1855,7 @@ const EmployerDashboard = () => {
                               <SelectItem value="all">Të gjitha punët</SelectItem>
                               {jobs.map(job => (
                                 <SelectItem key={job._id} value={job._id}>
-                                  {job.title} ({applications.filter(a => (typeof a.jobId === 'string' ? a.jobId : a.jobId?._id) === job._id).length})
+                                  {job.title} ({applicationCounts.byJob[job._id] || 0})
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -1710,7 +1864,12 @@ const EmployerDashboard = () => {
                       )}
                     </div>
 
-                    {filteredApplications.length === 0 ? (
+                    {loadingApplications ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                        <span className="ml-2 text-sm text-muted-foreground">Duke ngarkuar aplikuesit...</span>
+                      </div>
+                    ) : applications.length === 0 ? (
                       <div className="text-center py-8">
                         <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
                         <p className="text-muted-foreground text-sm">Nuk ka aplikime me statusin e zgjedhur</p>
@@ -1718,10 +1877,12 @@ const EmployerDashboard = () => {
                     ) : (
                     <>
                     <div className="space-y-4">
-                      {filteredApplications.slice(0, visibleApplicationsCount).map((application, index) => (
+                      {applications.map((application, index) => (
                       <div 
                         key={application._id} 
-                        className="flex items-center justify-between p-3 sm:p-4 border rounded-lg"
+                        // Phones: stacked (status + actions under the text) — side by side the
+                        // actions squeezed the text column until the job title read "Për: …".
+                        className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between p-3 sm:p-4 border rounded-lg"
                         data-tutorial={index === 0 ? "applicant-card" : undefined}
                       >
                         <div className="flex-1 min-w-0 space-y-1">
@@ -1746,10 +1907,10 @@ const EmployerDashboard = () => {
                             )}
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            Aplikoi: {new Date(application.appliedAt).toLocaleDateString('sq-AL')}
+                            Aplikoi: <span className="whitespace-nowrap">{formatAlbanianDate(application.appliedAt)}</span>
                           </div>
                         </div>
-                        <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 ml-2 flex-shrink-0">
+                        <div className="flex flex-row items-center justify-between sm:justify-start gap-2 sm:ml-2 flex-shrink-0">
                           <Badge 
                             variant={
                               application.status === 'pending' ? 'secondary' :
@@ -1844,16 +2005,18 @@ const EmployerDashboard = () => {
                     ))}
                     </div>
                     
-                    {/* Load More Button */}
-                    {filteredApplications.length > visibleApplicationsCount && (
+                    {/* Load More Button — next page from the server */}
+                    {applicationsHasMore && (
                       <div className="flex justify-center pt-4">
                         <Button
                           variant="outline"
-                          onClick={() => setVisibleApplicationsCount(prev => prev + APPLICATIONS_PER_PAGE)}
+                          onClick={loadMoreApplications}
+                          disabled={loadingMoreApplications}
                           className="gap-2"
+                          data-testid="applications-load-more"
                         >
-                          <Users className="h-4 w-4" />
-                          Shfaq më shumë aplikantë ({filteredApplications.length - visibleApplicationsCount} të tjerë)
+                          {loadingMoreApplications ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}
+                          Shfaq më shumë aplikantë ({Math.max(0, filteredApplicationsTotal - applications.length)} të tjerë)
                         </Button>
                       </div>
                     )}
@@ -1919,8 +2082,8 @@ const EmployerDashboard = () => {
                       onChange={(e) => setProfileData(prev => ({ ...prev, description: e.target.value }))}
                       placeholder="Shkruani një përshkrim të shkurtër për kompanin..."
                       rows={3}
-                      maxLength={500}
-                      minLength={50}
+                      maxLength={COMPANY_DESCRIPTION_LIMITS.max}
+                      minLength={COMPANY_DESCRIPTION_LIMITS.min}
                       showMinLength={true}
                     />
                   </div>
@@ -2039,7 +2202,7 @@ const EmployerDashboard = () => {
                         <input
                           type="file"
                           ref={logoInputRef}
-                          accept="image/*"
+                          accept={IMAGE_UPLOAD.accept}
                           className="hidden"
                           onChange={handleUploadLogo}
                         />
@@ -2052,7 +2215,7 @@ const EmployerDashboard = () => {
                           {uploadingLogo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                           {uploadingLogo ? 'Duke ngarkuar...' : 'Ngarko Logo'}
                         </Button>
-                        <p className="text-xs text-muted-foreground mt-1">JPG, PNG deri në 5MB</p>
+                        <p className="text-xs text-muted-foreground mt-1">{IMAGE_UPLOAD.hint}</p>
                       </div>
                     </div>
                   </div>
@@ -2207,7 +2370,7 @@ const EmployerDashboard = () => {
                     </Badge>
                   </div>
                   <p className="text-xs sm:text-sm text-muted-foreground">
-                    Aplikoi: {new Date(selectedApplication.appliedAt).toLocaleDateString('sq-AL')}
+                    Aplikoi: {formatAlbanianDate(selectedApplication.appliedAt)}
                   </p>
                   <p className="text-xs sm:text-sm text-muted-foreground">
                     Për: {typeof selectedApplication.jobId === 'string' ? 'Pozicion i fshirë' : (
@@ -2274,7 +2437,7 @@ const EmployerDashboard = () => {
                       {selectedApplication.jobSeekerId.profile.jobSeekerProfile.experience && (
                         <div>
                           <Label className="text-xs sm:text-sm font-medium">Përvojë</Label>
-                          <p className="text-xs sm:text-sm">{selectedApplication.jobSeekerId.profile.jobSeekerProfile.experience}</p>
+                          <p className="text-xs sm:text-sm">{experienceLabel(selectedApplication.jobSeekerId.profile.jobSeekerProfile.experience)}</p>
                         </div>
                       )}
 
@@ -2337,7 +2500,7 @@ const EmployerDashboard = () => {
                                   <span className="font-medium truncate">{work.position}</span>
                                   <span className="text-muted-foreground shrink-0">@ {work.company}</span>
                                   <span className="text-muted-foreground ml-auto shrink-0">
-                                    {new Date(work.startDate).getFullYear()}–{work.endDate ? new Date(work.endDate).getFullYear() : 'Tani'}
+                                    {periodLabel(work)}
                                   </span>
                                 </div>
                               ))}
@@ -2364,9 +2527,9 @@ const EmployerDashboard = () => {
                             <div className="mt-1 space-y-1">
                               {visibleEdu.map((edu: any, i: number) => (
                                 <div key={i} className="flex items-center gap-2 text-xs py-1 px-2 bg-muted/30 rounded">
-                                  <span className="font-medium truncate">{edu.degree}{edu.fieldOfStudy ? ` — ${edu.fieldOfStudy}` : ''}</span>
+                                  <span className="font-medium truncate">{degreeLabel(edu.degree)}{edu.fieldOfStudy ? ` — ${edu.fieldOfStudy}` : ''}</span>
                                   <span className="text-muted-foreground shrink-0">@ {edu.school || edu.institution}</span>
-                                  <span className="text-muted-foreground ml-auto shrink-0">{edu.year}</span>
+                                  <span className="text-muted-foreground ml-auto shrink-0">{periodLabel(edu)}</span>
                                 </div>
                               ))}
                             </div>
@@ -2555,7 +2718,7 @@ const EmployerDashboard = () => {
                 <div className="flex flex-wrap gap-2 text-xs sm:text-sm text-muted-foreground">
                   <span>{selectedJobForMatching.location?.city}, {selectedJobForMatching.location?.region}</span>
                   <span>•</span>
-                  <span>{selectedJobForMatching.jobType}</span>
+                  <span>{jobTypeLabel(selectedJobForMatching.jobType)}</span>
                   <span>•</span>
                   <span>{selectedJobForMatching.category}</span>
                 </div>
@@ -2567,57 +2730,43 @@ const EmployerDashboard = () => {
                   <span className="ml-2 text-muted-foreground">Duke ngarkuar kandidatët...</span>
                 </div>
               ) : !hasMatchingAccess[selectedJobForMatching._id] ? (
-                /* Payment Prompt */
-                <div className="text-center py-6 space-y-3">
+                /* No access. Candidate matching cannot be bought yet (the API
+                   refuses the purchase in production), so say so honestly —
+                   no price, no payment provider, no "free trial" button. */
+                <div className="text-center py-6 space-y-3" data-testid="matching-unavailable">
                   <Users className="h-12 w-12 text-muted-foreground mx-auto" />
-                  <h3 className="text-lg font-semibold">Shiko Kandidatët më të Mirë</h3>
+                  <h3 className="text-lg font-semibold">Kandidatët e rekomanduar — së shpejti</h3>
                   <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                    Zgjero mundësitë e punësimit duke parë kandidatët më të mirë që përputhen me këtë pozicion.
+                    Së shpejti do të mund të shihni kandidatët që përputhen më mirë me këtë pozicion,
+                    me skor përputhshmërie dhe profil të plotë. Ky shërbim nuk është ende i disponueshëm.
                   </p>
-                  <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 max-w-md mx-auto">
-                    <h4 className="font-semibold mb-2 text-base">Çfarë Përfiton:</h4>
-                    <ul className="text-xs text-left space-y-1.5 mb-3">
-                      <li className="flex items-start gap-1.5">
-                        <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
-                        <span>10-15 kandidatë të përzgjedhur që përputhen me pozicionin</span>
-                      </li>
-                      <li className="flex items-start gap-1.5">
-                        <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
-                        <span>Skor përputhshmërie bazuar në 7 kritere</span>
-                      </li>
-                      <li className="flex items-start gap-1.5">
-                        <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
-                        <span>Profile të plota me CV dhe kontakt</span>
-                      </li>
-                      <li className="flex items-start gap-1.5">
-                        <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
-                        <span>Aksesi i përjetshëm për këtë pozicion</span>
-                      </li>
-                    </ul>
-                    <div className="text-xl font-bold text-primary mb-2">€15 / postim</div>
-                    <p className="text-[10px] text-muted-foreground">
-                      Pagesa nëpërmjet Paysera. Aksesi mbetet i hapur përjetë për këtë pozicion.
-                      Ndërsa Paysera është në përgatitje, butoni më poshtë jep akses pa pagesë.
-                    </p>
-                  </div>
-                  <Button
-                    onClick={() => handlePurchaseMatching(selectedJobForMatching._id)}
-                    disabled={purchasingAccess}
-                    size="default"
-                    className="mt-2"
-                  >
-                    {purchasingAccess ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Duke procesuar...
-                      </>
-                    ) : (
-                      <>
-                        <Users className="mr-2 h-4 w-4" />
-                        Shiko Kandidatët (provë falas)
-                      </>
-                    )}
-                  </Button>
+                  <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                    Ndërkohë, aplikimet për këtë punë i gjeni te skeda &ldquo;Aplikuesit&rdquo;.
+                  </p>
+                  {matchingPurchaseAvailable && (
+                    /* Development / test environments only (ENABLE_MOCK_PAYMENTS,
+                       never in production): grants access without payment. */
+                    <Button
+                      onClick={() => handlePurchaseMatching(selectedJobForMatching._id)}
+                      disabled={purchasingAccess}
+                      size="default"
+                      variant="outline"
+                      className="mt-2"
+                      data-testid="matching-test-grant"
+                    >
+                      {purchasingAccess ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Duke procesuar...
+                        </>
+                      ) : (
+                        <>
+                          <Users className="mr-2 h-4 w-4" />
+                          Aktivizo (vetëm në mjedis testimi)
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
               ) : matchesLastFetchedFor !== selectedJobForMatching._id ? (
                 /* Fetch hasn't finished yet for THIS job — show spinner instead
@@ -2699,7 +2848,7 @@ const EmployerDashboard = () => {
                             {match.candidateId.profile.jobSeekerProfile.experience && (
                               <div className="text-xs sm:text-sm">
                                 <span className="font-medium">Përvojë: </span>
-                                <span className="text-muted-foreground">{match.candidateId.profile.jobSeekerProfile.experience}</span>
+                                <span className="text-muted-foreground">{experienceLabel(match.candidateId.profile.jobSeekerProfile.experience)}</span>
                               </div>
                             )}
 

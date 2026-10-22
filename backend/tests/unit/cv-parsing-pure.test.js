@@ -133,14 +133,16 @@ describe('cvParsingService.sanitizeParsedProfile', () => {
     expect(r.workExperience[0].isCurrentJob).toBe(true);
   });
 
-  it('rejects malformed startDate (must be YYYY-MM)', () => {
+  it('normalizes a single-digit month to YYYY-MM and blanks an unreadable date', () => {
     const r = sanitizeParsedProfile({
-      workExperience: [{
-        position: 'Dev', company: 'Co',
-        startDate: '2020-1', endDate: '2025-01', // 2020-1 not YYYY-MM
-      }],
+      workExperience: [
+        { position: 'Dev', company: 'Co', startDate: '2020-1', endDate: '2025-01' },
+        { position: 'Dev2', company: 'Co', startDate: 'bad', endDate: 'also bad' },
+      ],
     });
-    expect(r.workExperience[0].startDate).toBe('');
+    expect(r.workExperience[0].startDate).toBe('2020-01');
+    expect(r.workExperience[1].startDate).toBe('');
+    expect(r.workExperience[1].endDate).toBe('');
   });
 
   it('filters education entries missing degree or institution', () => {

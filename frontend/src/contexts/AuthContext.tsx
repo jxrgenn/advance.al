@@ -1,6 +1,39 @@
-import React, { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { authApi, User, getCurrentUserFromStorage, isAuthenticated } from '@/lib/api';
+
+// "Your session ended" note for the login page (set on a server-forced
+// logout, read once by Login). Stored with a timestamp so a note left by a
+// logout on a public page doesn't surface hours later.
+const SESSION_ENDED_KEY = 'auth:sessionEndedAt';
+const SESSION_ENDED_MAX_AGE_MS = 30 * 60 * 1000;
+
+const markSessionEnded = (): void => {
+  try {
+    sessionStorage.setItem(SESSION_ENDED_KEY, String(Date.now()));
+  } catch {
+    /* storage unavailable (private mode) — the note is best-effort */
+  }
+};
+
+/** True when the server ended this browser's session recently. */
+export const hasSessionEndedNotice = (): boolean => {
+  try {
+    const at = Number(sessionStorage.getItem(SESSION_ENDED_KEY) || NaN);
+    return Number.isFinite(at) && Date.now() - at < SESSION_ENDED_MAX_AGE_MS;
+  } catch {
+    return false;
+  }
+};
+
+/** The note is shown once — the login page clears it after reading it. */
+export const clearSessionEndedNotice = (): void => {
+  try {
+    sessionStorage.removeItem(SESSION_ENDED_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+};
 
 // Auth State Types
 interface AuthState {
@@ -219,9 +252,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     checkAuthOnMount();
   }, []); // Only run once on mount
 
-  // Listen for 401 logout events from api.ts to sync React state
+  // Listen for 401 logout events from api.ts to sync React state.
+  // 'auth:logout' fires only when the server rejected the session (an
+  // explicit logout() never fires it) — e.g. the password was changed on
+  // another device (tokenVersion bump), the session expired or the account
+  // was suspended. If this browser was signed in, leave a note so the login
+  // page can say why the user is there instead of showing a bare form.
+  const wasAuthenticatedRef = useRef(state.isAuthenticated);
+  wasAuthenticatedRef.current = state.isAuthenticated;
   useEffect(() => {
     const handleForceLogout = () => {
+      if (wasAuthenticatedRef.current) markSessionEnded();
       dispatch({ type: 'AUTH_LOGOUT' });
     };
     window.addEventListener('auth:logout', handleForceLogout);

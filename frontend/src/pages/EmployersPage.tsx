@@ -33,14 +33,17 @@ import { notifications } from '@mantine/notifications';
 import { Play, Building, ArrowRight, ArrowLeft, User, FileText, CheckCircle, HelpCircle, X, Lightbulb, Euro, TrendingUp, Star, Users, Eye, EyeOff, Mail, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi, configApi, locationsApi } from "@/lib/api";
-import { validateForm, employerSignupRules, formatValidationErrors, normalizeAlbanianPhone, cleanAlbanianPhoneInput, isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE, validatePassword, PASSWORD_RULE_MESSAGE } from "@/lib/formValidation";
+import { validateForm, employerSignupRules, formatValidationErrors, normalizeAlbanianPhone, cleanAlbanianPhoneInput, isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE, validatePassword, PASSWORD_RULE_MESSAGE, COMPANY_DESCRIPTION_LIMITS } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
+import { useListingPrices, formatEuro, LISTING_DURATION_DAYS } from "@/lib/pricing";
 import { TextAreaWithCounter, InputWithCounter } from "@/components/CharacterCounter";
 
 const EmployersPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated, user, register } = useAuth();
+  // Real list prices (what checkout charges) from the server config.
+  const listingPrices = useListingPrices();
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
@@ -1154,11 +1157,11 @@ const EmployersPage = () => {
 
             <Box data-tutorial="description">
               <TextAreaWithCounter
-                placeholder="Përshkrimi i kompanisë (opsional)..."
+                placeholder="Përshkrimi i kompanisë..."
                 value={employerForm.values.description}
                 onChange={(e) => employerForm.setFieldValue('description', e.target.value)}
-                maxLength={500}
-                minLength={50}
+                maxLength={COMPANY_DESCRIPTION_LIMITS.max}
+                minLength={COMPANY_DESCRIPTION_LIMITS.min}
                 showMinLength={true}
                 rows={3}
                 error={employerForm.errors.description}
@@ -1454,7 +1457,7 @@ const EmployersPage = () => {
                 <h3 className="text-2xl font-bold text-gray-900 mb-2">Postim standart</h3>
                 <p className="text-sm text-gray-600 mb-4">Për të filluar</p>
                 <div className="flex items-center gap-2 mb-6">
-                  <span className="text-base font-medium text-gray-900">35€ / 21 ditë</span>
+                  <span className="text-base font-medium text-gray-900" data-testid="employers-price-standard">{listingPrices ? formatEuro(listingPrices.standard) : '… €'} / {LISTING_DURATION_DAYS} ditë</span>
                 </div>
               </div>
 
@@ -1469,7 +1472,7 @@ const EmployersPage = () => {
                     <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
-                    <p className="text-sm text-gray-700">Postim aktiv për 21 ditë</p>
+                    <p className="text-sm text-gray-700">Postim aktiv për {LISTING_DURATION_DAYS} ditë</p>
                   </div>
                   <div className="flex items-start gap-3">
                     <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -1499,7 +1502,7 @@ const EmployersPage = () => {
                 <h3 className="text-2xl font-bold text-gray-900 mb-2">Postim i promovuar</h3>
                 <p className="text-sm text-gray-600 mb-4">Për rritje</p>
                 <div className="flex items-center gap-2 mb-6">
-                  <span className="text-base font-medium text-gray-900">49€ / 21 ditë</span>
+                  <span className="text-base font-medium text-gray-900" data-testid="employers-price-promoted">{listingPrices ? formatEuro(listingPrices.promoted) : '… €'} / {LISTING_DURATION_DAYS} ditë</span>
                 </div>
               </div>
 
@@ -1514,19 +1517,13 @@ const EmployersPage = () => {
                     <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
-                    <p className="text-sm text-gray-700 font-medium">Pozicion prioritar në listë</p>
+                    <p className="text-sm text-gray-700 font-medium">Shfaqet te &ldquo;Punë të Promovuara&rdquo; në krye të faqes së punëve</p>
                   </div>
                   <div className="flex items-start gap-3">
                     <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                     </svg>
-                    <p className="text-sm text-gray-700 font-medium">Distinktiv 'E PROMOVUAR'</p>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
-                    </svg>
-                    <p className="text-sm text-gray-700 font-medium">3x më shumë dukshmëri</p>
+                    <p className="text-sm text-gray-700 font-medium">Pagesë një herë me kartë (Stripe), pa abonim</p>
                   </div>
                 </div>
               </div>

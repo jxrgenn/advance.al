@@ -10,9 +10,55 @@ export interface ValidationRule {
   minLength?: number;
   maxLength?: number;
   pattern?: RegExp;
-  custom?: (value: any) => boolean;
+  custom?: (value: any, formData?: any) => boolean;
   message?: string;
 }
+
+/**
+ * Company description — ONE rule for employer signup (EmployerRegister,
+ * EmployersPage), the dashboard settings and the server (backend
+ * src/lib/companyProfile.js). Signup used to demand 400-1000 chars while the
+ * dashboard allowed 50-500, so employers with >500 chars could not save
+ * "Cilësimet".
+ */
+export const COMPANY_DESCRIPTION_LIMITS = { min: 50, max: 1000 } as const;
+export const COMPANY_DESCRIPTION_MESSAGE =
+  `Përshkrimi i kompanisë duhet të ketë midis ${COMPANY_DESCRIPTION_LIMITS.min} dhe ${COMPANY_DESCRIPTION_LIMITS.max} karaktere`;
+
+/**
+ * Upload limits — mirror backend/src/routes/users.js (RESUME_MAX_MB /
+ * IMAGE_MAX_MB and its file filters). Checked before uploading so the user
+ * gets the reason immediately instead of a failed request.
+ */
+export const RESUME_UPLOAD = {
+  maxBytes: 5 * 1024 * 1024,
+  mimeTypes: [
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/msword',
+  ],
+  accept: '.pdf,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword',
+  typeMessage: 'Ju lutem ngarkoni vetëm skedarë PDF ose Word (DOCX)',
+  sizeMessage: 'Skedari është shumë i madh. Madhësia maksimale është 5MB',
+} as const;
+export const IMAGE_UPLOAD = {
+  maxBytes: 5 * 1024 * 1024,
+  mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+  accept: 'image/jpeg,image/png,image/webp',
+  hint: 'JPG, PNG ose WebP deri në 5MB',
+  typeMessage: 'Lejohen vetëm imazhe JPG, PNG ose WebP',
+  sizeMessage: 'Imazhi nuk duhet të jetë më i madh se 5MB',
+} as const;
+
+/** Returns the Albanian reason a file can't be uploaded, or null when it can. */
+export const uploadProblem = (
+  file: File,
+  limits: { maxBytes: number; mimeTypes: readonly string[]; typeMessage: string; sizeMessage: string },
+): string | null => {
+  if (!limits.mimeTypes.includes(file.type)) return limits.typeMessage;
+  if (file.size > limits.maxBytes) return limits.sizeMessage;
+  return null;
+};
 
 export interface ValidationRules {
   [fieldName: string]: ValidationRule;
@@ -287,8 +333,8 @@ export const profileValidationRules = {
     institution: {
       required: true,
       minLength: 2,
-      maxLength: 150,
-      message: "Institucioni duhet të jetë midis 2 dhe 150 karakteresh"
+      maxLength: 100,
+      message: "Institucioni duhet të jetë midis 2 dhe 100 karakteresh"
     },
     location: {
       required: false,
@@ -418,11 +464,12 @@ export const employerSignupRules = {
       required: true,
       message: "Qyteti është i detyrueshëm"
     },
+    // Required: the server rejects an employer signup without it.
     description: {
-      required: false,
-      minLength: 50,
-      maxLength: 500,
-      message: "Përshkrimi duhet të jetë midis 50 dhe 500 karakteresh"
+      required: true,
+      minLength: COMPANY_DESCRIPTION_LIMITS.min,
+      maxLength: COMPANY_DESCRIPTION_LIMITS.max,
+      message: COMPANY_DESCRIPTION_MESSAGE
     },
     website: {
       custom: (value: string) => {
@@ -512,9 +559,9 @@ export const employerDashboardSettingsRules = {
     message: "Emri i kompanisë duhet të jetë midis 2 dhe 100 karakteresh"
   },
   description: {
-    minLength: 50,
-    maxLength: 500,
-    message: "Përshkrimi duhet të jetë midis 50 dhe 500 karakteresh"
+    minLength: COMPANY_DESCRIPTION_LIMITS.min,
+    maxLength: COMPANY_DESCRIPTION_LIMITS.max,
+    message: COMPANY_DESCRIPTION_MESSAGE
   },
   website: {
     custom: (value: string) => {

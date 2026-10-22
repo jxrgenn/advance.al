@@ -286,9 +286,11 @@ describe('userEmbeddingService.computeHybridBoost', () => {
         ['Dizajnere Grafike', 'Dizajn'],
         ['Recepsioniste', 'Turizëm'],
         ['Shofer Kamioni', 'Transport'],
-        ['Kuzhinier i Hotelit', 'Turizëm'],
-        ['Shitëse', 'Shitje'],
-        ['Elektricist', 'Inxhinieri'],
+        // 76: these three used to map to Turizëm / Shitje / Inxhinieri,
+        // which are not the categories such jobs are posted under.
+        ['Kuzhinier i Hotelit', 'Gastronomi & Kuzhinë'],
+        ['Shitëse', 'Shitës/e'],
+        ['Elektricist', 'Ndërtim'],
       ];
       for (const [title, expected] of cases) {
         const u = baseUser({ jsp: { title, skills: [] } });

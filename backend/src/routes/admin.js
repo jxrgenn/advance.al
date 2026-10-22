@@ -15,6 +15,7 @@ import { cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
 import logger from '../config/logger.js';
 import { pingJob } from '../lib/indexNow.js';
 import { closeJobsForSanctionedEmployer } from '../lib/employerSanctions.js';
+import { cascadeAccountDeletion } from '../lib/accountDeletion.js';
 
 const router = express.Router();
 
@@ -54,7 +55,9 @@ router.get('/dashboard-stats', async (req, res) => {
       Job.countDocuments(),
       Job.countDocuments({ status: 'active' }),
       Application.countDocuments(),
-      User.countDocuments({ userType: 'employer', 'profile.employerProfile.verificationStatus': 'pending' }),
+      // Same filter as the approval queue (W2-1 review #7) — the tile used to
+      // count deleted / suspended employers that the queue never shows.
+      User.countDocuments(User.pendingVerificationQuery()),
       User.countDocuments({ userType: 'employer', 'profile.employerProfile.verified': true }),
       QuickUser.countDocuments()
     ]);
@@ -649,6 +652,28 @@ router.patch('/users/:userId/manage', async (req, res) => {
             message: 'Kjo llogari është fshirë dhe nuk mund të riaktivizohet'
           });
         }
+        // W2-1 review #7: lifting a suspension/ban restores the status the
+        // account had before it (an unverified employer goes back to
+        // pending_verification and keeps its "Verifiko" button) instead of
+        // forcing 'active'. Activating does not verify an employer — that is
+        // the approval queue's job.
+        if (user.status === 'suspended' || user.status === 'banned') {
+          await user.liftSuspension();
+          cacheDelete('admin:dashboard').catch(() => {});
+          return res.json({
+            success: true,
+            data: { user },
+            message: user.status === 'pending_verification'
+              ? 'Pezullimi u hoq — punëdhënësi pret ende verifikimin'
+              : 'Përdoruesi u aktivizua me sukses'
+          });
+        }
+        if (user.status === 'pending_verification') {
+          return res.status(400).json({
+            success: false,
+            message: 'Ky punëdhënës pret verifikimin — përdorni "Verifiko" te punëdhënësit në pritje'
+          });
+        }
         user.status = 'active';
         user.suspensionDetails = undefined;
         break;
@@ -686,18 +711,11 @@ router.patch('/users/:userId/manage', async (req, res) => {
         user.status = 'deleted';
         user.deletedAt = new Date();
         await user.save();
-        // Cascade: close employer's jobs so they don't appear in search
-        if (user.userType === 'employer') {
-          const affected = await Job.find(
-            { employerId: user._id, isDeleted: false, status: 'active' },
-            { 'location.city': 1 }
-          ).lean();
-          await Job.updateMany(
-            { employerId: user._id, isDeleted: false },
-            { $set: { isDeleted: true, status: 'closed' } }
-          );
-          await Job.decrementLocationCountsForCities(affected.map(j => j.location?.city));
-        }
+        // Cascade — the same as a self-service deletion (lib/accountDeletion.js):
+        // employer → open checkouts retired first, jobs closed and hidden, paid
+        // live listings flagged for a refund decision; jobseeker → applications
+        // withdrawn, cached candidate matches dropped (W2-1 reviews #1/#2).
+        await cascadeAccountDeletion(user, { admin: req.user });
         cacheDelete('admin:dashboard').catch(() => {});
         return res.json({
           success: true,
@@ -820,7 +838,7 @@ router.patch('/jobs/:jobId/manage', async (req, res) => {
     res.json({
       success: true,
       data: { job },
-      message: 'Veprimu u krye me sukses'
+      message: 'Veprimi u krye me sukses'
     });
 
   } catch (error) {
@@ -1110,7 +1128,11 @@ router.get('/jobs/pending', async (req, res) => {
 // @access  Private (Admin only)
 router.post('/backfill-user-embeddings', async (req, res) => {
   try {
-    const users = await User.find({
+    // #60: one synchronous OpenAI call per user — bounded per request so the
+    // response arrives inside the request timeout; `remaining` tells the admin
+    // to call again (the retry worker also covers these users every 10 min).
+    const batch = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    const backfillFilter = {
       userType: 'jobseeker',
       isDeleted: false,
       status: 'active',
@@ -1119,7 +1141,9 @@ router.post('/backfill-user-embeddings', async (req, res) => {
         { 'profile.jobSeekerProfile.embedding.status': { $exists: false } },
         { 'profile.jobSeekerProfile.embedding': { $exists: false } }
       ]
-    }).select('_id email profile.firstName profile.lastName');
+    };
+    const totalNeeding = await User.countDocuments(backfillFilter);
+    const users = await User.find(backfillFilter).select('_id email profile.firstName profile.lastName').limit(batch);
 
     let succeeded = 0;
     let failed = 0;
@@ -1143,7 +1167,7 @@ router.post('/backfill-user-embeddings', async (req, res) => {
     res.json({
       success: true,
       message: `Backfill complete: ${succeeded} succeeded, ${failed} failed out of ${users.length} total`,
-      data: { total: users.length, succeeded, failed, errors: errors.slice(0, 20) }
+      data: { total: users.length, succeeded, failed, errors: errors.slice(0, 20), remaining: Math.max(totalNeeding - users.length, 0) }
     });
   } catch (error) {
     logger.error('Backfill user embeddings error:', error.message);
@@ -1166,24 +1190,19 @@ router.post('/backfill-job-embeddings', async (req, res) => {
       ]
     }).select('_id title');
 
-    // Round P: keep JobQueue write for admin UI/audit, AND fire the inline trigger.
-    // The trigger does the actual generation with cost caps + retry guarantees;
-    // the queue row becomes a passive audit record.
-    let queued = 0;
-    for (const job of jobs) {
-      try {
-        await jobEmbeddingService.queueEmbeddingGeneration(job._id, 10);
-        fireEmbedding({ kind: 'job', id: job._id, reason: 'admin-backfill' });
-        queued++;
-      } catch (err) {
-        // Already queued or other issue — continue
-      }
-    }
+    // #92/#98: these jobs are exactly what embeddingRetryWorker selects, so
+    // one background sweep regenerates them sequentially (bounded by the
+    // embedding concurrency limit). The old loop fired one inline kick per
+    // job — beyond the 20-slot in-flight cap the kicks were dropped — and
+    // wrote JobQueue rows that nothing consumes.
+    const queued = jobs.length;
+    const { runJobSweepNow } = await import('../services/embeddingRetryWorker.js');
+    const sweep = queued ? runJobSweepNow({ batchSize: queued, reason: 'admin-backfill' }) : { started: false };
 
     res.json({
       success: true,
       message: `Queued ${queued}/${jobs.length} jobs for embedding generation`,
-      data: { total: jobs.length, queued }
+      data: { total: jobs.length, queued, sweepStarted: sweep.started }
     });
   } catch (error) {
     logger.error('Backfill job embeddings error:', error.message);

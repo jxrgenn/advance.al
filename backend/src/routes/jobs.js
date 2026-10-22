@@ -1,7 +1,7 @@
 import express from 'express';
 import { body, query, validationResult } from 'express-validator';
 import mongoose from 'mongoose';
-import { Job, User, Location, SystemConfiguration } from '../models/index.js';
+import { Job, User, Location, SystemConfiguration, Application } from '../models/index.js';
 import { JOB_TTL_DAYS } from '../models/Job.js';
 import { authenticate, requireEmployer, requireVerifiedEmployer, optionalAuth } from '../middleware/auth.js';
 import notificationService from '../lib/notificationService.js';
@@ -66,13 +66,17 @@ const createJobValidation = [
     .withMessage('Qyteti është i detyrueshëm')
     .isLength({ max: 100 })
     .withMessage('Qyteti nuk mund të ketë më shumë se 100 karaktere'),
+  // O-76: '' / null = no bound (stored null — Mongoose casts '' to null);
+  // the chain must not reject them. Other non-numbers are still 400.
   body('salary.min')
-    .optional()
+    .optional({ values: 'null' })
+    .if((v) => v !== '')
     .isNumeric()
     .isFloat({ min: 0 })
     .withMessage('Paga minimale duhet të jetë numër pozitiv'),
   body('salary.max')
-    .optional()
+    .optional({ values: 'null' })
+    .if((v) => v !== '')
     .isNumeric()
     .isFloat({ min: 0 })
     .withMessage('Paga maksimale duhet të jetë numër pozitiv'),
@@ -140,14 +144,18 @@ const updateJobValidation = [
     .withMessage('Qyteti është i detyrueshëm')
     .isLength({ max: 100 })
     .withMessage('Qyteti nuk mund të ketë më shumë se 100 karaktere'),
-  // null clears a bound on update (EditJob sends null when both are emptied)
+  // null clears a bound on update (EditJob sends null when both are emptied).
+  // O-76: '' clears it too — validateJobUpdateFields/toOptionalAmount treats
+  // '' as null, but this chain used to reject it before the handler ran.
   body('salary.min')
     .optional({ values: 'null' })
+    .if((v) => v !== '')
     .isNumeric()
     .isFloat({ min: 0 })
     .withMessage('Paga minimale duhet të jetë numër pozitiv'),
   body('salary.max')
     .optional({ values: 'null' })
+    .if((v) => v !== '')
     .isNumeric()
     .isFloat({ min: 0 })
     .withMessage('Paga maksimale duhet të jetë numër pozitiv'),
@@ -232,13 +240,12 @@ router.get('/', optionalAuth, async (req, res) => {
     // ?search=a&search=b arrives as an array — treat as no search, never 500.
     const safeSearch = typeof search === 'string' ? search.replace(/\0/g, '') : '';
 
-    // A personalizable request (logged-in jobseeker, page 1, default sort) gets
-    // a per-user embedding re-rank further down. It must BYPASS the shared 60s
-    // cache entirely — the cache key has no user identity, so otherwise a
-    // cached anonymous list would shadow the re-rank (and a personalized list
-    // could be served to others).
-    const isPersonalizable = req.user?.userType === 'jobseeker'
-      && safePage === 1 && sortBy === 'postedAt' && sortOrder !== 'asc';
+    // 75/102: this listing is NOT personalised. Page 1 used to be a cosine
+    // re-rank of the newest 40 jobs while pages 2+ stayed chronological, so
+    // for every logged-in jobseeker some of the newest jobs appeared on no
+    // page and others on two. The owner removed recommendations from the jobs
+    // page; the listing is one stable, newest-first partition for everyone
+    // (recommendations live only behind GET /api/jobs/recommendations).
 
     // Redis cache — 60s TTL for public job search results.
     // `viewer` is part of the key: publicJob() attaches viewer-only fields
@@ -253,15 +260,13 @@ router.get('/', optionalAuth, async (req, res) => {
       page: safePage, limit: safeLimit, sortBy, sortOrder,
       diaspora, ngaShtepia, partTime, administrata, sezonale
     })).digest('hex')}`;
-    if (!isPersonalizable) {
-      try {
-        const cached = await cacheGet(cacheKey);
-        if (cached) {
-          const data = typeof cached === 'string' ? JSON.parse(cached) : cached;
-          return res.json(data);
-        }
-      } catch { /* cache miss — proceed with DB query */ }
-    }
+    try {
+      const cached = await cacheGet(cacheKey);
+      if (cached) {
+        const data = typeof cached === 'string' ? JSON.parse(cached) : cached;
+        return res.json(data);
+      }
+    } catch { /* cache miss — proceed with DB query */ }
 
     // Build search filters
     const filters = {};
@@ -404,63 +409,6 @@ router.get('/', optionalAuth, async (req, res) => {
       filters.tier = tier;
     }
 
-    // PR-E: Personalize the default listing for logged-in jobseekers on page 1.
-    // `isPersonalizable` (computed above) gates this — jobseeker role, page 1,
-    // DEFAULT sort only (newest = postedAt desc). An explicit "oldest" request
-    // (postedAt asc) must NOT be hijacked by the cosine re-rank.
-    if (isPersonalizable) {
-      const userWithEmb = await User.findById(req.user._id)
-        .select('+profile.jobSeekerProfile.embedding.vector')
-        .lean();
-      const emb = userWithEmb?.profile?.jobSeekerProfile?.embedding;
-      if (emb?.status === 'completed' && isValidEmbeddingVector(emb.vector)) {
-        const poolSize = Math.max(safeLimit * 4, 40);
-        const pool = await Job.searchJobs(safeSearch, filters)
-          .select('+embedding.vector')
-          .sort({ postedAt: -1 })  // pool = most recent jobs, then cosine re-rank
-          .limit(poolSize)
-          .lean()
-          .exec();
-
-        if (pool.length > 0) {
-          const userVec = emb.vector;
-          const scored = pool.map(job => {
-            const jobVec = job.embedding?.vector;
-            let cosine = 0;
-            if (isValidEmbeddingVector(jobVec)) {
-              try { cosine = jobEmbeddingService.cosineSimilarity(userVec, jobVec); } catch { /* invalid vector */ }
-            }
-            const { boost } = userEmbeddingService.computeHybridBoost(userWithEmb, job);
-            const finalScore = Math.min(1, cosine + boost);
-            const jobOut = { ...job };
-            delete jobOut.embedding;
-            return { jobOut, finalScore };
-          });
-          scored.sort((a, b) => b.finalScore - a.finalScore);
-          const reranked = scored.slice(0, safeLimit).map(r => r.jobOut);
-
-          const totalJobs = await Job.countDocuments(Job.searchJobs(safeSearch, filters).getFilter());
-          const totalPages = Math.ceil(totalJobs / safeLimit);
-
-          return res.json({
-            success: true,
-            data: {
-              jobs: reranked.map(j => publicJob(j, { viewer: req.user })),
-              pagination: {
-                currentPage: 1,
-                totalPages,
-                totalJobs,
-                hasNextPage: 1 < totalPages,
-                hasPrevPage: false,
-              },
-              filters: echoedFilters,
-              personalized: true,
-            }
-          });
-        }
-      }
-    }
-
     // Execute search. searchJobs builds the filter; the page itself is read
     // with an aggregate (see LISTING_HEAVY_FIELDS) and populated afterwards.
     const countFilter = Job.searchJobs(safeSearch, filters).getFilter();
@@ -531,9 +479,7 @@ router.get('/', optionalAuth, async (req, res) => {
       success: true,
       data: {
         jobs: jobs.map(j => publicJob(j, { viewer: req.user })),
-        // Always present so the frontend never sees `undefined`. This is the
-        // non-personalized path; the re-rank above returns its own response
-        // with personalized:true.
+        // Always false (kept so existing clients never see `undefined`).
         personalized: false,
         pagination: {
           currentPage: safePage,
@@ -546,11 +492,8 @@ router.get('/', optionalAuth, async (req, res) => {
       }
     };
 
-    // Cache for 60 seconds — but never cache a personalizable request's
-    // result (it bypassed the cache read; caching it would shadow others).
-    if (!isPersonalizable) {
-      cacheSet(cacheKey, responseData, 60).catch(() => {});
-    }
+    // Cache for 60 seconds
+    cacheSet(cacheKey, responseData, 60).catch(() => {});
 
     res.json(responseData);
 
@@ -594,26 +537,26 @@ router.get('/recommendations', authenticate, async (req, res) => {
     const emb = userWithEmb?.profile?.jobSeekerProfile?.embedding;
     const hasEmbedding = emb?.status === 'completed' && isValidEmbeddingVector(emb.vector);
     if (hasEmbedding) {
-      // Pull more candidates than `limit` so the hybrid re-rank has room.
-      const candidates = await userEmbeddingService.findMatchingJobsForUser(emb.vector, {
-        limit: Math.max(limit * 4, 40),
-        minScore: 0,
-      });
-
-      const reranked = candidates
-        .filter(({ job }) => !savedJobIdSet.has(String(job._id)))
-        .map(({ job, score: cosineScore }) => {
-          const { boost } = userEmbeddingService.computeHybridBoost(userWithEmb, job);
-          const finalScore = Math.min(1, cosineScore + boost);
-          return { job, finalScore };
-        });
-
-      reranked.sort((a, b) => b.finalScore - a.finalScore);
+      // 96: the hybrid score (cosine + boost of up to +0.52) is computed for
+      // EVERY active job during the scan, and saved / already-applied jobs
+      // are excluded up front. It used to keep only the top 40 by raw cosine
+      // and boost those, so a same-city same-category job at cosine rank 41+
+      // could never be recommended.
+      const appliedJobIds = await Application.find({ jobSeekerId: userId, withdrawn: false }).distinct('jobId');
+      const excludeJobIds = new Set([...savedJobIdSet, ...appliedJobIds.map(String)]);
 
       // Cross-encoder reranking: take a wider top slice than the user requested,
       // send to LLM reranker, take final top-`limit`. Falls back silently to
       // bi-encoder order on any rerank error.
-      const wideSlice = reranked.slice(0, Math.max(limit * 2, 20));
+      const wideSlice = (await userEmbeddingService.findMatchingJobsForUser(emb.vector, {
+        limit: Math.max(limit * 2, 20),
+        minScore: 0,
+        excludeJobIds,
+        scorer: (job, cosineScore) => {
+          const { boost } = userEmbeddingService.computeHybridBoost(userWithEmb, job);
+          return Math.min(1, cosineScore + boost);
+        },
+      })).map(({ job, finalScore }) => ({ job, finalScore }));
       const { ranked: rerankedFinal, mode: rerankMode } = await recommendationReranker.rerank(userWithEmb, wideSlice);
 
       // publicJob: drops embeddings / similarity cache / payment internals
@@ -948,9 +891,17 @@ router.get('/:id', optionalAuth, async (req, res) => {
       ? { _id: param, isDeleted: false }
       : { slug: param, isDeleted: false };
 
-    const job = await Job.findOne(query)
-      .populate('employerId', 'profile.employerProfile profile.location profile.firstName profile.lastName')
+    let job = await Job.findOne(query)
+      .populate('employerId', 'email profile.employerProfile profile.location profile.firstName profile.lastName')
       .lean();
+    // #113: a title edit gives the job a new slug; links carrying the old
+    // one (shared, emailed, indexed) resolve through previousSlugs. The
+    // response carries the current `slug` for the canonical URL.
+    if (!job && !isObjectId) {
+      job = await Job.findOne({ previousSlugs: param, isDeleted: false })
+        .populate('employerId', 'email profile.employerProfile profile.location profile.firstName profile.lastName')
+        .lean();
+    }
 
     if (!job) {
       return jobNotFound(req, res);
@@ -1037,7 +988,6 @@ router.get('/:id/similar', optionalAuth, async (req, res) => {
     if (!job || job.isDeleted || (!PUBLIC_JOB_STATES.has(computeJobState(job)) && !isOwnerOrAdmin)) {
       return jobNotFound(req, res);
     }
-    const jobId = job._id;
     const now = new Date();
 
     // Check if similar jobs are already computed
@@ -1080,6 +1030,18 @@ router.get('/:id/similar', optionalAuth, async (req, res) => {
         // signal the UI needs; `score`/`cosineScore` are internal ML detail.
         .map(({ job: j, tier }) => ({ job: j, tier }));
 
+      // 80: the cached list shrinks as its jobs close / expire (it could
+      // end at [] while many live same-category jobs exist). Top it up from
+      // the category/city fallback so the section is never emptier than the
+      // keyword fallback would be. Top-up items carry no tier.
+      if (sortedSimilar.length < limit) {
+        const topUp = await jobEmbeddingService.getSimilarJobsFallback(job, {
+          limit: limit - sortedSimilar.length,
+          excludeIds: sortedSimilar.map(s => s.job._id),
+        });
+        sortedSimilar.push(...topUp.map(({ job: j }) => ({ job: publicJob(j, { viewer: req.user }) })));
+      }
+
       return res.json({
         success: true,
         data: {
@@ -1090,30 +1052,12 @@ router.get('/:id/similar', optionalAuth, async (req, res) => {
       });
     }
 
-    // No embedding cache yet → keyword fallback: same category or same city.
-    // Done here (not via jobEmbeddingService.getSimilarJobsFallback) so the
-    // candidates get the same liveness filter as the cached path
-    // (expiresAt > now) and carry the employer + salary fields the cards
-    // render. Response shape is unchanged: { job, score: null, cached: false }.
-    const fallbackCandidates = await Job.find({
-      _id: { $ne: jobId },
-      isDeleted: false,
-      status: 'active',
-      expiresAt: { $gt: now },
-      $or: [
-        { category: job.category },
-        { 'location.city': job.location?.city }
-      ]
-    })
-      .sort({ postedAt: -1, _id: -1 })
-      .limit(limit)
-      .populate('employerId', 'profile.employerProfile.companyName profile.employerProfile.logo profile.location')
-      .lean();
-    const fallbackJobs = fallbackCandidates.map(j => ({
-      job: publicJob(j, { viewer: req.user }),
-      score: null,
-      cached: false,
-    }));
+    // No embedding cache yet → keyword fallback: same category first, then
+    // same city (jobEmbeddingService.getSimilarJobsFallback — same liveness
+    // filter as the cached path, and the employer + salary fields the cards
+    // render). Response shape is unchanged: { job, score: null, cached: false }.
+    const fallbackJobs = (await jobEmbeddingService.getSimilarJobsFallback(job, { limit }))
+      .map(({ job: j }) => ({ job: publicJob(j, { viewer: req.user }), score: null, cached: false }));
 
     res.json({
       success: true,
@@ -1580,9 +1524,16 @@ router.put('/:id', validateObjectId('id'), authenticate, requireEmployer, requir
       externalApplicationUrl: undefined,
       updatedAt: new Date()
     };
+    const slugBeforeSave = job.slug;
     Object.assign(job, updates);
 
     await job.save();
+
+    // #113: a title edit changed the public URL — tell search engines about
+    // the new one (the old slug keeps resolving via previousSlugs).
+    if (job.slug !== slugBeforeSave && job.status === 'active') {
+      setImmediate(() => { pingJob(job); });
+    }
 
     // Round P: regenerate embedding inline after update via fireEmbedding (which
     // also resets the embedding state internally before regenerating). No more

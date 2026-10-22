@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
+import { EMBEDDING_DIMS } from '../../../src/utils/embeddingConfig.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../../setup/testDb.js';
 import { seedLocations } from '../../fixtures/locations.fixture.js';
 import { createJobseeker, createVerifiedEmployer } from '../../factories/user.factory.js';
@@ -74,7 +75,7 @@ describe('Phase 13 — Real OpenAI Tests', () => {
   });
 
   (HAS_OPENAI ? describe : describe.skip)('userEmbeddingService.generateJobSeekerEmbedding', () => {
-    it('produces a 1536-dim vector with components in [-1, 1]', async () => {
+    it('produces an EMBEDDING_DIMS-length vector with components in [-1, 1]', async () => {
       // Rich profile so prepareJobSeekerText returns >10 chars
       const { user } = await createJobseeker({
         skills: ['JavaScript', 'React', 'Node.js', 'MongoDB', 'TypeScript', 'Docker', 'AWS', 'GraphQL']
@@ -88,13 +89,13 @@ describe('Phase 13 — Real OpenAI Tests', () => {
       const vector = await userEmbeddingService.generateJobSeekerEmbedding(user._id);
 
       expect(Array.isArray(vector)).toBe(true);
-      expect(vector.length).toBe(1536);
+      expect(vector.length).toBe(EMBEDDING_DIMS);
 
       // Verify the vector also persisted (vector has select:false so we must opt in)
       const dbUser = await UserModel.findById(user._id).select('+profile.jobSeekerProfile.embedding.vector');
       const persisted = dbUser.profile.jobSeekerProfile.embedding?.vector;
       expect(Array.isArray(persisted)).toBe(true);
-      expect(persisted.length).toBe(1536);
+      expect(persisted.length).toBe(EMBEDDING_DIMS);
 
       // All components in [-1, 1]
       for (const v of vector) {

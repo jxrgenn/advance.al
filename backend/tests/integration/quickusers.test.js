@@ -75,7 +75,7 @@ describe('QuickUsers API - Integration Tests', () => {
   });
 
   describe('POST /api/quickusers/unsubscribe', () => {
-    it('rejects without token', async () => {
+    it('rejects without token → 400', async () => {
       const response = await request(app)
         .post('/api/quickusers/unsubscribe')
         .send({});
@@ -106,7 +106,7 @@ describe('QuickUsers API - Integration Tests', () => {
   });
 
   describe('PUT /api/quickusers/:id/preferences (token-protected — F-13 mitigation)', () => {
-    it('rejects without token', async () => {
+    it('rejects without token → 400', async () => {
       const qu = await QuickUser.create({
         firstName: 'P', lastName: 'Q',
         email: 'pref@example.com', location: 'Tiranë', interests: ['Teknologji']
@@ -114,7 +114,8 @@ describe('QuickUsers API - Integration Tests', () => {
       const response = await request(app)
         .put(`/api/quickusers/${qu._id}/preferences`)
         .send({ preferences: { emailFrequency: 'weekly' } });
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(400);
+      expect(response.body.message).toBe('Token i verifikimit është i detyrueshëm');
     });
 
     it('rejects with wrong token', async () => {

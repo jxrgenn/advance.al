@@ -21,15 +21,15 @@ const RotatingContact: React.FC<{ className?: string }> = ({ className = '' }) =
               />
             </div>
             <p className="text-white/80 text-sm md:text-base font-light italic text-center tracking-wide">
-              Me shpejt, me thjeshte, me mire.
+              Më shpejt, më thjeshtë, më mirë.
             </p>
           </div>
 
           {/* Right Panel - White with contact details */}
           <div className="bg-white border border-gray-200 flex flex-col items-center justify-center px-8 sm:px-16 py-10 sm:py-14 shadow-md text-center">
             <p className="text-lg md:text-xl text-foreground font-medium tracking-wide">Cel. 00355 68 661 1796</p>
-            <a href="mailto:Advanc@gmail.com" className="text-lg md:text-xl text-foreground hover:text-primary transition-colors block font-medium tracking-wide mb-6">
-              Advanc@gmail.com
+            <a href="mailto:info@advance.al" className="text-lg md:text-xl text-foreground hover:text-primary transition-colors block font-medium tracking-wide mb-6 break-anywhere">
+              info@advance.al
             </a>
 
             <p className="text-base md:text-lg text-muted-foreground tracking-wide">

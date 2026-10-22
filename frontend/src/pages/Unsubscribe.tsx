@@ -65,6 +65,12 @@ const Unsubscribe = () => {
                 <Button onClick={handleUnsubscribe} variant="destructive">
                   Po, çregjistrohu
                 </Button>
+                <p className="text-xs text-muted-foreground">
+                  Mjaftojnë më pak email?{" "}
+                  <Link to={`/preferences?token=${encodeURIComponent(token ?? "")}`} className="text-primary underline">
+                    Zgjidhni një përmbledhje ditore ose javore
+                  </Link>
+                </p>
               </>
             )}
 
@@ -93,7 +99,7 @@ const Unsubscribe = () => {
               <>
                 <XCircle className="h-12 w-12 text-red-500" />
                 <p className="text-lg font-semibold text-foreground">
-                  Çregjistrimi deshtoi
+                  Çregjistrimi dështoi
                 </p>
                 <p className="text-sm text-muted-foreground">
                   {errorMessage}

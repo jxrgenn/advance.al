@@ -43,11 +43,48 @@ export function publicEmployer(employer, { viewer } = {}) {
   };
 
   if (viewer) {
-    out.profile.employerProfile.phone = emp.phone;
-    out.profile.employerProfile.whatsapp = emp.whatsapp;
+    // Logged-in viewers see only the channels the employer switched ON in
+    // their dashboard (contactPreferences) — same rule as
+    // employerContactForApplicant below. The account email is shared only
+    // through "Kontakt me email".
+    const prefs = emp.contactPreferences || {};
+    if (prefs.enablePhoneContact === true && emp.phone) out.profile.employerProfile.phone = emp.phone;
+    if (prefs.enableWhatsAppContact === true && emp.whatsapp) out.profile.employerProfile.whatsapp = emp.whatsapp;
+    if (prefs.enableEmailContact === true && employer.email) out.email = employer.email;
     out.profile.firstName = employer.profile?.firstName;
     out.profile.lastName = employer.profile?.lastName;
   }
+  return out;
+}
+
+/**
+ * The employer of a job as seen by someone who APPLIED to it (My
+ * Applications "Kontakto"). Each contact value is included only when the
+ * employer switched that channel ON in their dashboard settings
+ * (contactPreferences) and a value exists; the account email is shared only
+ * through "Kontakt me email" (enableEmailContact) — there is no separate
+ * contact-email field. Disabled channels are absent from the JSON, not just
+ * hidden by the UI (38).
+ *
+ * @param {object} employer  populated employer (lean object or document)
+ */
+export function employerContactForApplicant(employer) {
+  if (!employer || typeof employer !== 'object') return employer ?? null;
+  const emp = employer.profile?.employerProfile || {};
+  const prefs = emp.contactPreferences || {};
+  const enablePhoneContact = prefs.enablePhoneContact === true && !!emp.phone;
+  const enableWhatsAppContact = prefs.enableWhatsAppContact === true && !!emp.whatsapp;
+  const enableEmailContact = prefs.enableEmailContact === true && !!employer.email;
+
+  const employerProfile = {
+    companyName: emp.companyName,
+    contactPreferences: { enablePhoneContact, enableWhatsAppContact, enableEmailContact },
+  };
+  if (enablePhoneContact) employerProfile.phone = emp.phone;
+  if (enableWhatsAppContact) employerProfile.whatsapp = emp.whatsapp;
+
+  const out = { _id: employer._id, profile: { employerProfile } };
+  if (enableEmailContact) out.email = employer.email;
   return out;
 }
 

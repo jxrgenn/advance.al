@@ -986,6 +986,9 @@ CERTIFIKATA (opsionale)
 
       <div className="px-4 sm:px-6 lg:px-8">
         <Container size="lg" px={0} py={40} pt={80}>
+          {/* Signup choices are for visitors only (a signed-in user saw the
+              registration forms here). */}
+          {!isAuthenticated && (
           <Paper
             withBorder
             p="md"
@@ -1021,6 +1024,7 @@ CERTIFIKATA (opsionale)
               </Box>
             </Group>
           </Paper>
+          )}
 
           {/* Hero Section with 3D Asset */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center mb-8">
@@ -1045,7 +1049,43 @@ CERTIFIKATA (opsionale)
           </div>
         </div>
 
-        {/* Two Column Layout */}
+        {/* Two Column Layout — signup forms for visitors; a signed-in user
+            gets their own shortcuts instead. */}
+        {isAuthenticated ? (
+          <Paper withBorder p="xl" radius="md" data-testid="jobseekers-logged-in">
+            <Group justify="space-between" align="center" wrap="wrap" gap="md">
+              <Group gap="md" wrap="nowrap" align="flex-start">
+                <ThemeIcon size={44} radius="md" color="blue" variant="light" style={{ flexShrink: 0 }}>
+                  <CheckCircle size={22} />
+                </ThemeIcon>
+                <Box>
+                  <Title order={3} size="h4">
+                    Jeni kyçur{user?.profile?.firstName ? ` si ${user.profile.firstName}` : ''}
+                  </Title>
+                  <Text size="sm" c="dimmed" mt={4}>
+                    {user?.userType === 'jobseeker'
+                      ? 'Llogaria juaj është gati. Shfletoni punët ose përditësoni profilin dhe CV-në.'
+                      : 'Kjo faqe është për punëkërkuesit. Vazhdoni te paneli juaj.'}
+                  </Text>
+                </Box>
+              </Group>
+              <Group gap="sm" wrap="wrap">
+                <Button component="a" href="/jobs" onClick={(e: React.MouseEvent) => { e.preventDefault(); navigate('/jobs'); }} leftSection={<Briefcase size={16} />}>
+                  Shfleto punët
+                </Button>
+                {user?.userType === 'jobseeker' ? (
+                  <Button variant="light" component="a" href="/profile" onClick={(e: React.MouseEvent) => { e.preventDefault(); navigate('/profile'); }}>
+                    Profili im
+                  </Button>
+                ) : user?.userType === 'employer' ? (
+                  <Button variant="light" component="a" href="/employer-dashboard" onClick={(e: React.MouseEvent) => { e.preventDefault(); navigate('/employer-dashboard'); }}>
+                    Paneli im
+                  </Button>
+                ) : null}
+              </Group>
+            </Group>
+          </Paper>
+        ) : (
         <Grid gutter={40}>
           {/* Left Side: Options & Context */}
           <Grid.Col span={{ base: 12, md: 5 }}>
@@ -1500,6 +1540,7 @@ CERTIFIKATA (opsionale)
 
           </Grid.Col>
         </Grid>
+        )}
 
         {/* AI CV Generation */}
         <Paper shadow="sm" radius="md" withBorder p="xl" mt={60} mb={40} id="ai-cv-section">

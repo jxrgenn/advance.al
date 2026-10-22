@@ -5,6 +5,9 @@ import { emailFormatValidator } from '../lib/emailFormat.js';
 import { JOB_CATEGORIES } from '../constants/jobCategories.js';
 import { formatSalary } from '../lib/salary.js';
 import { diacriticInsensitivePattern } from '../lib/searchRegex.js';
+import { jobSlug } from '../lib/jobSlug.js';
+
+const MAX_PREVIOUS_SLUGS = 10;
 
 const { Schema } = mongoose;
 
@@ -336,6 +339,13 @@ const jobSchema = new Schema({
     unique: true,
     required: true
   },
+  // Slugs this job had before a title edit (#113) — still resolved by the
+  // public detail route so old links don't 404. Capped (MAX_PREVIOUS_SLUGS).
+  previousSlugs: {
+    type: [String],
+    default: undefined,
+    index: true
+  },
 
   // AI-Powered Job Similarity (NEW)
   embedding: {
@@ -358,7 +368,15 @@ const jobSchema = new Schema({
       type: Number,
       default: 0
     },
-    language: String
+    language: String,
+    // Vector length written with the vector — lets embeddingRetryWorker find
+    // vectors from an outdated model/dimension without loading them (#92).
+    dims: Number,
+    // Start of the last generation attempt (retry-worker cooldown).
+    lastAttemptedAt: Date,
+    // Set when a change needs re-embedding, cleared by the generation that
+    // covers it (services/embeddingStaleness.js, #92).
+    staleSince: Date
   },
 
   similarJobs: [{
@@ -398,7 +416,13 @@ const jobSchema = new Schema({
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  toObject: { virtuals: true },
+  // A title edit REASSIGNS previousSlugs (pre-validate hook below), which
+  // made Mongoose version-check the whole save: two concurrent edits of one
+  // job → the second failed with a VersionError → 500 on PUT /api/jobs/:id.
+  // The slug history is not worth that — concurrent edits resolve
+  // last-write-wins, as every other job field does.
+  skipVersioning: { previousSlugs: true }
 });
 
 // Indexes for performance and search
@@ -463,33 +487,35 @@ jobSchema.virtual('timeAgo').get(function() {
   return 'Sapo postuar';
 });
 
-// Generate unique slug before validation (must run before validate, not save)
+// Generate the slug before validation (must run before validate, not save).
+// #113: transliterated, never empty, unique via an ObjectId suffix (no
+// check-then-insert loop, no E11000 on concurrent same-title posts). A title
+// edit gives the job a new slug, and the old one is kept in previousSlugs so
+// every link already shared, emailed or indexed keeps resolving
+// (GET /api/jobs/:idOrSlug falls back to previousSlugs).
 jobSchema.pre('validate', async function(next) {
-  if (this.isNew || this.isModified('title')) {
-    const baseSlug = this.title
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .trim();
-    
-    let slug = baseSlug;
-    let counter = 1;
-    const maxRetries = 50;
-
-    // Ensure slug is unique (with retry limit to prevent infinite loops)
-    while (await this.constructor.findOne({ slug, _id: { $ne: this._id } })) {
-      slug = `${baseSlug}-${counter}`;
-      counter++;
-      if (counter > maxRetries) {
-        // Fallback: append timestamp for guaranteed uniqueness
-        slug = `${baseSlug}-${Date.now()}`;
-        break;
+  try {
+    const needsSlug = this.isNew || !this.slug;
+    const titleChanged = !this.isNew && this.isModified('title');
+    if ((needsSlug || titleChanged) && this.title) {
+      let slug = jobSlug(this.title, this._id);
+      if (slug !== this.slug) {
+        if (await this.constructor.exists({ slug, _id: { $ne: this._id } })) {
+          slug = jobSlug(this.title, this._id, { fullId: true });
+        }
+        // Only a PUBLISHED slug (an existing job's) needs to keep resolving;
+        // a value set on a not-yet-saved job was never a public URL.
+        if (!this.isNew && this.slug && slug !== this.slug) {
+          const previous = (this.previousSlugs || []).filter(s => s !== this.slug && s !== slug);
+          this.previousSlugs = [...previous, this.slug].slice(-MAX_PREVIOUS_SLUGS);
+        }
+        this.slug = slug;
       }
     }
-    
-    this.slug = slug;
+    next();
+  } catch (err) {
+    next(err);
   }
-  next();
 });
 
 // Auto-expire jobs after JOB_TTL_DAYS days (default 21). Also clamps any
@@ -608,11 +634,30 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
   if (filters.diaspora === true) {
     query['platformCategories.diaspora'] = true;
   }
-  if (filters.ngaShtepia === true) {
-    query['platformCategories.ngaShtepia'] = true;
+  // "Nga shtëpia" / "Remote" and "Part Time" each live in two fields: the
+  // platform flag AND the posting's own data (PostJob writes jobType
+  // 'part-time' and location.remote/remoteType without setting the flags).
+  // Match either, as the platform-categories backfill script does, or jobs
+  // posted through the UI never appear under these filters. Pushed to $and so
+  // they combine with the text-search $or instead of replacing it.
+  if (filters.ngaShtepia === true || filters.remote === true) {
+    if (!query.$and) query.$and = [];
+    query.$and.push({
+      $or: [
+        { 'platformCategories.ngaShtepia': true },
+        { 'location.remote': true },
+        { 'location.remoteType': 'full' }
+      ]
+    });
   }
   if (filters.partTime === true) {
-    query['platformCategories.partTime'] = true;
+    if (!query.$and) query.$and = [];
+    query.$and.push({
+      $or: [
+        { 'platformCategories.partTime': true },
+        { jobType: 'part-time' }
+      ]
+    });
   }
   if (filters.administrata === true) {
     query['platformCategories.administrata'] = true;
@@ -626,10 +671,7 @@ jobSchema.statics.searchJobs = function(searchQuery, filters = {}) {
     query.seniority = filters.seniority;
   }
 
-  // Remote work filter
-  if (filters.remote === true) {
-    query['location.remote'] = true;
-  }
+  // Remote work filter (`remote`) is handled together with `ngaShtepia` above.
 
   // Posted after date filter (an Invalid Date is ignored, never queried)
   if (filters.postedAfter instanceof Date && !Number.isNaN(filters.postedAfter.getTime())) {
@@ -773,24 +815,42 @@ jobSchema.statics.incrementLocationCountsForCities = async function(cities) {
   await cacheDelete('locations:popular:10').catch(() => {});
 };
 
-// Static method to recount jobCount for all locations
-jobSchema.statics.recountLocationJobs = async function() {
-  const Location = mongoose.model('Location');
-  const counts = await this.aggregate([
-    { $match: { status: 'active', isDeleted: { $ne: true } } },
+// Live jobs per city — the source of truth for Location.jobCount (#117).
+// "Live" = active, not deleted and not past expiresAt (the hourly expiry cron
+// flips those to 'expired' up to an hour late).
+jobSchema.statics.liveJobCountsByCity = async function() {
+  const rows = await this.aggregate([
+    { $match: { status: 'active', isDeleted: { $ne: true }, expiresAt: { $gt: new Date() } } },
     { $group: { _id: '$location.city', count: { $sum: 1 } } }
   ]);
+  const counts = new Map();
+  for (const { _id: city, count } of rows) if (city) counts.set(city, count);
+  return counts;
+};
 
-  // Reset all to 0 first
-  await Location.updateMany({}, { $set: { jobCount: 0 } });
-
-  // Set actual counts using bulkWrite for efficiency
-  if (counts.length > 0) {
-    const ops = counts.filter(c => c._id).map(({ _id: city, count }) => ({
-      updateOne: { filter: { city }, update: { $set: { jobCount: count } } }
-    }));
-    if (ops.length > 0) await Location.bulkWrite(ops);
+// Recount Location.jobCount from the live jobs. #117: the counters are kept
+// by $inc hooks on save(), but Job.updateMany (hourly expiry cron, employer
+// sanctions) bypasses them and renewals re-increment, so they drifted
+// upward forever; this was never scheduled. The job-expiry cron now calls it
+// every hour. Only counters that differ are written.
+jobSchema.statics.recountLocationJobs = async function() {
+  const Location = mongoose.model('Location');
+  const counts = await this.liveJobCountsByCity();
+  const locations = await Location.find({}).select('city jobCount').lean();
+  const ops = [];
+  for (const loc of locations) {
+    const actual = counts.get(loc.city) || 0;
+    if (loc.jobCount !== actual) {
+      ops.push({ updateOne: { filter: { _id: loc._id }, update: { $set: { jobCount: actual } } } });
+    }
   }
+  if (ops.length > 0) {
+    await Location.bulkWrite(ops);
+    await cacheDelete('locations:all').catch(() => {});
+    await cacheDelete('locations:popular:5').catch(() => {});
+    await cacheDelete('locations:popular:10').catch(() => {});
+  }
+  return { updated: ops.length };
 };
 
 export default mongoose.model('Job', jobSchema);

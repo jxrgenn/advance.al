@@ -168,13 +168,16 @@ describe('candidateMatching.trackContact', () => {
     expect(refetched.contactedAt).toBeInstanceOf(Date);
   });
 
-  it('returns success:true even when no matching record exists (no-op)', async () => {
+  // 85: a candidate that is not in the job's match list used to be reported
+  // as tracked; now it is a "not found" (the route answers 404).
+  it('returns notFound (success:false) when no matching record exists', async () => {
     const { user: emp } = await createEmployer();
     const { user: candidate } = await createJobseeker();
     const job = await createJob(emp);
     // No CandidateMatch created
     const r = await service.trackContact(job._id, candidate._id, 'phone');
-    expect(r.success).toBe(true);
+    expect(r).toEqual({ success: false, notFound: true, message: 'Kandidati nuk është në listën e përputhjeve për këtë punë' });
+    expect(await CandidateMatch.countDocuments({ jobId: job._id })).toBe(0);
   });
 
   it('returns success:false on invalid ObjectId (mongoose throws)', async () => {

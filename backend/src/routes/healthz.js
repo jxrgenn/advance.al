@@ -105,13 +105,18 @@ router.get('/embeddings', async (req, res) => {
 /**
  * GET /healthz/notifications — Round P
  * Same auth pattern as /embeddings. Reports:
- *   - EmailOutbox queue depth (pending, dead, oldestPendingAgeMs)
- *   - Job.notification fan-out status counts (pending, failed)
+ *   - EmailOutbox queue depth: pending, dead (all rows kept for the 90-day
+ *     TTL), deadLast24h, oldestPendingAgeMs (age of the oldest undelivered
+ *     row = now - createdAt, NOT time past nextAttemptAt: a row in backoff
+ *     has nextAttemptAt in the future yet may have been failing for hours)
+ *   - Job.notification fan-out status counts (pending, failed, and
+ *     notifyStalePending = 'pending' fan-outs older than 2h → crashed run)
  *   - drain worker heartbeat (lastTickAt / lastTickStats)
  *
- * status === 'degraded' if outbox has dead-letters, oldest pending > 30 min,
- * or any job notification is in 'failed' state — the three conditions the
- * user needs to see at a glance to know if silent failures are accumulating.
+ * status === 'degraded' if an email was dead-lettered in the last 24h, the
+ * oldest pending email is older than 30 min, any job notification is in
+ * 'failed' state, or a fan-out has been 'pending' for over 2h. A single old
+ * dead-letter no longer keeps the monitor red for the 90-day row lifetime.
  */
 router.get('/notifications', async (req, res) => {
   const gate = checkHealthzToken(req);
@@ -122,24 +127,34 @@ router.get('/notifications', async (req, res) => {
     return res.status(403).json({ status: 'error', message: 'Forbidden' });
   }
   try {
-    const [pendingCount, deadCount, oldestPending, jobNotifyPending, jobNotifyFailed] = await Promise.all([
+    const now = Date.now();
+    const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
+    const staleFanOut = new Date(now - 2 * 60 * 60 * 1000);
+    const [pendingCount, deadCount, deadLast24h, oldestPending, jobNotifyPending, jobNotifyFailed, jobNotifyStale] = await Promise.all([
       EmailOutbox.countDocuments({ status: 'pending' }),
       EmailOutbox.countDocuments({ status: 'dead' }),
-      EmailOutbox.findOne({ status: 'pending' }).sort({ nextAttemptAt: 1 }).select('nextAttemptAt'),
+      // Dead-lettered recently: the drain stamps lastAttemptAt when it gives up.
+      EmailOutbox.countDocuments({
+        status: 'dead',
+        $or: [{ lastAttemptAt: { $gte: dayAgo } }, { lastAttemptAt: null, createdAt: { $gte: dayAgo } }],
+      }),
+      EmailOutbox.findOne({ status: 'pending' }).sort({ createdAt: 1 }).select('createdAt'),
       Job.countDocuments({ status: 'active', isDeleted: { $ne: true }, 'notification.status': 'pending' }),
       Job.countDocuments({ status: 'active', isDeleted: { $ne: true }, 'notification.status': 'failed' }),
+      Job.countDocuments({ status: 'active', isDeleted: { $ne: true }, 'notification.status': 'pending', 'notification.lastAttemptAt': { $lt: staleFanOut } }),
     ]);
 
-    const oldestPendingAgeMs = oldestPending?.nextAttemptAt
-      ? Math.max(0, Date.now() - oldestPending.nextAttemptAt.getTime())
+    const oldestPendingAgeMs = oldestPending?.createdAt
+      ? Math.max(0, now - oldestPending.createdAt.getTime())
       : 0;
 
-    const outbox = { pending: pendingCount, dead: deadCount, oldestPendingAgeMs };
-    const jobs = { notifyPending: jobNotifyPending, notifyFailed: jobNotifyFailed };
+    const outbox = { pending: pendingCount, dead: deadCount, deadLast24h, oldestPendingAgeMs };
+    const jobs = { notifyPending: jobNotifyPending, notifyFailed: jobNotifyFailed, notifyStalePending: jobNotifyStale };
 
-    const degraded = deadCount > 0
+    const degraded = deadLast24h > 0
       || oldestPendingAgeMs > 30 * 60 * 1000
-      || jobNotifyFailed > 0;
+      || jobNotifyFailed > 0
+      || jobNotifyStale > 0;
 
     res.json({
       status: degraded ? 'degraded' : 'healthy',

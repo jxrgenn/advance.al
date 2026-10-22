@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import os from 'os';
+import { formatAlbanianDateTime } from '../lib/albanianDate.js';
 
 const { Schema } = mongoose;
 
@@ -177,14 +178,8 @@ systemHealthSchema.index({ 'alerts.level': 1, 'alerts.resolved': 1 });
 
 // Virtual for formatted timestamp
 systemHealthSchema.virtual('formattedTimestamp').get(function() {
-  return this.timestamp.toLocaleString('sq-AL', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  });
+  // Tirana time, Albanian month names — not the server's (UTC, maybe no 'sq') locale.
+  return formatAlbanianDateTime(this.timestamp);
 });
 
 // Virtual for storage usage percentage

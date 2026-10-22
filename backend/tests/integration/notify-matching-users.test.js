@@ -14,6 +14,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
+import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
 import mongoose from 'mongoose';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
 import { createJobseeker, createEmployer } from '../factories/user.factory.js';
@@ -26,19 +27,25 @@ import QuickUser from '../../src/models/QuickUser.js';
 import Job from '../../src/models/Job.js';
 import User from '../../src/models/User.js';
 
-// Build a 1536-dim vector with most weight on one axis. Two vectors created
+// Build an EMBEDDING_DIMS-length vector with most weight on one axis. Two vectors created
 // with the same `axis` will have cosine similarity 1.0; different axes ~0.0.
 function vectorAt(axis = 0, magnitude = 1) {
-  const v = new Array(1536).fill(0.001); // tiny noise so it's not all-zeros
+  const v = new Array(EMBEDDING_DIMS).fill(0.001); // tiny noise so it's not all-zeros
   v[axis] = magnitude;
   return v;
 }
 
 describe('notificationService.notifyMatchingUsers', () => {
+  // A QuickUser counts as notified only when the email was actually accepted
+  // (W2-3: a disabled / rejecting provider no longer stamps lastNotifiedAt), so
+  // these fan-out tests run against a fake Resend client that accepts sends.
+  const originalEnabled = resendEmailService.enabled;
+  const originalResend = resendEmailService.resend;
   beforeAll(async () => {
     await connectTestDB();
     emailService.isConfigured = false;
-    resendEmailService.enabled = false;
+    resendEmailService.enabled = true;
+    resendEmailService.resend = { emails: { send: async () => ({ data: { id: 'fake' }, error: null }) } };
   });
 
   afterEach(async () => {
@@ -46,6 +53,8 @@ describe('notificationService.notifyMatchingUsers', () => {
   });
 
   afterAll(async () => {
+    resendEmailService.enabled = originalEnabled;
+    resendEmailService.resend = originalResend;
     await closeTestDB();
   });
 
@@ -59,7 +68,7 @@ describe('notificationService.notifyMatchingUsers', () => {
     expect(r.stats.notificationsSent).toBe(0);
   });
 
-  it('falls through cleanly when semantic matching throws (catches error, falls back)', async () => {
+  it('semantic matching throws → keyword path still runs, result is success:false so the fan-out is retried', async () => {
     const { user: emp } = await createEmployer();
     const job = await createJob(emp);
 
@@ -70,8 +79,10 @@ describe('notificationService.notifyMatchingUsers', () => {
     };
     try {
       const r = await notificationService.notifyMatchingUsers(job);
-      // Catches the semantic error and continues to keyword fallback
-      expect(r.success).toBe(true);
+      // Keyword fallback ran (no keyword subscribers here), but the embedded
+      // subscribers / jobseekers were never reached → reported as failed.
+      expect(r.success).toBe(false);
+      expect(r.error).toBe('semantic matching failed: embedding service down');
     } finally {
       userEmbeddingService.findSemanticMatchesForJob = original;
     }
@@ -84,7 +95,7 @@ describe('notificationService.notifyMatchingUsers', () => {
     job.embedding = {
       vector: vectorAt(5),
       model: 'text-embedding-3-small',
-      dimensions: 1536,
+      dimensions: EMBEDDING_DIMS,
       generatedAt: new Date(),
       status: 'completed',
       retries: 0,
@@ -101,7 +112,7 @@ describe('notificationService.notifyMatchingUsers', () => {
       embedding: {
         vector: vectorAt(5),
         model: 'text-embedding-3-small',
-        dimensions: 1536,
+        dimensions: EMBEDDING_DIMS,
         generatedAt: new Date(),
         status: 'completed',
         error: null,
@@ -123,7 +134,7 @@ describe('notificationService.notifyMatchingUsers', () => {
     const { user: emp } = await createEmployer();
     const job = await createJob(emp, { category: 'Teknologji', city: 'Tiranë' });
     job.embedding = {
-      vector: vectorAt(7), model: 'text-embedding-3-small', dimensions: 1536,
+      vector: vectorAt(7), model: 'text-embedding-3-small', dimensions: EMBEDDING_DIMS,
       generatedAt: new Date(), status: 'completed', retries: 0, error: null,
     };
     await job.save();
@@ -135,7 +146,7 @@ describe('notificationService.notifyMatchingUsers', () => {
     js.profile.jobSeekerProfile = js.profile.jobSeekerProfile || {};
     js.profile.jobSeekerProfile.notifications = { jobAlerts: true };
     js.profile.jobSeekerProfile.embedding = {
-      vector: vectorAt(7), model: 'text-embedding-3-small', dimensions: 1536,
+      vector: vectorAt(7), model: 'text-embedding-3-small', dimensions: EMBEDDING_DIMS,
       generatedAt: new Date(), status: 'completed', error: null,
     };
     await js.save();
@@ -156,7 +167,7 @@ describe('notificationService.notifyMatchingUsers', () => {
       tags: ['react', 'frontend'],
     });
     job.embedding = {
-      vector: vectorAt(21), model: 'text-embedding-3-small', dimensions: 1536,
+      vector: vectorAt(21), model: 'text-embedding-3-small', dimensions: EMBEDDING_DIMS,
       generatedAt: new Date(), status: 'completed', retries: 0, error: null,
     };
     await job.save();
@@ -169,7 +180,7 @@ describe('notificationService.notifyMatchingUsers', () => {
       location: 'Tiranë',
       interests: ['Teknologji'],
       embedding: {
-        vector: vectorAt(21), model: 'text-embedding-3-small', dimensions: 1536,
+        vector: vectorAt(21), model: 'text-embedding-3-small', dimensions: EMBEDDING_DIMS,
         generatedAt: new Date(), status: 'completed', error: null,
       },
     });
@@ -206,7 +217,7 @@ describe('notificationService.notifyMatchingUsers', () => {
       tags: ['react', 'frontend', 'remote'],
     });
     job.embedding = {
-      vector: vectorAt(9), model: 'text-embedding-3-small', dimensions: 1536,
+      vector: vectorAt(9), model: 'text-embedding-3-small', dimensions: EMBEDDING_DIMS,
       generatedAt: new Date(), status: 'completed', retries: 0, error: null,
     };
     await job.save();
@@ -218,7 +229,7 @@ describe('notificationService.notifyMatchingUsers', () => {
       location: 'Tiranë',
       interests: ['Teknologji'],
       embedding: {
-        vector: vectorAt(9), model: 'text-embedding-3-small', dimensions: 1536,
+        vector: vectorAt(9), model: 'text-embedding-3-small', dimensions: EMBEDDING_DIMS,
         generatedAt: new Date(), status: 'completed', error: null,
       },
     });
@@ -234,11 +245,11 @@ describe('notificationService.notifyMatchingUsers', () => {
     expect(refreshed.notificationCount).toBe(1);
   });
 
-  it('counts errors when sendJobNotificationToUser rejects', async () => {
+  it('counts errors when sendJobNotificationToUser rejects (every delivery failed → success:false)', async () => {
     const { user: emp } = await createEmployer();
     const job = await createJob(emp, { category: 'Teknologji', city: 'Tiranë' });
     job.embedding = {
-      vector: vectorAt(11), model: 'text-embedding-3-small', dimensions: 1536,
+      vector: vectorAt(11), model: 'text-embedding-3-small', dimensions: EMBEDDING_DIMS,
       generatedAt: new Date(), status: 'completed', retries: 0, error: null,
     };
     await job.save();
@@ -248,7 +259,7 @@ describe('notificationService.notifyMatchingUsers', () => {
       email: 'err@example.com', location: 'Tiranë',
       interests: ['Teknologji'],
       embedding: {
-        vector: vectorAt(11), model: 'text-embedding-3-small', dimensions: 1536,
+        vector: vectorAt(11), model: 'text-embedding-3-small', dimensions: EMBEDDING_DIMS,
         generatedAt: new Date(), status: 'completed', error: null,
       },
     });
@@ -260,8 +271,10 @@ describe('notificationService.notifyMatchingUsers', () => {
     };
     try {
       const r = await notificationService.notifyMatchingUsers(job);
-      expect(r.success).toBe(true); // outer try succeeds even if individual sends fail
-      expect(r.stats.errors).toBeGreaterThanOrEqual(1);
+      // The only target failed: nothing reached anyone → failed fan-out.
+      expect(r.success).toBe(false);
+      expect(r.error).toBe('all 1 deliveries failed');
+      expect(r.stats.errors).toBe(1);
     } finally {
       notificationService.sendJobNotificationToUser = original;
     }
@@ -340,7 +353,7 @@ describe('notificationService.notifyUserAboutMatchingJobs', () => {
       email: 'lonely@example.com',
       location: 'Tiranë', interests: ['Teknologji'],
       embedding: {
-        vector: vectorAt(13), model: 'text-embedding-3-small', dimensions: 1536,
+        vector: vectorAt(13), model: 'text-embedding-3-small', dimensions: EMBEDDING_DIMS,
         generatedAt: new Date(), status: 'completed', error: null,
       },
     });
@@ -357,7 +370,7 @@ describe('notificationService.notifyUserAboutMatchingJobs', () => {
     const { user: emp } = await createEmployer();
     const job = await createJob(emp, { category: 'Teknologji', city: 'Tiranë' });
     job.embedding = {
-      vector: vectorAt(15), model: 'text-embedding-3-small', dimensions: 1536,
+      vector: vectorAt(15), model: 'text-embedding-3-small', dimensions: EMBEDDING_DIMS,
       generatedAt: new Date(), status: 'completed', retries: 0, error: null,
     };
     await job.save();
@@ -367,7 +380,7 @@ describe('notificationService.notifyUserAboutMatchingJobs', () => {
       email: 'matcher@example.com',
       location: 'Tiranë', interests: ['Teknologji'],
       embedding: {
-        vector: vectorAt(15), model: 'text-embedding-3-small', dimensions: 1536,
+        vector: vectorAt(15), model: 'text-embedding-3-small', dimensions: EMBEDDING_DIMS,
         generatedAt: new Date(), status: 'completed', error: null,
       },
     });
@@ -383,7 +396,7 @@ describe('notificationService.notifyUserAboutMatchingJobs', () => {
     const { user: emp } = await createEmployer();
     const job = await createJob(emp, { category: 'Marketing', city: 'Vlorë' });
     job.embedding = {
-      vector: vectorAt(17), model: 'text-embedding-3-small', dimensions: 1536,
+      vector: vectorAt(17), model: 'text-embedding-3-small', dimensions: EMBEDDING_DIMS,
       generatedAt: new Date(), status: 'completed', retries: 0, error: null,
     };
     await job.save();
@@ -391,7 +404,7 @@ describe('notificationService.notifyUserAboutMatchingJobs', () => {
     const { user: js } = await createJobseeker();
     js.profile.jobSeekerProfile = js.profile.jobSeekerProfile || {};
     js.profile.jobSeekerProfile.embedding = {
-      vector: vectorAt(17), model: 'text-embedding-3-small', dimensions: 1536,
+      vector: vectorAt(17), model: 'text-embedding-3-small', dimensions: EMBEDDING_DIMS,
       generatedAt: new Date(), status: 'completed', error: null,
     };
     js.profile.location = { city: 'Vlorë' };
@@ -415,7 +428,7 @@ describe('notificationService.notifyUserAboutMatchingJobs', () => {
         email: 'err-path@example.com',
         location: 'Tiranë', interests: ['Teknologji'],
         embedding: {
-          vector: vectorAt(19), model: 'text-embedding-3-small', dimensions: 1536,
+          vector: vectorAt(19), model: 'text-embedding-3-small', dimensions: EMBEDDING_DIMS,
           generatedAt: new Date(), status: 'completed', error: null,
         },
       });

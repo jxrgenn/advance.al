@@ -20,8 +20,10 @@ import {
   retryStuckJobseekerEmbeddings,
   retryAll,
 } from '../../src/services/embeddingRetryWorker.js';
+import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
 
-const FAKE_VECTOR = Array.from({ length: 1024 }, (_, i) => Math.cos(i / 50));
+// Same length as the configured model (generation rejects any other shape, #92).
+const FAKE_VECTOR = Array.from({ length: EMBEDDING_DIMS }, (_, i) => Math.cos(i / 50));
 
 describe('embeddingRetryWorker', () => {
   beforeAll(async () => { await connectTestDB(); });

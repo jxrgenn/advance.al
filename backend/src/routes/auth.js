@@ -28,6 +28,8 @@ import { redis, cacheGet, cacheSet, cacheDelete } from '../config/redis.js';
 import logger from '../config/logger.js';
 import { notifyDiscord, deriveRequestSignals } from '../services/discordNotifier.js';
 import { isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE } from '../lib/phonePolicy.js';
+import { formatAlbanianDateTime } from '../lib/albanianDate.js';
+import { COMPANY_DESCRIPTION_MIN, COMPANY_DESCRIPTION_MAX, COMPANY_DESCRIPTION_MESSAGE, normalizeWebsite } from '../lib/companyProfile.js';
 
 const router = express.Router();
 
@@ -329,21 +331,49 @@ const initiateRegistrationByEmailLimiter = rateLimit({
   validate: { trustProxy: false, xForwardedForHeader: false },
 });
 
-// Per-email limiter for /login. Defence in depth on top of authLimiter:
-// even if a botnet rotates IPs to bypass per-IP rate limits, an attacker
-// cannot exceed 10 password attempts per email per 15 minutes.
+// Per-account login lockout, on top of the per-IP authLimiter. Only FAILED
+// attempts count (skipSuccessfulRequests: a response < 400 gives the attempt
+// back) — counting successes used to lock out a user who simply logged in 10
+// times in 15 minutes.
+//
+// Two buckets, so a stranger who knows an email cannot lock its owner out:
+//   1. email+IP: 10 failures / 15 min. Guessing from one network locks only
+//      that network out of that account; the owner on their own connection
+//      is unaffected.
+//   2. email (all IPs): 30 failures / 15 min — the brute-force backstop
+//      against a botnet rotating IPs. Reaching it takes ≥3 source IPs (the
+//      email+IP bucket stops each one at 10, authLimiter at 15).
+// Both keys use the canonical email (Gmail dot/+tag variants share a bucket).
+const LOGIN_FAILURES_PER_EMAIL_AND_IP = 10;
+const LOGIN_FAILURES_PER_EMAIL = 30;
+const loginRateLimitSkip = () =>
+  process.env.NODE_ENV !== 'production' &&
+  process.env.SKIP_RATE_LIMIT === 'true';
+const loginByEmailAndIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: LOGIN_FAILURES_PER_EMAIL_AND_IP,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${emailRateLimitKey(req, 'login-email', 'login-ip')}|ip:${ipKeyGenerator(req.ip)}`,
+  skip: loginRateLimitSkip,
+  message: {
+    success: false,
+    message: 'Shumë tentativa të dështuara kyçjeje për këtë email. Provoni përsëri pas 15 minutash ose rivendosni fjalëkalimin.'
+  },
+  validate: { trustProxy: false, xForwardedForHeader: false },
+});
 const loginByEmailLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,
+  max: LOGIN_FAILURES_PER_EMAIL,
+  skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => emailRateLimitKey(req, 'login-email', 'login-ip'),
-  skip: () =>
-    process.env.NODE_ENV !== 'production' &&
-    process.env.SKIP_RATE_LIMIT === 'true',
+  skip: loginRateLimitSkip,
   message: {
     success: false,
-    message: 'Shumë tentativa kyçjeje për këtë email. Provoni përsëri pas 15 minutash.'
+    message: 'Shumë tentativa të dështuara kyçjeje për këtë llogari. Provoni përsëri pas 15 minutash ose rivendosni fjalëkalimin.'
   },
   validate: { trustProxy: false, xForwardedForHeader: false },
 });
@@ -451,19 +481,23 @@ const registerValidation = [
     .trim()
     // 190, not 200: a bare domain gets "https://" (8 chars) prepended.
     .isLength({ max: 190 })
-    .withMessage('Faqja e internetit nuk mund të ketë më shumë se 190 karaktere'),
+    .withMessage('Faqja e internetit nuk mund të ketë më shumë se 190 karaktere')
+    .bail()
+    // 140: only http(s) — "ftp://x" used to be stored as "https://ftp://x".
+    .isURL({ protocols: ['http', 'https'] })
+    .withMessage('Faqja e internetit duhet të jetë një adresë e vlefshme (p.sh. kompania.al)'),
   body('phone')
     .optional({ checkFalsy: true })
     .custom(v => isValidAlbanianPhone(v))
     .withMessage(ALBANIAN_PHONE_MESSAGE),
-  // Employer-only: company description is required at signup and must be 400-1000 chars.
-  // Existing employers with shorter/empty descriptions are unaffected (validator on User
-  // model only fires when a value is provided + only on save).
+  // Employer-only: company description is required at signup. Same limits as
+  // the dashboard settings and PUT /users/profile (lib/companyProfile.js).
   body('description')
     .if(body('userType').equals('employer'))
+    .isString().withMessage(COMPANY_DESCRIPTION_MESSAGE).bail()
     .trim()
-    .isLength({ min: 400, max: 1000 })
-    .withMessage('Përshkrimi i kompanisë duhet të ketë midis 400-1000 karaktere'),
+    .isLength({ min: COMPANY_DESCRIPTION_MIN, max: COMPANY_DESCRIPTION_MAX })
+    .withMessage(COMPANY_DESCRIPTION_MESSAGE),
 ];
 
 // Login validation rules
@@ -570,10 +604,8 @@ router.post('/initiate-registration', authLimiter, initiateRegistrationByEmailLi
       console.log(`[DEV] Verification code for ${email}: ${code}`);
     }
 
-    // Normalize website: auto-prepend https:// for bare domains
-    const normalizedWebsite = website?.trim()
-      ? (website.trim().match(/^https?:\/\//) ? website.trim() : `https://${website.trim()}`)
-      : undefined;
+    // Normalize website: auto-prepend https:// for bare domains (case-insensitive scheme, 140)
+    const normalizedWebsite = website?.trim() ? normalizeWebsite(website) : undefined;
 
     // Sanitize free-text fields to prevent stored XSS (companyName, industry, description)
     const safeCompanyName = companyName ? stripHtml(String(companyName)).trim() : companyName;
@@ -747,6 +779,16 @@ router.post('/register', authLimiter, async (req, res) => {
         companySize: data.companySize,
         ...(data.description && { description: data.description }),
         ...(data.website && { website: data.website }),
+        // Signup collects no company phone/WhatsApp, so those channels start
+        // OFF — defaulting them ON blocked the first dashboard settings save
+        // ("Shto numrin e WhatsApp") until a number was added. Email works
+        // from day one (the account email).
+        contactPreferences: {
+          enablePhoneContact: false,
+          enableWhatsAppContact: false,
+          enableEmailContact: true,
+          preferredContactMethod: 'form'
+        },
         verified: false,
         verificationStatus: 'pending'
       };
@@ -890,7 +932,7 @@ router.post('/register', authLimiter, async (req, res) => {
 // @route   POST /api/auth/login
 // @desc    Login user
 // @access  Public
-router.post('/login', authLimiter, loginByEmailLimiter, loginValidation, handleValidationErrors, async (req, res) => {
+router.post('/login', authLimiter, loginByEmailAndIpLimiter, loginByEmailLimiter, loginValidation, handleValidationErrors, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -933,7 +975,7 @@ router.post('/login', authLimiter, loginByEmailLimiter, loginValidation, handleV
     if (user.status === 'suspended') {
       const expiryDate = user.suspensionDetails.expiresAt;
       const expiryText = expiryDate
-        ? ` deri më ${new Date(expiryDate).toLocaleDateString('sq-AL')}`
+        ? ` deri më ${formatAlbanianDateTime(expiryDate)}`
         : ' përgjithmonë';
 
       return res.status(401).json({
@@ -1162,7 +1204,8 @@ function sendPasswordChangedNotice(user) {
   setImmediate(async () => {
     try {
       const name = user.profile?.firstName || '';
-      const when = new Date().toLocaleString('sq-AL', { timeZone: 'Europe/Tirane' });
+      // Albanian month names + Tirana time without relying on the server's ICU data.
+      const when = formatAlbanianDateTime(new Date());
       const html = `
         <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#1f2937">
           <h2 style="color:#2563eb">Fjalëkalimi juaj u ndryshua</h2>

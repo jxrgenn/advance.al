@@ -70,17 +70,17 @@ describe('users.js — upload route validation/error paths', () => {
       expect(r.body.message).toMatch(/PDF ose Word i vlefshëm/);
     });
 
-    it('returns 500 when multer rejects oversized file (LIMIT_FILE_SIZE bypasses route try/catch)', async () => {
+    it('returns 400 "max 5MB" when multer rejects an oversized file (127: was a generic 500)', async () => {
       const { user } = await createJobseeker();
-      // Multer surfaces LIMIT_FILE_SIZE via next(err) which the express default
-      // error handler turns into a 500 — the route's `if (error.code === ...)`
-      // check inside the try/catch is unreachable from a multer-level error.
+      // Multer raises LIMIT_FILE_SIZE via next(err) before the handler runs;
+      // acceptSingleUpload answers it with a 400 and the real reason.
       const huge = Buffer.concat([PDF_HEADER, Buffer.alloc(6 * 1024 * 1024, 0)]);
       const r = await request(app)
         .post('/api/users/upload-resume')
         .set(createAuthHeaders(user))
         .attach('resume', huge, { filename: 'big.pdf', contentType: 'application/pdf' });
-      expect(r.status).toBe(500);
+      expect(r.status).toBe(400);
+      expect(r.body).toEqual({ success: false, message: 'Skedari është shumë i madh. Madhësia maksimale është 5MB' });
     });
   });
 
@@ -95,18 +95,22 @@ describe('users.js — upload route validation/error paths', () => {
       expect(r.body.message).toMatch(/Nuk keni CV të ngarkuar/);
     });
 
-    it('returns 500 when save throws after clearing resume (L778-784)', async () => {
+    it('returns 500 and keeps the CV referenced when detaching it fails (128: file deleted only after)', async () => {
       const { user } = await createJobseeker();
+      const cv = `/uploads/resumes/resume-${user._id}-1.pdf`;
       await User.updateOne(
         { _id: user._id },
-        { $set: { 'profile.jobSeekerProfile.resume': '/uploads/resumes/somefile.pdf' } }
+        { $set: { 'profile.jobSeekerProfile.resume': cv } }
       );
-      jest.spyOn(User.prototype, 'save').mockRejectedValueOnce(new Error('save fail'));
+      const spy = jest.spyOn(User, 'updateOne').mockRejectedValueOnce(new Error('db down'));
       const r = await request(app)
         .delete('/api/users/resume')
         .set(createAuthHeaders(user));
+      spy.mockRestore();
       expect(r.status).toBe(500);
-      expect(r.body.message).toMatch(/fshirjen e CV/);
+      expect(r.body.message).toBe('Gabim në fshirjen e CV-së');
+      const after = await User.findById(user._id).lean();
+      expect(after.profile.jobSeekerProfile.resume).toBe(cv);
     });
   });
 

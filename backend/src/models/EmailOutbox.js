@@ -8,7 +8,8 @@
  *
  * Status lifecycle:
  *   pending → sent       (drain succeeded)
- *   pending → cancelled  (drain re-checked user prefs; user unsubscribed since enqueue)
+ *   pending → cancelled  (drain re-checked user prefs; user unsubscribed since enqueue —
+ *                         marketing/activity mail only; account_action always goes out)
  *   pending → dead       (attempts >= maxAttempts; Discord alert fired)
  *
  * Retention: 90 days TTL on createdAt (GDPR-consistent with rest of schema). All rows
@@ -38,6 +39,21 @@ const emailOutboxSchema = new Schema({
   html: { type: String, required: true },
   text: { type: String, default: '' },
 
+  // Attachments of the original send (e.g. the payment receipt .docx), so a
+  // retry delivers the same email — before, a receipt that hit a transient
+  // Resend failure was retried WITHOUT its attachment. Bytes are stored as-is
+  // (capped upstream, see resendEmailService.MAX_OUTBOX_ATTACHMENT_BYTES);
+  // rows age out with the 90-day TTL like everything else here.
+  attachments: {
+    type: [{
+      _id: false,
+      filename: { type: String, required: true, maxlength: 255 },
+      content: { type: Buffer, required: true },
+      contentType: { type: String, default: null, maxlength: 255 },
+    }],
+    default: undefined,
+  },
+
   // Optional link to user (used by drain to re-check unsubscribe state before sending)
   userId: { type: Schema.Types.ObjectId, default: null },
   userType: {
@@ -51,6 +67,15 @@ const emailOutboxSchema = new Schema({
 
   // Free-form tags for filtering ops queries (e.g. ['job_match', 'digest', 'password_reset'])
   tags: { type: [String], default: [] },
+
+  // Resend Idempotency-Key used by the FIRST attempt. Every retry re-sends
+  // it, so an attempt that timed out client-side but reached Resend is not
+  // delivered a second time (Resend keeps keys for 24h). Null for rows
+  // written before this field existed.
+  idempotencyKey: { type: String, default: null, maxlength: 256 },
+  // Custom headers of the original send (e.g. X-Entity-Ref-ID), replayed on
+  // retry so the request matches the idempotency key's original payload.
+  headers: { type: Schema.Types.Mixed, default: null },
 
   // Retry state
   attempts: { type: Number, default: 0 },

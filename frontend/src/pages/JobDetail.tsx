@@ -12,18 +12,34 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { MapPin, Clock, Euro, Building, ArrowLeft, CheckCircle, Users, Calendar, Loader2, Zap, MessageCircle, Phone, Mail, Lightbulb, X, Wifi, Bookmark, CalendarX, Ban } from "lucide-react";
+import { MapPin, Clock, Building, ArrowLeft, CheckCircle, Users, Calendar, Loader2, Zap, MessageCircle, Phone, Mail, Lightbulb, X, Wifi, Bookmark, CalendarX, Ban } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { jobsApi, applicationsApi, usersApi, Job } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import useRecentlyViewed from "@/hooks/useRecentlyViewed";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
-import { formatSalary, jobPostingBaseSalary } from "@/lib/salary";
+import { jobPostingBaseSalary } from "@/lib/salary";
 import { formatAlbanianDate } from "@/lib/albanianDate";
+import { formatTimeAgoSq } from "@/lib/relativeTime";
+import { jobTypeLabel } from "@/lib/labels";
+import SalaryDisplay from "@/components/SalaryDisplay";
+
+// What an anonymous visitor tried to do before being sent to /login. It rides
+// in the `from` URL (Login forwards pathname + search) and is consumed once
+// on return, so the visitor lands back on this job — not on /profile — and
+// the action they started is resumed.
+type LoginIntent = 'apply' | 'save' | 'contact';
+const LOGIN_INTENT_PARAM = 'intent';
+const withLoginIntent = (search: string, intent: LoginIntent): string => {
+  const sp = new URLSearchParams(search);
+  sp.set(LOGIN_INTENT_PARAM, intent);
+  return `?${sp.toString()}`;
+};
 
 const JobDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const { isAuthenticated, user } = useAuth();
   const { addRecentlyViewed } = useRecentlyViewed();
@@ -102,10 +118,18 @@ const JobDetail = () => {
     }
   };
 
+  // Send an anonymous visitor to /login and bring them back to THIS job with
+  // the action they started (same pattern as ProtectedRoute's state.from).
+  const goToLogin = (intent: LoginIntent) => {
+    navigate("/login", {
+      state: { from: { pathname: location.pathname, search: withLoginIntent(location.search, intent) } },
+    });
+  };
+
   const handleToggleSave = async () => {
     if (!isAuthenticated) {
       toast({ title: "Duhet të kyçeni", description: "Ju duhet të kyçeni për të ruajtur punë.", variant: "destructive" });
-      navigate("/login");
+      goToLogin('save');
       return;
     }
     if (user?.userType !== 'jobseeker') {
@@ -155,17 +179,9 @@ const JobDetail = () => {
     }
   };
 
-  const formatPostedDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - date.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 1) return "1 ditë më parë";
-    if (diffDays < 7) return `${diffDays} ditë më parë`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)} javë më parë`;
-    return `${Math.floor(diffDays / 30)} muaj më parë`;
-  };
+  // Shared helper: floors every unit ("10 minuta më parë", not the old
+  // Math.ceil "1 ditë më parë" for a job posted minutes ago).
+  const formatPostedDate = (dateString: string) => formatTimeAgoSq(dateString);
 
   // Albanian month names spelled out (Chromium has no 'sq' ICU data, so
   // toLocaleDateString('sq-AL') rendered "September 16, 2026" / "2026 M09 16").
@@ -197,7 +213,7 @@ const JobDetail = () => {
     }
     if (!isAuthenticated) {
       toast({ title: "Duhet të kyçeni", description: "Ju duhet të kyçeni për të aplikuar për punë.", variant: "destructive" });
-      navigate("/login");
+      goToLogin('apply');
       return false;
     }
     if (user?.userType !== 'jobseeker') {
@@ -248,7 +264,6 @@ const JobDetail = () => {
   // A listing's quick-apply sends jobs with custom questions here with
   // state.openApply (lib/quickApply.ts) — open the full apply form once the
   // job is loaded. The intent is consumed so reload / back doesn't reopen it.
-  const location = useLocation();
   const openApplyRequested = (location.state as { openApply?: boolean } | null)?.openApply === true;
   useEffect(() => {
     if (!openApplyRequested || loading || !job) return;
@@ -257,6 +272,46 @@ const JobDetail = () => {
     setShowApplyModal(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openApplyRequested, loading, job?._id]);
+
+  // Back from /login with ?intent=…: resume what the visitor started. The
+  // param is removed first (replace) so reload / Back never repeats it.
+  const loginIntent = new URLSearchParams(location.search).get(LOGIN_INTENT_PARAM) as LoginIntent | null;
+  const loginIntentHandledRef = useRef(false);
+  useEffect(() => {
+    if (!loginIntent || loginIntentHandledRef.current || loading || !job || !isAuthenticated || !user) return;
+    loginIntentHandledRef.current = true;
+    const sp = new URLSearchParams(location.search);
+    sp.delete(LOGIN_INTENT_PARAM);
+    const rest = sp.toString();
+    navigate(`${location.pathname}${rest ? `?${rest}` : ''}`, { replace: true });
+
+    if (user.userType !== 'jobseeker') return; // the page itself explains what they can do
+    if (loginIntent === 'apply') {
+      // Check first — opening the form for a job they already applied to
+      // would end in a "already applied" error after filling it in.
+      applicationsApi.getAppliedJobIds()
+        .then(res => {
+          const applied = !!res.success && !!res.data?.jobIds?.includes(job._id);
+          if (applied) {
+            setHasApplied(true);
+            toast({ title: "Keni aplikuar tashmë", description: "Statusin e aplikimit e gjeni te profili juaj." });
+          } else if (checkApplyEligibility()) {
+            setShowApplyModal(true);
+          }
+        })
+        .catch(() => { if (checkApplyEligibility()) setShowApplyModal(true); });
+    } else if (loginIntent === 'save') {
+      usersApi.isJobSaved(job._id)
+        .then(res => (res.success && res.data?.isSaved) ? null : usersApi.saveJob(job._id))
+        .then(res => {
+          setIsSaved(true);
+          if (res) toast({ title: "Puna u ruajt!" });
+        })
+        .catch((error: any) => toast({ title: "Gabim", description: error?.message || "Gabim në ruajtjen e punës", variant: "destructive" }));
+    }
+    // 'contact': returning to the job is enough — the contact buttons are right there.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loginIntent, loading, job?._id, isAuthenticated, user?._id]);
 
   // Open contact modal with pre-filled template
   const openContactModal = (method: 'email' | 'phone' | 'whatsapp', contactInfo: string) => {
@@ -269,7 +324,7 @@ const JobDetail = () => {
         description: "Ju duhet të kyçeni për të kontaktuar punëdhënësin.",
         variant: "destructive"
       });
-      navigate("/login");
+      goToLogin('contact');
       return;
     }
 
@@ -293,7 +348,11 @@ const JobDetail = () => {
   const handleSendContact = () => {
     if (!job || !contactType) return;
 
-    const phoneNumber = job.employerId?.profile?.employerProfile?.phone || job.employerId?.profile?.employerProfile?.whatsapp;
+    // Each channel uses its own number: the employer may have enabled only
+    // one of them, or use different numbers for calls and WhatsApp.
+    const phoneNumber = contactType === 'whatsapp'
+      ? job.employerId?.profile?.employerProfile?.whatsapp
+      : job.employerId?.profile?.employerProfile?.phone;
     const employerEmail = job.employerId?.email;
 
     if (contactType === 'email') {
@@ -918,8 +977,10 @@ const JobDetail = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant="secondary">{job.jobType}</Badge>
-                    {isAuthenticated && user?.userType === 'jobseeker' && (
+                    <Badge variant="secondary">{jobTypeLabel(job.jobType)}</Badge>
+                    {/* Anonymous visitors see it too: clicking sends them to log in
+                        and the job is saved when they come back (intent=save). */}
+                    {(!isAuthenticated || user?.userType === 'jobseeker') && (
                       <Button
                         variant={isSaved ? "default" : "outline"}
                         size="sm"
@@ -945,12 +1006,14 @@ const JobDetail = () => {
                       {job.location.remoteType === 'full' ? 'Nga distanca' : 'Hibride'}
                     </div>
                   )}
-                  <div className="flex items-center">
-                    <Euro className="h-4 w-4 mr-1" />
-                    {job.salary?.showPublic !== false && (job.salary?.min || job.salary?.max)
-                      ? formatSalary(job.salary, user?.preferences?.salaryViewPeriod)
-                      : "Pagë për t'u negociuar"}
-                  </div>
+                  <SalaryDisplay
+                    salary={job.salary}
+                    period={user?.preferences?.salaryViewPeriod}
+                    className="flex items-center"
+                    iconClassName="h-4 w-4 mr-1"
+                    amountClassName="font-medium text-foreground"
+                    negotiableClassName=""
+                  />
                   <div className="flex items-center">
                     <Clock className="h-4 w-4 mr-1" />
                     {formatPostedDate(job.postedAt)}
@@ -1150,13 +1213,13 @@ const JobDetail = () => {
                   )}
 
                   {/* WhatsApp Button */}
-                  {(job.employerId?.profile?.employerProfile?.phone || job.employerId?.profile?.employerProfile?.whatsapp) && (
+                  {job.employerId?.profile?.employerProfile?.whatsapp && (
                     <Button
                       variant="outline"
                       size="lg"
                       className="text-base py-6 hover:bg-green-50 hover:border-green-300 border-2"
                       onClick={() => {
-                        const phoneNumber = job.employerId?.profile?.employerProfile?.phone || job.employerId?.profile?.employerProfile?.whatsapp;
+                        const phoneNumber = job.employerId?.profile?.employerProfile?.whatsapp;
                         if (phoneNumber) {
                           openContactModal('whatsapp', phoneNumber);
                         }

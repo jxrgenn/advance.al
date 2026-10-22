@@ -14,6 +14,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, jest } from '@jest/globals';
+import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
 import EmailOutbox from '../../src/models/EmailOutbox.js';
 import Job from '../../src/models/Job.js';
@@ -169,9 +170,11 @@ describe('Round P — notification.status retry sweep', () => {
     await Job.findByIdAndUpdate(job._id, {
       $set: {
         'embedding.status': 'completed',
-        'embedding.vector': new Array(1536).fill(0.001),
+        'embedding.vector': new Array(EMBEDDING_DIMS).fill(0.001),
         'notification.status': 'pending',
-        'notification.lastAttemptAt': new Date(Date.now() - 11 * 60 * 1000), // 11 min ago
+        // A 'pending' claim younger than 15 min may still be sending and is
+        // never taken over (services/jobFanOut.js) — simulate a dead run.
+        'notification.lastAttemptAt': new Date(Date.now() - 20 * 60 * 1000), // 20 min ago
         'notification.attempts': 1,
       },
     });
@@ -195,7 +198,7 @@ describe('Round P — notification.status retry sweep', () => {
     await Job.findByIdAndUpdate(job._id, {
       $set: {
         'embedding.status': 'completed',
-        'embedding.vector': new Array(1536).fill(0.001),
+        'embedding.vector': new Array(EMBEDDING_DIMS).fill(0.001),
         'notification.status': 'failed',
         'notification.lastAttemptAt': new Date(Date.now() - 11 * 60 * 1000),
         'notification.attempts': 5, // at cap
@@ -216,7 +219,7 @@ describe('Round P — send-time guards in sendJobNotificationToUser', () => {
   });
   afterAll(async () => { await closeTestDB(); });
 
-  it('skips and returns {reason:inactive} when user.isActive===false', async () => {
+  it('skips (not a delivery failure) and returns {sent:false, reason:inactive} when user.isActive===false', async () => {
     const qu = await QuickUser.create({
       email: 'q@x.com', firstName: 'Q', lastName: 'U', location: 'Tirane', interests: ['Marketing'], isActive: false,
     });
@@ -225,12 +228,11 @@ describe('Round P — send-time guards in sendJobNotificationToUser', () => {
     // Spy on sendEmail to confirm it's NOT called
     const spy = jest.spyOn(resendEmailService, 'sendTransactionalEmail').mockResolvedValue({ success: true });
     const result = await notificationService.sendJobNotificationToUser(qu, job);
-    expect(result.success).toBe(false);
-    expect(result.reason).toBe('inactive');
+    expect([result.success, result.sent, result.reason]).toEqual([true, false, 'inactive']);
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it('skips and returns {reason:cooldown} when virtual canReceiveNotification===false', async () => {
+  it('inside the frequency gap: not emailed, QUEUED for the next digest (reason queued-for-digest)', async () => {
     const qu = await QuickUser.create({
       email: 'q@x.com', firstName: 'Q', lastName: 'U', location: 'Tirane', interests: ['Marketing'],
       isActive: true,
@@ -241,8 +243,9 @@ describe('Round P — send-time guards in sendJobNotificationToUser', () => {
     const job = await createJob(emp);
     const spy = jest.spyOn(resendEmailService, 'sendTransactionalEmail').mockResolvedValue({ success: true });
     const result = await notificationService.sendJobNotificationToUser(qu, job);
-    expect(result.success).toBe(false);
-    expect(result.reason).toBe('cooldown');
+    expect([result.success, result.sent, result.queued, result.reason]).toEqual([true, false, true, 'queued-for-digest']);
     expect(spy).not.toHaveBeenCalled();
+    const after = await QuickUser.findById(qu._id).lean();
+    expect(after.pendingJobAlerts.map(p => String(p.jobId))).toEqual([String(job._id)]);
   });
 });

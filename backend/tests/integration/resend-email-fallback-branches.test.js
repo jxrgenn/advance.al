@@ -73,11 +73,19 @@ describe('resendEmailService — fallback ternary branches', () => {
       expect(captured[0].html).not.toMatch(/Shënim/);
     });
 
-    it('includes <Shënim> block when notes provided', async () => {
+    it('never emails the employer’s private notes (a string 4th argument is ignored)', async () => {
       const applicant = { email: 'a3@x.com', profile: { firstName: 'A' } };
       const job = { title: 'T', companyName: 'C' };
       await resendEmailService.sendApplicationStatusEmail(applicant, job, 'viewed', 'Strong candidate');
-      expect(captured[0].html).toMatch(/Shënim.*Strong candidate/);
+      expect(captured[0].html).not.toMatch(/Strong candidate/);
+      expect(captured[0].text).not.toMatch(/Strong candidate/);
+    });
+
+    it('includes an explicit candidate-facing message when one is given', async () => {
+      const applicant = { email: 'a4@x.com', profile: { firstName: 'A' } };
+      const job = { title: 'T', companyName: 'C' };
+      await resendEmailService.sendApplicationStatusEmail(applicant, job, 'viewed', { messageToCandidate: 'Faleminderit për aplikimin' });
+      expect(captured[0].html).toMatch(/Mesazh nga punëdhënësi:<\/strong> Faleminderit për aplikimin/);
     });
 
     it('uses fallback statusInfo for unknown status (L1061 default)', async () => {

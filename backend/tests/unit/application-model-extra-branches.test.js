@@ -5,7 +5,7 @@
  * Targets:
  *   - withdraw() with NO reason (L209 false branch)
  *   - updateStatus() with no notes arg (L155 false branch)
- *   - updateStatus() to status NOT in the notification whitelist (L163 false)
+ *   - updateStatus() to a status outside the transition table (refused)
  *   - markMessagesAsRead — message FROM the calling user is NOT marked read (L193 condition)
  *   - getEmployerApplications status + jobId filter branches (L238, L242)
  *   - getJobSeekerApplications status filter branch (L259)
@@ -19,6 +19,7 @@ import { seedLocations } from '../fixtures/locations.fixture.js';
 import { createVerifiedEmployer, createJobseeker } from '../factories/user.factory.js';
 import { createJob } from '../factories/job.factory.js';
 import Application from '../../src/models/Application.js';
+import Notification from '../../src/models/Notification.js';
 
 async function setup() {
   const { user: emp } = await createVerifiedEmployer();
@@ -54,17 +55,18 @@ describe('Application model — extra branch coverage', () => {
     expect(r.employerNotes).toBe('old note'); // unchanged
   });
 
-  it('updateStatus() to non-whitelisted status does NOT create notification (L163 false)', async () => {
+  // 35: status changes follow the transition table atomically — a move that
+  // is not allowed (viewed → pending) is refused: nothing written, no
+  // notification. (The old method saved any status it was given.)
+  it('updateStatus() to a status outside the transition table is refused', async () => {
     const { app } = await setup();
-    // 'pending' is the default; transitioning back to a non-whitelisted status
-    // (not viewed/shortlisted/rejected/hired) skips notification creation.
-    // Note: transitioning to anything in the whitelist does create one — the
-    // false branch is when status changes but isn't in the list.
     app.status = 'viewed';
     await app.save();
-    await app.updateStatus('pending'); // 'pending' not in whitelist
+    const result = await app.updateStatus('pending');
+    expect(result).toBeNull();
     const r = await Application.findById(app._id);
-    expect(r.status).toBe('pending');
+    expect(r.status).toBe('viewed');
+    expect(await Notification.countDocuments({ relatedApplication: app._id })).toBe(0);
   });
 
   it('markMessagesAsRead does NOT mark messages from the calling user (L193 condition)', async () => {

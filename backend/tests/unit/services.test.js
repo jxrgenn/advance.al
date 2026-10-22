@@ -77,7 +77,7 @@ describe('Phase 10 — Services Unit Tests', () => {
   });
 
   describe('dataRetention.archiveOldApplications', () => {
-    it('marks rejected/hired apps >1 year old as withdrawn', async () => {
+    it('marks rejected/hired apps >1 year old as archived (archivedAt, not withdrawn — 74)', async () => {
       const { user: emp } = await createVerifiedEmployer();
       const job = await createJob(emp);
       const { user: js } = await createJobseeker({ emailVerified: true });
@@ -91,10 +91,11 @@ describe('Phase 10 — Services Unit Tests', () => {
       );
 
       const count = await archiveOldApplications();
-      expect(count).toBeGreaterThanOrEqual(1);
+      expect(count).toBe(1);
 
       const r = await Application.findById(app._id);
-      expect(r.withdrawn).toBe(true);
+      expect(r.withdrawn).toBe(false);
+      expect(r.archivedAt).toBeInstanceOf(Date);
     });
 
     it('does not touch recent apps', async () => {

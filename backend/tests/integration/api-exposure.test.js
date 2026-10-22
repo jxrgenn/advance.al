@@ -85,6 +85,7 @@ describe('API data-exposure — public endpoints never leak sensitive/internal f
     const { user: emp } = await createVerifiedEmployer();
     await User.findByIdAndUpdate(emp._id, {
       'profile.employerProfile.phone': '+355691234567',
+      'profile.employerProfile.contactPreferences.enablePhoneContact': true,
     });
     const job = await createJob(emp);
     const { user: seeker } = await createJobseeker();

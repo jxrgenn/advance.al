@@ -1,16 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Application, User } from '@/lib/api';
+import { Application } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import {
   Clock,
   Eye,
   UserCheck,
   CheckCircle,
   XCircle,
-  MessageSquare,
   Calendar,
   Building,
   MapPin,
@@ -23,6 +21,7 @@ import {
   PhoneOff
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { formatTimeAgoSq } from '@/lib/relativeTime';
 
 interface ApplicationStatusTimelineProps {
   application: Application;
@@ -135,7 +134,9 @@ const ContactPopover: React.FC<{
   return (
     <div
       ref={popoverRef}
-      className="absolute bottom-full right-0 mb-2 z-50 w-72 origin-bottom-right"
+      // Phones: as wide as the (full-width) button, so it never sticks out of
+      // the card's left edge; from sm up: the fixed 18rem panel.
+      className="absolute bottom-full left-0 right-0 sm:left-auto mb-2 z-50 sm:w-72 origin-bottom-right"
       style={{
         animation: 'contactPopoverIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards',
       }}
@@ -180,7 +181,7 @@ const ContactPopover: React.FC<{
                     <p className={`text-sm font-medium ${method.color}`}>{method.label}</p>
                     <p className="text-xs text-muted-foreground truncate">{method.sublabel}</p>
                   </div>
-                  <ArrowRight className="h-3.5 w-3.5 text-gray-400 transition-transform duration-200 group-hover:translate-x-0.5" />
+                  <ArrowRight className="hidden sm:block h-3.5 w-3.5 text-gray-400 transition-transform duration-200 group-hover:translate-x-0.5" />
                 </a>
               );
             })}
@@ -266,17 +267,9 @@ const ApplicationStatusTimeline: React.FC<ApplicationStatusTimelineProps> = ({
   const currentIndex = statusOrder.indexOf(application.status);
   const isRejected = application.status === 'rejected';
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - date.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 1) return "1 ditë më parë";
-    if (diffDays < 7) return `${diffDays} ditë më parë`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)} javë më parë`;
-    return `${Math.floor(diffDays / 30)} muaj më parë`;
-  };
+  // Shared helper (floors units: "3 orë më parë", not "1 ditë më parë").
+  // Used mid-sentence ("Aplikuar tani"), hence the lower-case "tani".
+  const formatDate = (dateString: string) => formatTimeAgoSq(dateString).replace(/^Tani$/, 'tani');
 
   const handleViewJob = () => {
     if (application.jobId?._id) {
@@ -284,7 +277,10 @@ const ApplicationStatusTimeline: React.FC<ApplicationStatusTimelineProps> = ({
     }
   };
 
-  const hasUnreadMessages = application.messages?.some(msg => !msg.read && msg.from !== 'jobseeker') || false;
+  // 49: same rule as the server (WITHDRAWABLE_STATUSES) — anything not yet
+  // decided can be withdrawn, including a shortlisted application (the
+  // employer is notified).
+  const canWithdraw = !application.withdrawn && ['pending', 'viewed', 'shortlisted'].includes(application.status);
 
   if (compact) {
     return (
@@ -308,12 +304,6 @@ const ApplicationStatusTimeline: React.FC<ApplicationStatusTimelineProps> = ({
               <Badge variant={currentStatus.variant} className="text-xs">
                 {currentStatus.label}
               </Badge>
-              {hasUnreadMessages && (
-                <Badge variant="destructive" className="text-xs">
-                  <MessageSquare className="h-3 w-3 mr-1" />
-                  Mesazh i ri
-                </Badge>
-              )}
             </div>
           </div>
         </CardContent>
@@ -331,12 +321,6 @@ const ApplicationStatusTimeline: React.FC<ApplicationStatusTimelineProps> = ({
               {application.jobId?.title || 'Pozicion i fshirë'}
             </h3>
             <div className="flex items-center gap-2 flex-shrink-0">
-              {hasUnreadMessages && (
-                <Badge variant="destructive" className="text-xs">
-                  <MessageSquare className="h-3 w-3 mr-1" />
-                  Mesazh i ri
-                </Badge>
-              )}
               <Badge variant={currentStatus.variant}>
                 {currentStatus.label}
               </Badge>
@@ -436,42 +420,6 @@ const ApplicationStatusTimeline: React.FC<ApplicationStatusTimelineProps> = ({
           )}
         </div>
 
-        {/* Messages */}
-        {application.messages && application.messages.length > 0 && (
-          <div className="mb-4">
-            <Separator className="mb-3" />
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-sm font-medium">Mesazhet</h4>
-              <Badge variant="outline" className="text-xs">
-                {application.messages.length} mesazh{application.messages.length !== 1 ? 'e' : ''}
-              </Badge>
-            </div>
-            <div className="space-y-2 max-h-32 overflow-y-auto">
-              {application.messages.slice(-2).map((message, index) => {
-                const jobSeekerId = typeof application.jobSeekerId === 'object' ? (application.jobSeekerId as User)._id : application.jobSeekerId;
-                const isFromJobSeeker = message.from?.toString() === jobSeekerId?.toString();
-                return (
-                <div key={index} className={`p-3 rounded text-sm ${
-                  isFromJobSeeker
-                    ? 'bg-blue-50 ml-4'
-                    : 'bg-gray-50 mr-4'
-                }`}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-medium text-xs text-muted-foreground">
-                      {isFromJobSeeker ? 'Ju' : 'Punëdhënësi'}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatDate(message.sentAt)}
-                    </span>
-                  </div>
-                  <p className="break-words">{message.message}</p>
-                </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         {/* Action Buttons */}
         <div className="flex flex-wrap gap-2 pt-4 border-t">
           <Button
@@ -508,18 +456,7 @@ const ApplicationStatusTimeline: React.FC<ApplicationStatusTimelineProps> = ({
             />
           </div>
 
-          {hasUnreadMessages && (
-            <Button
-              size="sm"
-              onClick={() => navigate(`/applications/${application._id}`)}
-              className="flex-1"
-            >
-              <MessageSquare className="mr-2 h-4 w-4" />
-              Lexo mesazhet
-            </Button>
-          )}
-
-          {onWithdraw && !application.withdrawn && ['pending', 'viewed'].includes(application.status) && (
+          {onWithdraw && canWithdraw && (
             <Button
               variant="destructive"
               size="sm"

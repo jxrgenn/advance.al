@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import JobCard from "@/components/JobCard";
@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { usersApi, applicationsApi, Job } from "@/lib/api";
 import { needsApplyForm, applyFormRoute } from "@/lib/quickApply";
 import { useAuth } from "@/contexts/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 // Albanian labels for non-active statuses shown on inactive saved-jobs.
 // Active jobs render normally without a badge.
@@ -41,35 +41,65 @@ const SavedJobs = () => {
   const { toast } = useToast();
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const userId = user?._id;
+  const userType = user?.userType;
+
+  // 160: the page lives in the URL (?page=N) — it survives the background
+  // user refresh (AuthContext installs a new `user` object every 5 minutes,
+  // which used to reload page 1), a reload and the back button.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentPage = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
+  const goToPage = (page: number) => {
+    setSearchParams(page > 1 ? { page: String(page) } : {}, { replace: false });
+  };
 
   // Redirect if not authenticated or not a job seeker
   useEffect(() => {
-    if (!isAuthenticated || user?.userType !== 'jobseeker') {
+    if (!isAuthenticated || userType !== 'jobseeker') {
       navigate('/login');
       return;
     }
-  }, [isAuthenticated, user, navigate]);
+  }, [isAuthenticated, userType, navigate]);
 
-  // Load saved jobs on mount
+  // Keyed on the identity (primitives), not the `user` object.
   useEffect(() => {
-    if (isAuthenticated && user?.userType === 'jobseeker') {
-      loadSavedJobs();
+    if (isAuthenticated && userType === 'jobseeker') {
       loadAppliedJobIds();
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, userId, userType]);
 
-  const loadSavedJobs = async (page = 1) => {
+  useEffect(() => {
+    if (isAuthenticated && userType === 'jobseeker') {
+      loadSavedJobs(currentPage);
+    }
+  }, [isAuthenticated, userId, userType, currentPage]);
+
+  // Only the newest request may update the list (fast page clicks / unsaves).
+  const requestSeq = useRef(0);
+
+  const loadSavedJobs = async (page: number, { silent = false } = {}) => {
+    const seq = ++requestSeq.current;
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const response = await usersApi.getSavedJobs({ page, limit: 10 });
+      if (seq !== requestSeq.current) return;
 
       if (response.success && response.data) {
-        setSavedJobs(response.data.jobs || []);
-        setPagination(response.data.pagination);
+        const jobs = response.data.jobs || [];
+        const pageInfo = response.data.pagination;
+        // A page past the end (last card of the last page unsaved, stale
+        // ?page=) → show the last page that has jobs instead of "no jobs".
+        if (jobs.length === 0 && page > 1 && pageInfo.totalJobs > 0) {
+          goToPage(Math.max(1, pageInfo.totalPages));
+          return;
+        }
+        setSavedJobs(jobs);
+        setPagination(pageInfo);
       } else {
         setSavedJobs([]);
       }
     } catch (error: any) {
+      if (seq !== requestSeq.current) return;
       console.error('Error loading saved jobs:', error);
       setSavedJobs([]);
       toast({
@@ -78,7 +108,7 @@ const SavedJobs = () => {
         variant: "destructive"
       });
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
   };
 
@@ -93,39 +123,15 @@ const SavedJobs = () => {
     }
   };
 
-  const handleUnsaveJob = async (jobId: string) => {
-    try {
-      const response = await usersApi.unsaveJob(jobId);
-
-      if (response.success) {
-        // Remove job from the list
-        setSavedJobs(prev => prev.filter(job => job._id !== jobId));
-
-        // Update pagination if needed
-        if (savedJobs.length === 1 && pagination.currentPage > 1) {
-          // If this was the last job on a page > 1, go to previous page
-          loadSavedJobs(pagination.currentPage - 1);
-        } else {
-          // Update pagination count
-          setPagination(prev => ({
-            ...prev,
-            totalJobs: prev.totalJobs - 1
-          }));
-        }
-
-        toast({
-          title: "Puna u hoq nga të ruajturat",
-          description: "Puna nuk është më në listën tuaj të punëve të ruajtura."
-        });
-      }
-    } catch (error: any) {
-      console.error('Error removing saved job:', error);
-      toast({
-        title: "Gabim",
-        description: error.message || "Gabim në heqjen e punës nga të ruajturat",
-        variant: "destructive"
-      });
-    }
+  // 159: JobCard already sent the DELETE (and showed the toast) before it
+  // calls this — this is only the list update. Calling the API again here
+  // sent two DELETEs and logged two 'unsave' events per click.
+  // 151: drop the card right away, then re-read the current page so it is
+  // backfilled from the next page and the counts / pager stay correct.
+  const handleUnsaveJob = (jobId: string) => {
+    setSavedJobs(prev => prev.filter(job => job._id !== jobId));
+    setPagination(prev => ({ ...prev, totalJobs: Math.max(0, prev.totalJobs - 1) }));
+    loadSavedJobs(currentPage, { silent: true });
   };
 
   const handleApply = async (jobId: string) => {
@@ -163,7 +169,7 @@ const SavedJobs = () => {
   };
 
   const handlePageChange = (page: number) => {
-    loadSavedJobs(page);
+    goToPage(page);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -213,8 +219,8 @@ const SavedJobs = () => {
           </div>
         )}
 
-        {/* Empty State */}
-        {!loading && (!savedJobs || savedJobs.length === 0) && (
+        {/* Empty State — only when the user really has no saved jobs (151). */}
+        {!loading && pagination.totalJobs === 0 && savedJobs.length === 0 && (
           <Card className="p-12">
             <CardContent className="text-center">
               <div className="flex flex-col items-center gap-4">
@@ -287,55 +293,57 @@ const SavedJobs = () => {
               </details>
             )}
 
-            {/* Pagination */}
-            {pagination.totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 mt-8">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(pagination.currentPage - 1)}
-                  disabled={!pagination.hasPrevPage}
-                >
-                  Mëparshmi
-                </Button>
-
-                <div className="flex items-center gap-2">
-                  {(() => {
-                    const maxVisible = 5;
-                    let start = Math.max(1, pagination.currentPage - Math.floor(maxVisible / 2));
-                    let end = Math.min(pagination.totalPages, start + maxVisible - 1);
-                    if (end - start + 1 < maxVisible) {
-                      start = Math.max(1, end - maxVisible + 1);
-                    }
-                    return Array.from({ length: end - start + 1 }, (_, i) => {
-                      const page = start + i;
-                      return (
-                        <Button
-                          key={page}
-                          variant={pagination.currentPage === page ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => handlePageChange(page)}
-                        >
-                          {page}
-                        </Button>
-                      );
-                    });
-                  })()}
-                </div>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(pagination.currentPage + 1)}
-                  disabled={!pagination.hasNextPage}
-                >
-                  Tjetri
-                </Button>
-              </div>
-            )}
           </>
           );
         })()}
+
+        {/* Pagination — outside the list branch, so it never disappears while
+            saved jobs remain on other pages (151). */}
+        {!loading && pagination.totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 mt-8">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(pagination.currentPage - 1)}
+              disabled={!pagination.hasPrevPage}
+            >
+              Mëparshmi
+            </Button>
+
+            <div className="flex items-center gap-2">
+              {(() => {
+                const maxVisible = 5;
+                let start = Math.max(1, pagination.currentPage - Math.floor(maxVisible / 2));
+                let end = Math.min(pagination.totalPages, start + maxVisible - 1);
+                if (end - start + 1 < maxVisible) {
+                  start = Math.max(1, end - maxVisible + 1);
+                }
+                return Array.from({ length: end - start + 1 }, (_, i) => {
+                  const page = start + i;
+                  return (
+                    <Button
+                      key={page}
+                      variant={pagination.currentPage === page ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handlePageChange(page)}
+                    >
+                      {page}
+                    </Button>
+                  );
+                });
+              })()}
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(pagination.currentPage + 1)}
+              disabled={!pagination.hasNextPage}
+            >
+              Tjetri
+            </Button>
+          </div>
+        )}
       </div>
 
       <Footer />

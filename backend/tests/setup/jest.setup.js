@@ -74,4 +74,15 @@ console.warn = (...args) => {
   originalWarn(...args);
 };
 
+// SILENT_TESTS=true: drop console.log/info/debug/warn noise for this test
+// file (errors still print). Plain no-op functions, not jest.fn(): the config
+// sets restoreMocks/resetMocks, which would undo spies before the first test.
+if (process.env.SILENT_TESTS === 'true') {
+  const noop = () => {};
+  console.log = noop;
+  console.info = noop;
+  console.debug = noop;
+  console.warn = noop;
+}
+
 console.log('✅ Jest setup complete');

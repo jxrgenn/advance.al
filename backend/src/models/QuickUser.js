@@ -3,8 +3,29 @@ import crypto from 'crypto';
 import { escapeRegex } from '../utils/sanitize.js';
 import { emailFormatValidator } from '../lib/emailFormat.js';
 import { JOB_CATEGORIES } from '../constants/jobCategories.js';
+import { startOfAlbanianDay, endOfAlbanianDay } from '../lib/albanianDate.js';
 
 const { Schema } = mongoose;
+
+// Minimum gap between two job-alert EMAILS per emailFrequency. Matches that
+// arrive inside the gap are queued in pendingJobAlerts and sent together as
+// one digest once the gap has passed (services/jobAlertsDigest.js) — they
+// are never dropped.
+export const QUICKUSER_ALERT_GAP_MS = {
+  immediate: 60 * 60 * 1000,
+  daily: 24 * 60 * 60 * 1000,
+  weekly: 7 * 24 * 60 * 60 * 1000,
+};
+export const alertGapMsFor = (frequency) =>
+  QUICKUSER_ALERT_GAP_MS[frequency] ?? QUICKUSER_ALERT_GAP_MS.immediate;
+
+// How many announced job ids each subscriber remembers (exactly-once per job
+// across fan-out retries) and how many queued matches a digest may hold.
+const NOTIFIED_JOB_IDS_KEEP = 200;
+const PENDING_ALERTS_KEEP = 50;
+// A job whose alert email was permanently rejected this many times for one
+// subscriber is not retried again.
+export const MAX_ALERT_DELIVERY_ATTEMPTS = 3;
 
 const quickUserSchema = new Schema({
   firstName: {
@@ -59,6 +80,21 @@ const quickUserSchema = new Schema({
   lastNotifiedAt: {
     type: Date,
     default: null
+  },
+  // Matches that arrived during the frequency gap; flushed as one digest.
+  pendingJobAlerts: [{
+    _id: false,
+    jobId: { type: Schema.Types.ObjectId, ref: 'Job', required: true },
+    matchScore: { type: Number, default: 0 },
+    queuedAt: { type: Date, default: Date.now },
+    // Failed delivery attempts for this job (permanently rejected email);
+    // the job is dropped after MAX_ALERT_DELIVERY_ATTEMPTS.
+    deliveryAttempts: { type: Number, default: 0 }
+  }],
+  // Jobs already announced to this subscriber (most recent NOTIFIED_JOB_IDS_KEEP).
+  notifiedJobIds: {
+    type: [{ type: Schema.Types.ObjectId, ref: 'Job' }],
+    default: []
   },
   notificationCount: {
     type: Number,
@@ -197,25 +233,12 @@ quickUserSchema.virtual('allInterests').get(function() {
   return [...this.interests, ...this.customInterests];
 });
 
-// Virtual for notification eligibility
+// Virtual for notification eligibility (informational — the send path uses
+// the atomic claimJobAlertSlot below, never this in-memory snapshot).
 quickUserSchema.virtual('canReceiveNotification').get(function() {
   if (!this.isActive) return false;
-
-  const now = new Date();
-
-  // Check email frequency preference
-  if (this.preferences.emailFrequency === 'immediate') {
-    // Can receive if last notification was more than 1 hour ago
-    return !this.lastNotifiedAt || (now - this.lastNotifiedAt) > (60 * 60 * 1000);
-  } else if (this.preferences.emailFrequency === 'daily') {
-    // Can receive if last notification was more than 24 hours ago
-    return !this.lastNotifiedAt || (now - this.lastNotifiedAt) > (24 * 60 * 60 * 1000);
-  } else if (this.preferences.emailFrequency === 'weekly') {
-    // Can receive if last notification was more than 7 days ago
-    return !this.lastNotifiedAt || (now - this.lastNotifiedAt) > (7 * 24 * 60 * 60 * 1000);
-  }
-
-  return false;
+  if (!this.lastNotifiedAt) return true;
+  return (Date.now() - this.lastNotifiedAt.getTime()) > alertGapMsFor(this.preferences?.emailFrequency);
 });
 
 // Method to check if user matches job criteria
@@ -253,37 +276,200 @@ quickUserSchema.methods.matchesJob = function(job) {
   return true;
 };
 
-// Method to record notification sent
-quickUserSchema.methods.recordNotificationSent = function(jobId) {
-  this.lastNotifiedAt = new Date();
-  this.notificationCount += 1;
-  this.totalEmailsSent += 1;
+// State-only mutations below are ATOMIC updates, not this.save():
+//   - save() re-validates the whole document, so a subscriber holding a
+//     category that was later removed from JOB_CATEGORIES (e.g. 'Administratë
+//     & Zyrë') could not unsubscribe, be counted or be converted (500);
+//   - read-modify-write lost concurrent counter increments.
+// The in-memory document is updated too so callers see the new values.
 
-  return this.save();
+// Method to record notification sent
+quickUserSchema.methods.recordNotificationSent = async function(jobId) {
+  const now = new Date();
+  const update = { $set: { lastNotifiedAt: now }, $inc: { notificationCount: 1, totalEmailsSent: 1 } };
+  if (jobId) update.$push = { notifiedJobIds: { $each: [jobId], $slice: -NOTIFIED_JOB_IDS_KEEP } };
+  await this.constructor.updateOne({ _id: this._id }, update);
+  this.lastNotifiedAt = now;
+  this.notificationCount = (this.notificationCount || 0) + 1;
+  this.totalEmailsSent = (this.totalEmailsSent || 0) + 1;
+  return this;
 };
 
 // Method to record email click
-quickUserSchema.methods.recordEmailClick = function() {
-  this.emailClickCount += 1;
-  this.lastLoginAt = new Date();
-
-  return this.save();
+quickUserSchema.methods.recordEmailClick = async function() {
+  const now = new Date();
+  await this.constructor.updateOne({ _id: this._id }, { $inc: { emailClickCount: 1 }, $set: { lastLoginAt: now } });
+  this.emailClickCount = (this.emailClickCount || 0) + 1;
+  this.lastLoginAt = now;
+  return this;
 };
 
 // Method to unsubscribe
-quickUserSchema.methods.unsubscribe = function() {
+quickUserSchema.methods.unsubscribe = async function() {
+  await this.constructor.updateOne({ _id: this._id }, { $set: { isActive: false, pendingJobAlerts: [] } });
   this.isActive = false;
-  return this.save();
+  return this;
 };
 
 // Method to convert to full user
-quickUserSchema.methods.convertToFullUser = function(fullUserId) {
+quickUserSchema.methods.convertToFullUser = async function(fullUserId) {
+  const convertedAt = new Date();
+  await this.constructor.updateOne({ _id: this._id }, {
+    $set: {
+      convertedToFullUser: true,
+      convertedAt,
+      fullUserId,
+      isActive: false, // Deactivate quick user notifications
+      pendingJobAlerts: []
+    }
+  });
   this.convertedToFullUser = true;
-  this.convertedAt = new Date();
+  this.convertedAt = convertedAt;
   this.fullUserId = fullUserId;
-  this.isActive = false; // Deactivate quick user notifications
+  this.isActive = false;
+  return this;
+};
 
-  return this.save();
+/**
+ * Atomically claim the right to email `jobId` to this subscriber NOW.
+ * Succeeds only if the subscriber is active, has not been sent this job
+ * before, and the frequency gap since the last email has passed; in the same
+ * write it stamps lastNotifiedAt, bumps the counters and remembers the job.
+ * Two concurrent fan-outs therefore cannot both email inside one gap.
+ * Returns { claimed: true, previousLastNotifiedAt } or { claimed: false }.
+ */
+quickUserSchema.statics.claimJobAlertSlot = async function(userId, jobId, now = new Date()) {
+  const current = await this.findById(userId).select('isActive convertedToFullUser preferences.emailFrequency').lean();
+  if (!current || current.isActive !== true || current.convertedToFullUser === true) return { claimed: false };
+  const frequency = current.preferences?.emailFrequency;
+  const cutoff = new Date(now.getTime() - alertGapMsFor(frequency));
+  const before = await this.findOneAndUpdate(
+    {
+      _id: userId,
+      isActive: true,
+      convertedToFullUser: { $ne: true },
+      'preferences.emailFrequency': frequency ?? null,
+      notifiedJobIds: { $ne: jobId },
+      $or: [{ lastNotifiedAt: null }, { lastNotifiedAt: { $lte: cutoff } }]
+    },
+    {
+      $set: { lastNotifiedAt: now },
+      $inc: { notificationCount: 1, totalEmailsSent: 1 },
+      $push: { notifiedJobIds: { $each: [jobId], $slice: -NOTIFIED_JOB_IDS_KEEP } },
+      $pull: { pendingJobAlerts: { jobId } }
+    },
+    { new: false, projection: { lastNotifiedAt: 1 } }
+  ).lean();
+  if (!before) return { claimed: false };
+  return { claimed: true, previousLastNotifiedAt: before.lastNotifiedAt ?? null, claimedAt: now };
+};
+
+/**
+ * Undo a claim whose email was rejected permanently (non-transient Resend
+ * error), so the job can be retried and the gap is not burnt. Only reverts
+ * if nothing else has notified the subscriber since.
+ */
+quickUserSchema.statics.releaseJobAlertSlot = function(userId, jobId, claim) {
+  return this.updateOne(
+    { _id: userId, lastNotifiedAt: claim.claimedAt },
+    {
+      $set: { lastNotifiedAt: claim.previousLastNotifiedAt ?? null },
+      $inc: { notificationCount: -1, totalEmailsSent: -1 },
+      $pull: { notifiedJobIds: jobId }
+    }
+  );
+};
+
+/**
+ * Queue a match for the subscriber's next digest (the frequency gap has not
+ * passed yet). Atomic and idempotent per job: a job already announced or
+ * already queued is not queued again. Returns true when queued.
+ */
+quickUserSchema.statics.queueJobAlert = async function(userId, jobId, matchScore = 0, { deliveryAttempts = 0 } = {}) {
+  const r = await this.updateOne(
+    {
+      _id: userId,
+      isActive: true,
+      convertedToFullUser: { $ne: true },
+      notifiedJobIds: { $ne: jobId },
+      'pendingJobAlerts.jobId': { $ne: jobId }
+    },
+    { $push: { pendingJobAlerts: { $each: [{ jobId, matchScore, queuedAt: new Date(), deliveryAttempts }], $slice: -PENDING_ALERTS_KEEP } } }
+  );
+  return r.modifiedCount === 1;
+};
+
+/**
+ * An immediate alert claimed by claimJobAlertSlot was NOT delivered
+ * (permanent reject or crash before the send): forget that it was sent,
+ * restore the gap if nothing else was sent since, and put the job in the
+ * subscriber's digest queue so the next digest retries it.
+ */
+quickUserSchema.statics.giveBackJobAlert = async function(userId, jobId, claim, matchScore = 0) {
+  await this.updateOne({ _id: userId }, { $pull: { notifiedJobIds: jobId } });
+  await this.releaseJobAlertSlot(userId, jobId, claim);
+  return this.queueJobAlert(userId, jobId, matchScore, { deliveryAttempts: 1 });
+};
+
+/**
+ * A digest claimed by claimDigestSlot was NOT delivered: un-mark its jobs as
+ * sent, give the gap back (if nothing else was sent since) and re-queue each
+ * job with one more delivery attempt; jobs that reached
+ * MAX_ALERT_DELIVERY_ATTEMPTS are dropped. Returns the dropped job ids.
+ */
+quickUserSchema.statics.giveBackDigest = async function(userId, claim, items) {
+  const keep = items.filter(i => (i.deliveryAttempts || 0) + 1 < MAX_ALERT_DELIVERY_ATTEMPTS);
+  const dropped = items.filter(i => !keep.includes(i)).map(i => i.jobId);
+  const update = { $pull: { notifiedJobIds: { $in: items.map(i => i.jobId) } } };
+  await this.updateOne({ _id: userId }, update);
+  if (keep.length) {
+    await this.updateOne({ _id: userId, isActive: true }, {
+      $push: {
+        pendingJobAlerts: {
+          $each: keep.map(i => ({ jobId: i.jobId, matchScore: i.matchScore || 0, queuedAt: i.queuedAt || new Date(), deliveryAttempts: (i.deliveryAttempts || 0) + 1 })),
+          $slice: -PENDING_ALERTS_KEEP
+        }
+      }
+    });
+  }
+  await this.updateOne(
+    { _id: userId, lastNotifiedAt: claim.claimedAt },
+    { $set: { lastNotifiedAt: claim.previousLastNotifiedAt ?? null }, $inc: { notificationCount: -1, totalEmailsSent: -1 } }
+  );
+  return dropped;
+};
+
+/**
+ * Claim a digest send for this subscriber: gap passed + still active. In the
+ * same write: stamp lastNotifiedAt, count the email, remember `jobIds` as
+ * announced and remove `snapshotJobIds` (everything that was considered —
+ * sent or stale) from the queue. Matches queued after the snapshot stay.
+ * Returns { claimedAt, previousLastNotifiedAt } or null. If the send then
+ * fails, giveBackDigest undoes the claim and re-queues the jobs.
+ */
+quickUserSchema.statics.claimDigestSlot = async function(userId, { jobIds, snapshotJobIds, now = new Date() }) {
+  const current = await this.findById(userId).select('isActive preferences.emailFrequency').lean();
+  if (!current || current.isActive !== true) return null;
+  const frequency = current.preferences?.emailFrequency;
+  const cutoff = new Date(now.getTime() - alertGapMsFor(frequency));
+  const before = await this.findOneAndUpdate(
+    {
+      _id: userId,
+      isActive: true,
+      convertedToFullUser: { $ne: true },
+      'preferences.emailFrequency': frequency ?? null,
+      $or: [{ lastNotifiedAt: null }, { lastNotifiedAt: { $lte: cutoff } }]
+    },
+    {
+      $set: { lastNotifiedAt: now },
+      $inc: { notificationCount: 1, totalEmailsSent: 1 },
+      $push: { notifiedJobIds: { $each: jobIds, $slice: -NOTIFIED_JOB_IDS_KEEP } },
+      $pull: { pendingJobAlerts: { jobId: { $in: snapshotJobIds } } }
+    },
+    { new: false, projection: { lastNotifiedAt: 1 } }
+  ).lean();
+  if (!before) return null;
+  return { claimedAt: now, previousLastNotifiedAt: before.lastNotifiedAt ?? null };
 };
 
 // Static method to find users eligible for notifications
@@ -369,47 +555,35 @@ quickUserSchema.statics.findMatchesForJob = function(job) {
     }
   );
 
-  // Apply frequency-based filtering
-  const now = new Date();
-  query.$and.push({
-    $or: [
-      // Can receive immediate notifications
-      {
-        'preferences.emailFrequency': 'immediate',
-        $or: [
-          { lastNotifiedAt: null },
-          { lastNotifiedAt: { $lt: new Date(now.getTime() - 60 * 60 * 1000) } }
-        ]
-      },
-      // Can receive daily notifications
-      {
-        'preferences.emailFrequency': 'daily',
-        $or: [
-          { lastNotifiedAt: null },
-          { lastNotifiedAt: { $lt: new Date(now.getTime() - 24 * 60 * 60 * 1000) } }
-        ]
-      },
-      // Can receive weekly notifications
-      {
-        'preferences.emailFrequency': 'weekly',
-        $or: [
-          { lastNotifiedAt: null },
-          { lastNotifiedAt: { $lt: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) } }
-        ]
-      }
-    ]
-  });
-
+  // No frequency filter here: a subscriber inside their email gap is still a
+  // MATCH — notificationService queues the job for their next digest instead
+  // of emailing now. (Filtering them out here silently lost the match.)
   return this.find(query).limit(1000); // Limit to prevent overwhelming
 };
 
 // Static method for analytics
+// A date-only bound ('2026-10-01') means the whole Albanian calendar day:
+// startDate from Tirana midnight, endDate INCLUSIVE up to the next Tirana
+// midnight (new Date('2026-10-01') is UTC midnight and silently dropped the
+// end day). Full timestamps are used as given; unparseable values ignored.
+const analyticsBound = (value, edge) => {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value !== 'string' || !value) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return edge === 'end' ? endOfAlbanianDay(value) : startOfAlbanianDay(value);
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
 quickUserSchema.statics.getAnalytics = function(startDate, endDate) {
   const matchStage = {};
-  if (startDate || endDate) {
+  const from = analyticsBound(startDate, 'start');
+  const to = analyticsBound(endDate, 'end');
+  if (from || to) {
     matchStage.createdAt = {};
-    if (startDate) matchStage.createdAt.$gte = new Date(startDate);
-    if (endDate) matchStage.createdAt.$lte = new Date(endDate);
+    if (from) matchStage.createdAt.$gte = from;
+    if (to) matchStage.createdAt.$lte = to;
   }
 
   return this.aggregate([

@@ -47,14 +47,24 @@ describe('notifications.js — success paths', () => {
       location: 'Tiranë', interests: ['Teknologji'],
     });
 
-    const r = await request(app)
-      .post('/api/notifications/manual-notify')
-      .set(createAuthHeaders(admin))
-      .send({ quickUserId: qu._id.toString(), jobId: job._id.toString() });
+    // lastNotifiedAt is only stamped when the provider accepted the email.
+    const prevResend = resendEmailService.resend;
+    resendEmailService.enabled = true;
+    resendEmailService.resend = { emails: { send: async () => ({ data: { id: 'fake' }, error: null }) } };
+    let r;
+    try {
+      r = await request(app)
+        .post('/api/notifications/manual-notify')
+        .set(createAuthHeaders(admin))
+        .send({ quickUserId: qu._id.toString(), jobId: job._id.toString() });
+    } finally {
+      resendEmailService.enabled = false;
+      resendEmailService.resend = prevResend;
+    }
 
     expect(r.status).toBe(200);
     expect(r.body.success).toBe(true);
-    expect(r.body.data).toBeDefined();
+    expect(r.body.data.sent).toBe(true);
     expect(r.body.data.userId.toString()).toBe(qu._id.toString());
 
     // Side effect: lastNotifiedAt updated

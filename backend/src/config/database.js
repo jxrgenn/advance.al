@@ -1,10 +1,9 @@
 /* istanbul ignore file — production-only DB connect; tests use mongodb-memory-server via testDb.js */
+// .env loading lives in ./env.js (first import, skipped under the test runner).
+import './env.js';
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
 import logger from './logger.js';
 import { dropLegacyIndexes } from '../lib/dropLegacyIndexes.js';
-
-dotenv.config();
 
 export const connectDB = async (retries = 5, delay = 3000) => {
   const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/albania-jobflow';

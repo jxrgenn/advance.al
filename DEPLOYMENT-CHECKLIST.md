@@ -34,7 +34,9 @@ Set ALL of the following in the production environment (Railway for backend, Ver
 | `SENTRY_DSN` | `https://abc@sentry.io/123` | YES | Error monitoring |
 | `SENTRY_ENABLED` | `true` | NO | Auto-enabled in production |
 | `RATE_LIMIT_WINDOW_MS` | `900000` | NO | 15 minutes default |
-| `RATE_LIMIT_MAX_REQUESTS` | `100` | NO | 100/window default |
+| `RATE_LIMIT_MAX_REQUESTS` | *(unset)* | NO | DEPRECATED — remove it. Was the per-IP budget for ALL /api traffic (100 blocked normal users / shared NAT). In production a value < 300 is raised to 300. |
+| `API_RATE_LIMIT_ANON_MAX` | *(unset → 1000)* | NO | /api requests per IP per window for anonymous traffic |
+| `API_RATE_LIMIT_USER_MAX` | *(unset → 2000)* | NO | /api requests per logged-in user per window |
 | `EMBEDDING_WORKER_ENABLED` | `true` | NO | Defaults to true |
 | `ALERT_EMAIL_ENABLED` | `true` | REC | Enable alert emails |
 | `ALERT_EMAIL_TO` | `admin@advance.al` | REC | Alert recipient |

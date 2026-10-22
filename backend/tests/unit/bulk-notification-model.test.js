@@ -87,6 +87,12 @@ describe('BulkNotification.timeSinceSent virtual', () => {
 });
 
 describe('BulkNotification.updateDeliveryStats', () => {
+  // updateDeliveryStats() ends in this.save(). This file has no database: an
+  // un-awaited real save() was buffered by Mongoose and blew up 10s later
+  // ("bulknotifications.insertOne() buffering timed out") inside whichever
+  // suite happened to be running then. Stub the save for these unit cases.
+  const noSave = (b) => { b.save = () => Promise.resolve(b); return b; };
+
   it('updates only known stat keys', () => {
     const b = mkBulk({
       deliveryStats: {
@@ -95,7 +101,7 @@ describe('BulkNotification.updateDeliveryStats', () => {
         inAppSent: 0, inAppRead: 0,
       },
     });
-    b.updateDeliveryStats({ emailsSent: 50, emailsDelivered: 45 });
+    noSave(b).updateDeliveryStats({ emailsSent: 50, emailsDelivered: 45 });
     expect(b.deliveryStats.emailsSent).toBe(50);
     expect(b.deliveryStats.emailsDelivered).toBe(45);
   });
@@ -108,7 +114,7 @@ describe('BulkNotification.updateDeliveryStats', () => {
         inAppSent: 0, inAppRead: 0,
       },
     });
-    b.updateDeliveryStats({ mysteriousKey: 999 });
+    noSave(b).updateDeliveryStats({ mysteriousKey: 999 });
     expect(b.deliveryStats.mysteriousKey).toBeUndefined();
   });
 });

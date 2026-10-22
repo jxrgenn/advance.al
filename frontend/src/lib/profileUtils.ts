@@ -45,3 +45,78 @@ export function getNextProfileStep(user: User | null): NextStep | null {
 
   return null;
 }
+
+/**
+ * Jobseeker experience levels — mirrors backend/src/lib/experienceLevels.js.
+ * 'none' is "Nuk kam përvojë" (students / first job); it is a real, stored
+ * value and must be displayed with its label, never as the raw key (O-76).
+ */
+export const NO_EXPERIENCE = 'none';
+export const EXPERIENCE_OPTIONS: { value: string; label: string }[] = [
+  { value: NO_EXPERIENCE, label: 'Nuk kam përvojë' },
+  { value: '0-1 vjet', label: '0-1 vjet' },
+  { value: '1-2 vjet', label: '1-2 vjet' },
+  { value: '2-5 vjet', label: '2-5 vjet' },
+  { value: '5-10 vjet', label: '5-10 vjet' },
+  { value: '10+ vjet', label: '10+ vjet' },
+];
+
+/** Display label for a stored experience value ('' when unset). */
+export function experienceLabel(value: string | null | undefined): string {
+  if (!value) return '';
+  return EXPERIENCE_OPTIONS.find((o) => o.value === value)?.label ?? value;
+}
+
+/**
+ * Applications that are still open (the candidate is waiting on the
+ * employer). One definition for every "Aktive" counter (163).
+ */
+export const ACTIVE_APPLICATION_STATUSES = ['pending', 'viewed', 'shortlisted'];
+
+/**
+ * Parse the free-text skills box ("React, Microsoft Excel, Node.js") into a
+ * clean list: split on commas / new lines, trim, drop empties and
+ * case-insensitive duplicates. Multi-word skills stay intact (O-77).
+ */
+export function parseSkillsText(text: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of (text || '').split(/[,\n]/)) {
+    const skill = raw.replace(/\s+/g, ' ').trim();
+    if (!skill) continue;
+    const key = skill.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(skill);
+  }
+  return out;
+}
+
+/**
+ * Map backend validation errors ({ field, message }[]) from PUT /users/profile
+ * onto the Profile form's field names, so the inline-error UI can show them.
+ */
+export function mapProfileFieldErrors(errors: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!Array.isArray(errors)) return out;
+  const fieldMap: Record<string, string> = {
+    firstName: 'firstName',
+    lastName: 'lastName',
+    phone: 'phone',
+    'location.city': 'city',
+    location: 'city',
+    'jobSeekerProfile.title': 'title',
+    'jobSeekerProfile.bio': 'bio',
+    'jobSeekerProfile.experience': 'experience',
+    'jobSeekerProfile.availability': 'availability',
+    'jobSeekerProfile.skills': 'skills',
+  };
+  for (const e of errors) {
+    if (!e || typeof e !== 'object') continue;
+    const { field, message } = e as { field?: unknown; message?: unknown };
+    if (typeof field !== 'string' || typeof message !== 'string') continue;
+    const key = fieldMap[field] ?? (field.startsWith('jobSeekerProfile.skills') ? 'skills' : undefined);
+    if (key && !out[key]) out[key] = message;
+  }
+  return out;
+}

@@ -101,17 +101,15 @@ describe('notificationService — sendWelcomeEmail + notifyAdmins', () => {
     });
   });
 
-  describe('digests', () => {
-    it('sendDailyDigest returns stub success', async () => {
+  describe('digests (admin triggers run the QuickUser digest flush)', () => {
+    it('sendDailyDigest with nothing queued sends nothing', async () => {
       const r = await notificationService.sendDailyDigest();
-      expect(r.success).toBe(true);
-      expect(r.message).toMatch(/Daily/);
+      expect(r).toEqual({ success: true, message: 'QuickUser digests sent: 0', stats: { processed: 0, sent: 0, errors: 0, skipped: 0 } });
     });
 
-    it('sendWeeklyDigest returns stub success', async () => {
+    it('sendWeeklyDigest runs the same flush', async () => {
       const r = await notificationService.sendWeeklyDigest();
-      expect(r.success).toBe(true);
-      expect(r.message).toMatch(/Weekly/);
+      expect(r).toEqual({ success: true, message: 'QuickUser digests sent: 0', stats: { processed: 0, sent: 0, errors: 0, skipped: 0 } });
     });
   });
 });

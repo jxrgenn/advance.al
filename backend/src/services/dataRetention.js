@@ -29,21 +29,27 @@ async function cleanupExpiredJobs() {
   }
 }
 
-// Archive old applications (mark withdrawn applications older than 1 year)
+// Archive old applications: decided (hired / rejected) applications older than
+// a year get `archivedAt`. 74: this used to set withdrawn:true — the flag
+// that means "the candidate withdrew" everywhere else — so a hire vanished
+// from both dashboards after a year, the employer lost CV access, and the
+// job's applicationCount was never adjusted. archivedAt changes no list,
+// count or permission; it marks the records a future deletion /
+// anonymisation policy would act on.
 async function archiveOldApplications() {
   try {
     const cutoffDate = new Date();
     cutoffDate.setFullYear(cutoffDate.getFullYear() - 1);
 
-    // For applications older than 1 year on deleted/expired jobs, mark as withdrawn
     const result = await Application.updateMany(
       {
         appliedAt: { $lt: cutoffDate },
         withdrawn: { $ne: true },
+        archivedAt: { $exists: false },
         status: { $in: ['rejected', 'hired'] } // only terminal statuses
       },
       {
-        $set: { withdrawn: true, withdrawalReason: 'auto-archived' }
+        $set: { archivedAt: new Date() }
       }
     );
 

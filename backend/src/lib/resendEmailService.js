@@ -1,6 +1,34 @@
+import crypto from 'crypto';
 import { Resend } from 'resend';
 import { escapeHtml, safeSubject, safePlain } from '../utils/sanitize.js';
 import logger from '../config/logger.js';
+import { formatAlbanianDate, albanianYear } from './albanianDate.js';
+
+// Outbox rows keep the attachment bytes so a retried email is complete.
+// Bounded: anything bigger is queued without it (and logged) rather than
+// bloating the outbox collection. Our only attachment (receipt .docx) is ~10 KB.
+export const MAX_OUTBOX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
+
+function outboxAttachmentsField(attachments) {
+  if (!Array.isArray(attachments) || attachments.length === 0) return {};
+  const rows = [];
+  let total = 0;
+  for (const a of attachments) {
+    if (!a || !a.filename || a.content == null) continue;
+    const content = Buffer.isBuffer(a.content)
+      ? a.content
+      : Buffer.from(String(a.content), typeof a.content === 'string' ? 'base64' : undefined);
+    total += content.length;
+    rows.push({ filename: String(a.filename), content, contentType: a.contentType || null });
+  }
+  if (total > MAX_OUTBOX_ATTACHMENT_BYTES) {
+    logger.error('Outbox: attachments too large to store — the retry will be sent without them', {
+      bytes: total, files: rows.map((r) => r.filename),
+    });
+    return {};
+  }
+  return rows.length ? { attachments: rows } : {};
+}
 
 class ResendEmailService {
   constructor() {
@@ -46,49 +74,65 @@ class ResendEmailService {
     }
   }
 
-  // Inline retry-on-thrown helper. Used as the inner call by _dispatchSend.
-  // Only catches synchronously-thrown exceptions (network / SDK errors). Resend's
-  // own error responses come back as { error, data } — those are handled by the
-  // dispatcher's classifier, NOT here.
-  async _sendWithRetry(sendFn) {
-    // Backstop timeout — a hung Resend API must not block a request (or a
-    // worker) indefinitely. On timeout the thrown error is classified as
-    // transient and the message falls back to the EmailOutbox for later retry.
+  // One Resend call raced against a backstop timeout — a hung Resend API must
+  // not block a request (or a worker) indefinitely. The timeout rejects with
+  // err.code === 'ETIMEDOUT', which _classifyResendResult treats as TRANSIENT.
+  _sendOnce(sendFn) {
     const timeoutMs = parseInt(process.env.RESEND_TIMEOUT_MS || '10000', 10);
-    const attempt = () => {
-      let timer;
-      return Promise.race([
-        Promise.resolve(sendFn()).finally(() => clearTimeout(timer)),
-        new Promise((_, reject) => {
-          timer = setTimeout(() => reject(new Error('Resend send timed out')), timeoutMs);
-        }),
-      ]);
-    };
+    let timer;
+    return Promise.race([
+      Promise.resolve().then(sendFn).finally(() => clearTimeout(timer)),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          const err = new Error('Resend send timed out');
+          err.code = 'ETIMEDOUT';
+          reject(err);
+        }, timeoutMs);
+      }),
+    ]);
+  }
+
+  // Inline retry-on-thrown helper. Used as the inner call by _dispatchSend.
+  // Only catches thrown exceptions (network / SDK errors). Resend's own error
+  // responses come back as { error, data } — those are handled by the
+  // dispatcher's classifier, NOT here.
+  //
+  // A TIMEOUT is never re-fired inline: the hung request may still reach
+  // Resend, and a second send would deliver the email twice. It is surfaced
+  // instead (transient → EmailOutbox), and the outbox retry reuses the same
+  // Resend idempotency key, so a request that did land is not sent again.
+  async _sendWithRetry(sendFn) {
     try {
-      return await attempt();
+      return await this._sendOnce(sendFn);
     } catch (firstError) {
+      if (firstError?.code === 'ETIMEDOUT') throw firstError;
       logger.warn('Email send failed, retrying in 2s...', { error: firstError.message });
       await new Promise(resolve => setTimeout(resolve, 2000));
-      return await attempt();
+      return await this._sendOnce(sendFn);
     }
   }
 
   // Classify a Resend result + any thrown error into one of three buckets:
   //   { success: true, messageId }                       — delivered
-  //   { transient: true, error, statusCode? }            — should retry (429/5xx/network)
+  //   { transient: true, error, statusCode? }            — should retry (429/5xx/network/timeout)
   //   { transient: false, error, statusCode }            — should NOT retry (4xx bad payload)
   // Transient bucket means the outbox should hold + retry; non-transient means
   // the caller sees failure and we don't waste outbox space on permanent rejects.
   _classifyResendResult(emailResult, thrownError) {
     if (thrownError) {
-      // Thrown errors are treated as NON-transient. _sendWithRetry already
-      // retried once with 2s delay (catches network blips). A second throw
-      // is usually programmer-error (missing API key, malformed args) or
-      // a persistent outage — neither of which the outbox should keep
-      // retrying pointlessly until dead-letter. Surface to caller's
-      // try/catch instead. Resend's actual transient failures (429/5xx)
-      // come back as { error: { statusCode } } objects, not thrown, and
-      // are handled by the structured branch below.
+      // Our own backstop timeout: the request may or may not have reached
+      // Resend. Transient → the outbox retries later with the SAME
+      // idempotency key, so Resend returns the original result instead of
+      // sending a second copy.
+      if (thrownError.code === 'ETIMEDOUT') {
+        return { transient: true, error: thrownError.message };
+      }
+      // Other thrown errors are treated as NON-transient. _sendWithRetry
+      // already retried once with 2s delay (catches network blips). A second
+      // throw is usually programmer-error (missing API key, malformed args) —
+      // the outbox should not keep retrying it until dead-letter. Resend's
+      // actual transient failures (429/5xx/network) come back as
+      // { error: { statusCode } } objects, not thrown, and are handled below.
       return { transient: false, error: thrownError.message };
     }
     if (emailResult?.error) {
@@ -97,6 +141,18 @@ class ResendEmailService {
       const message = err.message || String(err);
       if (code === 429 || (code >= 500 && code < 600)) {
         return { transient: true, error: message, statusCode: code };
+      }
+      // 409 concurrent_idempotent_requests: the original request with this
+      // idempotency key is still being processed by Resend — try again later.
+      if (code === 409 && err.name === 'concurrent_idempotent_requests') {
+        return { transient: true, error: message, statusCode: code };
+      }
+      // 409 invalid_idempotent_request: Resend already holds a request with
+      // this key (with a different payload). Only an outbox retry reuses a
+      // key, so the ORIGINAL send reached Resend — treat it as delivered
+      // instead of dead-lettering (+ alert + degraded health) a sent email.
+      if (code === 409 && err.name === 'invalid_idempotent_request') {
+        return { success: true, messageId: null, alreadyDelivered: true };
       }
       if (!code) {
         return { transient: true, error: message }; // network-layer ambiguity → retry
@@ -121,10 +177,14 @@ class ResendEmailService {
     if (!this.enabled) {
       return { success: false, error: 'email service disabled' };
     }
+    // One idempotency key per logical email: every attempt (inline retry and
+    // every later outbox retry) sends the same key, so Resend delivers it at
+    // most once even when an earlier attempt timed out after reaching Resend.
+    const idempotencyKey = meta.idempotencyKey || `email-${crypto.randomUUID()}`;
     let emailResult = null;
     let thrownError = null;
     try {
-      emailResult = await this._sendWithRetry(() => this.resend.emails.send(sendArgs));
+      emailResult = await this._sendWithRetry(() => this.resend.emails.send(sendArgs, { idempotencyKey }));
     } catch (err) {
       thrownError = err;
     }
@@ -144,6 +204,13 @@ class ResendEmailService {
           userType: meta.userType || null,
           jobId: meta.jobId || null,
           tags: meta.tags || [],
+          idempotencyKey,
+          // Custom headers (e.g. X-Entity-Ref-ID on bulk sends) are replayed
+          // verbatim on retry so the payload matches the idempotency key.
+          headers: sendArgs.headers && typeof sendArgs.headers === 'object' ? sendArgs.headers : null,
+          // Attachments too (e.g. the payment receipt .docx) — a retry used
+          // to arrive without them.
+          ...outboxAttachmentsField(sendArgs.attachments),
           attempts: 1,
           lastAttemptAt: new Date(),
           lastError: classification.error,
@@ -186,11 +253,27 @@ class ResendEmailService {
       subject: row.subject,
       html: row.html,
       text: row.text,
+      ...(row.headers && typeof row.headers === 'object' && Object.keys(row.headers).length ? { headers: row.headers } : {}),
     };
+    if (Array.isArray(row.attachments) && row.attachments.length > 0) {
+      sendArgs.attachments = row.attachments.map((att) => ({
+        filename: att.filename,
+        // A hydrated row holds a (Mongoose) Buffer — copy exactly its bytes;
+        // its `.buffer` is the whole shared ArrayBuffer pool, not the file.
+        // A lean row holds a BSON Binary, whose `.buffer` IS the bytes.
+        content: Buffer.isBuffer(att.content) ? Buffer.from(att.content) : Buffer.from(att.content?.buffer ?? att.content),
+        ...(att.contentType ? { contentType: att.contentType } : {}),
+      }));
+    }
     let emailResult = null;
     let thrownError = null;
     try {
-      emailResult = await this.resend.emails.send(sendArgs);
+      // Same backstop timeout as the inline path (a hung call must not stall
+      // the drain tick), and the row's original idempotency key so a retry of
+      // an email that actually landed earlier is not delivered twice.
+      emailResult = await this._sendOnce(() => (row.idempotencyKey
+        ? this.resend.emails.send(sendArgs, { idempotencyKey: row.idempotencyKey })
+        : this.resend.emails.send(sendArgs)));
     } catch (err) {
       thrownError = err;
     }
@@ -282,7 +365,7 @@ class ResendEmailService {
         <!-- Footer -->
         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-                © ${new Date().getFullYear()} advance.al - Platforma e Punës në Shqipëri
+                © ${albanianYear()} advance.al - Platforma e Punës në Shqipëri
             </p>
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
                 Nëse keni pyetje, na kontaktoni në support@advance.al
@@ -433,7 +516,7 @@ advance.al - Platforma e Punës në Shqipëri
         <!-- Footer -->
         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-                © ${new Date().getFullYear()} advance.al - Platforma e Punës në Shqipëri
+                © ${albanianYear()} advance.al - Platforma e Punës në Shqipëri
             </p>
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
                 <a href="${user.getUnsubscribeUrl()}" style="color: #6b7280;">Çregjistrohu nga njoftimet</a> |
@@ -631,7 +714,7 @@ advance.al - Platforma e Punës në Shqipëri
         <!-- Footer -->
         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-                © ${new Date().getFullYear()} advance.al - Platforma e Punës në Shqipëri
+                © ${albanianYear()} advance.al - Platforma e Punës në Shqipëri
             </p>
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
                 Ky email u dërgua sepse u morr një vendim administrativ për llogarinë tuaj.
@@ -782,7 +865,7 @@ advance.al - Platforma e Punës në Shqipëri
         <!-- Footer -->
         <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-                © 2026 advance.al - Platforma e Punës në Shqipëri
+                © ${albanianYear()} advance.al - Platforma e Punës në Shqipëri
             </p>
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
                 Ky email u dërgua në ${safeToEmail}
@@ -805,7 +888,7 @@ Ky njoftim u dërgua nga ekipi i advance.al për të mbajtur përdoruesit e info
 
 Shko te advance.al: https://advance.al
 
-© 2026 advance.al - Platforma e Punës në Shqipëri
+© ${albanianYear()} advance.al - Platforma e Punës në Shqipëri
 Ky email u dërgua në ${toEmail}
 `;
 
@@ -944,7 +1027,7 @@ Ky email u dërgua në ${toEmail}
         <!-- Footer -->
         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-                © 2026 advance.al - Platforma e Punës në Shqipëri
+                © ${albanianYear()} advance.al - Platforma e Punës në Shqipëri
             </p>
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
                 Ky email u dërgua sepse keni një mesazh të ri për aplikimin tuaj.
@@ -1057,7 +1140,7 @@ advance.al - Platforma e Punës në Shqipëri
         </div>
         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-                © ${new Date().getFullYear()} advance.al - Platforma e Punës në Shqipëri
+                © ${albanianYear()} advance.al - Platforma e Punës në Shqipëri
             </p>
         </div>
     </div>
@@ -1160,7 +1243,7 @@ advance.al - Platforma e Punës në Shqipëri`;
         </div>
         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
             <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-                © ${new Date().getFullYear()} advance.al - Platforma e Punës në Shqipëri
+                © ${albanianYear()} advance.al - Platforma e Punës në Shqipëri
             </p>
         </div>
     </div>
@@ -1211,17 +1294,30 @@ advance.al - Platforma e Punës në Shqipëri`;
     }
   }
 
-  // Send email notification on application status change
-  async sendApplicationStatusEmail(applicant, job, newStatus, notes) {
+  // Send email notification on application status change.
+  //
+  // job: { _id, title, companyName } — companyName must be resolved by the
+  //   caller from the employer account (Job has no companyName path).
+  // options.previousStatus: the status before this change. hired → shortlisted
+  //   (the employer took a hire back) gets its own honest copy instead of a
+  //   second "u shtua në listën e shkurtër".
+  // options.messageToCandidate: an explicit, candidate-facing message. The
+  //   employer's private notes (Application.employerNotes) are NEVER emailed:
+  //   a string 4th argument (the old `notes` parameter) is ignored.
+  async sendApplicationStatusEmail(applicant, job, newStatus, options = {}) {
     if (!this.enabled) {
       return { success: false, message: 'Email service disabled' };
     }
 
     try {
+      const opts = (options && typeof options === 'object') ? options : {};
+      const companyName = (job.companyName || '').trim();
       const safeFirstName = escapeHtml(applicant.profile?.firstName || 'Përdorues');
       const safeJobTitle = escapeHtml(job.title || '');
-      const safeCompanyName = escapeHtml(job.companyName || '');
-      const safeNotes = notes ? escapeHtml(notes) : '';
+      const safeCompanyName = escapeHtml(companyName);
+      const message = typeof opts.messageToCandidate === 'string' ? opts.messageToCandidate.trim() : '';
+      const safeMessage = message ? escapeHtml(message) : '';
+      const hireWithdrawn = opts.previousStatus === 'hired' && newStatus === 'shortlisted';
 
       const statusLabels = {
         viewed: { label: 'u shikua', icon: '👁️', color: '#3b82f6' },
@@ -1230,8 +1326,21 @@ advance.al - Platforma e Punës në Shqipëri`;
         hired: { label: 'u pranua', icon: '🎉', color: '#10b981' }
       };
 
-      const statusInfo = statusLabels[newStatus] || { label: newStatus, icon: '📋', color: '#6b7280' };
-      const subject = safeSubject(`${statusInfo.icon} Aplikimi juaj ${statusInfo.label} — ${job.title || ''}`);
+      const statusInfo = hireWithdrawn
+        ? { label: 'u kthye në listën e shkurtër', icon: '🔄', color: '#f59e0b' }
+        : (statusLabels[newStatus] || { label: newStatus, icon: '📋', color: '#6b7280' });
+      const subject = hireWithdrawn
+        ? safeSubject(`🔄 Përditësim për aplikimin tuaj — ${job.title || ''}`)
+        : safeSubject(`${statusInfo.icon} Aplikimi juaj ${statusInfo.label} — ${job.title || ''}`);
+      const atCompanyHtml = safeCompanyName ? ` tek <strong>${safeCompanyName}</strong>` : '';
+      const atCompanyText = companyName ? ` tek ${safePlain(companyName)}` : '';
+      const withdrawnHtml = hireWithdrawn
+        ? `<p style="color: #4b5563; line-height: 1.6; font-size: 16px;">Punëdhënësi e ka rishikuar vendimin e mëparshëm për punësim, prandaj punësimi i njoftuar më parë nuk është më përfundimtar. Aplikimi juaj mbetet aktiv në listën e shkurtër.</p>`
+        : '';
+      const withdrawnText = hireWithdrawn
+        ? '\nPunëdhënësi e ka rishikuar vendimin e mëparshëm për punësim, prandaj punësimi i njoftuar më parë nuk është më përfundimtar. Aplikimi juaj mbetet aktiv në listën e shkurtër.\n'
+        : '';
+      const applicationsUrl = 'https://advance.al/profile?tab=applications';
 
       const htmlContent = `
 <!DOCTYPE html>
@@ -1252,21 +1361,22 @@ advance.al - Platforma e Punës në Shqipëri`;
                 Përshëndetje ${safeFirstName},
             </p>
             <p style="color: #4b5563; line-height: 1.6; font-size: 16px;">
-                Aplikimi juaj për pozicionin <strong>${safeJobTitle}</strong> tek <strong>${safeCompanyName}</strong> ${statusInfo.label}.
+                Aplikimi juaj për pozicionin <strong>${safeJobTitle}</strong>${atCompanyHtml} ${statusInfo.label}.
             </p>
-            ${safeNotes ? `
+            ${withdrawnHtml}
+            ${safeMessage ? `
             <div style="background: #ffffff; border-left: 4px solid ${statusInfo.color}; border-radius: 8px; padding: 15px; margin: 20px 0;">
-                <p style="color: #4b5563; margin: 0;"><strong>Shënim:</strong> ${safeNotes}</p>
+                <p style="color: #4b5563; margin: 0;"><strong>Mesazh nga punëdhënësi:</strong> ${safeMessage}</p>
             </div>` : ''}
             <div style="text-align: center; margin: 30px 0;">
-                <a href="https://advance.al/profile"
+                <a href="${applicationsUrl}"
                    style="background: #2563eb; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
                     📋 Shiko Aplikimet e Mia
                 </a>
             </div>
         </div>
         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-            <p style="color: #9ca3af; font-size: 12px;">© ${new Date().getFullYear()} advance.al</p>
+            <p style="color: #9ca3af; font-size: 12px;">© ${albanianYear()} advance.al</p>
         </div>
     </div>
 </body>
@@ -1276,10 +1386,9 @@ advance.al - Platforma e Punës në Shqipëri`;
 
 Përshëndetje ${safePlain(applicant.profile?.firstName) || 'Përdorues'},
 
-Aplikimi juaj për pozicionin "${safePlain(job.title)}" tek ${safePlain(job.companyName) || ''} ${statusInfo.label}.
-${notes ? `\nShënim: ${safePlain(notes, 500)}` : ''}
-
-Shiko aplikimet tuaja: https://advance.al/profile
+Aplikimi juaj për pozicionin "${safePlain(job.title)}"${atCompanyText} ${statusInfo.label}.
+${withdrawnText}${message ? `\nMesazh nga punëdhënësi: ${safePlain(message, 500)}\n` : ''}
+Shiko aplikimet tuaja: ${applicationsUrl}
 
 --
 advance.al`;
@@ -1354,7 +1463,7 @@ advance.al`;
             </div>
         </div>
         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-            <p style="color: #9ca3af; font-size: 12px;">© ${new Date().getFullYear()} advance.al</p>
+            <p style="color: #9ca3af; font-size: 12px;">© ${albanianYear()} advance.al</p>
         </div>
     </div>
 </body>
@@ -1414,9 +1523,8 @@ advance.al`;
       const safeAmount  = Number(amountEur).toFixed(2);
       const safeTierAl  = tier === 'promoted' ? 'I Promovuar' : 'Standart';
       const safePayId   = escapeHtml(paymentId || '');
-      const dateStr     = (paymentDate instanceof Date ? paymentDate : new Date()).toLocaleDateString('sq-AL', {
-        year: 'numeric', month: 'long', day: 'numeric',
-      });
+      // Calendar day in Tirana ("3 tetor 2026"), not the server's UTC day.
+      const dateStr     = formatAlbanianDate(paymentDate instanceof Date ? paymentDate : new Date());
 
       const subject = safeSubject(`🧾 Faturë pagesë — advance.al — €${safeAmount}`);
       // A paid job may land in pending_approval when admin moderation is on —
@@ -1490,7 +1598,7 @@ advance.al`;
     </p>
 
     <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-      <p style="color: #9ca3af; font-size: 12px;">© ${new Date().getFullYear()} advance.al — Platforma e Punës në Shqipëri</p>
+      <p style="color: #9ca3af; font-size: 12px;">© ${albanianYear()} advance.al — Platforma e Punës në Shqipëri</p>
     </div>
   </div>
 </body>
@@ -1646,7 +1754,7 @@ advance.al`;
     </p>
 
     <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-      <p style="color: #9ca3af; font-size: 12px;">© ${new Date().getFullYear()} advance.al — Platforma e Punës në Shqipëri</p>
+      <p style="color: #9ca3af; font-size: 12px;">© ${albanianYear()} advance.al — Platforma e Punës në Shqipëri</p>
     </div>
   </div>
 </body>

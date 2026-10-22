@@ -109,7 +109,9 @@ let sideChannelServer = null;
 async function startMongo() {
   // Single-node replica set so `w:'majority'` writes that the backend uses succeed.
   mongoServer = await MongoMemoryReplSet.create({
-    binary: { version: '6.0.0' },
+    // O-79: 6.0.0 resolves to the ubuntu2004 build (needs libcrypto.so.1.1,
+    // missing on ubuntu-latest 24.04) — the launcher died before "ready".
+    binary: { version: process.env.MONGOMS_VERSION || '7.0.24' },
     replSet: { count: 1, storageEngine: 'wiredTiger' }
   });
   mongoUri = mongoServer.getUri();

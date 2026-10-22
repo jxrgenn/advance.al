@@ -12,6 +12,37 @@ import { closeJobsForSanctionedEmployer } from '../lib/employerSanctions.js';
 // Report actions that sanction the reported ACCOUNT (need a reportedUser).
 const USER_ACCOUNT_ACTIONS = ['warning', 'temporary_suspension', 'permanent_suspension', 'account_termination'];
 
+// Populate projections. A User keeps its names under profile.* (there is no
+// top-level firstName/lastName) and its account state in `status` (there is
+// no `accountStatus`) — selecting the non-existent paths returned users with
+// only _id/email, which the admin UI rendered as "undefined undefined".
+const USER_NAME_FIELDS = 'profile.firstName profile.lastName profile.employerProfile.companyName';
+const REPORT_USER_FIELDS = `${USER_NAME_FIELDS} email userType status`;
+const ADMIN_USER_FIELDS = `${USER_NAME_FIELDS} email`;
+const REPORTED_JOB_FIELDS = 'title slug status';
+
+// Albanian labels for the action names echoed back in API messages.
+// Albanian category labels for the audit-trail text shown to admins.
+const REPORT_CATEGORY_LABELS_SQ = {
+  fake_cv: 'CV i rremë',
+  inappropriate_content: 'Përmbajtje e papërshtatshme',
+  suspicious_profile: 'Profil i dyshimtë',
+  spam_behavior: 'Sjellje spam',
+  impersonation: 'Personifikim',
+  harassment: 'Ngacmim',
+  fake_job_posting: 'Njoftim pune i rremë',
+  unprofessional_behavior: 'Sjellje joprofesionale',
+  other: 'Tjetër',
+};
+
+const REPORT_ACTION_LABELS_SQ = {
+  no_action: 'Asnjë veprim',
+  warning: 'Paralajmërim',
+  temporary_suspension: 'Pezullim i përkohshëm',
+  permanent_suspension: 'Pezullim i përhershëm',
+  account_termination: 'Mbyllje llogarie',
+};
+
 const router = express.Router();
 
 // Rate limiting for report submissions - stricter than general API
@@ -220,7 +251,7 @@ router.post('/',
         targetUser: reportedUserId,
         actionDetails: {
           actionData: {
-            reason: `Report submitted for ${category}`,
+            reason: `Raport i dërguar: ${REPORT_CATEGORY_LABELS_SQ[category] || category}`,
             notes: description ? description.substring(0, 100) + (description.length > 100 ? '...' : '') : ''
           }
         },
@@ -235,8 +266,8 @@ router.post('/',
 
       // Populate report for response
       await report.populate([
-        { path: 'reportedUser', select: 'firstName lastName email userType' },
-        { path: 'reportingUser', select: 'firstName lastName email userType' }
+        { path: 'reportedUser', select: REPORT_USER_FIELDS },
+        { path: 'reportingUser', select: REPORT_USER_FIELDS }
       ]);
 
       notifyDiscord({
@@ -297,7 +328,7 @@ router.get('/',
       // Returning email here would let users harvest auth emails by submitting
       // reports, then credential-stuff against /login.
       const reports = await Report.find({ reportingUser: userId })
-        .populate('reportedUser', 'firstName lastName userType')
+        .populate('reportedUser', `${USER_NAME_FIELDS} userType`)
         .select('category description status priority createdAt updatedAt')
         .sort({ createdAt: -1 })
         .limit(limit)
@@ -383,9 +414,10 @@ router.get('/admin',
 
       // Execute query with pagination
       const reports = await Report.find(filter)
-        .populate('reportedUser', 'firstName lastName email userType profile.profilePicture accountStatus')
-        .populate('reportingUser', 'firstName lastName email userType')
-        .populate('assignedAdmin', 'firstName lastName email')
+        .populate('reportedUser', `${REPORT_USER_FIELDS} profile.profilePicture`)
+        .populate('reportingUser', REPORT_USER_FIELDS)
+        .populate('reportedJob', REPORTED_JOB_FIELDS)
+        .populate('assignedAdmin', ADMIN_USER_FIELDS)
         .sort(sortObj)
         .limit(sanitizedLimit)
         .skip((currentPage - 1) * sanitizedLimit);
@@ -478,8 +510,9 @@ router.get('/admin/stats',
           $project: {
             userId: '$_id',
             count: 1,
-            'user.firstName': 1,
-            'user.lastName': 1,
+            'user.profile.firstName': 1,
+            'user.profile.lastName': 1,
+            'user.profile.employerProfile.companyName': 1,
             'user.email': 1,
             'user.userType': 1
           }
@@ -551,10 +584,11 @@ router.get('/admin/:id',
       const reportId = req.params.id;
 
       const report = await Report.findById(reportId)
-        .populate('reportedUser', 'firstName lastName email userType profile accountStatus suspensionDetails')
-        .populate('reportingUser', 'firstName lastName email userType profile')
-        .populate('assignedAdmin', 'firstName lastName email')
-        .populate('resolution.resolvedBy', 'firstName lastName email');
+        .populate('reportedUser', 'email userType profile status suspensionDetails')
+        .populate('reportingUser', 'email userType profile status')
+        .populate('reportedJob', REPORTED_JOB_FIELDS)
+        .populate('assignedAdmin', ADMIN_USER_FIELDS)
+        .populate('resolution.resolvedBy', ADMIN_USER_FIELDS);
 
       if (!report) {
         return res.status(404).json({
@@ -574,7 +608,7 @@ router.get('/admin/:id',
           reportedUser: report.reportedUser._id,
           _id: { $ne: reportId }
         })
-          .populate('reportingUser', 'firstName lastName email')
+          .populate('reportingUser', ADMIN_USER_FIELDS)
           .select('category status priority createdAt')
           .sort({ createdAt: -1 })
           .limit(5);
@@ -611,7 +645,8 @@ router.put('/admin/:id',
   [
     body('status').optional().isIn(['pending', 'under_review', 'resolved', 'dismissed']),
     body('priority').optional().isIn(['low', 'medium', 'high', 'critical']),
-    body('assignedAdmin').optional().isMongoId(),
+    // O-76: '' / null = unassign (the handler stores `assignedAdmin || null`).
+    body('assignedAdmin').optional({ values: 'falsy' }).isMongoId(),
     body('adminNotes').optional().isLength({ max: 1000 })
   ],
   handleValidationErrors,
@@ -667,7 +702,12 @@ router.put('/admin/:id',
             assignedAdmin: report.assignedAdmin
           },
           actionData: {
-            notes: adminNotes || `Updated ${actionType.replace('_', ' ')}`
+            notes: adminNotes || ({
+              status_changed: 'Statusi u ndryshua',
+              priority_changed: 'Prioriteti u ndryshua',
+              report_assigned: 'Raporti u caktua',
+              note_added: 'U shtua shënim',
+            }[actionType])
           }
         }
       });
@@ -676,9 +716,10 @@ router.put('/admin/:id',
 
       // Populate updated report
       await report.populate([
-        { path: 'reportedUser', select: 'firstName lastName email userType' },
-        { path: 'reportingUser', select: 'firstName lastName email userType' },
-        { path: 'assignedAdmin', select: 'firstName lastName email' }
+        { path: 'reportedUser', select: REPORT_USER_FIELDS },
+        { path: 'reportingUser', select: REPORT_USER_FIELDS },
+        { path: 'reportedJob', select: REPORTED_JOB_FIELDS },
+        { path: 'assignedAdmin', select: ADMIN_USER_FIELDS }
       ]);
 
       res.json({
@@ -730,8 +771,8 @@ router.post('/admin/:id/action',
       const adminId = req.user.id;
 
       const report = await Report.findById(reportId)
-        .populate('reportedUser', 'firstName lastName email userType accountStatus')
-        .populate('reportingUser', 'firstName lastName email userType');
+        .populate('reportedUser', REPORT_USER_FIELDS)
+        .populate('reportingUser', REPORT_USER_FIELDS);
 
       if (!report) {
         return res.status(404).json({
@@ -804,11 +845,11 @@ router.post('/admin/:id/action',
 
       res.json({
         success: true,
-        message: `Veprimi "${action}" u mor me sukses`,
+        message: `Veprimi "${REPORT_ACTION_LABELS_SQ[action] || action}" u krye me sukses`,
         data: {
           report: await report.populate([
-            { path: 'assignedAdmin', select: 'firstName lastName email' },
-            { path: 'resolution.resolvedBy', select: 'firstName lastName email' }
+            { path: 'assignedAdmin', select: ADMIN_USER_FIELDS },
+            { path: 'resolution.resolvedBy', select: ADMIN_USER_FIELDS }
           ]),
           action: reportAction
         }
@@ -847,8 +888,8 @@ router.post('/admin/:id/reopen',
 
       // Find the report
       const report = await Report.findById(id)
-        .populate('reportedUser', 'firstName lastName email userType')
-        .populate('reportingUser', 'firstName lastName email userType');
+        .populate('reportedUser', REPORT_USER_FIELDS)
+        .populate('reportingUser', REPORT_USER_FIELDS);
 
       if (!report) {
         return res.status(404).json({

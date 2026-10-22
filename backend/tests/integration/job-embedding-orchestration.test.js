@@ -14,6 +14,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
+import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
 import jobEmbeddingService from '../../src/services/jobEmbeddingService.js';
 import Job from '../../src/models/Job.js';
@@ -46,11 +47,11 @@ describe('jobEmbeddingService.generateEmbedding', () => {
     const job = await createJob(emp);
 
     const vector = await jobEmbeddingService.generateEmbedding(job._id);
-    expect(vector).toHaveLength(1536);
+    expect(vector).toHaveLength(EMBEDDING_DIMS);
 
     const refetched = await Job.findById(job._id).select('+embedding.vector');
     expect(refetched.embedding.status).toBe('completed');
-    expect(refetched.embedding.vector).toHaveLength(1536);
+    expect(refetched.embedding.vector).toHaveLength(EMBEDDING_DIMS);
     expect(refetched.embedding.generatedAt).toBeInstanceOf(Date);
     expect(refetched.embedding.error).toBeNull();
   });
@@ -63,7 +64,7 @@ describe('jobEmbeddingService.generateEmbedding', () => {
 
   it('rejects all-zeros vector (sets status=failed + throws)', async () => {
     jobEmbeddingService._setClientForTesting(makeOpenAIStub({
-      embedding: Array(1536).fill(0),
+      embedding: Array(EMBEDDING_DIMS).fill(0),
     }));
 
     const { user: emp } = await createVerifiedEmployer();
@@ -79,7 +80,7 @@ describe('jobEmbeddingService.generateEmbedding', () => {
 
   it('rejects NaN/Infinity in vector', async () => {
     jobEmbeddingService._setClientForTesting(makeOpenAIStub({
-      embedding: [...Array(1535).fill(0.1), NaN],
+      embedding: [...Array(EMBEDDING_DIMS - 1).fill(0.1), NaN],
     }));
 
     const { user: emp } = await createVerifiedEmployer();
@@ -92,7 +93,7 @@ describe('jobEmbeddingService.generateEmbedding', () => {
 
   it('rejects vector with wrong dimension count', async () => {
     jobEmbeddingService._setClientForTesting(makeOpenAIStub({
-      embedding: [0.1, 0.2, 0.3], // only 3 dims, expected 1536
+      embedding: [0.1, 0.2, 0.3], // only 3 dims, expected EMBEDDING_DIMS
     }));
 
     const { user: emp } = await createVerifiedEmployer();
@@ -100,7 +101,7 @@ describe('jobEmbeddingService.generateEmbedding', () => {
 
     await expect(
       jobEmbeddingService.generateEmbedding(job._id)
-    ).rejects.toThrow(/1536 dimensions/i);
+    ).rejects.toThrow(new RegExp(`${EMBEDDING_DIMS} dimensions`, 'i'));
   });
 
   it('throws "text too short" when prepareTextForEmbedding yields <10 chars', async () => {

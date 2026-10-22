@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
+import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
 import request from 'supertest';
 import app from '../../server.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
@@ -43,7 +44,7 @@ describe('admin.js — POST /backfill-user-embeddings + /backfill-job-embeddings
         {
           $set: {
             'profile.jobSeekerProfile.embedding.status': 'completed',
-            'profile.jobSeekerProfile.embedding.vector': new Array(1536).fill(0.01),
+            'profile.jobSeekerProfile.embedding.vector': new Array(EMBEDDING_DIMS).fill(0.01),
             'profile.jobSeekerProfile.embedding.generatedAt': new Date(),
           },
         }
@@ -115,7 +116,7 @@ describe('admin.js — POST /backfill-user-embeddings + /backfill-job-embeddings
         {
           $set: {
             'embedding.status': 'completed',
-            'embedding.vector': new Array(1536).fill(0.01),
+            'embedding.vector': new Array(EMBEDDING_DIMS).fill(0.01),
           },
         }
       );

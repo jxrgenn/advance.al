@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { normalizeAlbanianPhone } from '../lib/phonePolicy.js';
 import { emailFormatValidator } from '../lib/emailFormat.js';
+import { EXPERIENCE_LEVELS } from '../lib/experienceLevels.js';
 
 const { Schema } = mongoose;
 
@@ -16,9 +17,10 @@ const jobSeekerProfileSchema = new Schema({
     type: String,
     maxlength: 500
   },
+  // 'none' = "Nuk kam përvojë" (lib/experienceLevels.js, O-76).
   experience: {
     type: String,
-    enum: ['0-1 vjet', '1-2 vjet', '2-5 vjet', '5-10 vjet', '10+ vjet']
+    enum: EXPERIENCE_LEVELS
   },
   skills: [{
     type: String,
@@ -301,14 +303,17 @@ const employerProfileSchema = new Schema({
     set: normalizeAlbanianPhone,
     match: [/^\+\d{8,}$/, 'Numri i WhatsApp duhet të ketë të paktën 8 shifra']
   },
+  // Phone / WhatsApp contact start OFF: a channel needs its number, and a new
+  // employer has none (ON-by-default blocked the first dashboard settings
+  // save with "Shto numrin e WhatsApp").
   contactPreferences: {
     enablePhoneContact: {
       type: Boolean,
-      default: true
+      default: false
     },
     enableWhatsAppContact: {
       type: Boolean,
-      default: true
+      default: false
     },
     enableEmailContact: {
       type: Boolean,
@@ -412,6 +417,14 @@ const userSchema = new Schema({
     reportId: {
       type: Schema.Types.ObjectId,
       ref: 'Report'
+    },
+    // Status the account had before the suspension/ban (129): lifting it
+    // restores this instead of forcing 'active', so a pending-verification
+    // employer goes back to the verification queue rather than ending up
+    // active-but-unverified.
+    previousStatus: {
+      type: String,
+      enum: ['active', 'pending_verification']
     }
   },
   
@@ -553,7 +566,17 @@ const userSchema = new Schema({
     jobId: { type: Schema.Types.ObjectId, ref: 'Job' },
     matchScore: Number,
     queuedAt: { type: Date, default: Date.now }
-  }]
+  }],
+
+  // Jobs already announced to this jobseeker in a job-alert digest (the most
+  // recent 200 — services/jobAlertsDigest.js). queueMatchForDigest never
+  // queues one of them again, so a retried / re-run fan-out cannot announce
+  // the same job twice (QuickUsers have the same record: notifiedJobIds).
+  alertedJobIds: {
+    type: [{ type: Schema.Types.ObjectId, ref: 'Job' }],
+    default: undefined,
+    select: false
+  }
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -589,24 +612,41 @@ userSchema.virtual('profile.fullName').get(function() {
 //
 // Triggered for both `Model.deleteOne(filter)` and `Model.deleteMany(filter)`
 // query forms via the { document: false, query: true } middleware target.
-async function cascadeUserDeletion(filter) {
+//
+// Transactions (131): the caller's session is threaded into every query.
+// accountCleanup deletes the applications/jobs inside a transaction and then
+// calls User.deleteOne({ _id }, { session }); cascade writes issued WITHOUT
+// that session hit documents the open transaction had already write-locked
+// and blocked until the server aborted the transaction (~60s per purged user
+// on Atlas). Inside a transaction an error is rethrown so the transaction
+// aborts/retries as a whole instead of committing a half-done cascade.
+//
+// Cloudinary assets (CV, profile photo, logo) are deliberately NOT deleted
+// here: a pre-hook runs before the delete is committed, so an external delete
+// could not be rolled back if the delete (or its transaction) then failed.
+// The only production hard-delete path, services/accountCleanup.js, deletes
+// the assets itself AFTER its transaction commits; other callers (one-off
+// scripts, test teardown) must do the same if they delete real accounts.
+async function cascadeUserDeletion(filter, session = null) {
+  const opts = session ? { session } : {};
   try {
     const { default: Job } = await import('./Job.js');
     const { default: Application } = await import('./Application.js');
-    const usersToDelete = await mongoose.model('User').find(filter).select('_id userType').lean();
+    const usersToDelete = await mongoose.model('User').find(filter, null, opts).select('_id userType').lean();
     if (!usersToDelete.length) return;
     const userIds = usersToDelete.map(u => u._id);
     const employerIds = usersToDelete.filter(u => u.userType === 'employer').map(u => u._id);
     // Applications they SENT (as jobseeker) — drop
-    await Application.deleteMany({ jobSeekerId: { $in: userIds } });
+    await Application.deleteMany({ jobSeekerId: { $in: userIds } }, opts);
     // For employers: also drop applications TO their jobs, then the jobs themselves
     if (employerIds.length) {
-      const jobs = await Job.find({ employerId: { $in: employerIds } }).select('_id').lean();
+      const jobs = await Job.find({ employerId: { $in: employerIds } }, null, opts).select('_id').lean();
       const jobIds = jobs.map(j => j._id);
-      if (jobIds.length) await Application.deleteMany({ jobId: { $in: jobIds } });
-      await Job.deleteMany({ employerId: { $in: employerIds } });
+      if (jobIds.length) await Application.deleteMany({ jobId: { $in: jobIds } }, opts);
+      await Job.deleteMany({ employerId: { $in: employerIds } }, opts);
     }
   } catch (err) {
+    if (session) throw err;
     // Logging only — don't block the original delete. The user is going away
     // either way; an orphan job is bad but not worse than a half-failed delete.
     // eslint-disable-next-line no-console
@@ -615,10 +655,10 @@ async function cascadeUserDeletion(filter) {
 }
 
 userSchema.pre('deleteOne', { document: false, query: true }, async function() {
-  await cascadeUserDeletion(this.getFilter());
+  await cascadeUserDeletion(this.getFilter(), this.getOptions().session || null);
 });
 userSchema.pre('deleteMany', { document: false, query: true }, async function() {
-  await cascadeUserDeletion(this.getFilter());
+  await cascadeUserDeletion(this.getFilter(), this.getOptions().session || null);
 });
 
 // Hash password before saving
@@ -700,22 +740,67 @@ userSchema.methods.toJSON = function() {
   return user;
 };
 
-// Method to check if suspension has expired and auto-lift it
-userSchema.methods.checkSuspensionStatus = function() {
-  if (this.status === 'suspended' && this.suspensionDetails.expiresAt) {
-    const now = new Date();
-    if (now > this.suspensionDetails.expiresAt) {
-      // Suspension has expired, lift it
-      this.status = 'active';
-      this.suspensionDetails = {};
-      return this.save();
+// Status to restore when a suspension/ban ends (129). A suspension of an
+// already-suspended account keeps the status recorded the first time.
+// Unknown/missing → 'active' (accounts suspended before previousStatus
+// existed, and jobseekers).
+const statusBeforeSanction = (user) => {
+  if (user.status === 'active' || user.status === 'pending_verification') return user.status;
+  const recorded = user.suspensionDetails?.previousStatus;
+  return recorded === 'pending_verification' ? 'pending_verification' : 'active';
+};
+
+// Status after lifting a suspension/ban: the recorded previous status, and in
+// any case pending_verification for an employer that was never verified (so
+// it reappears in the admin verification queue instead of being stranded
+// active-but-unverified).
+const statusAfterLift = (user) => {
+  if (user.suspensionDetails?.previousStatus === 'pending_verification') return 'pending_verification';
+  if (user.userType === 'employer' && user.profile?.employerProfile?.verified !== true &&
+      user.profile?.employerProfile?.verificationStatus !== 'approved') {
+    return 'pending_verification';
+  }
+  return 'active';
+};
+
+// Method to check if suspension has expired and auto-lift it.
+//
+// #73: the lift is an atomic update of the status paths only — NOT
+// this.save(), which re-validates the whole document: an account carrying
+// any value that a later-added validator rejects (e.g. a legacy phone format)
+// threw ValidationError, i.e. a 500 on every authenticated request once its
+// suspension expired (and the 15-min cron failed the same way). The update
+// is compare-and-set on the expiry being lifted, so a re-suspension that
+// lands in between is never undone; the in-memory document is refreshed from
+// the database either way.
+userSchema.methods.checkSuspensionStatus = async function() {
+  const expiresAt = this.suspensionDetails?.expiresAt;
+  if (this.status !== 'suspended' || !expiresAt || new Date() <= expiresAt) return this;
+
+  const status = statusAfterLift(this);
+  const result = await this.constructor.updateOne(
+    { _id: this._id, status: 'suspended', 'suspensionDetails.expiresAt': expiresAt },
+    { $set: { status }, $unset: { suspensionDetails: 1 } }
+  );
+  if (result.modifiedCount === 1) {
+    this.status = status;
+    this.suspensionDetails = {};
+  } else {
+    const fresh = await this.constructor.findById(this._id).select('status suspensionDetails').lean();
+    if (fresh) {
+      this.status = fresh.status;
+      this.suspensionDetails = fresh.suspensionDetails || {};
     }
   }
-  return Promise.resolve(this);
+  // Mirrors the database now — nothing for a later save() to write here.
+  this.unmarkModified('status');
+  this.unmarkModified('suspensionDetails');
+  return this;
 };
 
 // Method to suspend user
 userSchema.methods.suspend = function(reason, suspendedBy, duration = null, reportId = null) {
+  const previousStatus = statusBeforeSanction(this);
   this.status = 'suspended';
   this.suspensionDetails = {
     reason,
@@ -723,27 +808,30 @@ userSchema.methods.suspend = function(reason, suspendedBy, duration = null, repo
     suspendedAt: new Date(),
     expiresAt: duration ? new Date(Date.now() + duration * 24 * 60 * 60 * 1000) : null,
     permanent: !duration,
-    reportId
+    reportId,
+    previousStatus
   };
   return this.save();
 };
 
 // Method to ban user (permanent)
 userSchema.methods.ban = function(reason, bannedBy, reportId = null) {
+  const previousStatus = statusBeforeSanction(this);
   this.status = 'banned';
   this.suspensionDetails = {
     reason,
     suspendedBy: bannedBy,
     suspendedAt: new Date(),
     permanent: true,
-    reportId
+    reportId,
+    previousStatus
   };
   return this.save();
 };
 
 // Method to lift suspension/ban
 userSchema.methods.liftSuspension = function() {
-  this.status = 'active';
+  this.status = statusAfterLift(this);
   this.suspensionDetails = {};
   return this.save();
 };
@@ -762,17 +850,39 @@ userSchema.methods.saveJob = async function(jobId) {
   return this;
 };
 
-userSchema.methods.unsaveJob = function(jobId) {
+// Atomic $pull (137): the previous read-modify-write `save()` $set the whole
+// savedJobs array loaded earlier in the request, wiping a save that landed in
+// between (a just-bookmarked job silently disappeared).
+userSchema.methods.unsaveJob = async function(jobId) {
   if (this.userType !== 'jobseeker') {
     throw new Error('Only job seekers can unsave jobs');
   }
 
-  this.savedJobs = this.savedJobs.filter(id => !id.equals(jobId));
-  return this.save();
+  const id = typeof jobId === 'string' ? new mongoose.Types.ObjectId(jobId) : jobId;
+  await this.constructor.updateOne(
+    { _id: this._id },
+    { $pull: { savedJobs: id } }
+  );
+  this.savedJobs = (this.savedJobs || []).filter(saved => !saved.equals(id));
+  return this;
 };
 
 userSchema.methods.isJobSaved = function(jobId) {
   return this.savedJobs.some(id => id.equals(jobId));
+};
+
+// Employers awaiting a verification decision — the admin approval queue
+// (GET /api/users/admin/pending-employers) AND the admin dashboard counter
+// use this one filter, so they can never disagree (129 / review #7).
+// Keyed on the approval state, not the account status.
+userSchema.statics.pendingVerificationQuery = function() {
+  return {
+    userType: 'employer',
+    status: { $in: ['pending_verification', 'active'] },
+    isDeleted: { $ne: true },
+    'profile.employerProfile.verified': { $ne: true },
+    'profile.employerProfile.verificationStatus': { $nin: ['rejected', 'approved'] }
+  };
 };
 
 // Static method to find active users (not suspended/banned)
@@ -792,11 +902,19 @@ userSchema.statics.checkExpiredSuspensions = async function() {
     'suspensionDetails.expiresAt': { $lt: now }
   });
 
+  // One account failing must not stop the others (#73).
+  let lifted = 0;
   for (const user of expiredUsers) {
-    await user.checkSuspensionStatus();
+    try {
+      await user.checkSuspensionStatus();
+      if (user.status !== 'suspended') lifted++;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(`[suspension-lift] ${user._id}: ${err.message}`);
+    }
   }
 
-  return expiredUsers.length;
+  return lifted;
 };
 
 export default mongoose.model('User', userSchema);

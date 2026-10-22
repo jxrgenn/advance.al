@@ -64,7 +64,11 @@ export async function makeEmployer(opts: {
     city: 'Tiranë',
     companyName: opts.companyName || `TestCo-${Date.now()}`,
     industry: 'Teknologji',
-    companySize: '11-50'
+    companySize: '11-50',
+    // Required by /auth/initiate-registration for employers (50-1000 chars).
+    // Missing since the rule was added → 400, no verification code, and every
+    // spec that creates an employer failed in beforeAll (W2-4b / O-79).
+    description: 'Kompani testuese për suitën E2E — punëson zhvillues, dizajnerë dhe staf mbështetës.'
   });
 
   if (opts.preApprove !== false) {

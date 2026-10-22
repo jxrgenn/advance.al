@@ -254,6 +254,20 @@ router.post('/generate', authenticate, requireJobSeeker, cvGenerateLimiter, asyn
         message: 'CV-ja doli shumë e gjatë për t\'u gjeneruar. Shkurtoni tekstin dhe provoni përsëri.'
       });
     }
+    // #60: bounded AI calls answer with a clear status instead of the socket
+    // being cut (502 at the proxy) or a generic 500.
+    if (error instanceof CVExtractionError && error.reason === 'timeout') {
+      return res.status(504).json({
+        success: false,
+        message: 'Gjenerimi i CV-së po zgjat më shumë se zakonisht. Provoni përsëri pas pak minutash.'
+      });
+    }
+    if (error instanceof CVExtractionError && (error.reason === 'unavailable' || error.reason === 'not_configured')) {
+      return res.status(503).json({
+        success: false,
+        message: 'Shërbimi i AI për CV-të nuk është i disponueshëm për momentin. Provoni përsëri pas pak minutash.'
+      });
+    }
     res.status(500).json({
       success: false,
       message: 'Gabim në gjenerimin e CV'
@@ -329,7 +343,7 @@ router.post('/use-as-profile', authenticate, requireJobSeeker, useAsProfileLimit
     });
   } catch (error) {
     logger.error('cv/use-as-profile error:', error.message);
-    if (stored) await deleteStoredResume(stored.url);
+    if (stored) await deleteStoredResume(stored.url, req.user._id);
     return res.status(500).json({ success: false, message: 'Gabim në vendosjen e CV-së në profil' });
   }
 });

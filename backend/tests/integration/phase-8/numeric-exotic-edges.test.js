@@ -171,10 +171,10 @@ describe('Phase 8 — Numeric / Type / Exotic Edges', () => {
       await request(app)
         .put('/api/users/profile')
         .set(createAuthHeaders(emp))
-        .send({ employerProfile: { description: 'Initial description' } });
+        .send({ employerProfile: { description: 'Initial description of the company, at least fifty characters' } });
 
       const before = await User.findById(emp._id);
-      expect(before.profile.employerProfile.description).toBe('Initial description');
+      expect(before.profile.employerProfile.description).toBe('Initial description of the company, at least fifty characters');
 
       // Clear it (verified employer can update description per allowedFields whitelist)
       await request(app)

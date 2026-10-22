@@ -43,7 +43,7 @@ describe('quickusers.js — unsubscribe + preferences extras', () => {
     expect(r.body.message).toMatch(/tashmë/i);
   });
 
-  it('PUT /:id/preferences rejects when token is missing (L564-568)', async () => {
+  it('PUT /:id/preferences rejects a missing token with 400', async () => {
     const qu = await QuickUser.create({
       firstName: 'NoTok', lastName: 'User',
       email: 'no-tok@example.com',
@@ -54,7 +54,8 @@ describe('quickusers.js — unsubscribe + preferences extras', () => {
     const r = await request(app)
       .put(`/api/quickusers/${qu._id}/preferences`)
       .send({ preferences: { remoteWork: true } }); // no token
-    expect(r.status).toBe(401);
+    expect(r.status).toBe(400);
+    expect((await QuickUser.findById(qu._id).lean()).preferences.remoteWork).toBe(false);
   });
 
   it('PUT /:id/preferences updates only emailFrequency when provided alone (L588-590)', async () => {

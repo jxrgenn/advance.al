@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
+import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
 import { seedLocations } from '../fixtures/locations.fixture.js';
 import { createVerifiedEmployer } from '../factories/user.factory.js';
@@ -15,7 +16,7 @@ import { createJob } from '../factories/job.factory.js';
 import userEmbeddingService from '../../src/services/userEmbeddingService.js';
 import Job from '../../src/models/Job.js';
 
-const VEC_LEN = 1536;
+const VEC_LEN = EMBEDDING_DIMS;
 function vec(seed = 1) {
   return Array.from({ length: VEC_LEN }, (_, i) => Math.sin((i + seed) * 0.01));
 }
@@ -35,7 +36,7 @@ describe('userEmbeddingService.findMatchingJobsForUser', () => {
     await closeTestDB();
   });
 
-  it('returns [] for invalid vector (length != 1536) (L403-405)', async () => {
+  it('returns [] for invalid vector (length != EMBEDDING_DIMS) (L403-405)', async () => {
     const r = await userEmbeddingService.findMatchingJobsForUser([1, 2, 3]);
     expect(r).toEqual([]);
   });
@@ -71,7 +72,7 @@ describe('userEmbeddingService.findMatchingJobsForUser', () => {
     expect(r[0].job._id.toString()).toBe(j1._id.toString());
   });
 
-  it('skips jobs with malformed vectors (length != 1536)', async () => {
+  it('skips jobs with malformed vectors (length != EMBEDDING_DIMS)', async () => {
     const { user: emp } = await createVerifiedEmployer();
     const j = await createJob(emp);
     await Job.findByIdAndUpdate(j._id, {

@@ -67,7 +67,8 @@ describe('Phase 0 — Honesty Baseline', () => {
     // The send pipeline produced an id — a Resend messageId (delivered) or an
     // outboxId (transient-failed → queued for retry). Both prove the pipeline
     // ran end to end.
-    const sendId = result.messageId || result.outboxId;
+    // (sendFullAccountWelcomeEmail reports a delivered send as `emailId`.)
+    const sendId = result.emailId || result.outboxId;
     expect(typeof sendId).toBe('string');
 
     console.log(`\n✉️  Phase 0 smoke email send id: ${sendId}${result.queued ? ' (queued to outbox)' : ' (delivered)'}\n`);

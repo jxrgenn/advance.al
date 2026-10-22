@@ -151,12 +151,15 @@ All colors MUST be HSL.
     height: auto;
   }
 
-  /* Force word breaking for long strings without spaces */
+  /* Long unbroken strings (URLs, emails) may wrap when they would overflow
+     their line — but ordinary words never break mid-word. The old global
+     `word-break: break-word` + `hyphens: auto` let flex items shrink below
+     their longest word, which produced "Dashboa/rd", "aplik/ues",
+     "full-/time" on mobile. `overflow-wrap: break-word` alone does not
+     change an element's minimum width. Use `.break-anywhere` on the few
+     elements that hold long emails/URLs inside tight flex rows. */
   p, div, span, h1, h2, h3, h4, h5, h6 {
-    word-wrap: break-word;
     overflow-wrap: break-word;
-    word-break: break-word;
-    hyphens: auto;
   }
 
   /* Consistent container spacing */
@@ -232,5 +235,13 @@ All colors MUST be HSL.
 
   html[style*="padding-right"] {
     padding-right: 0 !important;
+  }
+}
+
+@layer utilities {
+  /* For long emails / URLs inside tight flex rows: lets the string break at
+     any point AND lowers the element's minimum width (unlike break-words). */
+  .break-anywhere {
+    overflow-wrap: anywhere;
   }
 }

@@ -32,7 +32,8 @@ describe('users.js — admin/pending-employers + verify-employer', () => {
     const { user: admin } = await createAdmin();
     const realFind = User.find.bind(User);
     jest.spyOn(User, 'find').mockImplementationOnce(function (...args) {
-      if (args[0]?.userType === 'employer' && args[0]?.status === 'pending_verification') {
+      // 129: the queue query is keyed on the approval state, not on status.
+      if (args[0]?.userType === 'employer' && args[0]?.['profile.employerProfile.verified']) {
         throw new Error('find blew up');
       }
       return realFind(...args);
@@ -114,10 +115,11 @@ describe('users.js — admin/pending-employers + verify-employer', () => {
     expect(r.body.data.employer.status).toBe('pending_verification');
   });
 
-  it('PATCH /admin/verify-employer/:id returns 500 when save throws (L1292-1298)', async () => {
+  it('PATCH /admin/verify-employer/:id returns 500 when the update throws', async () => {
     const { user: admin } = await createAdmin();
     const { user: emp } = await createUnverifiedEmployer();
-    jest.spyOn(User.prototype, 'save').mockRejectedValueOnce(new Error('save failed'));
+    // Review #6: the decision is a conditional findOneAndUpdate (no save()).
+    jest.spyOn(User, 'findOneAndUpdate').mockRejectedValueOnce(new Error('update failed'));
     const r = await request(app)
       .patch(`/api/users/admin/verify-employer/${emp._id}`)
       .set(createAuthHeaders(admin))

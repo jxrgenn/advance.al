@@ -1,3 +1,7 @@
+// ⚠️ LEGACY (#98): JobQueue belongs to the standalone workers/embeddingWorker.js,
+// which is NOT deployed. No live route writes queue rows any more; the admin
+// embeddings endpoints only report old rows (flagged `legacy: true`). The real
+// background worker is services/embeddingRetryWorker.js (cron in server.js).
 import mongoose from 'mongoose';
 
 const { Schema } = mongoose;

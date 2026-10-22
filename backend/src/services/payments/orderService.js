@@ -1135,24 +1135,28 @@ export async function adminResolveRefundFlag({ admin, orderId, reason }) {
  * A job whose listing was PAID is being withdrawn by an admin (rejected /
  * deleted). The money paid for that listing must surface as a refund
  * decision instead of silently staying with us.
+ *
+ * Optional `reason` / `title` / `source` describe a withdrawal that is NOT an
+ * admin action (an employer deleting their own account closes their paid
+ * listings — W2-1); the flag itself is identical (no automatic refund).
  */
-export async function flagPaidListingWithdrawn(job, { admin, action }) {
+export async function flagPaidListingWithdrawn(job, { admin, action, reason: reasonOverride, title, source = 'admin' } = {}) {
   if (!job?._id) return null;
   // Re-read: a checkout retired a moment earlier may have just been paid and
   // stamped a NEW paymentId on the job — the caller's copy can be stale.
   const current = await Job.findById(job._id).select('paymentId').lean();
   const paymentId = current?.paymentId;
   if (!paymentId || !isValidOrderId(paymentId)) return null;
-  const reason = `job ${action} by admin ${admin?.email || admin?._id || ''} after payment`.trim();
+  const reason = reasonOverride || `job ${action} by admin ${admin?.email || admin?._id || ''} after payment`.trim();
   const order = await PaymentOrder.findOneAndUpdate(
     { orderId: paymentId, status: { $in: ['paid', 'partially_refunded'] }, 'activation.status': 'applied', needsRefund: { $ne: true }, amountCents: { $gt: 0 } },
     { $set: { needsRefund: true, needsRefundReason: reason } },
     { new: true },
   );
   if (!order) return null;
-  await logOrderEvent(order, 'activation_skipped', { source: 'admin', notes: reason });
+  await logOrderEvent(order, 'activation_skipped', { source, notes: reason });
   alertPaymentsAdmin({
-    title: '💸 Paid job withdrawn by an admin — refund decision needed',
+    title: title || '💸 Paid job withdrawn by an admin — refund decision needed',
     fields: [
       { name: 'Order', value: order.orderId },
       { name: 'Job', value: `${job.title || ''} (${job._id})` },

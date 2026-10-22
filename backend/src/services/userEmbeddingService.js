@@ -3,8 +3,11 @@ import User from '../models/User.js';
 import Job from '../models/Job.js';
 import jobEmbeddingService from './jobEmbeddingService.js';
 import { escapeRegex } from '../utils/sanitize.js';
-import { isValidEmbeddingVector } from '../utils/embeddingConfig.js';
+import { isValidEmbeddingVector, EMBEDDING_MODEL, EMBEDDING_DIMS } from '../utils/embeddingConfig.js';
+import { clearEmbeddingStale } from './embeddingStaleness.js';
 import { jobSalaryMonthlyIn } from '../lib/salary.js';
+import { notifyDiscord } from './discordNotifier.js';
+import { experienceLabel, NO_EXPERIENCE } from '../lib/experienceLevels.js';
 
 /**
  * User Embedding Service
@@ -48,67 +51,99 @@ import { jobSalaryMonthlyIn } from '../lib/salary.js';
  * ============================================================================
  */
 
-// Domain inference — maps a jobseeker profile to their most likely job
-// category. Language-agnostic: recognises both English (developer, software,
-// finance, sales) and Albanian (zhvillues, programues, financë, shitje) tokens
-// in title + skills. Used to apply a hard category-match boost on top of pure
-// cosine — without this, an AI Engineer with an old banking internship gets
-// banking jobs ranked too high because their embedding still carries that
-// content. Categories mirror the Job model enum values.
-// Patterns use a leading word boundary but no trailing one — Albanian has
-// case/gender suffixes (marketingu, financiar, dizajnere, recepsioniste,
-// shitësi, mjeku, kuzhinieri…) that strict `\b` would miss. Short standalone
-// tokens that risk false-positive substring matches still need explicit
-// boundaries — see qa/ux/ai/ml/java which are wrapped in `\b…\b` below.
+// Domain inference — maps a jobseeker profile to the job categories they most
+// likely work in. Used for the +0.25 category boost of the hybrid
+// recommendation score (computeHybridBoost), so it must target the category
+// the person actually works in.
+//
+// 76: the old table covered 11 of the 25 JOB_CATEGORIES and tested generic
+// English tokens first — cooks/waiters landed in 'Turizëm' (kitchen jobs are
+// 'Gastronomi & Kuzhinë'), shop assistants in 'Shitje' (not 'Shitës/e'),
+// electricians in 'Inxhinieri' (not 'Ndërtim'), warehouse staff in
+// 'Transport' (not 'Logjistikë'), and a bare `engineer`/`develop` made every
+// Civil Engineer, Sales Engineer and Business Developer 'Teknologji'.
+//
+// Rules of this table (tests/unit/user-category-inference.test.js):
+//   - every JOB_CATEGORIES value except 'Tjetër' is reachable;
+//   - text is matched lower-case WITHOUT diacritics (ë→e, ç→c), so patterns
+//     are ASCII and "shitëse" / "shitese" behave the same;
+//   - FIRST matching entry wins, so specific roles come before generic
+//     tokens (sales before tech, civil engineer before engineer, every domain
+//     before the catch-all 'Menaxhim');
+//   - an entry may name several categories when the same role is posted
+//     under either (a waiter: kitchen or tourism; a receptionist: tourism or
+//     customer service) — the boost applies to any of them; the first is the
+//     primary category.
+//   - patterns use a leading word boundary; no trailing one unless the token
+//     is short (Albanian suffixes: shitësi, mjeku, kuzhinieri, marketingu…).
 const CATEGORY_PATTERNS = [
-  { category: 'Teknologji', re: /(\b(?:software|develop|engineer|programm|programues|zhvillues|teknologji|backend|frontend|fullstack|full[- ]stack|devops|infrastructure|cloud|kubernetes|docker|python|javascript|typescript|react|nodejs?|node\.js)|\b(?:ai|ml|qa|java|api|sql|aws|gcp|sre|ios|web|mobile)\b)/i },
-  { category: 'Dizajn', re: /(\b(?:design|dizajn|grafik|figma|sketch|photoshop|illustrator|indesign)|\b(?:ux|ui)\b)/i },
-  { category: 'Marketing', re: /\b(marketing|seo|sem|advertis|brand|copywriter|growth|social[- ]media|content[- ]marketing|ads\b|google[- ]ads|tiktok|instagram)/i },
-  // `financ` covers finance/financial/financiar/financiare/financë; `bank` covers banking/bankar/bankare/bankë
-  { category: 'Financë', re: /\b(financ|kontabili|bank[aëi]?r?|banking|auditues?|audit\b|investim|investment|tax\b|tatim|accountant|accounting)/i },
-  { category: 'Burime Njerëzore', re: /(\b(?:human[- ]resources|recruit|burime[- ]njerëzore|rekrut|talent[- ]acquisition|people[- ]operations)|\bhr\b)/i },
-  // `shit` covers shitje/shitës/shitësi; `sales` covers sales/salesperson
-  { category: 'Shitje', re: /\b(sales|shit[ëje]|retail|merchandis|account[- ]manager|business[- ]development|b2b|b2c)/i },
-  // `mjek` covers mjek/mjeku/mjeke; `infermier` covers infermier/infermiere/infermierja; `farmacist` covers all variants
-  { category: 'Shëndetësi', re: /\b(doctor|nurse|mjek|infermier|farmacist|pharmacist|shëndet|healthcare|medical|clinic|klinik|spital|hospital)/i },
-  // `mësues` covers mësues/mësuese; `profesor` covers profesor/profesori/profesore; `lektor` covers lektor/lektore
-  { category: 'Arsim', re: /\b(teacher|professor|profesor|mësues|arsim|edukim|tutor|instructor|education|lektor)/i },
-  // `inxhinier` covers all engineering declensions; `arkitekt` covers arkitekt/arkitekte/arkitekti
-  { category: 'Inxhinieri', re: /\b(civil[- ]engineer|construction|inxhinier|autocad|architect|arkitekt|structural|ndërtim|elektricist|hidraulik)/i },
-  // `shofer` covers shofer/shoferi; `magazin` covers magazin/magazinë/magazinier
-  { category: 'Transport', re: /\b(driver|shofer|transport|logjistik|logistics|kamion|warehouse|magazin|supply[- ]chain)/i },
-  // `kuzhinier` covers kuzhinier/kuzhiniere/kuzhinieri; `kamarier` similar; `recepsionist` covers recepsionist/recepsioniste
-  { category: 'Turizëm', re: /\b(hotel|tourism|turizëm|turiz|hospitality|restaurant|chef|kuzhinier|waiter|kamarier|recepsionist)/i },
+  { categories: ['Shitje'], re: /\b(sales\b|shitje|business[- ]develop|account[- ]manager|agjent shitje|perfaqesues|tregtar|telesales|merchandis|b2b\b|b2c\b)/ },
+  { categories: ['Shitës/e'], re: /\b(shites|arketar|kasier|cashier|shop[- ]assistant|retail\b|dyqan)/ },
+  { categories: ['Teknologji'], re: /\b(software|softuer|programues|programer|programmer|zhvillues|developer|devops|frontend|front[- ]end|backend|back[- ]end|full[- ]?stack|data scien|data engineer|data analy|machine learning|ai engineer|ml engineer|cloud|kubernetes|docker|sistemist|sysadmin|system admin|network admin|cyber|it support|help ?desk|android|ios\b|python|javascript|typescript|java\b|react\b|node\.?js|php\b|sql\b|qa\b|tester|teknologji|ai\b|ml\b|llm|api\b|aws\b|gcp\b|sre\b|it\b)/ },
+  { categories: ['Dizajn'], re: /\b(design|dizajn|grafik|graphic|figma|photoshop|illustrator|indesign|ux\b|ui\b)/ },
+  { categories: ['Marketing'], re: /\b(marketing|seo\b|sem\b|social[- ]media|rrjete sociale|content|copywriter|brand|reklam|advertis|growth|google ads|tiktok|instagram)/ },
+  { categories: ['Media & Gazetari'], re: /\b(gazetar|journalist|reporter|redaktor|editor|kameraman|fotograf|photographer|videograf|montazh|media\b|televizion|radio|prezantues)/ },
+  { categories: ['Financë'], re: /\b(financ|kontabil|accountant|accounting|audit|bank|tatim|tax\b|ekonomist|llogarit|investim|investment|kredi|credit|payroll)/ },
+  { categories: ['Burime Njerëzore'], re: /\b(human[- ]resources|burime njerezore|rekrut|recruit|talent acquisition|people operations|hr\b)/ },
+  { categories: ['Drejtësi & Ligj'], re: /\b(jurist|avokat|lawyer|legal|ligj|noter|notary|juridik|paralegal|attorney)/ },
+  { categories: ['Shëndetësi'], re: /\b(mjek|doctor|infermier|nurse|farmacist|pharmac|stomatolog|dentist|fizioterap|physiotherap|laborant|spital|hospital|klinik|clinic|medical|healthcare|shendet)/ },
+  { categories: ['Arsim'], re: /\b(mesues|teacher|edukator|educator|profesor|professor|lektor|tutor|instruktor|instructor|pedagog|arsim|edukim|education)/ },
+  { categories: ['Gastronomi & Kuzhinë', 'Turizëm'], re: /\b(kamarier|waiter|waitress|banakier|bartender|barista)/ },
+  { categories: ['Gastronomi & Kuzhinë'], re: /\b(kuzhin|chef\b|cook\b|pasticier|piceri|pizza|furrtar|baker|restorant|restaurant|gastronomi)/ },
+  { categories: ['Turizëm', 'Shërbim Klienti'], re: /\b(recepsion|receptionist)/ },
+  { categories: ['Turizëm'], re: /\b(hotel|turiz|tourism|tourist|guide\b|udherrefyes|travel|agjenci udhetimi|hospitality)/ },
+  { categories: ['Bukuri & Estetikë'], re: /\b(parukier|hairdresser|barber|berber|estetist|kozmetik|cosmetolog|manikyr|manicur|pedikyr|makeup|grimier|beauty|bukuri|masazh|massage)/ },
+  { categories: ['Shërbim Klienti'], re: /\b(sherbim klienti|sherbimi i klientit|customer service|customer support|customer care|call[- ]?cent|operator(e)? (call|telefonik|klient)|kujdesi ndaj klient)/ },
+  { categories: ['Inxhinieri', 'Ndërtim'], re: /\b(civil engineer|inxhinier civil|inxhinier ndertimi|structural|strukturist)/ },
+  { categories: ['Ndërtim'], re: /\b(ndertim|construction|murator|mason\b|elektricist|electrician|hidraulik|plumber|saldator|welder|karpentier|carpenter|bojaxhi|suvatues|kantier)/ },
+  { categories: ['Inxhinieri'], re: /\b(inxhinier|engineer|arkitekt|architect|autocad|mekanik|mechanic|teknik)/ },
+  { categories: ['Logjistikë', 'Transport'], re: /\b(korrier|courier|delivery|postier|shperndares)/ },
+  { categories: ['Logjistikë'], re: /\b(magazin|warehouse|logjistik|logistic|supply chain|inventar|inventory|forklift|dispecer|dispatcher)/ },
+  { categories: ['Transport'], re: /\b(shofer|driver|transport|kamion|truck|taksi|taxi|autobus)/ },
+  { categories: ['Siguri'], re: /\b(roje|security guard|agjent sigurie|sigurim fizik|vrojtues|bodyguard|guard\b)/ },
+  { categories: ['Pastrim & Mirëmbajtje'], re: /\b(pastrues|pastrim|cleaner|cleaning|mirembajtje|maintenance|housekeep|janitor)/ },
+  { categories: ['Bujqësi'], re: /\b(bujq|fermer|farmer|agronom|agricult|blegtor|veteriner|kopshtar|gardener)/ },
+  { categories: ['Punë Krahu'], re: /\b(punetor|krahu|ngarkues|loader|hamall|labou?rer|ndihmes|manual\b)/ },
+  { categories: ['Menaxhim'], re: /\b(menaxher|manager|drejtor|director|supervisor|mbikeqyres|koordinator|coordinator|administrator|ceo\b|pergjegjes|team lead|project manag|menaxhim)/ },
 ];
 
-function inferUserCategory(user) {
-  const profile = user?.profile?.jobSeekerProfile;
-  if (!profile) return null;
+// Lower-case + strip diacritics (ë→e, ç→c) — the patterns are ASCII.
+const foldText = (s) => String(s || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 
-  // Title is by far the most reliable signal — it's what the user explicitly
-  // identifies as. Try title alone first. Skills are too noisy for primary
-  // inference (a banker with "SQL/Excel" in their skills would otherwise
-  // get classified as Teknologji because of `\bsql\b`, polluting downstream
-  // application generation and category-match boosting).
-  const title = (profile.title || '').toLowerCase().trim();
-  if (title) {
-    for (const { category, re } of CATEGORY_PATTERNS) {
-      if (re.test(title)) return category;
-    }
+function matchCategories(text) {
+  const t = foldText(text).trim();
+  if (!t) return null;
+  for (const { categories, re } of CATEGORY_PATTERNS) {
+    if (re.test(t)) return categories;
   }
+  return null;
+}
 
-  // Title gave no match — fall back to skills. Skills bleed less when title
-  // is genuinely empty (cold-start user with only a CV-parsed skills list).
+/**
+ * The categories the user most likely works in, primary first ([] = unknown).
+ * Title is by far the most reliable signal — it's what the user explicitly
+ * identifies as. Skills are too noisy for primary inference (a banker with
+ * "SQL/Excel" in their skills would otherwise become Teknologji), so they
+ * are used only when the title says nothing.
+ */
+function inferUserCategories(user) {
+  const profile = user?.profile?.jobSeekerProfile;
+  if (!profile) return [];
+
+  const fromTitle = matchCategories(profile.title);
+  if (fromTitle) return [...fromTitle];
+
   const skillsHaystack = [
     (profile.skills || []).join(' '),
     ((profile.aiGeneratedCV?.skills?.technical) || []).join(' '),
     ((profile.aiGeneratedCV?.skills?.tools) || []).join(' '),
-  ].join(' ').toLowerCase();
-  if (!skillsHaystack.trim()) return null;
-  for (const { category, re } of CATEGORY_PATTERNS) {
-    if (re.test(skillsHaystack)) return category;
-  }
-  return null;
+  ].join(' ');
+  return [...(matchCategories(skillsHaystack) || [])];
+}
+
+/** Primary inferred category, or null. */
+function inferUserCategory(user) {
+  return inferUserCategories(user)[0] || null;
 }
 
 // Map the user's `experience` enum to the same seniority bucket the Job model
@@ -117,6 +152,7 @@ function inferUserCategory(user) {
 // "<seniority> level position" phrase.
 function experienceToSeniority(experience) {
   switch (experience) {
+    case NO_EXPERIENCE: // "Nuk kam përvojë" — first job → entry level (O-76)
     case '0-1 vjet':
     case '1-2 vjet':
       return 'junior';
@@ -149,6 +185,10 @@ class UserEmbeddingService {
     // Safety valve only activates when there are enough candidates to make the
     // ratio statistically meaningful — a 1/1 or 5/8 match is not suspicious.
     this.notifySafetyValveMinPopulation = parseInt(process.env.USER_NOTIFY_SAFETY_VALVE_MIN_POPULATION || '20', 10);
+    // What counts as a DEGENERATE score distribution (the only case the valve
+    // drops a fan-out): near-zero spread, or every match scoring ~1.0.
+    this.notifySafetyValveMinStddev = parseFloat(process.env.USER_NOTIFY_SAFETY_VALVE_MIN_STDDEV || '0.002');
+    this.notifySafetyValveIdenticalScore = parseFloat(process.env.USER_NOTIFY_SAFETY_VALVE_IDENTICAL_SCORE || '0.995');
   }
 
   /**
@@ -159,9 +199,13 @@ class UserEmbeddingService {
    *      Niche job with 8 strong matches keeps all 8. Generic job with 300
    *      lukewarm matches gets cut to just the best cluster.
    *   2. Absolute ceiling: take at most ABSOLUTE matches (default 50).
-   *   3. Safety valve: if matches.length > SAFETY_VALVE_RATIO * totalCandidates,
-   *      that's almost certainly a bug (zero vector, threshold off, vector
-   *      corruption). Returns empty + logs error rather than spam everyone.
+   *   3. Safety valve: if matches.length > SAFETY_VALVE_RATIO * totalCandidates
+   *      the scores are checked for a DEGENERATE distribution (every match
+   *      scoring the same, or ~1.0 — zero/duplicated/corrupted vectors). Only
+   *      then is the fan-out dropped. A high ratio with a normal spread is a
+   *      legitimate broad job in a homogeneous, city-filtered pool (e.g.
+   *      "Shitës/e" where most subscribers picked Shitje): the ops alert
+   *      fires but the job is still announced, bounded by caps 1 + 2.
    *
    * @param {Array<{user: Object, score: number}>} matches - sorted DESC by score
    * @param {number} totalCandidates - how many users were scanned to produce matches
@@ -175,11 +219,22 @@ class UserEmbeddingService {
     // a high match ratio implies a bug rather than a small-dataset coincidence.
     if (totalCandidates >= this.notifySafetyValveMinPopulation &&
         matches.length / totalCandidates > this.notifySafetyValveRatio) {
+      const scores = matches.map(m => m.score);
+      const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+      const stddev = Math.sqrt(scores.reduce((a, b) => a + (b - mean) ** 2, 0) / scores.length);
+      const degenerate = stddev < this.notifySafetyValveMinStddev || scores[scores.length - 1] >= this.notifySafetyValveIdenticalScore;
+      const summary = `${matches.length}/${totalCandidates} matched (>${(this.notifySafetyValveRatio * 100).toFixed(0)}%), score mean ${mean.toFixed(3)} sd ${stddev.toFixed(4)} min ${scores[scores.length - 1].toFixed(3)}`;
       try {
         // eslint-disable-next-line no-console
-        console.error(`[notify-cap] safety valve tripped for ${populationLabel}: ${matches.length}/${totalCandidates} matched (>${(this.notifySafetyValveRatio * 100).toFixed(0)}%). Skipping fan-out. Likely a bug (zero vector, threshold misconfig, embedding corruption).`);
+        console.error(`[notify-cap] safety valve ${degenerate ? 'TRIPPED (degenerate scores — fan-out skipped)' : 'warning (normal score spread — fan-out continues with caps)'} for ${populationLabel}: ${summary}`);
+        notifyDiscord({
+          channel: 'alerts',
+          title: degenerate ? '🛑 Job-alert fan-out skipped (degenerate match scores)' : '⚠️ Job-alert fan-out matched an unusually large share',
+          description: `${populationLabel}: ${summary}`,
+          dedupKey: `notify-valve:${populationLabel}:${degenerate}`,
+        });
       } catch (_) { /* logging never blocks */ }
-      return [];
+      if (degenerate) return [];
     }
 
     // Relative-gap filter: keep only matches within RELATIVE_GAP of top
@@ -382,7 +437,8 @@ class UserEmbeddingService {
     // The job side embeds "<seniority> level position" (jobEmbeddingService.js),
     // so we mirror that exact phrase to give cosine an explicit seniority signal.
     if (profile.experience) {
-      parts.push('Eksperiencë: ' + profile.experience);
+      // 'none' is embedded as its label ("Nuk kam përvojë"), not the raw key.
+      parts.push('Eksperiencë: ' + experienceLabel(profile.experience));
       const sen = experienceToSeniority(profile.experience);
       if (sen) {
         parts.push('Searching for ' + sen + ' level position');
@@ -431,6 +487,8 @@ class UserEmbeddingService {
             'embedding.lastAttemptedAt': attemptStartedAt
           }
         });
+        // Nothing to embed until the data changes (which re-marks it).
+        await clearEmbeddingStale('quickuser', quickUserId, attemptStartedAt);
         return null;
       }
 
@@ -441,6 +499,11 @@ class UserEmbeddingService {
 
       // Reuse jobEmbeddingService's shared OpenAI client + rate limiter
       const vector = await jobEmbeddingService.callOpenAIWithRetry(text, `qu-${quickUserId}`);
+      // #92: never store a vector of the wrong shape as 'completed' — it
+      // would be excluded everywhere and never repaired.
+      if (!isValidEmbeddingVector(vector)) {
+        throw new Error(`Invalid embedding vector: expected ${EMBEDDING_DIMS} dimensions, got ${vector?.length}`);
+      }
 
       await QuickUser.findByIdAndUpdate(quickUserId, {
         $set: {
@@ -448,9 +511,12 @@ class UserEmbeddingService {
           'embedding.status': 'completed',
           'embedding.generatedAt': new Date(),
           'embedding.error': null,
-          'embedding.lastAttemptedAt': attemptStartedAt
+          'embedding.lastAttemptedAt': attemptStartedAt,
+          'embedding.model': EMBEDDING_MODEL,
+          'embedding.dims': vector.length
         }
-      });
+      }, { strict: false });
+      await clearEmbeddingStale('quickuser', quickUserId, attemptStartedAt);
 
       return vector;
     } catch (error) {
@@ -481,7 +547,7 @@ class UserEmbeddingService {
 
       const text = this.prepareJobSeekerText(user);
 
-      if (!text || text.length < 10) {
+      if (!text || text.length < 10 || !this.hasJobSeekerSignal(user)) {
         await User.findByIdAndUpdate(userId, {
           $set: {
             'profile.jobSeekerProfile.embedding.status': 'failed',
@@ -489,6 +555,7 @@ class UserEmbeddingService {
             'profile.jobSeekerProfile.embedding.lastAttemptedAt': attemptStartedAt
           }
         });
+        await clearEmbeddingStale('jobseeker', userId, attemptStartedAt);
         return null;
       }
 
@@ -498,6 +565,9 @@ class UserEmbeddingService {
       });
 
       const vector = await jobEmbeddingService.callOpenAIWithRetry(text, `js-${userId}`);
+      if (!isValidEmbeddingVector(vector)) {
+        throw new Error(`Invalid embedding vector: expected ${EMBEDDING_DIMS} dimensions, got ${vector?.length}`);
+      }
 
       await User.findByIdAndUpdate(userId, {
         $set: {
@@ -505,9 +575,14 @@ class UserEmbeddingService {
           'profile.jobSeekerProfile.embedding.status': 'completed',
           'profile.jobSeekerProfile.embedding.generatedAt': new Date(),
           'profile.jobSeekerProfile.embedding.error': null,
-          'profile.jobSeekerProfile.embedding.lastAttemptedAt': attemptStartedAt
+          'profile.jobSeekerProfile.embedding.lastAttemptedAt': attemptStartedAt,
+          // model/dims are not declared in the User schema (owned elsewhere);
+          // strict:false keeps them — read by embeddingRetryWorker's audit.
+          'profile.jobSeekerProfile.embedding.model': EMBEDDING_MODEL,
+          'profile.jobSeekerProfile.embedding.dims': vector.length
         }
-      });
+      }, { strict: false });
+      await clearEmbeddingStale('jobseeker', userId, attemptStartedAt);
 
       return vector;
     } catch (error) {
@@ -559,8 +634,10 @@ class UserEmbeddingService {
 
     // Stage 2 (Round P): location pre-filter. A Tirana user is not going to
     // commute to Vlore for a banking job they didn't apply for — exclude them
-    // at query time. Remote-OK users + users with no city info still pass.
-    // For a remote job, everyone is a candidate. Reduces the candidate pool
+    // at query time. Users with no city info still pass. For a remote job,
+    // everyone is a candidate (that is where a QuickUser's remoteWork
+    // preference matters — it does NOT pull an on-site job from another city
+    // into their inbox; same rule as the keyword path, findMatchesForJob). Reduces the candidate pool
     // 3-10x for typical city-bound jobs, proportionally reducing both the
     // Mongo fetch and the cosine math.
     const jobCity = job.location?.city;
@@ -576,7 +653,6 @@ class UserEmbeddingService {
     if (!jobRemote && cityRegex) {
       quickUserQuery.$or = [
         { location: cityRegex },
-        { 'preferences.remoteWork': true },
         { location: { $in: [null, ''] } },
         { location: { $exists: false } },
       ];
@@ -680,6 +756,7 @@ class UserEmbeddingService {
 
     const query = {
       status: 'active',
+      isDeleted: { $ne: true }, // a soft-deleted job can keep status 'active'
       'embedding.status': 'completed',
       expiresAt: { $gte: new Date() }
     };
@@ -695,7 +772,14 @@ class UserEmbeddingService {
       ];
     }
 
-    const matchedJobs = [];
+    // 96: the ranking key is computed for EVERY scanned job before the
+    // top-`limit` cut — callers that re-rank (the recommendations hybrid
+    // boost of up to +0.52) pass `scorer`, so a same-city same-category job
+    // at cosine rank 41+ is no longer dropped before its boost is applied.
+    // `excludeJobIds` (saved / applied jobs) are skipped up front. Only the
+    // best `limit` entries are kept in memory.
+    const { scorer, excludeJobIds } = options;
+    const top = []; // sorted DESC by finalScore, at most `limit` entries
     let processedCount = 0;
     const jobCursor = Job.find(query)
       .select('+embedding.vector')
@@ -707,10 +791,17 @@ class UserEmbeddingService {
       processedCount++;
       const vec = job.embedding?.vector;
       if (!vec || !isValidEmbeddingVector(vec)) continue;
+      if (excludeJobIds && excludeJobIds.has(String(job._id))) continue;
       try {
         const score = jobEmbeddingService.cosineSimilarity(userVector, vec);
         if (score >= minScore) {
-          matchedJobs.push({ job, score });
+          const finalScore = scorer ? scorer(job, score) : score;
+          if (top.length < limit || finalScore > top[top.length - 1].finalScore) {
+            let i = top.length;
+            while (i > 0 && top[i - 1].finalScore < finalScore) i--;
+            top.splice(i, 0, { job, score, finalScore });
+            if (top.length > limit) top.pop();
+          }
         }
       } catch (_) { /* skip malformed vectors */ }
       if (processedCount % YIELD_EVERY === 0) {
@@ -718,8 +809,7 @@ class UserEmbeddingService {
       }
     }
 
-    matchedJobs.sort((a, b) => b.score - a.score);
-    return matchedJobs.slice(0, limit);
+    return top;
   }
 
   /**
@@ -739,6 +829,36 @@ class UserEmbeddingService {
    */
   inferUserCategory(user) {
     return inferUserCategory(user);
+  }
+
+  /** All inferred categories, primary first (see CATEGORY_PATTERNS). */
+  inferUserCategories(user) {
+    return inferUserCategories(user);
+  }
+
+  /**
+   * 79: is there anything in this jobseeker profile that says what work they
+   * do? A fresh signup has only a city ("Vendndodhja: Tiranë" — 19 chars
+   * passed the length guard), and that vector was then treated as a fully
+   * personalised profile by recommendations and the welcome job-match
+   * e-mail. Without real signal no embedding is generated (status
+   * 'failed' + lastAttemptedAt → the retry worker's cooldown applies; any
+   * profile edit re-triggers it).
+   */
+  hasJobSeekerSignal(user) {
+    const p = user?.profile?.jobSeekerProfile;
+    if (!p) return false;
+    const has = (v) => typeof v === 'string' && v.trim().length > 0;
+    const anyString = (arr) => Array.isArray(arr) && arr.some(has);
+    const ai = p.aiGeneratedCV;
+    return has(p.title)
+      || has(p.bio)
+      || anyString(p.skills)
+      || anyString(ai?.skills?.technical)
+      || anyString(ai?.skills?.tools)
+      || has(ai?.professionalSummary)
+      || (Array.isArray(p.workHistory) && p.workHistory.some((w) => has(w?.position) || has(w?.company) || has(w?.description)))
+      || (Array.isArray(p.education) && p.education.some((e) => has(e?.degree) || has(e?.fieldOfStudy) || has(e?.institution) || has(e?.school)));
   }
 
   /**
@@ -776,8 +896,10 @@ class UserEmbeddingService {
 
     // 0. Category match — by far the strongest single signal per harness.
     // Inferred language-agnostically from title (English OR Albanian).
-    const userCategory = inferUserCategory(user);
-    if (userCategory && job.category === userCategory) {
+    // A role posted under either of two categories (waiter: kitchen or
+    // tourism) boosts both (76).
+    const userCategories = inferUserCategories(user);
+    if (job.category && userCategories.includes(job.category)) {
       breakdown.category = 0.25;
     }
 

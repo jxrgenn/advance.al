@@ -170,37 +170,24 @@ describe('Phase 18 — Cascade + Business-Logic Edges', () => {
     });
   });
 
-  describe('Application messaging: every type × source role', () => {
-    async function setupThread() {
+  // 48: application messaging was removed (no screen could send or read
+  // messages). Neither party can post one through the API any more.
+  describe('Application messaging route is gone (48)', () => {
+    it('POST /:id/message → 404 for employer and jobseeker; nothing stored', async () => {
       const { user: emp } = await createVerifiedEmployer({ emailVerified: true });
       const job = await createJob(emp);
       const { user: applicant } = await createJobseeker({ emailVerified: true });
       const application = await Application.create({
         jobId: job._id, jobSeekerId: applicant._id, employerId: emp._id, applicationMethod: 'one_click'
       });
-      return { emp, applicant, application };
-    }
-
-    const types = ['text', 'interview_invite', 'offer', 'rejection'];
-
-    it.each(types)('employer can send messageType=%s', async (type) => {
-      const { emp, application } = await setupThread();
-      const r = await request(app)
-        .post(`/api/applications/${application._id}/message`)
-        .set(createAuthHeaders(emp))
-        .send({ message: `t-${type}`, type });
-      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-      expect([200, 201]).toContain(r.status);
-    });
-
-    it.each(types)('jobseeker can send messageType=%s', async (type) => {
-      const { applicant, application } = await setupThread();
-      const r = await request(app)
-        .post(`/api/applications/${application._id}/message`)
-        .set(createAuthHeaders(applicant))
-        .send({ message: `t-${type}`, type });
-      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-      expect([200, 201]).toContain(r.status);
+      for (const sender of [emp, applicant]) {
+        const r = await request(app)
+          .post(`/api/applications/${application._id}/message`)
+          .set(createAuthHeaders(sender))
+          .send({ message: 'hello', type: 'text' });
+        expect(r.status).toBe(404);
+      }
+      expect((await Application.findById(application._id).lean()).messages).toEqual([]);
     });
   });
 
@@ -341,9 +328,10 @@ describe('Phase 18 — Cascade + Business-Logic Edges', () => {
   });
 
   describe('Bulk notification with audience filter', () => {
-    it('handles audience filter without 4xx (in-app only avoids real-email quota)', async () => {
+    it('handles audience filter → 201 (in-app only avoids real-email quota)', async () => {
       const { user: admin } = await createAdmin();
-      // Pre-create some jobseekers to populate audience
+      // Pre-create a jobseeker to populate the audience
+      await createJobseeker();
       const r = await request(app)
         .post('/api/bulk-notifications')
         .set(createAuthHeaders(admin))
@@ -354,9 +342,25 @@ describe('Phase 18 — Cascade + Business-Logic Edges', () => {
           targetAudience: 'jobseekers',
           deliveryChannels: { inApp: true, email: false }
         });
-      // Either 200/201 success OR 500 if Resend quota exhausted (rare in CI).
-      // Crucially: NOT a 4xx validation error, which would mean payload shape is wrong.
-      expect(r.status === 500 || (r.status >= 200 && r.status < 300)).toBe(true);
+      // In-app only: no email provider involved, so the only correct answer
+      // is 201. (The old "500 or 2xx" matcher hid a ParallelSaveError 500 from
+      // BulkNotification.markAsFailed/logError — fixed in W2-3; with an EMPTY
+      // audience the route now answers a clean 400, covered below.)
+      expect(r.status).toBe(201);
+      expect(r.body.success).toBe(true);
+    }, 30000);
+
+    it('an empty audience → 400 "Nuk u gjetën përdorues…" (was a ParallelSaveError 500)', async () => {
+      const { user: admin } = await createAdmin();
+      const r = await request(app)
+        .post('/api/bulk-notifications')
+        .set(createAuthHeaders(admin))
+        .send({
+          title: 'Empty audience', message: 'msg', type: 'announcement',
+          targetAudience: 'jobseekers', deliveryChannels: { inApp: true, email: false }
+        });
+      expect(r.status).toBe(400);
+      expect(r.body).toEqual({ success: false, message: 'Nuk u gjetën përdorues për audiencën e zgjedhur' });
     }, 30000);
   });
 });

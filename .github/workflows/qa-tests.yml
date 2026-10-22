@@ -8,10 +8,32 @@ on:
   workflow_dispatch:
 
 jobs:
+  # O-79 (2026-10): this job had not completed since 2026-05-22. Root cause:
+  # tests/setup/testDb.js pinned mongod 6.0.0, which mongodb-memory-server
+  # maps to the ubuntu2004 build on Ubuntu >= 21; that binary needs
+  # libcrypto.so.1.1 (OpenSSL 1.1), absent on ubuntu-latest (24.04). Every
+  # test file failed to start Mongo, then waited out Mongoose's 10 s buffering
+  # per query, and the job hit its 15-minute timeout ("The operation was
+  # canceled" — it was NOT cancelled by the E2E job). Fixed by running mongod
+  # 7.0.24 (ubuntu2204 / OpenSSL 3 build, cached below).
+  #
+  # The suite is sharded: ~360 files, and Jest under --experimental-vm-modules
+  # retains every test file's module graph (~65 MB per file that imports the
+  # app), so one process OOMs. Each shard runs in ONE recycled worker
+  # (--maxWorkers=1 --workerIdleMemoryLimit) — same isolation as --runInBand,
+  # bounded memory. The whole suite took ~39 min in one local process
+  # (2026-10-22), so 6 shards keep each job well inside its 30-min timeout.
+  # Locally: `npm run test:all` or `npm run test:shard -- 2/6`.
   backend:
-    name: Backend Integration + Unit Tests (Phases 1, 2, 6, 8, 9, 10, 11, 12, 15)
+    name: Backend Integration + Unit Tests (shard ${{ matrix.shard }}/6)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    env:
+      MONGOMS_VERSION: '7.0.24'
 
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +47,13 @@ jobs:
       - name: Install dependencies (npm workspaces)
         run: npm ci
 
-      - name: Run integration + unit suites
+      - name: Cache mongod binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ env.MONGOMS_VERSION }}
+
+      - name: Run integration + unit suites (shard ${{ matrix.shard }}/6)
         # SECURITY: do NOT pass real OPENAI_API_KEY / RESEND_API_KEY here.
         # This job triggers on `pull_request`, so a malicious branch from a
         # collaborator could modify the workflow to exfiltrate the secrets via
@@ -42,7 +70,10 @@ jobs:
           RESEND_API_KEY: re_ci_placeholder_not_real
         run: |
           cd backend
-          NODE_ENV=test node --experimental-vm-modules ../node_modules/jest/bin/jest.js --runInBand --testPathPattern='integration/|unit/'
+          node --experimental-vm-modules ../node_modules/jest/bin/jest.js --ci \
+            --shard=${{ matrix.shard }}/6 \
+            --maxWorkers=1 --workerIdleMemoryLimit=1536MB \
+            --testPathPattern='integration/|unit/'
 
   frontend-e2e-overnight:
     name: Frontend E2E (overnight suite, real backend)
@@ -53,7 +84,9 @@ jobs:
     # flows with real Express + mongodb-memory-server + real Chromium and
     # asserts substantive properties (no info-leak on unknown email,
     # token verification on happy path, suspended/banned semantics, etc.).
-    timeout-minutes: 30
+    # A full local run with this job's env took 28.6 min (2026-10-22) — 30
+    # left no headroom.
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -70,6 +103,12 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Cache mongod binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-7.0.24
+
       - name: Run overnight suite (chromium-desktop only)
         # Same security note as backend job: no real OPENAI/RESEND keys here
         # because PR triggers can be modified by collaborators.
@@ -81,6 +120,10 @@ jobs:
           JWT_REFRESH_SECRET: ci-jwt-refresh-32-characters-minimum-12345
           OPENAI_API_KEY: sk-ci-placeholder-not-real
           RESEND_API_KEY: re_ci_placeholder_not_real
+          # O-79: same libcrypto.so.1.1 failure as the backend job — the
+          # launcher pinned mongod 6.0.0 and never became ready.
+          MONGOMS_VERSION: '7.0.24'
+          E2E_LAUNCHER_TIMEOUT_MS: '180000'
         run: |
           cd frontend
           npx playwright test -c playwright.overnight.config.ts --reporter=list
@@ -93,6 +136,7 @@ jobs:
           path: |
             frontend/playwright-overnight-report/
             frontend/test-results/overnight/
+            /tmp/real-e2e-launcher.log
           retention-days: 7
 
   ai-embeddings:
@@ -122,7 +166,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           cd backend
-          NODE_ENV=test node --experimental-vm-modules ../node_modules/jest/bin/jest.js --runInBand --testPathPattern='phase-13/'
+          NODE_ENV=test MONGOMS_VERSION=7.0.24 node --experimental-vm-modules ../node_modules/jest/bin/jest.js --runInBand --testPathPattern='phase-13/'
 
   smoke:
     name: Phase 0 Smoke (Resend live send — manual trigger)

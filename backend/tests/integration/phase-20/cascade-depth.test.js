@@ -203,8 +203,10 @@ describe('Phase 20D — Cascade Depth Verification', () => {
     });
   });
 
-  describe('POST /api/applications/:id/message — message cascade', () => {
-    it('sending a message creates the message + notification to recipient', async () => {
+  // Application messaging was removed (48); the cascade an employer action
+  // triggers on an application is the status notification.
+  describe('PATCH /api/applications/:id/status — notification cascade', () => {
+    it('shortlisting persists the status + one notification to the candidate', async () => {
       const { user: emp } = await createVerifiedEmployer({ emailVerified: true });
       const job = await createJob(emp);
       const { user: js } = await createJobseeker({ emailVerified: true });
@@ -213,26 +215,20 @@ describe('Phase 20D — Cascade Depth Verification', () => {
         .set(createAuthHeaders(js))
         .send({ jobId: job._id, applicationMethod: 'one_click' })
         .expect(201);
-      const appId = applyRes.body.data?.application?._id || applyRes.body.application?._id;
+      const appId = applyRes.body.data.application._id;
 
       await Notification.deleteMany({ userId: js._id });
 
-      const res = await request(app).post(`/api/applications/${appId}/message`)
+      const res = await request(app).patch(`/api/applications/${appId}/status`)
         .set(createAuthHeaders(emp))
-        .send({ message: 'Hello applicant', type: 'text' });
+        .send({ status: 'shortlisted' });
+      expect(res.status).toBe(200);
 
-      // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-      expect([200, 201]).toContain(res.status);
-
-      // 1. Message persisted on the Application
       const after = await Application.findById(appId);
-      const messageCount = after.messages?.length ?? 0;
-      expect(messageCount).toBeGreaterThan(0);
+      expect(after.status).toBe('shortlisted');
 
-      // 2. Notification to recipient (jobseeker)
-      await new Promise(r => setTimeout(r, 100));
-      const jsNotifs = await Notification.find({ userId: js._id });
-      expect(jsNotifs.length).toBeGreaterThan(0);
+      const jsNotifs = await Notification.find({ userId: js._id }).lean();
+      expect(jsNotifs.map((n) => n.title)).toEqual(['U shtuat në listën e shkurtër!']);
     });
   });
 

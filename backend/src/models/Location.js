@@ -69,12 +69,28 @@ locationSchema.statics.getActiveLocations = function() {
     .lean();
 };
 
-// Static method to get popular locations (by job count)
-locationSchema.statics.getPopularLocations = function(limit = 10) {
-  return this.find({ isActive: true })
-    .sort({ jobCount: -1, city: 1 })
-    .limit(limit)
-    .lean();
+// Static method to get popular locations (by job count).
+// #117: ordered by the LIVE number of open jobs per city, computed with one
+// aggregate (Job.liveJobCountsByCity) and memoized for a minute in-process
+// (the route adds a 10-minute Redis cache when Redis is configured) — not by
+// the stored jobCount counter, which bulk updates used to leave inflated.
+// The returned `jobCount` is the live number.
+// No memo under the test runner: tests create jobs and read immediately.
+const POPULAR_MEMO_MS = process.env.NODE_ENV === 'test' ? 0 : 60 * 1000;
+let popularMemo = { at: 0, counts: null };
+locationSchema.statics.getPopularLocations = async function(limit = 10) {
+  const now = Date.now();
+  if (!popularMemo.counts || now - popularMemo.at >= POPULAR_MEMO_MS) {
+    popularMemo = { at: now, counts: await mongoose.model('Job').liveJobCountsByCity() };
+  }
+  const counts = popularMemo.counts;
+  const locations = await this.find({ isActive: true }).lean();
+  return locations
+    .map(loc => ({ ...loc, jobCount: counts.get(loc.city) || 0 }))
+    .sort((a, b) => (b.jobCount - a.jobCount) || a.city.localeCompare(b.city))
+    .slice(0, limit);
 };
+/** Test hook: forget the memoized live counts. */
+locationSchema.statics._resetPopularMemo = function() { popularMemo = { at: 0, counts: null }; };
 
 export default mongoose.model('Location', locationSchema);

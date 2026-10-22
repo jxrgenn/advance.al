@@ -1,14 +1,15 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { MapPin, Euro, Building, ArrowRight, CheckCircle, Bookmark, Sparkles } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { MapPin, Building, ArrowRight, CheckCircle, Bookmark, Sparkles } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Job, usersApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, memo } from "react";
 import { useRecentlyViewed } from "@/hooks/useRecentlyViewed";
 import { optimizedCloudinaryUrl } from "@/lib/imageUrl";
-import { formatSalary } from "@/lib/salary";
+import SalaryDisplay from "@/components/SalaryDisplay";
+import { jobTypeLabel } from "@/lib/labels";
 
 interface JobCardProps {
   job: Job;
@@ -22,6 +23,7 @@ interface JobCardProps {
 
 const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, initialSaved, onUnsave }: JobCardProps) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isAuthenticated } = useAuth();
   const { toast } = useToast();
   const { isJobRecentlyViewed } = useRecentlyViewed();
@@ -74,7 +76,8 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, init
         description: "Ju duhet të kyçeni për të ruajtur punë.",
         variant: "destructive"
       });
-      navigate("/login");
+      // Come back to this list (same page / filters) after logging in.
+      navigate("/login", { state: { from: location } });
       return;
     }
 
@@ -146,7 +149,7 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, init
               </h3>
               {job.jobType && (
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {job.jobType}
+                  {jobTypeLabel(job.jobType)}
                 </span>
               )}
             </div>
@@ -173,14 +176,14 @@ const JobCard = ({ job, onApply, hasApplied = false, isRecommended = false, init
 
             {/* Row 4: Salary */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 md:gap-6 text-sm sm:text-base text-muted-foreground">
-              {job.salary?.showPublic && (job.salary.min || job.salary.max) && (
-                <div className="flex items-center gap-1.5 sm:gap-2">
-                  <Euro className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 flex-shrink-0" />
-                  <span className="font-semibold text-green-700 text-sm sm:text-base">
-                    {formatSalary(job.salary, user?.preferences?.salaryViewPeriod)}
-                  </span>
-                </div>
-              )}
+              <SalaryDisplay
+                salary={job.salary}
+                period={user?.preferences?.salaryViewPeriod}
+                className="flex items-center gap-1.5 sm:gap-2"
+                iconClassName="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0"
+                amountClassName="font-semibold text-green-700 text-sm sm:text-base"
+                negotiableClassName="text-sm sm:text-base text-muted-foreground"
+              />
             </div>
           </div>
 

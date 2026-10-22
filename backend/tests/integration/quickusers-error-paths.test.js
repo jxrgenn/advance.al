@@ -148,13 +148,13 @@ describe('quickusers.js — outer catch + validation paths', () => {
     expect(r.body.message).toMatch(/të dhënave të përdoruesit/);
   });
 
-  it('PUT /:id/preferences returns 401 when token missing (L564-569)', async () => {
+  it('PUT /:id/preferences returns 400 when token missing (not 401 — that would log a signed-in visitor out)', async () => {
     const id = new mongoose.Types.ObjectId().toString();
     const r = await request(app)
       .put(`/api/quickusers/${id}/preferences`)
       .send({ preferences: { emailFrequency: 'daily' } });
-    expect(r.status).toBe(401);
-    expect(r.body.message).toMatch(/Token i verifikimit/);
+    expect(r.status).toBe(400);
+    expect(r.body).toEqual({ success: false, message: 'Token i verifikimit është i detyrueshëm' });
   });
 
   it('PUT /:id/preferences returns 400 when preferences missing (L571-576)', async () => {

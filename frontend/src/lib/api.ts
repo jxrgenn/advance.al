@@ -46,6 +46,13 @@ export interface User {
         degree: string;
         school: string;
         year: number;
+        institution?: string;
+        fieldOfStudy?: string;
+        location?: string;
+        description?: string;
+        startDate?: string;
+        endDate?: string;
+        isCurrentStudy?: boolean;
       }>;
       workHistory?: Array<{
         _id?: string;
@@ -54,6 +61,8 @@ export interface User {
         startDate: string;
         endDate: string;
         description: string;
+        location?: string;
+        isCurrentJob?: boolean;
       }>;
       desiredSalary?: {
         min: number;
@@ -62,6 +71,11 @@ export interface User {
       };
       openToRemote: boolean;
       availability: string;
+      profilePhoto?: string;
+      notifications?: {
+        jobAlerts?: boolean;
+        alertCategories?: string[];
+      };
     };
     employerProfile?: {
       companyName: string;
@@ -73,6 +87,15 @@ export interface User {
       verificationStatus: string;
       subscriptionTier: string;
       isAdministrataAccount?: boolean;
+      logo?: string | null;
+      phone?: string;
+      whatsapp?: string;
+      contactPreferences?: {
+        enablePhoneContact?: boolean;
+        enableWhatsAppContact?: boolean;
+        enableEmailContact?: boolean;
+        preferredContactMethod?: string;
+      };
     };
   };
   privacySettings: {
@@ -183,15 +206,20 @@ export interface Application {
   // the same resumeView helper (POST /users/resume/sign).
   resumeUrl?: string;
   resumeType?: 'pdf' | 'docx' | 'doc';
-  messages: Array<{
-    from: string;
-    message: string;
-    sentAt: string;
-    type: string;
-    read: boolean;
-  }>;
+  // (Application messaging was removed — 48; old documents may still carry a
+  // `messages` array, which no screen reads.)
   withdrawn?: boolean;
+  viewedAt?: string;
+  respondedAt?: string;
   timeAgo: string;
+}
+
+/** Server-side counters of an employer's active applications (50). */
+export interface EmployerApplicationCounts {
+  total: number;
+  byStatus: Record<Application['status'], number>;
+  /** jobId → number of active applications */
+  byJob: Record<string, number>;
 }
 
 export interface Location {
@@ -252,9 +280,25 @@ export interface PlatformStats {
 }
 
 // API Helper Functions
+// Shown when an error response carries no usable `message` (#61): the
+// global rate limiter used to answer `{ error, retryAfter }` and users saw a
+// bare "API Error". Some older endpoints still use `error` — read it too.
+const STATUS_FALLBACK_MESSAGES: Record<number, string> = {
+  429: 'Shumë kërkesa në një kohë të shkurtër. Ju lutemi prisni pak minuta dhe provoni përsëri.',
+  502: 'Serveri nuk u përgjigj. Ju lutemi provoni përsëri pas pak.',
+  503: 'Shërbimi nuk është i disponueshëm për momentin. Ju lutemi provoni përsëri pas pak.',
+  504: 'Kërkesa zgjati shumë. Ju lutemi provoni përsëri pas pak.',
+};
+
+function apiErrorMessage(response: any, status: number): string {
+  if (response && typeof response.message === 'string' && response.message.trim()) return response.message;
+  if (response && typeof response.error === 'string' && response.error.trim()) return response.error;
+  return STATUS_FALLBACK_MESSAGES[status] || 'Ndodhi një gabim. Ju lutemi provoni përsëri.';
+}
+
 export class ApiError extends Error {
   constructor(public response: any, public status: number) {
-    super(response.message || 'API Error');
+    super(apiErrorMessage(response, status));
     this.name = 'ApiError';
   }
 }
@@ -411,9 +455,11 @@ const apiRequest = async <T>(
       console.error('Response headers:', Object.fromEntries(response.headers.entries()));
 
       if (!response.ok) {
+        // A non-JSON error page (proxy 502/504, ...): show a readable
+        // Albanian message rather than "Server error: 502 Bad Gateway".
         throw new ApiError({
           success: false,
-          message: `Server error: ${response.status} ${response.statusText}`
+          message: STATUS_FALLBACK_MESSAGES[response.status] || `Gabim në server (${response.status}). Ju lutemi provoni përsëri.`
         }, response.status);
       }
 
@@ -915,7 +961,8 @@ export const applicationsApi = {
     sortOrder?: string;
   } = {}): Promise<ApiResponse<{
     applications: Application[];
-    pagination: any;
+    pagination: { currentPage: number; totalPages: number; totalApplications: number; hasNextPage: boolean; hasPrevPage: boolean };
+    counts: EmployerApplicationCounts;
   }>> => {
     const queryParams = new URLSearchParams();
 
@@ -935,18 +982,12 @@ export const applicationsApi = {
   },
 
   // Update application status (employers only)
+  // `notes` = the employer's optional PRIVATE note (never shown to the
+  // candidate); omitted when not given.
   updateApplicationStatus: async (id: string, status: string, notes?: string): Promise<ApiResponse<{ application: Application }>> => {
     return apiRequest<{ application: Application }>(`/applications/${id}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ status, notes }),
-    });
-  },
-
-  // Send message about application
-  sendMessage: async (id: string, message: string, type = 'text'): Promise<ApiResponse<any>> => {
-    return apiRequest(`/applications/${id}/message`, {
-      method: 'POST',
-      body: JSON.stringify({ message, type }),
+      body: JSON.stringify(notes ? { status, notes } : { status }),
     });
   },
 
@@ -984,12 +1025,16 @@ export const usersApi = {
     return apiRequest<{ stats: any }>('/users/stats');
   },
 
-  // Delete account
+  // Delete account. On success the session is over (164): the server has
+  // revoked the refresh tokens and cleared the auth cookies, so drop the
+  // stored tokens here too — the caller then ends the React session.
   deleteAccount: async (password: string): Promise<ApiResponse<any>> => {
-    return apiRequest('/users/account', {
+    const response = await apiRequest('/users/account', {
       method: 'DELETE',
       body: JSON.stringify({ password }),
     });
+    if (response.success) removeAuthToken();
+    return response;
   },
 
   // Round O-B: get a short-lived (~5min) signed Cloudinary download URL for
@@ -1138,7 +1183,7 @@ export const usersApi = {
     page?: number;
     limit?: number;
   } = {}): Promise<ApiResponse<{
-    savedJobs: Job[];
+    jobs: Job[]; // GET /users/saved-jobs returns `jobs`
     pagination: {
       currentPage: number;
       totalPages: number;
@@ -1923,42 +1968,80 @@ export const quickUsersApi = {
         ...(data.customInterests && { customInterests: data.customInterests })
       }),
     });
+  },
+
+  // Self-service notification preferences — the "Ndrysho preferencat" link in
+  // every job-alert email (/preferences?token=…). The token is the
+  // subscriber's unsubscribe token; an unknown token is a 404. It is sent in
+  // the request BODY (never the API url) so it stays out of access logs.
+  getPreferences: async (token: string): Promise<ApiResponse<QuickUserPreferences>> => {
+    return apiRequest<QuickUserPreferences>('/quickusers/preferences/view', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+  },
+
+  updatePreferences: async (
+    token: string,
+    changes: { emailNotifications?: boolean; interests?: string[]; emailFrequency?: QuickUserEmailFrequency }
+  ): Promise<ApiResponse<QuickUserPreferences>> => {
+    return apiRequest<QuickUserPreferences>('/quickusers/preferences', {
+      method: 'PUT',
+      body: JSON.stringify({ token, ...changes }),
+    });
   }
 };
 
+export type QuickUserEmailFrequency = 'immediate' | 'daily' | 'weekly';
+
+export interface QuickUserPreferences {
+  firstName: string;
+  /** Masked, e.g. "q***@gmail.com" */
+  email: string;
+  emailNotifications: boolean;
+  convertedToFullUser: boolean;
+  interests: string[];
+  /** Stored categories that no longer exist — dropped on the next save. */
+  legacyInterests: string[];
+  customInterests: string[];
+  emailFrequency: QuickUserEmailFrequency;
+  /** Matches waiting for the subscriber's next digest email. */
+  pendingDigestCount: number;
+}
+
 // Reports API Types
+// Populated users carry their names under profile.* (the API never returns a
+// top-level firstName/lastName) — render them with lib/labels displayUserName.
+export interface ReportUserRef {
+  _id: string;
+  email?: string;
+  userType?: string;
+  status?: string;
+  profile?: {
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    employerProfile?: { companyName?: string };
+  };
+}
+
 export interface Report {
   _id: string;
-  reportedUser: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    userType: string;
-  };
-  reportingUser: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    userType: string;
-  };
+  /** null for a report about a job only. */
+  reportedUser: ReportUserRef | null;
+  reportedJob?: { _id: string; title?: string; slug?: string; status?: string } | null;
+  reportingUser: ReportUserRef | null;
   category: string;
   description: string;
   evidence: string[];
   status: 'pending' | 'under_review' | 'resolved' | 'dismissed';
   priority: 'low' | 'medium' | 'high' | 'critical';
-  assignedAdmin?: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-  };
+  assignedAdmin?: ReportUserRef | null;
   resolution?: {
     action: string;
     reason: string;
     duration?: number;
-    resolvedBy: string;
+    resolvedBy?: ReportUserRef | string | null;
     resolvedAt: string;
     adminNotes?: string;
   };
@@ -1970,18 +2053,8 @@ export interface ReportAction {
   _id: string;
   report: string;
   actionType: string;
-  performedBy: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-  };
-  targetUser?: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-  };
+  performedBy: ReportUserRef | null;
+  targetUser?: ReportUserRef | null;
   actionDetails: {
     actionData: {
       reason?: string;
@@ -2275,6 +2348,8 @@ export const matchingApi = {
   checkAccess: async (jobId: string): Promise<ApiResponse<{
     jobId: string;
     hasAccess: boolean;
+    /** false in production: candidate matching cannot be bought yet. */
+    purchaseAvailable?: boolean;
   }>> => {
     return apiRequest(`/matching/jobs/${jobId}/access`);
   }

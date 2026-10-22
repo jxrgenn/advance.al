@@ -9,7 +9,70 @@ import { jobSalaryMonthlyIn } from '../lib/salary.js';
  * Implements algorithm to find best matching candidates for jobs
  */
 
+// Candidate populate for every match read: only active, non-deleted
+// jobseekers resolve; anyone else populates as null (see liveCandidatesOnly).
+// Explicit leaf paths = exactly what the dashboard's candidate card renders.
+// Selecting the parent `profile` used to ship the 1536-float embedding vector
+// and the AI-generated CV (date of birth, address, references) with every
+// candidate (86).
+const LIVE_CANDIDATE_POPULATE = {
+  path: 'candidateId',
+  match: { isDeleted: { $ne: true }, status: 'active', userType: 'jobseeker' },
+  select: [
+    'email', 'createdAt',
+    'profile.firstName', 'profile.lastName', 'profile.phone', 'profile.location',
+    'profile.jobSeekerProfile.title', 'profile.jobSeekerProfile.experience',
+    'profile.jobSeekerProfile.skills', 'profile.jobSeekerProfile.bio',
+    'profile.jobSeekerProfile.availability',
+  ].join(' '),
+};
+const liveCandidatesOnly = (matches) => matches.filter((m) => m.candidateId);
+
+// The cache always holds the top COMPUTE_LIMIT candidates of a job (the
+// route's maximum `limit`), so any request is served from one computation.
+const COMPUTE_LIMIT = 50;
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+// Lower-case, strip diacritics (ë→e, ç→c): "Kontabiliste" ≈ "kontabiliste".
+const fold = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Title words that carry no meaning on their own (Albanian particles and
+// prepositions, English fillers). Tokens shorter than 3 are dropped too —
+// "i", "e", "/", "-" used to count as matching words (84).
+const TITLE_STOPWORDS = new Set(['per', 'dhe', 'nje', 'ose', 'nga', 'tek', 'the', 'and', 'for', 'with', 'senior', 'junior']);
+const titleTokens = (s) => fold(s).split(/[^a-z0-9+#]+/)
+  .filter((t) => t.length >= 3 && !TITLE_STOPWORDS.has(t));
+// Same word, or the same stem with an Albanian/English suffix
+// (kontabilist ~ kontabiliste, marketing ~ marketingut) — stems of 5+ letters.
+const tokensMatch = (a, b) => a === b
+  || (Math.min(a.length, b.length) >= 5 && (a.startsWith(b) || b.startsWith(a)));
+
+// Experience buckets in years (candidate) and the year range each job
+// seniority stands for (83: the job has `seniority`, not `experience`).
+const CANDIDATE_YEARS = {
+  none: 0, // "Nuk kam përvojë" (O-76)
+  '0-1 vjet': 0.5,
+  '1-2 vjet': 1.5,
+  '2-5 vjet': 3.5,
+  '5-10 vjet': 7.5,
+  '10+ vjet': 12
+};
+const SENIORITY_YEARS = {
+  junior: [0, 2],
+  mid: [2, 5],
+  senior: [5, 10],
+  lead: [10, Infinity],
+};
+
+const isRemoteJob = (job) => job.location?.remote === true
+  || ['full', 'hybrid'].includes(job.location?.remoteType);
+
 class CandidateMatchingService {
+  constructor() {
+    // jobId → in-flight recomputation (single-flight per job, see findTopCandidates)
+    this._inflight = new Map();
+  }
 
   /**
    * Calculate match score between a candidate and a job
@@ -39,24 +102,23 @@ class CandidateMatchingService {
    * Check if candidate's desired position matches job title
    */
   calculateTitleMatch(candidate, job) {
-    const candidateTitle = (candidate.profile?.jobSeekerProfile?.title || '').toLowerCase();
-    const jobTitle = (job.title || '').toLowerCase();
+    const candidateTitle = fold(candidate.profile?.jobSeekerProfile?.title).trim();
+    const jobTitle = fold(job.title).trim();
 
     if (!candidateTitle || !jobTitle) return 0;
 
     // Exact match
     if (candidateTitle === jobTitle) return 20;
 
-    // Partial match (contains keywords)
-    const candidateWords = candidateTitle.split(/\s+/);
-    const jobWords = jobTitle.split(/\s+/);
+    // Partial match: meaningful words (3+ letters, no particles) on BOTH
+    // sides, compared as whole words / shared stems — not substrings.
+    const candidateWords = titleTokens(candidateTitle);
+    const jobWords = titleTokens(jobTitle);
+    if (candidateWords.length === 0 || jobWords.length === 0) return 0;
 
-    let matchedWords = 0;
-    candidateWords.forEach(word => {
-      if (word.length > 3 && jobWords.some(jw => jw.includes(word) || word.includes(jw))) {
-        matchedWords++;
-      }
-    });
+    const matchedWords = candidateWords
+      .filter((word) => jobWords.some((jw) => tokensMatch(word, jw)))
+      .length;
 
     const matchRatio = matchedWords / Math.max(candidateWords.length, jobWords.length);
     return Math.round(matchRatio * 20);
@@ -67,25 +129,27 @@ class CandidateMatchingService {
    * Check overlap between candidate skills and job requirements
    */
   calculateSkillsMatch(candidate, job) {
-    const candidateSkills = (candidate.profile?.jobSeekerProfile?.skills || [])
-      .map(skill => skill.toLowerCase());
+    const candidateSkills = [...new Set((candidate.profile?.jobSeekerProfile?.skills || [])
+      .map((skill) => fold(skill).trim())
+      .filter(Boolean))];
 
-    const jobRequirementsArr = job.requirements || [];
-    const jobRequirements = jobRequirementsArr.join(' ').toLowerCase();
+    const jobRequirementsArr = (job.requirements || []).filter((r) => typeof r === 'string');
+    // job.tags is the job's own technology / skill list (84: it was ignored).
+    const jobTags = new Set((job.tags || []).map((t) => fold(t).trim()).filter(Boolean));
+    const jobRequirements = fold(jobRequirementsArr.join(' . '));
 
-    if (candidateSkills.length === 0 || !jobRequirements) return 0;
+    if (candidateSkills.length === 0 || (!jobRequirements.trim() && jobTags.size === 0)) return 0;
 
-    // Count how many candidate skills are mentioned in job requirements
-    let matchedSkills = 0;
-    candidateSkills.forEach(skill => {
-      if (jobRequirements.includes(skill)) {
-        matchedSkills++;
-      }
-    });
+    // A skill matches a tag exactly, or appears in the requirements as a whole
+    // word/phrase — "c", "r" or "go" no longer match inside other words (84).
+    const inRequirements = (skill) => new RegExp(`(^|[^a-z0-9+#])${escapeRe(skill)}($|[^a-z0-9+#])`).test(jobRequirements);
+    const matchedSkills = candidateSkills.filter((skill) => jobTags.has(skill) || inRequirements(skill)).length;
 
-    // Use the max of candidate skills and job requirements count as denominator
-    // so candidates aren't rewarded for having fewer skills than the job requires
-    const matchRatio = matchedSkills / Math.max(candidateSkills.length, jobRequirementsArr.length);
+    // Use the max of candidate skills and the job's skill-list size as the
+    // denominator so candidates aren't rewarded for having fewer skills than
+    // the job asks for.
+    const jobSize = Math.max(jobRequirementsArr.length, jobTags.size);
+    const matchRatio = matchedSkills / Math.max(candidateSkills.length, jobSize);
     return Math.round(matchRatio * 25);
   }
 
@@ -95,35 +159,28 @@ class CandidateMatchingService {
    */
   calculateExperienceMatch(candidate, job) {
     const candidateExp = candidate.profile?.jobSeekerProfile?.experience || '';
-    const jobExp = job.experience || '';
+    // 83: jobs carry `seniority` (junior|mid|senior|lead); there is no
+    // job.experience, so this used to score 0/15 for everyone.
+    const jobRange = SENIORITY_YEARS[job.seniority];
 
-    if (!candidateExp || !jobExp) return 0;
+    if (!(candidateExp in CANDIDATE_YEARS) || !jobRange) return 0;
 
-    // Map experience strings to numeric values
-    const expMap = {
-      '0-1 vjet': 0.5,
-      '1-2 vjet': 1.5,
-      '2-5 vjet': 3.5,
-      '5-10 vjet': 7.5,
-      '10+ vjet': 12
-    };
+    const candidateYears = CANDIDATE_YEARS[candidateExp];
+    const [minYears, maxYears] = jobRange;
 
-    const candidateYears = expMap[candidateExp] || 0;
-    const jobYears = expMap[jobExp] || 0;
-
-    // Perfect match
-    if (candidateYears === jobYears) return 15;
+    // Within the seniority's range - perfect match
+    if (candidateYears >= minYears && candidateYears <= maxYears) return 15;
 
     // Candidate has more experience (good)
-    if (candidateYears > jobYears) {
-      const diff = candidateYears - jobYears;
+    if (candidateYears > maxYears) {
+      const diff = candidateYears - maxYears;
       if (diff <= 2) return 13;
       if (diff <= 5) return 10;
       return 7; // Too overqualified might be expensive
     }
 
     // Candidate has less experience (acceptable if close)
-    const diff = jobYears - candidateYears;
+    const diff = minYears - candidateYears;
     if (diff <= 1) return 12;
     if (diff <= 2) return 8;
     if (diff <= 3) return 4;
@@ -141,13 +198,13 @@ class CandidateMatchingService {
     if (!candidateCity || !jobCity) return 0;
 
     // Same city - perfect match
-    if (candidateCity.toLowerCase() === jobCity.toLowerCase()) {
+    if (fold(candidateCity).trim() === fold(jobCity).trim()) {
       return 15;
     }
 
-    // Check if job is remote or hybrid
-    const jobType = job.jobType?.toLowerCase() || '';
-    if (jobType.includes('remote') || jobType.includes('hybrid')) {
+    // Remote / hybrid job (83: read from location.remote / remoteType —
+    // jobType is full-time|part-time|internship and never said "remote")
+    if (isRemoteJob(job)) {
       return 12; // Good match even if different city
     }
 
@@ -209,8 +266,12 @@ class CandidateMatchingService {
     if (candidateSalary === 0 || !jobMonthly) {
       return 5;
     }
-    const jobSalaryMin = jobMonthly.min;
-    const jobSalaryMax = jobMonthly.max;
+    // An open-ended range ("from 800", or "up to 1500") has no bound on its
+    // open side (84: "from 800" used to behave as exactly 800, and a
+    // candidate above it scored as "expects more than offered").
+    const hasBound = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0;
+    const jobSalaryMin = hasBound(job.salary?.min) ? jobMonthly.min : 0;
+    const jobSalaryMax = hasBound(job.salary?.max) ? jobMonthly.max : Infinity;
 
     // Candidate expectation within job range - perfect
     if (candidateSalary >= jobSalaryMin && candidateSalary <= jobSalaryMax) {
@@ -253,149 +314,31 @@ class CandidateMatchingService {
   }
 
   /**
-   * Find top matching candidates for a job
-   * Uses hybrid caching approach:
-   * 1. Check if matches exist in cache (< 24 hours old)
-   * 2. If not, calculate matches and store in cache
+   * Find top matching candidates for a job.
+   *
+   * Cache (85): every computation stores the job's top COMPUTE_LIMIT
+   * candidates for 24h; while any unexpired row exists the request is served
+   * from the cache, whatever `limit` it asks for (it used to recompute on
+   * every view whenever fewer than `limit` candidates existed). One
+   * computation per job at a time (concurrent views wait for it instead of
+   * racing a deleteMany/insertMany under the unique index → E11000 → 500).
+   * Rows are upserted, so a recomputation keeps the employer's
+   * "contacted" tracking.
    */
   async findTopCandidates(jobId, limit = 15) {
     try {
-      // Check cache first
-      const cachedMatches = await CandidateMatch.find({
-        jobId,
-        expiresAt: { $gt: new Date() } // Not expired
-      })
-      .sort({ matchScore: -1 })
-      .limit(limit)
-      .populate({
-        path: 'candidateId',
-        select: 'email profile createdAt',
-        populate: {
-          path: 'profile',
-          select: 'firstName lastName phone location jobSeekerProfile'
-        }
-      });
-
-      // If we have enough cached matches, return them
-      if (cachedMatches.length >= limit) {
-        return {
-          success: true,
-          fromCache: true,
-          matches: cachedMatches
-        };
+      const key = String(jobId);
+      const cached = await CandidateMatch.exists({ jobId, expiresAt: { $gt: new Date() } });
+      if (cached) {
+        return { success: true, fromCache: true, matches: await this._readMatches(jobId, limit) };
       }
 
-      // Cache miss or insufficient matches - recalculate
-
-      // Get job details WITH embedding for hybrid scoring
-      const job = await Job.findById(jobId).select('+embedding.vector');
-      if (!job) {
-        throw new Error('Job not found');
+      if (!this._inflight.has(key)) {
+        this._inflight.set(key, this._recompute(jobId).finally(() => this._inflight.delete(key)));
       }
+      await this._inflight.get(key);
 
-      const jobVector = isValidEmbeddingVector(job.embedding?.vector) ? job.embedding.vector : null;
-
-      // Process candidates in batches via cursor to prevent OOM at scale
-      const BATCH_SIZE = 500;
-      const topMatches = []; // running top-N list, kept sorted and capped
-
-      const candidateCursor = User.find({
-        userType: 'jobseeker',
-        'profile.jobSeekerProfile': { $exists: true },
-        isDeleted: false,
-        status: 'active'
-      })
-      .select(jobVector ? '-__v +profile.jobSeekerProfile.embedding.vector' : 'email profile createdAt')
-      .batchSize(BATCH_SIZE)
-      .cursor();
-
-      for await (const candidate of candidateCursor) {
-        const { totalScore: heuristicScore, breakdown } = this.calculateMatchScore(candidate, job);
-
-        // Compute hybrid score: embedding (0-50) + heuristic (0-50)
-        let embeddingScore = null;
-        let finalScore;
-
-        const candidateVector = candidate.profile?.jobSeekerProfile?.embedding?.vector;
-        if (jobVector && isValidEmbeddingVector(candidateVector)) {
-          try {
-            embeddingScore = jobEmbeddingService.cosineSimilarity(jobVector, candidateVector);
-            // Hybrid: embedding scaled to 0-50, heuristic scaled to 0-50
-            finalScore = Math.round(((embeddingScore * 50) + (heuristicScore * 0.5)) * 10) / 10;
-          } catch (_) {
-            // Malformed vector — fallback to heuristic only
-            finalScore = heuristicScore;
-          }
-        } else {
-          // No embedding available — heuristic only (backward compatible)
-          finalScore = heuristicScore;
-        }
-
-        breakdown.embeddingScore = embeddingScore;
-
-        // Insert into topMatches if it qualifies
-        if (topMatches.length < limit) {
-          topMatches.push({
-            candidate,
-            matchScore: finalScore,
-            matchBreakdown: breakdown
-          });
-          // Re-sort when we reach the limit to establish the threshold
-          if (topMatches.length === limit) {
-            topMatches.sort((a, b) => b.matchScore - a.matchScore);
-          }
-        } else if (finalScore > topMatches[topMatches.length - 1].matchScore) {
-          // Replace the lowest-scoring entry
-          topMatches[topMatches.length - 1] = {
-            candidate,
-            matchScore: finalScore,
-            matchBreakdown: breakdown
-          };
-          topMatches.sort((a, b) => b.matchScore - a.matchScore);
-        }
-      }
-
-      // Final sort in case we never filled to limit
-      topMatches.sort((a, b) => b.matchScore - a.matchScore);
-
-      // Store in cache with 24 hour expiration
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours from now
-
-      const matchDocuments = topMatches.map(match => ({
-        jobId,
-        candidateId: match.candidate._id,
-        matchScore: match.matchScore,
-        matchBreakdown: match.matchBreakdown,
-        calculatedAt: new Date(),
-        expiresAt,
-        contacted: false
-      }));
-
-      // Delete old matches for this job
-      await CandidateMatch.deleteMany({ jobId });
-
-      // Insert new matches
-      await CandidateMatch.insertMany(matchDocuments);
-
-      // Fetch newly created matches with populated data
-      const newMatches = await CandidateMatch.find({ jobId })
-        .sort({ matchScore: -1 })
-        .limit(limit)
-        .populate({
-          path: 'candidateId',
-          select: 'email profile createdAt',
-          populate: {
-            path: 'profile',
-            select: 'firstName lastName phone location jobSeekerProfile'
-          }
-        });
-
-      return {
-        success: true,
-        fromCache: false,
-        matches: newMatches
-      };
-
+      return { success: true, fromCache: false, matches: await this._readMatches(jobId, limit) };
     } catch (error) {
       logger.error('Error finding top candidates:', error.message);
       return {
@@ -403,6 +346,119 @@ class CandidateMatchingService {
         message: error.message
       };
     }
+  }
+
+  /**
+   * Cached matches of a job, best first. Only LIVE candidates are ever
+   * returned (a cached row can outlive a deleted / suspended / banned account
+   * by up to 24h — it used to hand the employer that person's email and
+   * phone). Non-live candidates populate as null and are dropped BEFORE the
+   * limit is applied.
+   */
+  async _readMatches(jobId, limit) {
+    const rows = await CandidateMatch.find({ jobId, expiresAt: { $gt: new Date() } })
+      .sort({ matchScore: -1, _id: 1 })
+      .limit(COMPUTE_LIMIT * 4)
+      .populate(LIVE_CANDIDATE_POPULATE);
+    return liveCandidatesOnly(rows).slice(0, limit);
+  }
+
+  /** Score every active jobseeker against the job and store the top COMPUTE_LIMIT. */
+  async _recompute(jobId) {
+    // Get job details WITH embedding for hybrid scoring
+    const job = await Job.findById(jobId).select('+embedding.vector');
+    if (!job) {
+      throw new Error('Job not found');
+    }
+
+    const jobVector = isValidEmbeddingVector(job.embedding?.vector) ? job.embedding.vector : null;
+    const limit = COMPUTE_LIMIT;
+
+    // Process candidates in batches via cursor to prevent OOM at scale
+    const BATCH_SIZE = 500;
+    const topMatches = []; // running top-N list, kept sorted and capped
+
+    const candidateCursor = User.find({
+      userType: 'jobseeker',
+      'profile.jobSeekerProfile': { $exists: true },
+      isDeleted: false,
+      status: 'active'
+    })
+    .select(jobVector ? '-__v +profile.jobSeekerProfile.embedding.vector' : 'email profile createdAt')
+    .batchSize(BATCH_SIZE)
+    .cursor();
+
+    for await (const candidate of candidateCursor) {
+      const { totalScore: heuristicScore, breakdown } = this.calculateMatchScore(candidate, job);
+
+      // Compute hybrid score: embedding (0-50) + heuristic (0-50)
+      let embeddingScore = null;
+      let finalScore;
+
+      const candidateVector = candidate.profile?.jobSeekerProfile?.embedding?.vector;
+      if (jobVector && isValidEmbeddingVector(candidateVector)) {
+        try {
+          embeddingScore = jobEmbeddingService.cosineSimilarity(jobVector, candidateVector);
+          // Hybrid: embedding scaled to 0-50, heuristic scaled to 0-50
+          finalScore = Math.round(((embeddingScore * 50) + (heuristicScore * 0.5)) * 10) / 10;
+        } catch (_) {
+          // Malformed vector — fallback to heuristic only
+          finalScore = heuristicScore;
+        }
+      } else {
+        // No embedding available — heuristic only (backward compatible)
+        finalScore = heuristicScore;
+      }
+
+      breakdown.embeddingScore = embeddingScore;
+
+      // Insert into topMatches if it qualifies (only the id is kept — not
+      // the whole candidate document)
+      const entry = { candidateId: candidate._id, matchScore: finalScore, matchBreakdown: breakdown };
+      if (topMatches.length < limit) {
+        topMatches.push(entry);
+        // Re-sort when we reach the limit to establish the threshold
+        if (topMatches.length === limit) {
+          topMatches.sort((a, b) => b.matchScore - a.matchScore);
+        }
+      } else if (finalScore > topMatches[topMatches.length - 1].matchScore) {
+        // Replace the lowest-scoring entry
+        topMatches[topMatches.length - 1] = entry;
+        topMatches.sort((a, b) => b.matchScore - a.matchScore);
+      }
+    }
+
+    // Store in cache with 24 hour expiration. Upsert by (jobId, candidateId):
+    // score fields are refreshed, contacted / contactedAt / contactMethod are
+    // left as they are (set to "not contacted" only for a new row).
+    const calculatedAt = new Date();
+    const expiresAt = new Date(calculatedAt.getTime() + CACHE_TTL_MS);
+    if (topMatches.length > 0) {
+      try {
+        await CandidateMatch.bulkWrite(topMatches.map((m) => ({
+          updateOne: {
+            filter: { jobId, candidateId: m.candidateId },
+            update: {
+              $set: { matchScore: m.matchScore, matchBreakdown: m.matchBreakdown, calculatedAt, expiresAt },
+              $setOnInsert: { contacted: false },
+            },
+            upsert: true,
+          },
+        })), { ordered: false });
+      } catch (err) {
+        // A concurrent computation in another process inserted the same row
+        // first — the row exists, which is all we need.
+        if (err?.code !== 11000 && !(err?.writeErrors || []).every((w) => w.code === 11000)) throw err;
+      }
+    }
+
+    // Drop rows that fell out of the top list — except candidates the employer
+    // already contacted (their tracking stays until the row expires).
+    await CandidateMatch.deleteMany({
+      jobId,
+      candidateId: { $nin: topMatches.map((m) => m.candidateId) },
+      contacted: { $ne: true },
+    });
   }
 
   /**
@@ -495,7 +551,7 @@ class CandidateMatchingService {
    */
   async trackContact(jobId, candidateId, contactMethod) {
     try {
-      await CandidateMatch.findOneAndUpdate(
+      const updated = await CandidateMatch.findOneAndUpdate(
         { jobId, candidateId },
         {
           $set: {
@@ -503,8 +559,13 @@ class CandidateMatchingService {
             contactedAt: new Date(),
             contactMethod
           }
-        }
+        },
+        { new: true, projection: { _id: 1 } }
       );
+
+      // 85: a candidate that is not in this job's match list was reported as
+      // tracked anyway.
+      if (!updated) return { success: false, notFound: true, message: 'Kandidati nuk është në listën e përputhjeve për këtë punë' };
 
       return { success: true };
 

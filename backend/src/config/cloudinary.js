@@ -45,6 +45,52 @@ export function extractCloudinaryPublicId(url) {
 }
 
 /**
+ * Public-id conventions of the assets this backend uploads for a user — the
+ * owner's ObjectId is embedded in every name (routes/users.js uploaders and
+ * lib/resumeStorage.js newResumePublicId):
+ *   logo   → advance-al/logos/logo-<ownerId>-<ms>
+ *   photo  → advance-al/profile-photos/photo-<ownerId>-<ms>
+ *   resume → advance-al/cvs/resume-<ownerId>-<digits>
+ */
+const OWNED_ASSET_PATTERNS = {
+  logo: (ownerId) => new RegExp(`^advance-al/logos/logo-${ownerId}-\\d+$`),
+  photo: (ownerId) => new RegExp(`^advance-al/profile-photos/photo-${ownerId}-\\d+$`),
+  resume: (ownerId) => new RegExp(`^advance-al/cvs/resume-${ownerId}-\\d+$`),
+};
+
+/**
+ * O-78: ownership check that MUST pass before the server destroys an asset
+ * whose URL came from a user document. A URL stored on a profile is not
+ * proof of ownership — an employer could write another company's logo URL
+ * (or a candidate's photo URL) into their own profile and then make the
+ * server destroy it with the platform's API secret. Returns true only when
+ *   - the URL is https://res.cloudinary.com/<configured cloud>/…, and
+ *   - its public_id follows the upload convention for `kind` AND embeds
+ *     `ownerId` (so it can only be an asset uploaded for this user).
+ *
+ * @param {string} url
+ * @param {string|ObjectId} ownerId
+ * @param {'logo'|'photo'|'resume'} kind
+ */
+export function isOwnedCloudinaryAsset(url, ownerId, kind) {
+  const pattern = OWNED_ASSET_PATTERNS[kind];
+  const owner = ownerId ? String(ownerId) : '';
+  if (!pattern || !/^[a-f0-9]{24}$/i.test(owner)) return false;
+  if (!url || typeof url !== 'string') return false;
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'https:' || parsed.hostname !== 'res.cloudinary.com') return false;
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  if (!cloudName || parsed.pathname.split('/')[1] !== cloudName) return false;
+  const publicId = extractCloudinaryPublicId(url);
+  return !!publicId && pattern(owner).test(publicId);
+}
+
+/**
  * Returns true if the given URL is an `authenticated`-type Cloudinary URL.
  * Used by the migration script to skip already-migrated assets (idempotency).
  */

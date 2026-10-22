@@ -4,68 +4,99 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { useSearchParams } from "react-router-dom";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Link, useSearchParams } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Settings, Loader2, CheckCircle, XCircle } from "lucide-react";
+import { Settings, Loader2, CheckCircle, XCircle, Info } from "lucide-react";
 import { JOB_CATEGORIES } from "@/constants/jobCategories";
+import {
+  quickUsersApi,
+  ApiError,
+  type QuickUserPreferences,
+  type QuickUserEmailFrequency,
+} from "@/lib/api";
 
-// Construct API URL safely — handle both with and without /api suffix
-const rawApiUrl = import.meta.env.VITE_API_URL || "http://localhost:3001/api";
-const apiUrl = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`;
+// What each frequency really does (backend: QuickUser.claimJobAlertSlot +
+// the digest flush). Matches inside the gap are grouped, never dropped.
+const FREQUENCY_OPTIONS: Array<{ value: QuickUserEmailFrequency; title: string; description: string }> = [
+  {
+    value: "immediate",
+    title: "Menjëherë",
+    description:
+      "Një email sapo publikohet një punë që ju përshtatet. Maksimumi një email në orë — punët e tjera grupohen në emailin e radhës.",
+  },
+  {
+    value: "daily",
+    title: "Përmbledhje ditore",
+    description: "Maksimumi një email në ditë, me të gjitha punët e reja që ju përshtaten.",
+  },
+  {
+    value: "weekly",
+    title: "Përmbledhje javore",
+    description: "Maksimumi një email në javë, me të gjitha punët e reja që ju përshtaten.",
+  },
+];
 
-interface QuickUserPreferences {
-  emailNotifications: boolean;
-  interests: string[];
-}
+const errorMessage = (error: unknown, fallback: string): string => {
+  if (error instanceof ApiError) return error.response?.message || fallback;
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+};
+
+type FormState = Pick<QuickUserPreferences, "emailNotifications" | "interests" | "emailFrequency">;
+
+const sameForm = (a: FormState, b: FormState) =>
+  a.emailNotifications === b.emailNotifications &&
+  a.emailFrequency === b.emailFrequency &&
+  a.interests.length === b.interests.length &&
+  a.interests.every((i) => b.interests.includes(i));
 
 const Preferences = () => {
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token");
   const { toast } = useToast();
 
-  const [status, setStatus] = useState<"loading" | "ready" | "error">(
-    token ? "loading" : "error"
-  );
-  const [errorMessage, setErrorMessage] = useState(
-    token ? "" : "Lidhja nuk është e vlefshme. Mungon token-i."
-  );
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(token ? "loading" : "error");
+  const [errorText, setErrorText] = useState(token ? "" : "Lidhja nuk është e vlefshme. Mungon token-i.");
   const [saving, setSaving] = useState(false);
-  const [preferences, setPreferences] = useState<QuickUserPreferences>({
-    emailNotifications: true,
-    interests: [],
-  });
+  const [saveError, setSaveError] = useState("");
+  const [saved, setSaved] = useState<QuickUserPreferences | null>(null);
+  const [form, setForm] = useState<FormState>({ emailNotifications: true, interests: [], emailFrequency: "immediate" });
 
   useEffect(() => {
     if (!token) return;
-
-    fetch(`${apiUrl}/quickusers/preferences?token=${encodeURIComponent(token)}`)
-      .then(async (res) => {
-        if (res.ok) {
-          const data = await res.json();
-          setPreferences({
-            emailNotifications: data.data?.emailNotifications ?? true,
-            interests: data.data?.interests ?? [],
+    let cancelled = false;
+    quickUsersApi
+      .getPreferences(token)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success && res.data) {
+          setSaved(res.data);
+          setForm({
+            emailNotifications: res.data.emailNotifications,
+            interests: res.data.interests,
+            emailFrequency: res.data.emailFrequency,
           });
           setStatus("ready");
         } else {
-          const data = await res.json().catch(() => null);
-          setErrorMessage(
-            data?.message || "Nuk mundën të ngarkoheshin preferencat."
-          );
+          setErrorText(res.message || "Nuk mundën të ngarkoheshin preferencat.");
           setStatus("error");
         }
       })
-      .catch(() => {
-        setErrorMessage(
-          "Nuk mund të lidheshim me serverin. Provoni përsëri më vonë."
-        );
+      .catch((error) => {
+        if (cancelled) return;
+        setErrorText(errorMessage(error, "Nuk mund të lidheshim me serverin. Provoni përsëri më vonë."));
         setStatus("error");
       });
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
 
   const toggleInterest = (category: string) => {
-    setPreferences((prev) => ({
+    setSaveError("");
+    setForm((prev) => ({
       ...prev,
       interests: prev.interests.includes(category)
         ? prev.interests.filter((c) => c !== category)
@@ -73,52 +104,46 @@ const Preferences = () => {
     }));
   };
 
+  const savedForm: FormState | null = saved
+    ? { emailNotifications: saved.emailNotifications, interests: saved.interests, emailFrequency: saved.emailFrequency }
+    : null;
+  const legacyPending = (saved?.legacyInterests?.length ?? 0) > 0;
+  const dirty = savedForm ? !sameForm(form, savedForm) || (legacyPending && form.emailNotifications) : false;
+  const noInterest = form.emailNotifications && form.interests.length === 0;
+
   const handleSave = async () => {
-    if (!token) return;
-
+    if (!token || !saved) return;
+    if (noInterest) {
+      setSaveError("Zgjidhni të paktën një kategori pune, ose çaktivizoni njoftimet me email.");
+      return;
+    }
     setSaving(true);
+    setSaveError("");
     try {
-      const res = await fetch(
-        `${apiUrl}/quickusers/preferences?token=${encodeURIComponent(token)}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            emailNotifications: preferences.emailNotifications,
-            interests: preferences.interests,
-          }),
-        }
-      );
-
-      const data = await res.json().catch(() => null);
-
-      if (res.ok) {
-        toast({
-          title: "Sukses",
-          description:
-            data?.message || "Preferencat u ruajtën me sukses.",
+      // When alerts are switched off only that change is sent: the other
+      // fields keep their stored values for a later re-subscribe.
+      const changes = form.emailNotifications
+        ? { emailNotifications: true, interests: form.interests, emailFrequency: form.emailFrequency }
+        : { emailNotifications: false };
+      const res = await quickUsersApi.updatePreferences(token, changes);
+      if (res.success && res.data) {
+        setSaved(res.data);
+        setForm({
+          emailNotifications: res.data.emailNotifications,
+          interests: res.data.interests,
+          emailFrequency: res.data.emailFrequency,
         });
+        toast({ title: "Sukses", description: res.message || "Preferencat u ruajtën me sukses." });
       } else {
-        toast({
-          title: "Gabim",
-          description:
-            data?.message || "Nuk mund të ruhen preferencat. Provoni përsëri.",
-          variant: "destructive",
-        });
+        setSaveError(res.message || "Nuk mund të ruhen preferencat. Provoni përsëri.");
       }
-    } catch {
-      toast({
-        title: "Gabim",
-        description:
-          "Nuk mund të lidheshim me serverin. Provoni përsëri më vonë.",
-        variant: "destructive",
-      });
+    } catch (error) {
+      setSaveError(errorMessage(error, "Nuk mund të ruhen preferencat. Provoni përsëri."));
     } finally {
       setSaving(false);
     }
   };
 
-  // Error state — missing token or fetch failure
   if (status === "error") {
     return (
       <>
@@ -132,7 +157,10 @@ const Preferences = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col items-center gap-4 text-center">
-              <p className="text-sm text-muted-foreground">{errorMessage}</p>
+              <p className="text-sm text-muted-foreground" data-testid="preferences-error">{errorText}</p>
+              <Link to="/">
+                <Button variant="outline">Kthehu në faqen kryesore</Button>
+              </Link>
             </CardContent>
           </Card>
         </div>
@@ -140,8 +168,7 @@ const Preferences = () => {
     );
   }
 
-  // Loading state
-  if (status === "loading") {
+  if (status === "loading" || !saved) {
     return (
       <>
         <Navigation />
@@ -152,9 +179,7 @@ const Preferences = () => {
             </CardHeader>
             <CardContent className="flex flex-col items-center gap-4 text-center">
               <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-              <p className="text-muted-foreground">
-                Duke ngarkuar preferencat tuaja...
-              </p>
+              <p className="text-muted-foreground">Duke ngarkuar preferencat tuaja...</p>
             </CardContent>
           </Card>
         </div>
@@ -162,7 +187,37 @@ const Preferences = () => {
     );
   }
 
-  // Ready state — show preference controls
+  // The subscription was moved into a full account at registration: its
+  // alerts are managed from the profile, not from this page.
+  if (saved.convertedToFullUser) {
+    return (
+      <>
+        <Navigation />
+        <div className="flex min-h-[calc(100vh-200px)] items-center justify-center bg-background px-4">
+          <Card className="w-full max-w-md">
+            <CardHeader className="text-center">
+              <CardTitle className="flex items-center justify-center gap-2">
+                <Info className="h-6 w-6 text-blue-500" />
+                Preferencat e Njoftimeve
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col items-center gap-4 text-center">
+              <p className="text-sm text-muted-foreground">
+                Ky abonim ({saved.email}) u kalua në llogarinë tuaj në advance.al. Njoftimet e punës i menaxhoni nga
+                profili juaj.
+              </p>
+              <Link to="/profile">
+                <Button>Shko te profili</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </>
+    );
+  }
+
+  const disabled = !form.emailNotifications;
+
   return (
     <>
       <Navigation />
@@ -173,71 +228,103 @@ const Preferences = () => {
               <Settings className="h-6 w-6" />
               Preferencat e Njoftimeve
             </CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              Menaxhoni cilësimet e njoftimeve tuaja me email.
+            <p className="mt-1 text-sm text-muted-foreground">
+              Përshëndetje {saved.firstName}! Këtu menaxhoni njoftimet me email për{" "}
+              <span className="font-medium text-foreground">{saved.email}</span>.
             </p>
           </CardHeader>
 
           <CardContent className="space-y-6">
-            {/* Email notifications toggle */}
-            <div className="flex items-center justify-between rounded-lg border p-4">
+            {/* Email notifications on/off */}
+            <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
               <div className="space-y-0.5">
-                <Label
-                  htmlFor="email-notifications"
-                  className="text-base font-medium"
-                >
+                <Label htmlFor="email-notifications" className="text-base font-medium">
                   Njoftimet me email
                 </Label>
                 <p className="text-sm text-muted-foreground">
-                  Merrni njoftime për punë të reja që përputhen me interesat
-                  tuaja.
+                  {form.emailNotifications
+                    ? "Merrni email për punë të reja që përputhen me interesat tuaja."
+                    : "Të çaktivizuara — nuk do të merrni email për punë të reja."}
                 </p>
               </div>
               <Switch
                 id="email-notifications"
-                checked={preferences.emailNotifications}
-                onCheckedChange={(checked) =>
-                  setPreferences((prev) => ({
-                    ...prev,
-                    emailNotifications: checked,
-                  }))
-                }
+                checked={form.emailNotifications}
+                onCheckedChange={(checked) => {
+                  setSaveError("");
+                  setForm((prev) => ({ ...prev, emailNotifications: checked }));
+                }}
               />
             </div>
 
-            {/* Interests checkboxes */}
-            <div className="space-y-3">
-              <Label className="text-base font-medium">
-                Kategoritë e punës që ju interesojnë
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Zgjidhni kategoritë për të cilat dëshironi të merrni njoftime.
-              </p>
-              <div className="grid grid-cols-2 gap-3 mt-2">
+            {/* Frequency */}
+            <fieldset className={`space-y-3 ${disabled ? "opacity-50" : ""}`} disabled={disabled}>
+              <legend className="text-base font-medium">Sa shpesh të merrni email?</legend>
+              <RadioGroup
+                value={form.emailFrequency}
+                onValueChange={(value) => setForm((prev) => ({ ...prev, emailFrequency: value as QuickUserEmailFrequency }))}
+                disabled={disabled}
+                className="gap-3"
+              >
+                {FREQUENCY_OPTIONS.map((option) => (
+                  <Label
+                    key={option.value}
+                    htmlFor={`frequency-${option.value}`}
+                    className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 font-normal"
+                  >
+                    <RadioGroupItem id={`frequency-${option.value}`} value={option.value} className="mt-0.5" />
+                    <span className="space-y-1">
+                      <span className="block text-sm font-medium">{option.title}</span>
+                      <span className="block text-xs text-muted-foreground">{option.description}</span>
+                    </span>
+                  </Label>
+                ))}
+              </RadioGroup>
+              {saved.pendingDigestCount > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {saved.pendingDigestCount === 1
+                    ? "1 punë e re pret emailin tuaj të radhës."
+                    : `${saved.pendingDigestCount} punë të reja presin emailin tuaj të radhës.`}
+                </p>
+              )}
+            </fieldset>
+
+            {/* Interests */}
+            <fieldset className={`space-y-3 ${disabled ? "opacity-50" : ""}`} disabled={disabled}>
+              <legend className="text-base font-medium">Kategoritë e punës që ju interesojnë</legend>
+              <p className="text-sm text-muted-foreground">Zgjidhni të paktën një kategori.</p>
+              {legacyPending && (
+                <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                  {saved.legacyInterests.length === 1 ? "Kategoria" : "Kategoritë"} “{saved.legacyInterests.join("”, “")}”{" "}
+                  {saved.legacyInterests.length === 1 ? "nuk ekziston" : "nuk ekzistojnë"} më në advance.al dhe do të{" "}
+                  {saved.legacyInterests.length === 1 ? "hiqet" : "hiqen"} kur të ruani. Zgjidhni kategoritë e reja më
+                  poshtë.
+                </p>
+              )}
+              <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {JOB_CATEGORIES.map((category) => (
                   <div key={category} className="flex items-center space-x-2">
                     <Checkbox
                       id={`interest-${category}`}
-                      checked={preferences.interests.includes(category)}
+                      checked={form.interests.includes(category)}
                       onCheckedChange={() => toggleInterest(category)}
+                      disabled={disabled}
                     />
-                    <Label
-                      htmlFor={`interest-${category}`}
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                    >
+                    <Label htmlFor={`interest-${category}`} className="text-sm font-medium leading-none">
                       {category}
                     </Label>
                   </div>
                 ))}
               </div>
-            </div>
+            </fieldset>
 
-            {/* Save button */}
-            <Button
-              className="w-full"
-              onClick={handleSave}
-              disabled={saving}
-            >
+            {saveError && (
+              <p className="text-sm text-red-600" role="alert" data-testid="preferences-save-error">
+                {saveError}
+              </p>
+            )}
+
+            <Button className="w-full" onClick={handleSave} disabled={saving || !dirty}>
               {saving ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -246,10 +333,17 @@ const Preferences = () => {
               ) : (
                 <>
                   <CheckCircle className="mr-2 h-4 w-4" />
-                  Ruaj Preferencat
+                  {dirty ? "Ruaj Preferencat" : "Preferencat janë të ruajtura"}
                 </>
               )}
             </Button>
+
+            <p className="text-center text-xs text-muted-foreground">
+              Dëshironi të mos merrni më asnjë email?{" "}
+              <Link to={`/unsubscribe?token=${encodeURIComponent(token ?? "")}`} className="text-primary underline">
+                Çregjistrohuni plotësisht
+              </Link>
+            </p>
           </CardContent>
         </Card>
       </div>

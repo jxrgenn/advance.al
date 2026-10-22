@@ -9,13 +9,9 @@
  *   - L468-469 GET /employer/all catch
  *   - L519-520 GET /:id catch (Application.findById throws)
  *   - L613-614 PATCH /:id/status catch
- *   - L755-756 POST /:id/message outer catch
  *   - L802-803 DELETE /:id catch (withdraw throws)
  *   - L535-540 PATCH /:id/status invalid status enum
  *   - L566-571 PATCH /:id/status invalid transition
- *   - L627-632 POST /:id/message 403 when emailVerified=false
- *   - L639-644 POST /:id/message 400 empty message
- *   - L653-658 POST /:id/message 400 invalid type
  *   - L784-789 DELETE /:id 400 for hired/rejected
  */
 
@@ -157,9 +153,10 @@ describe('applications.js — outer catch + validation paths', () => {
     expect(r.body.message).toMatch(/Nuk mund të ndryshoni statusin/);
   });
 
-  it('PATCH /:id/status returns 500 when updateStatus throws (L613-614)', async () => {
+  it('PATCH /:id/status returns 500 when the status update throws', async () => {
     const { application, emp } = await seedApplication();
-    jest.spyOn(Application.prototype, 'updateStatus').mockRejectedValueOnce(new Error('updateStatus fail'));
+    // The route applies the change with the atomic Application.transitionStatus (35).
+    jest.spyOn(Application, 'transitionStatus').mockRejectedValueOnce(new Error('transitionStatus fail'));
     const r = await request(app)
       .patch(`/api/applications/${application._id}/status`)
       .set(createAuthHeaders(emp))
@@ -168,68 +165,8 @@ describe('applications.js — outer catch + validation paths', () => {
     expect(r.body.message).toMatch(/përditësimin e statusit/);
   });
 
-  it('POST /:id/message returns 403 when emailVerified=false (L627-632)', async () => {
-    const { application, js } = await seedApplication();
-    await User.updateOne({ _id: js._id }, { $set: { emailVerified: false } });
-    const r = await request(app)
-      .post(`/api/applications/${application._id}/message`)
-      .set(createAuthHeaders(js))
-      .send({ message: 'hello' });
-    expect(r.status).toBe(403);
-    expect(r.body.message).toMatch(/verifikoni emailin/);
-  });
-
-  it('POST /:id/message returns 400 for empty message (L639-644)', async () => {
-    const { application, js } = await seedApplication();
-    const r = await request(app)
-      .post(`/api/applications/${application._id}/message`)
-      .set(createAuthHeaders(js))
-      .send({ message: '' });
-    expect(r.status).toBe(400);
-    expect(r.body.message).toMatch(/Mesazhi nuk mund të jetë bosh/);
-  });
-
-  it('POST /:id/message returns 400 for too-long message (L646-650)', async () => {
-    const { application, js } = await seedApplication();
-    const r = await request(app)
-      .post(`/api/applications/${application._id}/message`)
-      .set(createAuthHeaders(js))
-      .send({ message: 'a'.repeat(5001) });
-    expect(r.status).toBe(400);
-    expect(r.body.message).toMatch(/5000 karaktere/);
-  });
-
-  it('POST /:id/message returns 400 for invalid type (L653-658)', async () => {
-    const { application, js } = await seedApplication();
-    const r = await request(app)
-      .post(`/api/applications/${application._id}/message`)
-      .set(createAuthHeaders(js))
-      .send({ message: 'hello', type: 'spam' });
-    expect(r.status).toBe(400);
-    expect(r.body.message).toMatch(/Lloji i mesazhit nuk është/);
-  });
-
-  it('POST /:id/message returns 403 when sender is not party (L673-678)', async () => {
-    const { application } = await seedApplication();
-    const { user: outsider } = await createJobseeker({ email: 'outsider@x.com' });
-    await User.updateOne({ _id: outsider._id }, { $set: { emailVerified: true } });
-    const r = await request(app)
-      .post(`/api/applications/${application._id}/message`)
-      .set(createAuthHeaders(outsider))
-      .send({ message: 'hello' });
-    expect(r.status).toBe(403);
-  });
-
-  it('POST /:id/message returns 500 when addMessage throws (L755-756)', async () => {
-    const { application, js } = await seedApplication();
-    jest.spyOn(Application.prototype, 'addMessage').mockRejectedValueOnce(new Error('addMessage fail'));
-    const r = await request(app)
-      .post(`/api/applications/${application._id}/message`)
-      .set(createAuthHeaders(js))
-      .send({ message: 'hello' });
-    expect(r.status).toBe(500);
-    expect(r.body.message).toMatch(/dërgimin e mesazhit/);
-  });
+  // 48: POST /:id/message was removed (no screen could send or read
+  // application messages). Covered in applications-message-route-removed.test.js.
 
   it('DELETE /:id returns 400 when application is hired (L784-789)', async () => {
     const { application, js } = await seedApplication();
@@ -243,7 +180,8 @@ describe('applications.js — outer catch + validation paths', () => {
 
   it('DELETE /:id returns 500 when withdraw throws (L802-803)', async () => {
     const { application, js } = await seedApplication();
-    jest.spyOn(Application.prototype, 'withdraw').mockRejectedValueOnce(new Error('withdraw fail'));
+    // The route withdraws with the atomic Application.withdrawForSeeker (35).
+    jest.spyOn(Application, 'withdrawForSeeker').mockRejectedValueOnce(new Error('withdraw fail'));
     const r = await request(app)
       .delete(`/api/applications/${application._id}`)
       .set(createAuthHeaders(js));

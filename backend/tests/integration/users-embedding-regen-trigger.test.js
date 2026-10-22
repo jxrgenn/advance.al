@@ -17,6 +17,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach, jest } from '@jest/globals';
+import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
 import request from 'supertest';
 import { Document, Packer, Paragraph, TextRun } from 'docx';
 import app from '../../server.js';
@@ -46,7 +47,7 @@ async function makeRealDocxBuffer() {
 // Flush enough of the event loop for setImmediate + one Promise microtask inside it.
 const flushImmediate = () => new Promise(resolve => setImmediate(() => setImmediate(resolve)));
 
-const FAKE_VECTOR = Array.from({ length: 1536 }, (_, i) => Math.cos(i) * 0.5);
+const FAKE_VECTOR = Array.from({ length: EMBEDDING_DIMS }, (_, i) => Math.cos(i) * 0.5);
 
 describe('users.js — embedding regen trigger (setImmediate routes)', () => {
   beforeAll(async () => {
@@ -112,7 +113,9 @@ describe('users.js — embedding regen trigger (setImmediate routes)', () => {
     });
 
     it('location.city change triggers regen', async () => {
-      const { user } = await createJobseeker();
+      // Fixed start city: the factory picks a random one, which could already
+      // be Vlorë (then nothing changes and — correctly — nothing regenerates).
+      const { user } = await createJobseeker({ city: 'Tiranë' });
       const spy = spyRegen();
 
       const r = await request(app)
@@ -123,6 +126,22 @@ describe('users.js — embedding regen trigger (setImmediate routes)', () => {
       expect(r.status).toBe(200);
       await flushImmediate();
       expect(spy).toHaveBeenCalled();
+    });
+
+    // 149: the Profile form always sends the city; re-sending the same one is
+    // not a semantic change and must not spend an OpenAI embedding call.
+    it('re-sending the unchanged city does NOT trigger regen', async () => {
+      const { user } = await createJobseeker({ city: 'Vlorë' });
+      const spy = spyRegen();
+
+      const r = await request(app)
+        .put('/api/users/profile')
+        .set(createAuthHeaders(user))
+        .send({ location: { city: 'Vlorë' } });
+
+      expect(r.status).toBe(200);
+      await flushImmediate();
+      expect(spy).not.toHaveBeenCalled();
     });
 
     it('non-semantic fields (openToRemote, availability) do NOT trigger regen', async () => {

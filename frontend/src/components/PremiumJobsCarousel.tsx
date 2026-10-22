@@ -3,11 +3,12 @@ import { useNavigate } from "react-router-dom";
 import useEmblaCarousel from 'embla-carousel-react';
 import Autoplay from 'embla-carousel-autoplay';
 import { Card, CardContent } from "@/components/ui/card";
-import { MapPin, Euro, Building, CheckCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { MapPin, Building, CheckCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { Job } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { optimizedCloudinaryUrl } from "@/lib/imageUrl";
-import { formatSalary } from "@/lib/salary";
+import SalaryDisplay from "@/components/SalaryDisplay";
+import { jobTypeLabel } from "@/lib/labels";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface PremiumJobsCarouselProps {
@@ -103,7 +104,7 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
                           {job.jobType && (
                             <div className={`transition-all duration-300 ease-out overflow-hidden ${isStuck ? 'max-h-0 opacity-0' : 'max-h-8 opacity-100'}`}>
                               <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                {job.jobType}
+                                {jobTypeLabel(job.jobType)}
                               </span>
                             </div>
                           )}
@@ -122,14 +123,14 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
                               {job.location?.city || 'Vendndodhje'}
                             </span>
                           </div>
-                          {job.salary?.showPublic && (job.salary.min || job.salary.max) && (
-                            <div className={`flex items-center gap-1.5 transition-all duration-300 ease-out overflow-hidden ${isStuck ? 'max-h-0 opacity-0' : 'max-h-8 opacity-100'}`}>
-                              <Euro className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
-                              <span className="font-semibold text-green-700 text-sm">
-                                {formatSalary(job.salary, user?.preferences?.salaryViewPeriod)}
-                              </span>
-                            </div>
-                          )}
+                          <SalaryDisplay
+                            salary={job.salary}
+                            period={user?.preferences?.salaryViewPeriod}
+                            className={`flex items-center gap-1.5 transition-all duration-300 ease-out overflow-hidden ${isStuck ? 'max-h-0 opacity-0' : 'max-h-8 opacity-100'}`}
+                            iconClassName="h-3.5 w-3.5 flex-shrink-0"
+                            amountClassName="font-semibold text-green-700 text-sm"
+                            negotiableClassName="text-sm text-muted-foreground"
+                          />
                         </div>
                         <div className={`relative flex-shrink-0 transition-all duration-300 ease-out ${isStuck ? 'w-10 h-10 md:w-11 md:h-11' : 'w-14 h-14 md:w-16 md:h-16'}`}>
                           <div className={`bg-white shadow-sm rounded-lg flex items-center justify-center transition-all duration-300 ease-out ${isStuck ? 'w-10 h-10 md:w-11 md:h-11' : 'w-14 h-14 md:w-16 md:h-16'}`}>

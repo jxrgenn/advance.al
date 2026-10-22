@@ -3,8 +3,9 @@
  *
  * SKIP_RATE_LIMIT=true in normal test runs (so happy paths don't trip
  * limits). This suite UN-sets it temporarily and verifies that:
- *   1. The per-email login limiter actually blocks after N attempts,
- *      regardless of source IP rotation (defence vs distributed botnet)
+ *   1. The login lockout counts FAILED attempts only, per email+IP (10) —
+ *      so a stranger can't lock the owner out from another network — with
+ *      an account-wide backstop (30) that IP rotation can't bypass
  *   2. The per-email register limiter caps inbox-flood attacks
  *   3. The per-email forgot-password limiter caps reset-flood attacks
  *   4. X-Forwarded-For header rotation does NOT bypass per-email limits
@@ -42,28 +43,64 @@ describe('rate-limit — attacker patterns', () => {
 
   afterAll(async () => { await closeTestDB(); });
 
-  it('1. login limiter: 10 wrong attempts per email → 11th returns 429 (per-email cap holds even with rotated IPs)', async () => {
+  it('1. login lockout is per email+IP: 10 failures from one IP → that IP is locked out of the account, the owner on another IP still logs in', async () => {
     const { user } = await createJobseeker({ email: 'rl-login@example.com', password: 'CorrectPassword!1' });
+    const attackerIp = '198.51.100.21';
 
-    // 10 wrong attempts, each from a different forwarded IP
     for (let i = 0; i < 10; i++) {
       const r = await request(app)
         .post('/api/auth/login')
-        .set('X-Forwarded-For', `198.51.100.${i + 1}`)
+        .set('X-Forwarded-For', attackerIp)
         .send({ email: user.email, password: 'WrongPassword!1' });
-      // 401 expected on each (wrong password)
-      expect([401, 429]).toContain(r.status);
+      expect(r.status).toBe(401);
     }
 
-    // 11th attempt — should be 429 from the per-email limiter
+    // 11th failure from the same IP → 429 from the email+IP bucket.
     const r11 = await request(app)
       .post('/api/auth/login')
-      .set('X-Forwarded-For', '203.0.113.99')  // brand-new IP
+      .set('X-Forwarded-For', attackerIp)
       .send({ email: user.email, password: 'WrongPassword!1' });
     expect(r11.status).toBe(429);
     expect(r11.body.success).toBe(false);
-    expect(r11.body.message).toMatch(/tentativa kyçjeje|provoni përsëri/i);
-  }, 30000);
+    expect(r11.body.message).toBe('Shumë tentativa të dështuara kyçjeje për këtë email. Provoni përsëri pas 15 minutash ose rivendosni fjalëkalimin.');
+
+    // Even the right password is refused from the locked IP (no oracle)…
+    const lockedRight = await request(app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', attackerIp)
+      .send({ email: user.email, password: 'CorrectPassword!1' });
+    expect(lockedRight.status).toBe(429);
+
+    // …but the owner on their own connection is not locked out.
+    const owner = await request(app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', '203.0.113.7')
+      .send({ email: user.email, password: 'CorrectPassword!1' });
+    expect(owner.status).toBe(200);
+    expect(owner.body.success).toBe(true);
+  }, 60000);
+
+  it('1b. successful logins do not count toward the lockout: 12 correct logins in a row from one IP all succeed', async () => {
+    const { user } = await createJobseeker({ email: 'rl-success@example.com', password: 'CorrectPassword!1' });
+    const ip = '198.51.100.31';
+    const statuses = [];
+    for (let i = 0; i < 12; i++) {
+      const r = await request(app)
+        .post('/api/auth/login')
+        .set('X-Forwarded-For', ip)
+        .send({ email: user.email, password: 'CorrectPassword!1' });
+      statuses.push(r.status);
+    }
+    // Before the fix the 11th login of the same email returned 429.
+    expect(statuses).toEqual(Array(12).fill(200));
+
+    // A failure afterwards is still a plain 401, not a lockout.
+    const wrong = await request(app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', ip)
+      .send({ email: user.email, password: 'WrongPassword!1' });
+    expect(wrong.status).toBe(401);
+  }, 60000);
 
   it('2. forgot-password limiter: 3 attempts per email → 4th returns 429 (inbox-flood prevention)', async () => {
     await createJobseeker({ email: 'rl-fp@example.com' });
@@ -104,21 +141,26 @@ describe('rate-limit — attacker patterns', () => {
     expect(typeof blocked.body.message).toBe('string');
   }, 30000);
 
-  it('4. X-Forwarded-For rotation does NOT bypass per-email limit', async () => {
+  it('4. X-Forwarded-For rotation does NOT bypass the per-account cap: 30 failures from 30 IPs → the 31st (new IP) is 429', async () => {
     await createJobseeker({ email: 'rl-xff@example.com', password: 'CorrectPassword!1' });
 
-    // 15 attempts, all from different IPs — should still hit 429 by attempt 11
-    let blockedCount = 0;
-    for (let i = 0; i < 15; i++) {
+    // One failure from each of 30 different IPs — no email+IP bucket fills up.
+    for (let i = 0; i < 30; i++) {
       const r = await request(app)
         .post('/api/auth/login')
-        .set('X-Forwarded-For', `198.51.100.${(i * 7 + 17) % 250}`)
+        .set('X-Forwarded-For', `192.0.2.${i + 1}`)
         .send({ email: 'rl-xff@example.com', password: 'WrongPassword!1' });
-      if (r.status === 429) blockedCount++;
+      expect(r.status).toBe(401);
     }
-    // Of 15 attempts, at least 5 must have been rate-limited (10 wrong + 5 blocked)
-    expect(blockedCount).toBeGreaterThanOrEqual(4);
-  }, 30000);
+
+    // The account-wide backstop trips on the 31st failure, whatever the IP.
+    const r31 = await request(app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', '192.0.2.200')
+      .send({ email: 'rl-xff@example.com', password: 'WrongPassword!1' });
+    expect(r31.status).toBe(429);
+    expect(r31.body.message).toBe('Shumë tentativa të dështuara kyçjeje për këtë llogari. Provoni përsëri pas 15 minutash ose rivendosni fjalëkalimin.');
+  }, 90000);
 
   // Pre-deploy audit item #4 — per-user limiter on /change-password.
   // With a stolen short-lived JWT an attacker could brute-force the user's

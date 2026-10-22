@@ -13,6 +13,9 @@
  *   DISCORD_WEBHOOK_ERRORS        — winston error transport
  *   DISCORD_WEBHOOK_CTA           — frontend CTA bridge (Phase 2)
  *   DISCORD_WEBHOOK_DIGEST        — daily digest cron
+ *   DISCORD_WEBHOOK_ALERTS        — ops alerts: email dead-lettered, embedding
+ *                                   inflight cap, notification safety valve.
+ *                                   Falls back to DISCORD_WEBHOOK_ERRORS when unset.
  *
  * Tuning:
  *   DISCORD_RATE_LIMIT_PER_MIN    cap per channel (default 25, Discord allows 30)
@@ -31,6 +34,13 @@ const CHANNEL_ENV = {
   errors:       'DISCORD_WEBHOOK_ERRORS',
   cta:          'DISCORD_WEBHOOK_CTA',
   digest:       'DISCORD_WEBHOOK_DIGEST',
+  alerts:       'DISCORD_WEBHOOK_ALERTS',
+};
+
+// A channel without its own webhook posts to this one instead, so a new
+// channel never goes silent just because its env var was not set yet.
+const CHANNEL_FALLBACK = {
+  alerts: 'errors',
 };
 
 const CHANNEL_COLOR = {
@@ -42,6 +52,7 @@ const CHANNEL_COLOR = {
   errors:       0xc0392b,
   cta:          0xf1c40f,
   digest:       0x34495e,
+  alerts:       0xb91c1c,
 };
 
 // Re-read env on every call so operators can flip values without a restart.
@@ -118,7 +129,9 @@ export function notifyDiscord(opts) {
         logger.warn('discordNotifier: unknown channel', { channel });
         return;
       }
-      const webhookUrl = process.env[envKey];
+      const fallbackChannel = CHANNEL_FALLBACK[channel];
+      const webhookUrl = process.env[envKey]
+        || (fallbackChannel ? process.env[CHANNEL_ENV[fallbackChannel]] : undefined);
       if (!webhookUrl) return;
 
       if (isDuplicate(channel, opts.dedupKey)) return;

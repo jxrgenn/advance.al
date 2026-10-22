@@ -158,14 +158,14 @@ const Terms = () => {
                 përfshijnë (por nuk kufizohen në):
               </p>
               <ul className="list-disc list-inside space-y-1 ml-2">
-                <li>Përputhja e avancuar e kandidatëve me inteligjencë artificiale</li>
-                <li>Funksionalitete shtesë për punëdhënësit</li>
+                <li>Publikimi i njoftimeve të punës për punëdhënësit (postim standard ose i promovuar, aktiv për 21 ditë)</li>
+                <li>Ripostimi i një njoftimi pas skadimit ose mbylljes</li>
               </ul>
 
               <div>
                 <h4 className="font-semibold text-foreground mb-2">Pagesa</h4>
                 <ul className="list-disc list-inside space-y-1 ml-2 text-sm">
-                  <li>Pagesat përpunohen përmes Paysera, një ofrues i licencuar pagesash</li>
+                  <li>Pagesat me kartë përpunohen përmes Stripe, një ofrues i licencuar pagesash; advance.al nuk ruan të dhënat e kartës</li>
                   <li>Monedha e pagesave: EUR</li>
                   <li>Çmimet shfaqen me TVSH-në e përfshirë (nëse aplikohet)</li>
                 </ul>

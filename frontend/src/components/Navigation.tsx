@@ -22,6 +22,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { optimizedCloudinaryUrl } from "@/lib/imageUrl";
 import { Badge } from "@/components/ui/badge";
 import { notificationsApi, Notification } from "@/lib/api";
+import { formatRelativeTimeSq } from "@/lib/relativeTime";
 import { useToast } from "@/hooks/use-toast";
 import logo from "../assets/punLogo.jpeg";
 
@@ -99,8 +100,14 @@ const Navigation = () => {
         setUnreadCount(prev => Math.max(0, prev - 1));
         
 }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Error marking notification as read:', error);
+      // The blue dot / badge stay as they were — say so instead of failing silently.
+      toast({
+        title: "Gabim",
+        description: (error instanceof Error && error.message) || "Njoftimi nuk u shënua si i lexuar. Provoni përsëri.",
+        variant: "destructive"
+      });
     }
   };
 
@@ -142,9 +149,10 @@ const Navigation = () => {
       return;
     }
 
-    // For job seekers with application notifications, go to profile
+    // For job seekers with application notifications, go to the profile's
+    // applications ("Aplikimet") tab
     if (notification.relatedApplication) {
-      navigate('/profile');
+      navigate('/profile?tab=applications');
       return;
     }
 
@@ -159,7 +167,7 @@ const Navigation = () => {
       return '/employer-dashboard?tab=applications';
     }
     if (notification.relatedApplication) {
-      return '/profile';
+      return '/profile?tab=applications';
     }
     if (notification.relatedJob?._id) {
       return `/jobs/${(notification.relatedJob as any).slug || notification.relatedJob._id}`;
@@ -362,7 +370,7 @@ loadNotifications();
                             </p>
                             <div className="flex items-center justify-between">
                               <p className="text-xs text-muted-foreground">
-                                {notification.timeAgo}
+                                {formatRelativeTimeSq(notification.createdAt) || notification.timeAgo}
                               </p>
                               {hasLink && (
                                 <button
@@ -430,7 +438,7 @@ loadNotifications();
                     <DropdownMenuItem asChild>
                       <Link to={getDashboardPath()} className="cursor-pointer">
                         <User className="mr-2 h-4 w-4" />
-                        <span>{user?.userType === "employer" ? "Dashboard" : "Profili Im"}</span>
+                        <span>{user?.userType === "employer" ? "Paneli" : "Profili Im"}</span>
                       </Link>
                     </DropdownMenuItem>
                   )}
@@ -473,7 +481,7 @@ loadNotifications();
                 <Button size="sm" asChild>
                   <Link to="/employer-dashboard">
                     <Building className="mr-2 h-4 w-4" />
-                    Dashboard
+                    Paneli
                   </Link>
                 </Button>
               )}

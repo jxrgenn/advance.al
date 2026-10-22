@@ -64,7 +64,7 @@ describe('notificationService — batch-delay setTimeout branches (>4 users)', (
       .mockImplementation(async () => {
         qCalls++;
         if (qCalls === 5) throw new Error('q5 fails');
-        return { success: true };
+        return { success: true, sent: true };
       });
 
     const r = await notificationService.notifyMatchingUsers(job);

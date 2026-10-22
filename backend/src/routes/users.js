@@ -5,10 +5,15 @@ import fs from 'fs';
 import { randomUUID } from 'crypto';
 import mammoth from 'mammoth';
 import { body, validationResult } from 'express-validator';
-import { User, SystemConfiguration, Application } from '../models/index.js';
+import { User, SystemConfiguration, Application, Location } from '../models/index.js';
+import { cascadeAccountDeletion } from '../lib/accountDeletion.js';
 import { authenticate, requireJobSeeker, requireEmployer, requireAdmin } from '../middleware/auth.js';
 import resendEmailService from '../lib/resendEmailService.js';
-import { uploadToCloudinary, deleteFromCloudinary, extractCloudinaryPublicId, signedAuthenticatedDownloadUrl } from '../config/cloudinary.js';
+import { uploadToCloudinary, deleteFromCloudinary, extractCloudinaryPublicId, signedAuthenticatedDownloadUrl, isOwnedCloudinaryAsset } from '../config/cloudinary.js';
+import { EXPERIENCE_LEVELS } from '../lib/experienceLevels.js';
+import { clearAuthCookies } from '../lib/authCookies.js';
+import { diacriticInsensitivePattern } from '../lib/searchRegex.js';
+import { cacheDelete } from '../config/redis.js';
 import logger from '../config/logger.js';
 import { sanitizeLimit, validateObjectId, stripHtml, normalizeOneLine, isObjectIdString } from '../utils/sanitize.js';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
@@ -16,6 +21,7 @@ import { parseUserProfileCV } from '../services/cvParsingService.js';
 import { fireEmbedding } from '../services/embeddingTrigger.js';
 import { isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE } from '../lib/phonePolicy.js';
 import { publicJobseekerProfile, publicJob } from '../lib/serializers.js';
+import { COMPANY_DESCRIPTION_MIN, COMPANY_DESCRIPTION_MAX, COMPANY_DESCRIPTION_MESSAGE, normalizeWebsite } from '../lib/companyProfile.js';
 import { toStoredCloudinaryUrl, swapProfileResume, deleteStoredResume, newResumePublicId } from '../lib/resumeStorage.js';
 
 const router = express.Router();
@@ -38,9 +44,18 @@ if (isProduction && !isCloudinaryConfigured()) {
 // Safely delete old Cloudinary file (best-effort, don't block upload).
 // Auto-detects access mode from URL so post-O-B authenticated resumes still
 // get destroyed when the user re-uploads.
-const cleanupOldCloudinaryFile = async (url, resourceType = 'image') => {
+//
+// O-78: only assets uploaded FOR `ownerId` (public_id convention + this
+// cloud, see isOwnedCloudinaryAsset) are ever destroyed. The URL comes from a
+// user document; anything else — another company's logo, a candidate's
+// photo, a foreign cloud — is left alone and logged.
+const cleanupOldCloudinaryFile = async (url, { ownerId, kind, resourceType = 'image' }) => {
   const publicId = extractCloudinaryPublicId(url);
   if (!publicId) return;
+  if (!isOwnedCloudinaryAsset(url, ownerId, kind)) {
+    logger.warn('Refused to delete a Cloudinary asset not owned by this user', { ownerId: String(ownerId), kind, publicId });
+    return;
+  }
   const type = /\/authenticated\//.test(url) ? 'authenticated' : 'upload';
   try {
     await deleteFromCloudinary(publicId, resourceType, type);
@@ -49,6 +64,40 @@ const cleanupOldCloudinaryFile = async (url, resourceType = 'image') => {
     logger.warn('Failed to delete old Cloudinary file (non-fatal)', { publicId, error: err.message });
   }
 };
+
+/**
+ * 128: point one profile image (logo / profile photo) at `newUrl` and only
+ * then delete the image it replaced (ownership-checked, see above).
+ * Compare-and-set on the URL read before the upload, and $set of just that
+ * path: concurrent uploads each delete exactly the image they displaced, and
+ * an unrelated invalid legacy field can't fail the save (user.save() did, and
+ * left the freshly uploaded image orphaned). Same model as swapProfileResume.
+ * Throws if the user is gone or contention persists — the caller then still
+ * owns `newUrl` and must discard it.
+ */
+async function swapProfileImage(userId, pathName, newUrl, expectedUrl, kind) {
+  let expected = expectedUrl ?? null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const result = await User.updateOne({ _id: userId, [pathName]: expected }, { $set: { [pathName]: newUrl } });
+    if (result.matchedCount === 1) {
+      if (expected && expected !== newUrl) await cleanupOldCloudinaryFile(expected, { ownerId: userId, kind });
+      return;
+    }
+    const current = await User.findById(userId).select(pathName).lean();
+    if (!current) throw new Error('swapProfileImage: user not found');
+    expected = pathName.split('.').reduce((obj, key) => obj?.[key], current) ?? null;
+  }
+  throw new Error('swapProfileImage: profile image kept changing (contention)');
+}
+
+// Delete an image this request uploaded but could not attach to the profile.
+async function discardUploadedImage(url, req, kind) {
+  if (typeof url === 'string' && url.startsWith('http')) {
+    await cleanupOldCloudinaryFile(url, { ownerId: req.user._id, kind });
+  } else if (req.file?.path) {
+    await fs.promises.unlink(req.file.path).catch(() => {});
+  }
+}
 
 // Configure multer — use memory storage when Cloudinary is available, disk storage as fallback.
 // In tests Cloudinary is always configured (.env.test), so the diskStorage callbacks below
@@ -69,6 +118,26 @@ const diskStorage = multer.diskStorage({
 
 const memoryStorage = multer.memoryStorage();
 
+// Upload limits (127/150). The frontend mirrors these in
+// frontend/src/lib/formValidation.ts (RESUME_UPLOAD / IMAGE_UPLOAD) — keep
+// them in step. Images may be up to 5MB (typical phone photos are 2-5MB):
+// Cloudinary's incoming transformation stores a 300/400px version anyway.
+const RESUME_MAX_MB = 5;
+const IMAGE_MAX_MB = 5;
+const RESUME_TOO_LARGE_MESSAGE = `Skedari është shumë i madh. Madhësia maksimale është ${RESUME_MAX_MB}MB`;
+const IMAGE_TOO_LARGE_MESSAGE = `Imazhi është shumë i madh. Madhësia maksimale është ${IMAGE_MAX_MB}MB`;
+const RESUME_TYPE_MESSAGE = 'Vetëm skedarët PDF dhe Word (DOCX) janë të lejuar';
+const IMAGE_TYPE_MESSAGE = 'Vetëm imazhet JPEG, PNG dhe WebP janë të lejuara';
+
+// A rejection raised by a fileFilter — carries the HTTP status to answer with.
+class UploadRejection extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.name = 'UploadRejection';
+    this.status = status;
+  }
+}
+
 // File filter for resume uploads (PDF + DOCX)
 const RESUME_ALLOWED_TYPES = [
   'application/pdf',
@@ -79,17 +148,17 @@ const resumeFileFilter = (req, file, cb) => {
   if (RESUME_ALLOWED_TYPES.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Vetëm skedarët PDF dhe Word (DOCX) janë të lejuar'), false);
+    cb(new UploadRejection(RESUME_TYPE_MESSAGE), false);
   }
 };
 
 // File filter for image uploads (logos and profile photos)
+const IMAGE_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const imageFileFilter = (req, file, cb) => {
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
-  if (allowedTypes.includes(file.mimetype)) {
+  if (IMAGE_ALLOWED_TYPES.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Vetëm skedarët JPEG, PNG dhe WebP janë të lejuar'), false);
+    cb(new UploadRejection(IMAGE_TYPE_MESSAGE), false);
   }
 };
 
@@ -98,14 +167,44 @@ const upload = multer({
   storage: isCloudinaryConfigured() ? memoryStorage : (isProduction ? memoryStorage : diskStorage),
   fileFilter: (req, file, cb) => {
     if (isProduction && !isCloudinaryConfigured()) {
-      return cb(new Error('Ngarkimi i skedarëve nuk është i disponueshëm momentalisht'), false);
+      return cb(new UploadRejection('Ngarkimi i skedarëve nuk është i disponueshëm momentalisht', 503), false);
     }
     return resumeFileFilter(req, file, cb);
   },
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
+    fileSize: RESUME_MAX_MB * 1024 * 1024,
+    files: 1
   }
 });
+
+/**
+ * 127/150: run multer for one file field and answer its errors here.
+ * Multer reports a too-large file, a rejected type or a malformed body via
+ * next(err) — BEFORE the route handler runs — so the handlers' own catch
+ * branches for them were dead code and every such upload ended as a generic
+ * 500 ("Ndodhi një gabim…" in production).
+ */
+const acceptSingleUpload = (uploader, field, tooLargeMessage) => (req, res, next) => {
+  uploader.single(field)(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof UploadRejection) {
+      return res.status(err.status).json({ success: false, message: err.message });
+    }
+    if (err instanceof multer.MulterError) {
+      const message = err.code === 'LIMIT_FILE_SIZE'
+        ? tooLargeMessage
+        : (err.code === 'LIMIT_UNEXPECTED_FILE' || err.code === 'LIMIT_FILE_COUNT')
+          ? `Dërgoni vetëm një skedar në fushën "${field}"`
+          : 'Skedari nuk mund të ngarkohej. Provoni përsëri.';
+      return res.status(400).json({ success: false, message });
+    }
+    // System errors (dev disk storage: ENOSPC, EACCES…) are the server's.
+    if (err.syscall) return next(err);
+    // Malformed multipart body ("Unexpected end of form", missing boundary).
+    logger.warn('Upload body could not be parsed', { field, error: err.message });
+    return res.status(400).json({ success: false, message: 'Skedari nuk mund të lexohej. Provoni përsëri.' });
+  });
+};
 
 // Validate image file magic bytes to prevent mimetype spoofing
 const validateImageMagicBytes = (buffer) => {
@@ -170,12 +269,13 @@ const imageUpload = multer({
   storage: isCloudinaryConfigured() ? memoryStorage : (isProduction ? memoryStorage : imageDiskStorage),
   fileFilter: (req, file, cb) => {
     if (isProduction && !isCloudinaryConfigured()) {
-      return cb(new Error('Ngarkimi i imazheve nuk është i disponueshëm momentalisht'), false);
+      return cb(new UploadRejection('Ngarkimi i imazheve nuk është i disponueshëm momentalisht', 503), false);
     }
     return imageFileFilter(req, file, cb);
   },
   limits: {
-    fileSize: 2 * 1024 * 1024 // 2MB limit for images
+    fileSize: IMAGE_MAX_MB * 1024 * 1024,
+    files: 1
   }
 });
 
@@ -194,6 +294,41 @@ const handleValidationErrors = (req, res, next) => {
   }
   next();
 };
+
+// '' or null from a form = "no value" (O-76).
+const isBlank = (v) => v === '' || v === null;
+// express-validator .if(): run the rest of the chain unless the value is ''
+// (null/undefined are skipped by optional({ values: 'null' })).
+const notEmptyString = (v) => v !== '';
+const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+// Website: validated + trimmed by the validator; bare domains get https://
+// (shared with signup — lib/companyProfile.js normalizeWebsite).
+
+/**
+ * 149: map a profile city to a canonical Location record (exact name first,
+ * then case/diacritic-insensitive: "Tirane" → "Tiranë"). A city that is not a
+ * known Location is accepted only when it is the user's current (legacy)
+ * city sent back unchanged.
+ * @returns {Promise<{city: string, region: string} | {error: string}>}
+ */
+async function resolveProfileCity(input, currentLocation) {
+  const city = normalizeOneLine(stripHtml(String(input))).trim();
+  if (!city) return { error: 'Qyteti është i detyrueshëm' };
+  let known = await Location.findOne({ city, isActive: true }).select('city region').lean();
+  if (!known) {
+    const pattern = diacriticInsensitivePattern(city);
+    if (pattern) {
+      known = await Location.findOne({ city: { $regex: `^${pattern}$`, $options: 'i' }, isActive: true })
+        .select('city region').lean();
+    }
+  }
+  if (known) return { city: known.city, region: known.region || known.city };
+  if (currentLocation?.city && city === currentLocation.city) {
+    return { city: currentLocation.city, region: currentLocation.region || currentLocation.city };
+  }
+  return { error: 'Zgjidhni një qytet nga lista' };
+}
 
 // Profile update validation for job seekers
 const jobSeekerProfileValidation = [
@@ -225,18 +360,52 @@ const jobSeekerProfileValidation = [
     .customSanitizer(v => stripHtml(v))
     .isLength({ max: 500 })
     .withMessage('Biografia nuk mund të ketë më shumë se 500 karaktere'),
+  // O-76: the Profile form sends '' for a select the user never touched (new
+  // accounts have no experience). ONLY '' / null mean "not provided" (dropped
+  // by the handler) — other falsy values (0, false) still fail validation
+  // (W2-1 review #4). 'none' = "Nuk kam përvojë" is a real, storable level.
   body('jobSeekerProfile.experience')
-    .optional()
-    .isIn(['0-1 vjet', '1-2 vjet', '2-5 vjet', '5-10 vjet', '10+ vjet'])
+    .optional({ values: 'null' })
+    .if(notEmptyString)
+    .isIn(EXPERIENCE_LEVELS)
     .withMessage('Përvoja e zgjedhur nuk është e vlefshme'),
+  // Review #5: capped (skills feed the embedding text / OpenAI) and stripped
+  // of HTML like title/bio. The form caps at 20, CV parsing at 20.
   body('jobSeekerProfile.skills')
     .optional()
-    .isArray()
-    .withMessage('Aftësitë duhet të jenë një listë'),
+    .isArray({ max: 50 })
+    .withMessage('Aftësitë duhet të jenë një listë me deri në 50 elemente'),
+  body('jobSeekerProfile.skills.*')
+    .isString()
+    .withMessage('Çdo aftësi duhet të jetë tekst')
+    .bail()
+    .customSanitizer(v => normalizeOneLine(stripHtml(v)).trim())
+    .isLength({ max: 50 })
+    .withMessage('Çdo aftësi duhet të ketë deri në 50 karaktere'),
   body('jobSeekerProfile.availability')
-    .optional()
+    .optional({ values: 'null' })
+    .if(notEmptyString)
     .isIn(['immediately', '2weeks', '1month', '3months'])
-    .withMessage('Disponueshmëria e zgjedhur nuk është e vlefshme')
+    .withMessage('Disponueshmëria e zgjedhur nuk është e vlefshme'),
+  body('jobSeekerProfile.desiredSalary.currency')
+    .optional({ values: 'null' })
+    .if(notEmptyString)
+    .isIn(['EUR', 'ALL'])
+    .withMessage('Monedha e pagës duhet të jetë EUR ose ALL'),
+  body(['jobSeekerProfile.desiredSalary.min', 'jobSeekerProfile.desiredSalary.max'])
+    .optional({ values: 'null' })
+    .custom(v => v === '' || (typeof v === 'number' ? Number.isFinite(v) && v >= 0 : /^\d+(\.\d+)?$/.test(String(v).trim())))
+    .withMessage('Paga e dëshiruar duhet të jetë një numër pozitiv'),
+  body('location.city')
+    .optional()
+    .isString()
+    .withMessage('Qyteti nuk është i vlefshëm')
+    .bail()
+    .trim()
+    .notEmpty()
+    .withMessage('Qyteti është i detyrueshëm')
+    .isLength({ max: 50 })
+    .withMessage('Qyteti nuk mund të ketë më shumë se 50 karaktere')
 ];
 
 // Profile update validation for employers
@@ -277,20 +446,46 @@ const employerProfileValidation = [
     .customSanitizer(v => stripHtml(v))
     .isLength({ max: 50 })
     .withMessage('Industria nuk mund të ketë më shumë se 50 karaktere'),
+  // O-76: '' / null = "not provided" (companySize is required in the schema,
+  // so the handler keeps the stored value) — must not fail the whole save.
   body('employerProfile.companySize')
-    .optional()
+    .optional({ values: 'null' })
+    .if(notEmptyString)
     .isIn(['1-10', '11-50', '51-200', '201-500', '501+'])
     .withMessage('Madhësia e kompanisë e zgjedhur nuk është e vlefshme'),
+  // Same 50–1000 rule as signup (lib/companyProfile.js); the minimum is
+  // checked in the handler, where the stored value is known.
   body('employerProfile.description')
     .optional()
     .trim()
     .customSanitizer(v => stripHtml(v))
-    .isLength({ max: 1000 })
-    .withMessage('Përshkrimi nuk mund të ketë më shumë se 1000 karaktere'),
+    .isLength({ max: COMPANY_DESCRIPTION_MAX })
+    .withMessage(COMPANY_DESCRIPTION_MESSAGE),
+  // O-76: website is optional — the dashboard always sends it, '' for
+  // employers without one (and to remove it). '' / null clear it in the
+  // handler. Only http(s) URLs are accepted (a bare domain gets https://).
   body('employerProfile.website')
-    .optional()
-    .isURL()
+    .optional({ values: 'null' })
+    .if(notEmptyString)
+    .isString()
     .withMessage('Website duhet të jetë një URL i vlefshëm')
+    .bail()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('Website nuk mund të ketë më shumë se 200 karaktere')
+    .bail()
+    .isURL({ protocols: ['http', 'https'] })
+    .withMessage('Website duhet të jetë një URL i vlefshëm'),
+  body('location.city')
+    .optional()
+    .isString()
+    .withMessage('Qyteti nuk është i vlefshëm')
+    .bail()
+    .trim()
+    .notEmpty()
+    .withMessage('Qyteti është i detyrueshëm')
+    .isLength({ max: 50 })
+    .withMessage('Qyteti nuk mund të ketë më shumë se 50 karaktere')
 ];
 
 // @route   GET /api/users/profile
@@ -373,11 +568,40 @@ router.put('/profile', authenticate, async (req, res) => {
       preferences
     } = req.body;
 
+    const fieldError = (field, message) => res.status(400).json({
+      success: false,
+      message: 'Gabime në validim',
+      errors: [{ field, message }]
+    });
+    for (const [field, value] of [['location', location], ['jobSeekerProfile', jobSeekerProfile], ['employerProfile', employerProfile]]) {
+      if (value !== undefined && value !== null && !isPlainObject(value)) {
+        return fieldError(field, 'Të dhënat nuk janë në formatin e duhur');
+      }
+    }
+
     // Update basic profile fields
     if (firstName) user.profile.firstName = firstName;
     if (lastName) user.profile.lastName = lastName;
-    if (phone) user.profile.phone = phone;
-    if (location) user.profile.location = { ...user.profile.location, ...location };
+    // 158 / O-76: '' or null clears the (optional) phone. Previously a falsy
+    // phone was ignored, so a number could never be removed even though the
+    // response said "Profili u përditësua me sukses".
+    if (phone !== undefined) {
+      user.profile.phone = isBlank(phone) ? undefined : phone;
+    }
+
+    // 149: the city must be one of the canonical Location records (the same
+    // list signup and the employer dashboard use) — job alerts, candidate
+    // matching and recommendations compare cities exactly. The region always
+    // comes from that record. A legacy free-text city that is sent back
+    // unchanged is kept, so old accounts can still save other fields.
+    let cityChanged = false;
+    if (isPlainObject(location) && typeof location.city === 'string') {
+      const resolved = await resolveProfileCity(location.city, user.profile.location);
+      if (resolved.error) return fieldError('location.city', resolved.error);
+      cityChanged = resolved.city !== user.profile.location?.city;
+      user.profile.location.city = resolved.city;
+      user.profile.location.region = resolved.region;
+    }
     if (privacySettings) user.privacySettings = { ...user.privacySettings, ...privacySettings };
 
     // Update user preferences (tutorialsEnabled, salaryViewPeriod) — per-key
@@ -393,11 +617,49 @@ router.put('/profile', authenticate, async (req, res) => {
     }
 
     // Update job seeker specific fields (field-level to avoid overwriting arrays)
-    if (user.userType === 'jobseeker' && jobSeekerProfile) {
-      const safeFields = ['title', 'bio', 'experience', 'skills', 'availability', 'openToRemote', 'desiredSalary'];
-      for (const key of safeFields) {
+    if (user.userType === 'jobseeker' && isPlainObject(jobSeekerProfile)) {
+      const jsp = user.profile.jobSeekerProfile;
+      for (const key of ['title', 'bio']) {
         if (jobSeekerProfile[key] !== undefined) {
-          user.profile.jobSeekerProfile[key] = jobSeekerProfile[key];
+          jsp[key] = jobSeekerProfile[key] === null ? undefined : jobSeekerProfile[key];
+        }
+      }
+      // O-76: enum fields — '' / null mean "not chosen" and are dropped
+      // (writing them would fail the schema enum and lose the whole save).
+      for (const key of ['experience', 'availability']) {
+        if (jobSeekerProfile[key] !== undefined && !isBlank(jobSeekerProfile[key])) {
+          jsp[key] = jobSeekerProfile[key];
+        }
+      }
+      // O-77: items arrive trimmed (validator); drop empties and duplicates.
+      if (Array.isArray(jobSeekerProfile.skills)) {
+        const seen = new Set();
+        jsp.skills = jobSeekerProfile.skills.filter((s) => {
+          const key = s.toLowerCase();
+          if (!s || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      }
+      if (typeof jobSeekerProfile.openToRemote === 'boolean') {
+        jsp.openToRemote = jobSeekerProfile.openToRemote;
+      }
+      if (jobSeekerProfile.desiredSalary !== undefined) {
+        const ds = jobSeekerProfile.desiredSalary;
+        if (isBlank(ds)) {
+          jsp.desiredSalary = undefined;
+        } else if (isPlainObject(ds)) {
+          const current = jsp.desiredSalary || {};
+          const next = { min: current.min, max: current.max, currency: current.currency || 'EUR' };
+          if ('min' in ds) next.min = isBlank(ds.min) ? undefined : Number(ds.min);
+          if ('max' in ds) next.max = isBlank(ds.max) ? undefined : Number(ds.max);
+          if (!isBlank(ds.currency) && ds.currency !== undefined) next.currency = ds.currency;
+          if (next.min > 0 && next.max > 0 && next.min > next.max) {
+            return fieldError('jobSeekerProfile.desiredSalary.min', 'Paga minimale nuk mund të jetë më e madhe se paga maksimale');
+          }
+          jsp.desiredSalary = next;
+        } else {
+          return fieldError('jobSeekerProfile.desiredSalary', 'Paga e dëshiruar nuk është në formatin e duhur');
         }
       }
       // notifications is a nested subdoc — merge per-key so a partial update
@@ -416,37 +678,56 @@ router.put('/profile', authenticate, async (req, res) => {
       // Arrays (education, workHistory) managed via dedicated CRUD endpoints
     }
 
-    // Normalize website: auto-prepend https:// for bare domains
-    if (employerProfile?.website) {
-      const w = employerProfile.website.trim();
-      employerProfile.website = w.match(/^https?:\/\//) ? w : `https://${w}`;
-    }
-
     // Update employer specific fields with strict allowlist on BOTH verified
     // and unverified paths. Earlier the unverified path used `{ ...stored,
     // ...employerProfile, verified, ... }` which let an unverified employer
     // set sensitive schema fields (subscriptionTier, isAdministrataAccount,
     // candidateMatchingEnabled, candidateMatchingJobs) that are otherwise
     // admin-controlled — a free path to premium features and category bypass.
-    if (user.userType === 'employer' && employerProfile) {
+    //
+    // O-78: `logo` is NOT client-writable on either path. It is set only by
+    // POST /upload-logo; a client-chosen URL let an employer point their logo
+    // at another company's (or a candidate's) Cloudinary asset and make the
+    // next logo upload destroy it.
+    if (user.userType === 'employer' && isPlainObject(employerProfile)) {
+      const ep = user.profile.employerProfile;
       const verifiedAllowed = ['description', 'website', 'companySize', 'phone', 'whatsapp', 'contactPreferences'];
-      // Unverified employers also need to be able to set companyName, industry,
-      // and logo during initial profile completion.
-      const unverifiedAllowed = [...verifiedAllowed, 'companyName', 'industry', 'logo'];
-      const allowedFields = user.profile.employerProfile.verified ? verifiedAllowed : unverifiedAllowed;
-      Object.keys(employerProfile).forEach(key => {
-        if (allowedFields.includes(key)) {
-          user.profile.employerProfile[key] = employerProfile[key];
+      // Unverified employers also need to be able to set companyName and
+      // industry during initial profile completion.
+      const unverifiedAllowed = [...verifiedAllowed, 'companyName', 'industry'];
+      const allowedFields = ep.verified ? verifiedAllowed : unverifiedAllowed;
+      for (const key of Object.keys(employerProfile)) {
+        if (!allowedFields.includes(key)) continue;
+        const value = employerProfile[key];
+        if (key === 'website' || key === 'phone' || key === 'whatsapp') {
+          // O-76: '' / null clear these optional fields.
+          if (isBlank(value)) ep[key] = undefined;
+          else ep[key] = key === 'website' ? normalizeWebsite(value) : value;
+        } else if (key === 'companySize') {
+          // Required in the schema — '' / null keep the stored size.
+          if (!isBlank(value)) ep.companySize = value;
+        } else if (key === 'description') {
+          // A NEW/CHANGED description must be 50–1000 chars (same rule as
+          // signup); '' clears it. An unchanged stored description is
+          // accepted as-is, so an account created under an older rule can
+          // still save its other settings.
+          if (value === null) continue;
+          if (value && value !== (ep.description || '') && value.length < COMPANY_DESCRIPTION_MIN) {
+            return fieldError('employerProfile.description', COMPANY_DESCRIPTION_MESSAGE);
+          }
+          ep.description = value;
+        } else if (value !== null) {
+          ep[key] = value;
         }
-      });
+      }
     }
 
     await user.save();
 
     // Regenerate embedding if jobseeker updated semantically relevant fields (async, non-blocking)
     if (user.userType === 'jobseeker') {
-      const hasProfileChange = jobSeekerProfile && ['title', 'skills', 'bio', 'experience'].some(f => jobSeekerProfile[f] !== undefined);
-      const hasLocationChange = location && location.city !== undefined;
+      const hasProfileChange = isPlainObject(jobSeekerProfile) && ['title', 'skills', 'bio', 'experience'].some(f => jobSeekerProfile[f] !== undefined);
+      const hasLocationChange = cityChanged;
       if (hasProfileChange || hasLocationChange) {
         fireEmbedding({ kind: 'jobseeker', id: user._id, reason: 'profile-update' });
       }
@@ -485,9 +766,12 @@ router.get('/public-profile/:id', validateObjectId('id'), authenticate, requireE
     // QA Round 2: an employer may only view a jobseeker's profile if that
     // jobseeker has applied to one of their jobs — stops blind enumeration
     // of every candidate by ObjectId.
+    // 141: only ACTIVE applications count — the same rule as /resume/sign. A
+    // candidate who withdrew is no longer visible to that employer.
     const hasApplication = await Application.exists({
       jobSeekerId: req.params.id,
       employerId: req.user._id,
+      withdrawn: false,
     });
     if (!hasApplication) {
       return res.status(403).json({
@@ -550,29 +834,48 @@ router.delete('/account', authenticate, async (req, res) => {
       });
     }
 
-    const isPasswordValid = await user.comparePassword(password);
+    // 148: a wrong confirmation password is a validation error (400), not an
+    // auth failure. A 401 here made the frontend treat the session as expired
+    // (refresh → retry → forced logout), logging the user out for a typo.
+    // Same convention as /auth/change-password.
+    const isPasswordValid = typeof password === 'string' && await user.comparePassword(password);
     if (!isPasswordValid) {
-      return res.status(401).json({
+      return res.status(400).json({
         success: false,
         message: 'Fjalëkalimi i gabuar'
       });
     }
 
-    await user.softDelete();
-
-    // Cascade: close/hide employer's jobs so they don't appear in search
-    if (user.userType === 'employer') {
-      const { Job } = await import('../models/index.js');
-      const affected = await Job.find(
-        { employerId: user._id, isDeleted: false, status: 'active' },
-        { 'location.city': 1 }
-      ).lean();
-      await Job.updateMany(
-        { employerId: user._id, isDeleted: false },
-        { $set: { isDeleted: true, status: 'closed' } }
-      );
-      await Job.decrementLocationCountsForCities(affected.map(j => j.location?.city));
+    // Claim the deletion atomically (W2-1 review #3): two concurrent requests
+    // both pass the password check; only the one whose conditional update
+    // flips isDeleted runs the cascade below — the other just ends its
+    // session. 164: the same update revokes every refresh token.
+    const claim = await User.updateOne(
+      { _id: user._id, isDeleted: { $ne: true } },
+      { $set: { isDeleted: true, status: 'deleted', deletedAt: new Date(), refreshTokens: [] } }
+    );
+    clearAuthCookies(res);
+    if (claim.modifiedCount !== 1) {
+      return res.json({
+        success: true,
+        message: 'Llogaria u fshi me sukses'
+      });
     }
+
+    // 130: a deleted jobseeker's applications are withdrawn at once, so
+    // employers stop seeing the candidate (listings filter withdrawn:false)
+    // and lose CV access (/resume/sign requires an active application). CVs
+    // attached to individual applications were sent only to that employer —
+    // deleted now, like on a manual withdrawal. The profile CV stays until
+    // the 30-day purge (services/accountCleanup.js) and is reachable by
+    // nobody but admins meanwhile.
+    // Jobseeker: applications withdrawn, cached candidate matches dropped
+    // (review #1). Employer: open checkouts retired first (review #2), jobs
+    // closed and hidden, paid live listings flagged for a refund decision.
+    // Shared with the admin "delete user" action — lib/accountDeletion.js.
+    await cascadeAccountDeletion(user);
+
+    cacheDelete('admin:dashboard').catch(() => {});
 
     res.json({
       success: true,
@@ -661,7 +964,7 @@ router.get('/stats', authenticate, async (req, res) => {
 // @route   POST /api/users/upload-resume
 // @desc    Upload resume/CV file
 // @access  Private (Job Seekers only)
-router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('resume'), async (req, res) => {
+router.post('/upload-resume', authenticate, requireJobSeeker, acceptSingleUpload(upload, 'resume', RESUME_TOO_LARGE_MESSAGE), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -743,7 +1046,7 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
     try {
       await swapProfileResume(req.user._id, resumeUrl, { resumeType: detectedFormat, expectedUrl: oldResumeUrl });
     } catch (swapError) {
-      await deleteStoredResume(resumeUrl);
+      await deleteStoredResume(resumeUrl, req.user._id);
       throw swapError;
     }
     const updatedUser = await User.findById(req.user._id);
@@ -758,23 +1061,8 @@ router.post('/upload-resume', authenticate, requireJobSeeker, upload.single('res
     });
 
   } catch (error) {
+    // Multer errors (size/type) are answered by acceptSingleUpload.
     logger.error('Upload resume error:', error.message);
-
-    // Handle multer errors
-    if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({
-        success: false,
-        message: 'Skedari është shumë i madh. Madhësia maksimale është 5MB'
-      });
-    }
-
-    if (error.message === 'Vetëm skedarët PDF dhe Word (DOCX) janë të lejuar') {
-      return res.status(400).json({
-        success: false,
-        message: 'Vetëm skedarët PDF dhe Word (DOCX) janë të lejuar'
-      });
-    }
-
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e CV-së'
@@ -803,26 +1091,31 @@ router.delete('/resume', authenticate, requireJobSeeker, async (req, res) => {
       });
     }
 
-    // Clean up file from Cloudinary or local storage
-    await cleanupOldCloudinaryFile(resumeUrl, 'raw');
-
-    if (!resumeUrl.startsWith('http')) {
-      // Local file — try to delete
-      const localPath = path.join(process.cwd(), resumeUrl);
-      try { fs.unlinkSync(localPath); } catch { /* file may not exist */ }
+    // 128: detach first, delete the file after. Deleting first left the
+    // profile pointing at a destroyed CV whenever the save then failed.
+    // Compare-and-set on the URL read above: a CV uploaded meanwhile (other
+    // tab) is not wiped by this request. $set/$unset of just these paths also
+    // can't fail on unrelated legacy profile data.
+    const detached = await User.updateOne(
+      { _id: req.user._id, 'profile.jobSeekerProfile.resume': resumeUrl },
+      { $set: { 'profile.jobSeekerProfile.resume': null }, $unset: { 'profile.jobSeekerProfile.resumeType': 1 } }
+    );
+    if (detached.matchedCount !== 1) {
+      return res.status(409).json({
+        success: false,
+        message: 'CV-ja juaj u ndryshua ndërkohë. Rifreskoni faqen dhe provoni përsëri.'
+      });
     }
 
-    // Clear resume from profile
-    user.profile.jobSeekerProfile.resume = null;
-    user.profile.jobSeekerProfile.resumeType = undefined;
-    await user.save();
+    // Cloudinary or local file, ownership-checked (never throws).
+    await deleteStoredResume(resumeUrl, req.user._id);
 
     logger.info('Resume deleted', { userId: req.user._id });
 
     res.json({
       success: true,
       message: 'CV u fshi me sukses',
-      data: { user }
+      data: { user: await User.findById(req.user._id) }
     });
   } catch (error) {
     logger.error('Delete resume error:', error.message);
@@ -833,13 +1126,18 @@ router.delete('/resume', authenticate, requireJobSeeker, async (req, res) => {
   }
 });
 
-// Round O-B: Rate limiter for the resume-sign endpoint. 30/hr per authenticated
-// user. Caps two abuse modes: (a) a malicious employer enumerating resume URLs
-// after holding a single applicant relationship; (b) a runaway client loop
-// hammering the signing call. Key on user-id (rotated IPs/Tor can't bypass).
+// Round O-B: Rate limiter for the resume-sign endpoint, per authenticated user
+// (rotated IPs/Tor can't bypass). It only has to stop a runaway client loop:
+// enumeration is already impossible — every sign is authorized against an
+// active application to THIS employer (or ownership/admin), and signing is a
+// local HMAC (no Cloudinary API call). 134: the old 30/hr budget locked an
+// employer out of CVs after screening ~15-30 applicants ("Shiko CV" and
+// "Shkarko CV" each cost one; the client now also reuses a signed URL until
+// it expires). 300/hr covers screening a popular job in one sitting.
+export const RESUME_SIGN_MAX_PER_HOUR = 300;
 const resumeSignLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: process.env.NODE_ENV === 'development' ? 1000 : 30,
+  max: process.env.NODE_ENV === 'development' ? 1000 : RESUME_SIGN_MAX_PER_HOUR,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.user?._id?.toString() || ipKeyGenerator(req.ip),
@@ -874,7 +1172,7 @@ function ownerIdFromResumeUrl(url) {
 //          shared with: the owner's CURRENT profile CV when the owner has an
 //          active application to that employer, or a CV attached to an active
 //          application addressed to that employer — O-42). Rate-limited per
-//          user (30/hr).
+//          user (RESUME_SIGN_MAX_PER_HOUR).
 router.post('/resume/sign', authenticate, resumeSignLimiter, async (req, res) => {
   try {
     const { resumeUrl } = req.body || {};
@@ -945,7 +1243,7 @@ const parseResumeLimiter = rateLimit({
 // @route   POST /api/users/parse-resume
 // @desc    Upload CV, store it, and parse with AI to extract profile data for preview
 // @access  Private (Job Seekers only)
-router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter, upload.single('resume'), async (req, res) => {
+router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter, acceptSingleUpload(upload, 'resume', RESUME_TOO_LARGE_MESSAGE), async (req, res) => {
   try {
     // Fail fast with 503 when OpenAI isn't configured (the parser needs it).
     if (!process.env.OPENAI_API_KEY) {
@@ -1032,7 +1330,7 @@ router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter,
     try {
       await swapProfileResume(req.user._id, resumeUrl, { resumeType: detectedParseFormat, expectedUrl: oldResumeUrl });
     } catch (swapError) {
-      await deleteStoredResume(resumeUrl);
+      await deleteStoredResume(resumeUrl, req.user._id);
       throw swapError;
     }
 
@@ -1078,22 +1376,8 @@ router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter,
     });
 
   } catch (error) {
+    // Multer errors (size/type) are answered by acceptSingleUpload.
     logger.error('Parse resume error:', error.message);
-
-    if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({
-        success: false,
-        message: 'Skedari është shumë i madh. Madhësia maksimale është 5MB'
-      });
-    }
-
-    if (error.message === 'Vetëm skedarët PDF dhe Word (DOCX) janë të lejuar') {
-      return res.status(400).json({
-        success: false,
-        message: 'Vetëm skedarët PDF dhe Word (DOCX) janë të lejuar'
-      });
-    }
-
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin dhe analizimin e CV-së'
@@ -1104,7 +1388,7 @@ router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter,
 // @route   POST /api/users/upload-logo
 // @desc    Upload company logo
 // @access  Private (Employers only)
-router.post('/upload-logo', authenticate, requireEmployer, imageUpload.single('logo'), async (req, res) => {
+router.post('/upload-logo', authenticate, requireEmployer, acceptSingleUpload(imageUpload, 'logo', IMAGE_TOO_LARGE_MESSAGE), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -1133,11 +1417,10 @@ router.post('/upload-logo', authenticate, requireEmployer, imageUpload.single('l
 
     let logoUrl;
 
-    // Clean up old Cloudinary file if exists
+    // The old logo is deleted only AFTER the new one is stored and saved —
+    // deleting it first left the profile pointing at a deleted file whenever
+    // the upload then failed.
     const oldLogoUrl = user.profile.employerProfile?.logo;
-    if (oldLogoUrl) {
-      await cleanupOldCloudinaryFile(oldLogoUrl);
-    }
 
     // Try Cloudinary upload first, fall back to local storage
     if (isCloudinaryConfigured() && req.file.buffer) {
@@ -1169,40 +1452,26 @@ router.post('/upload-logo', authenticate, requireEmployer, imageUpload.single('l
       });
     }
 
-    // Update employer profile with logo URL
-    if (!user.profile.employerProfile) {
-      user.profile.employerProfile = {};
+    // Attach the new logo, then delete the replaced one (128).
+    try {
+      await swapProfileImage(req.user._id, 'profile.employerProfile.logo', logoUrl, oldLogoUrl, 'logo');
+    } catch (swapError) {
+      await discardUploadedImage(logoUrl, req, 'logo');
+      throw swapError;
     }
-    user.profile.employerProfile.logo = logoUrl;
-
-    await user.save();
 
     res.json({
       success: true,
       message: 'Logo u ngarkua me sukses',
       data: {
         logoUrl: logoUrl,
-        user: user
+        user: await User.findById(req.user._id)
       }
     });
 
   } catch (error) {
+    // Multer errors (size/type) are answered by acceptSingleUpload.
     logger.error('Upload logo error:', error.message);
-
-    if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({
-        success: false,
-        message: 'Skedari është shumë i madh. Madhësia maksimale është 2MB'
-      });
-    }
-
-    if (error.message?.includes('JPEG') || error.message?.includes('PNG')) {
-      return res.status(400).json({
-        success: false,
-        message: error.message
-      });
-    }
-
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e logos'
@@ -1213,7 +1482,7 @@ router.post('/upload-logo', authenticate, requireEmployer, imageUpload.single('l
 // @route   POST /api/users/upload-profile-photo
 // @desc    Upload profile photo
 // @access  Private (Job Seekers only)
-router.post('/upload-profile-photo', authenticate, requireJobSeeker, imageUpload.single('photo'), async (req, res) => {
+router.post('/upload-profile-photo', authenticate, requireJobSeeker, acceptSingleUpload(imageUpload, 'photo', IMAGE_TOO_LARGE_MESSAGE), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -1242,11 +1511,8 @@ router.post('/upload-profile-photo', authenticate, requireJobSeeker, imageUpload
 
     let photoUrl;
 
-    // Clean up old Cloudinary file if exists
+    // Old photo deleted only after the new one is stored and saved (see logo).
     const oldPhotoUrl = user.profile.jobSeekerProfile?.profilePhoto;
-    if (oldPhotoUrl) {
-      await cleanupOldCloudinaryFile(oldPhotoUrl);
-    }
 
     // Try Cloudinary upload first, fall back to local storage
     if (isCloudinaryConfigured() && req.file.buffer) {
@@ -1278,40 +1544,26 @@ router.post('/upload-profile-photo', authenticate, requireJobSeeker, imageUpload
       });
     }
 
-    // Update job seeker profile with photo URL
-    if (!user.profile.jobSeekerProfile) {
-      user.profile.jobSeekerProfile = {};
+    // Attach the new photo, then delete the replaced one (128).
+    try {
+      await swapProfileImage(req.user._id, 'profile.jobSeekerProfile.profilePhoto', photoUrl, oldPhotoUrl, 'photo');
+    } catch (swapError) {
+      await discardUploadedImage(photoUrl, req, 'photo');
+      throw swapError;
     }
-    user.profile.jobSeekerProfile.profilePhoto = photoUrl;
-
-    await user.save();
 
     res.json({
       success: true,
       message: 'Foto e profilit u ngarkua me sukses',
       data: {
         photoUrl: photoUrl,
-        user: user
+        user: await User.findById(req.user._id)
       }
     });
 
   } catch (error) {
+    // Multer errors (size/type) are answered by acceptSingleUpload.
     logger.error('Upload profile photo error:', error.message);
-
-    if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({
-        success: false,
-        message: 'Skedari është shumë i madh. Madhësia maksimale është 2MB'
-      });
-    }
-
-    if (error.message?.includes('JPEG') || error.message?.includes('PNG')) {
-      return res.status(400).json({
-        success: false,
-        message: error.message
-      });
-    }
-
     res.status(500).json({
       success: false,
       message: 'Gabim në ngarkimin e fotos së profilit'
@@ -1353,11 +1605,14 @@ router.get('/admin/pending-employers', authenticate, requireAdmin, async (req, r
     const currentPage = Math.max(1, parseInt(rawPage) || 1);
     const skip = (currentPage - 1) * safeLimit;
 
-    const query = {
-      userType: 'employer',
-      status: 'pending_verification',
-      isDeleted: { $ne: true }
-    };
+    // 129: the queue is "employers awaiting a decision", keyed on the
+    // approval state (verified / verificationStatus), not on the account
+    // status: a rejected employer leaves the queue (it used to reappear on
+    // every reload and could be re-rejected → a second email), and an
+    // unverified employer whose status became 'active' (admin "activate",
+    // or a suspension lifted before the previousStatus fix) is still listed
+    // so it can be approved. Same filter as the admin dashboard counter.
+    const query = User.pendingVerificationQuery();
 
     const [pendingEmployers, totalCount] = await Promise.all([
       User.find(query)
@@ -1403,31 +1658,63 @@ router.patch('/admin/verify-employer/:id', validateObjectId('id'), authenticate,
       });
     }
 
-    const employer = await User.findOne({
+    // 129: any non-deleted, not-yet-verified employer can be decided —
+    // including one whose status is already 'active' (it used to 404 and stay
+    // unverified forever). Suspended/banned accounts are lifted first.
+    const decidable = {
       _id: req.params.id,
       userType: 'employer',
-      status: 'pending_verification'
-    });
+      status: { $in: ['pending_verification', 'active'] },
+      isDeleted: { $ne: true },
+      'profile.employerProfile.verified': { $ne: true }
+    };
+    const existing = await User.findOne(decidable).select('profile.employerProfile.verificationStatus').lean();
 
-    if (!employer) {
+    if (!existing) {
       return res.status(404).json({
         success: false,
         message: 'Punëdhënësi nuk u gjet'
       });
     }
 
-    if (action === 'approve') {
-      employer.status = 'active';
-      employer.profile.employerProfile.verified = true;
-      employer.profile.employerProfile.verificationStatus = 'approved';
-      employer.profile.employerProfile.verificationDate = new Date();
-    } else {
-      // Keep status as pending_verification (not 'rejected' which is not in the enum)
-      employer.profile.employerProfile.verified = false;
-      employer.profile.employerProfile.verificationStatus = 'rejected';
+    // Rejecting twice used to send a second rejection email.
+    if (action === 'reject' && existing.profile?.employerProfile?.verificationStatus === 'rejected') {
+      return res.status(409).json({
+        success: false,
+        message: 'Ky punëdhënës është refuzuar tashmë'
+      });
     }
 
-    await employer.save();
+    // Review #6: the decision is a single conditional update, so two
+    // concurrent requests can't both apply it (and both send an email) —
+    // the loser matches nothing and gets 409.
+    const update = action === 'approve'
+      ? {
+          status: 'active',
+          'profile.employerProfile.verified': true,
+          'profile.employerProfile.verificationStatus': 'approved',
+          'profile.employerProfile.verificationDate': new Date()
+        }
+      : {
+          // Keep status as pending_verification (not 'rejected' which is not in the enum)
+          'profile.employerProfile.verified': false,
+          'profile.employerProfile.verificationStatus': 'rejected'
+        };
+    const employer = await User.findOneAndUpdate(
+      action === 'reject'
+        ? { ...decidable, 'profile.employerProfile.verificationStatus': { $ne: 'rejected' } }
+        : decidable,
+      { $set: update },
+      { new: true }
+    );
+
+    if (!employer) {
+      return res.status(409).json({
+        success: false,
+        message: 'Ky punëdhënës u shqyrtua njëkohësisht nga një tjetër administrator'
+      });
+    }
+    cacheDelete('admin:dashboard').catch(() => {});
 
     // Send verification result email
     setImmediate(async () => {
@@ -1461,22 +1748,179 @@ router.patch('/admin/verify-employer/:id', validateObjectId('id'), authenticate,
   }
 });
 
+// ---- Work experience & education entries ---------------------------------
+// 132/133/138/139/153/156/162: one validator for create AND edit, so both
+// write the same fields the same way:
+//  - text limits = the User schema (the frontend mirrors them in
+//    profileValidationRules, formValidation.ts) → 400 with the field, not a
+//    schema/cast 500;
+//  - dates are 'YYYY-MM' (the UI's granularity; a full ISO date is accepted
+//    too), years 1950…now+10; '' / null = "unknown" and is stored ABSENT —
+//    '' used to be cast to null and rendered as "1970 – Tani";
+//  - the isCurrentJob / isCurrentStudy flag is stored on every write (edits
+//    never updated it) and a current entry has no end date;
+//  - education: `institution` is the one canonical field (edits wrote
+//    `school`, leaving matching/embeddings on the old value) and `year` is
+//    derived from endDate || startDate on create too.
+const HISTORY_TEXT_LIMITS = {
+  position: 100, company: 100, location: 100, description: 500, achievements: 500,
+  degree: 100, fieldOfStudy: 100, institution: 100, gpa: 20,
+};
+const HISTORY_FIELD_LABELS = {
+  position: 'Pozicioni', company: 'Kompania', location: 'Vendndodhja', description: 'Përshkrimi',
+  achievements: 'Arritjet', degree: 'Diploma', fieldOfStudy: 'Fusha e studimit', institution: 'Institucioni',
+  gpa: 'Nota mesatare', startDate: 'Data e fillimit', endDate: 'Data e mbarimit',
+};
+const HISTORY_SPEC = {
+  work: {
+    text: ['position', 'company', 'location', 'description', 'achievements'],
+    multiline: ['description', 'achievements'],
+    required: ['position', 'company'],
+    currentKey: 'isCurrentJob',
+  },
+  education: {
+    text: ['degree', 'fieldOfStudy', 'institution', 'location', 'gpa', 'description'],
+    multiline: ['description'],
+    required: ['degree', 'institution'],
+    currentKey: 'isCurrentStudy',
+  },
+};
+const HISTORY_MIN_YEAR = 1950;
+const historyDateMessage = () =>
+  `duhet të jetë në formatin VVVV-MM (vitet ${HISTORY_MIN_YEAR}–${new Date().getUTCFullYear() + 10})`;
+
+/**
+ * '' / null → null ("unknown"). 'YYYY-MM' (or an ISO date starting with it)
+ * → Date at UTC midnight of that day (day 1 for 'YYYY-MM'). Anything else,
+ * or a year outside 1950…now+10 → undefined (invalid).
+ */
+function parseHistoryDate(raw) {
+  if (raw === '' || raw === null) return null;
+  if (typeof raw !== 'string') return undefined;
+  const m = raw.trim().match(/^(\d{4})-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01])(?:T[\d:.]+(?:Z|[+-]\d{2}:?\d{2})?)?)?$/);
+  if (!m) return undefined;
+  const year = Number(m[1]);
+  if (year < HISTORY_MIN_YEAR || year > new Date().getUTCFullYear() + 10) return undefined;
+  return new Date(Date.UTC(year, Number(m[2]) - 1, m[3] ? Number(m[3]) : 1));
+}
+
+const toBool = (v) => v === true || v === 'true';
+
+/**
+ * Validate a work/education payload and apply it to `entry` (a plain object
+ * for create, the existing subdocument for edit). For an edit only the keys
+ * present in `body` change. Returns the list of field errors (empty = ok).
+ */
+function applyHistoryPayload(kind, body, entry, { isCreate }) {
+  const spec = HISTORY_SPEC[kind];
+  const errors = [];
+  const fail = (field, message) => errors.push({ field, message });
+  const src = isPlainObject(body) ? body : {};
+
+  for (const field of spec.text) {
+    const label = HISTORY_FIELD_LABELS[field];
+    const raw = src[field];
+    if (raw === undefined) {
+      if (isCreate && spec.required.includes(field)) fail(field, `${label} është i detyrueshëm`);
+      continue;
+    }
+    if (raw !== null && typeof raw !== 'string') {
+      fail(field, `${label} nuk është i vlefshëm`);
+      continue;
+    }
+    const clean = stripHtml(raw || '');
+    const value = spec.multiline.includes(field) ? clean.trim() : normalizeOneLine(clean);
+    if (!value && spec.required.includes(field)) {
+      fail(field, `${label} është i detyrueshëm`);
+      continue;
+    }
+    if (value.length > HISTORY_TEXT_LIMITS[field]) {
+      fail(field, `${label} nuk mund të ketë më shumë se ${HISTORY_TEXT_LIMITS[field]} karaktere`);
+      continue;
+    }
+    entry[field] = value;
+  }
+
+  // Dates: undefined = unchanged (edit) / absent (create).
+  const dates = {};
+  for (const field of ['startDate', 'endDate']) {
+    if (src[field] === undefined) continue;
+    const parsed = parseHistoryDate(src[field]);
+    if (parsed === undefined) fail(field, `${HISTORY_FIELD_LABELS[field]} ${historyDateMessage()}`);
+    else dates[field] = parsed;
+  }
+  if (errors.length) return errors;
+
+  const currentKey = spec.currentKey;
+  if (src[currentKey] !== undefined) {
+    entry[currentKey] = toBool(src[currentKey]);
+  } else if (isCreate) {
+    entry[currentKey] = false;
+  } else if (dates.endDate) {
+    // A new end date on an entry that was "current" ends it.
+    entry[currentKey] = false;
+  }
+
+  if ('startDate' in dates) entry.startDate = dates.startDate ?? undefined;
+  if (entry[currentKey]) entry.endDate = undefined;
+  else if ('endDate' in dates) entry.endDate = dates.endDate ?? undefined;
+
+  const start = entry.startDate ? new Date(entry.startDate) : null;
+  const end = entry.endDate ? new Date(entry.endDate) : null;
+  if (start && end && end < start) {
+    fail('endDate', 'Data e mbarimit nuk mund të jetë para datës së fillimit');
+    return errors;
+  }
+
+  if (kind === 'education') {
+    // Canonical institution: a legacy edited entry kept the newest value in
+    // `school` — carry it over unless this request sets the institution.
+    if (entry.school) {
+      if (src.institution === undefined) entry.institution = entry.school;
+      entry.school = undefined;
+    }
+    const yearSource = end || start;
+    entry.year = yearSource ? yearSource.getUTCFullYear() : undefined;
+  }
+  return errors;
+}
+
+const historyValidationResponse = (res, errors) => res.status(400).json({
+  success: false,
+  message: 'Të dhënat e futura nuk janë të vlefshme',
+  errors,
+});
+
+// Schema/cast failures (e.g. a legacy entry elsewhere in the array) → 400.
+const historySaveErrorResponse = (res, error, fallbackMessage) => {
+  if (error?.name === 'ValidationError' || error?.name === 'CastError') {
+    const errors = error.name === 'ValidationError'
+      ? Object.values(error.errors || {}).map(e => ({ field: e.path, message: e.message }))
+      : [{ field: error.path, message: 'Vlerë e pavlefshme' }];
+    return historyValidationResponse(res, errors);
+  }
+  return res.status(500).json({ success: false, message: fallbackMessage });
+};
+
+// Legacy education entries edited before the fix keep the newest institution
+// in `school`; normalize the user's whole list whenever it is written.
+function normalizeEducationInstitutions(user) {
+  for (const e of user.profile?.jobSeekerProfile?.education || []) {
+    if (e.school) {
+      e.institution = e.school;
+      e.school = undefined;
+    }
+  }
+}
+
 // @route   POST /api/users/work-experience
 // @desc    Add work experience to user profile
 // @access  Private (Job Seeker only)
-router.post('/work-experience', authenticate, requireJobSeeker, [
-  body('position').notEmpty().withMessage('Pozicioni është i detyruar'),
-  body('company').notEmpty().withMessage('Kompania është e detyruara'),
-], async (req, res) => {
+router.post('/work-experience', authenticate, requireJobSeeker, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Të dhënat e futura nuk janë të vlefshme',
-        errors: errors.array()
-      });
-    }
+    const experienceData = { id: randomUUID(), createdAt: new Date() };
+    const errors = applyHistoryPayload('work', req.body, experienceData, { isCreate: true });
+    if (errors.length) return historyValidationResponse(res, errors);
 
     const user = await User.findById(req.user._id);
     if (!user) {
@@ -1485,19 +1929,6 @@ router.post('/work-experience', authenticate, requireJobSeeker, [
         message: 'Përdoruesi nuk u gjet'
       });
     }
-
-    const experienceData = {
-      id: randomUUID(),
-      position: stripHtml(req.body.position || ''),
-      company: stripHtml(req.body.company || ''),
-      location: stripHtml(req.body.location || ''),
-      startDate: req.body.startDate || '',
-      endDate: req.body.isCurrentJob ? null : req.body.endDate || '',
-      isCurrentJob: req.body.isCurrentJob || false,
-      description: stripHtml(req.body.description || ''),
-      achievements: stripHtml(req.body.achievements || ''),
-      createdAt: new Date()
-    };
 
     // Initialize work history if it doesn't exist
     if (!user.profile.jobSeekerProfile.workHistory) {
@@ -1515,35 +1946,24 @@ router.post('/work-experience', authenticate, requireJobSeeker, [
       message: 'Përvojë e punës u shtua me sukses',
       data: {
         user,
-        experience: experienceData
+        experience: user.profile.jobSeekerProfile.workHistory.at(-1)
       }
     });
 
   } catch (error) {
     logger.error('Add work experience error:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Gabim në shtimin e përvojës së punës'
-    });
+    historySaveErrorResponse(res, error, 'Gabim në shtimin e përvojës së punës');
   }
 });
 
 // @route   POST /api/users/education
 // @desc    Add education to user profile
 // @access  Private (Job Seeker only)
-router.post('/education', authenticate, requireJobSeeker, [
-  body('degree').notEmpty().withMessage('Diploma është e detyruara'),
-  body('institution').notEmpty().withMessage('Institucioni është i detyruar'),
-], async (req, res) => {
+router.post('/education', authenticate, requireJobSeeker, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Të dhënat e futura nuk janë të vlefshme',
-        errors: errors.array()
-      });
-    }
+    const educationData = { id: randomUUID(), createdAt: new Date() };
+    const errors = applyHistoryPayload('education', req.body, educationData, { isCreate: true });
+    if (errors.length) return historyValidationResponse(res, errors);
 
     const user = await User.findById(req.user._id);
     if (!user) {
@@ -1553,25 +1973,12 @@ router.post('/education', authenticate, requireJobSeeker, [
       });
     }
 
-    const educationData = {
-      id: randomUUID(),
-      degree: stripHtml(req.body.degree || ''),
-      fieldOfStudy: stripHtml(req.body.fieldOfStudy || ''),
-      institution: stripHtml(req.body.institution || ''),
-      location: stripHtml(req.body.location || ''),
-      startDate: req.body.startDate || '',
-      endDate: req.body.isCurrentStudy ? null : req.body.endDate || '',
-      isCurrentStudy: req.body.isCurrentStudy || false,
-      gpa: req.body.gpa || '',
-      description: stripHtml(req.body.description || ''),
-      createdAt: new Date()
-    };
-
     // Initialize education array if it doesn't exist
     if (!user.profile.jobSeekerProfile.education) {
       user.profile.jobSeekerProfile.education = [];
     }
 
+    normalizeEducationInstitutions(user);
     user.profile.jobSeekerProfile.education.push(educationData);
     await user.save();
 
@@ -1583,16 +1990,13 @@ router.post('/education', authenticate, requireJobSeeker, [
       message: 'Arsimimi u shtua me sukses',
       data: {
         user,
-        education: educationData
+        education: user.profile.jobSeekerProfile.education.at(-1)
       }
     });
 
   } catch (error) {
     logger.error('Add education error:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Gabim në shtimin e arsimimit'
-    });
+    historySaveErrorResponse(res, error, 'Gabim në shtimin e arsimimit');
   }
 });
 
@@ -1616,18 +2020,8 @@ router.put('/work-experience/:experienceId', validateObjectId('experienceId'), a
       return res.status(404).json({ success: false, message: 'Përvojë e punës nuk u gjet' });
     }
 
-    const { position, company, location, startDate, endDate, isCurrentJob, description, achievements } = req.body;
-    if (position) entry.position = stripHtml(position);
-    if (company) entry.company = stripHtml(company);
-    if (location !== undefined) entry.location = stripHtml(location || '');
-    if (startDate) entry.startDate = startDate;
-    if (isCurrentJob) {
-      entry.endDate = undefined;
-    } else if (endDate) {
-      entry.endDate = endDate;
-    }
-    if (description !== undefined) entry.description = stripHtml(description || '');
-    if (achievements !== undefined) entry.achievements = stripHtml(achievements || '');
+    const errors = applyHistoryPayload('work', req.body, entry, { isCreate: false });
+    if (errors.length) return historyValidationResponse(res, errors);
 
     await user.save();
 
@@ -1641,7 +2035,7 @@ router.put('/work-experience/:experienceId', validateObjectId('experienceId'), a
     });
   } catch (error) {
     logger.error('Update work experience error:', error.message);
-    res.status(500).json({ success: false, message: 'Gabim në përditësimin e përvojës së punës' });
+    historySaveErrorResponse(res, error, 'Gabim në përditësimin e përvojës së punës');
   }
 });
 
@@ -1665,22 +2059,9 @@ router.put('/education/:educationId', validateObjectId('educationId'), authentic
       return res.status(404).json({ success: false, message: 'Arsimimi nuk u gjet' });
     }
 
-    const { degree, fieldOfStudy, institution, location, startDate, endDate, isCurrentStudy, gpa, description } = req.body;
-    if (degree) entry.degree = stripHtml(degree);
-    if (fieldOfStudy !== undefined) entry.fieldOfStudy = stripHtml(fieldOfStudy || '');
-    if (institution) entry.school = stripHtml(institution);
-    if (location !== undefined) entry.location = stripHtml(location || '');
-    if (startDate) entry.startDate = startDate;
-    if (isCurrentStudy) {
-      entry.endDate = undefined;
-    } else if (endDate) {
-      entry.endDate = endDate;
-    }
-    if (gpa !== undefined) entry.gpa = stripHtml(gpa || '');
-    if (description !== undefined) entry.description = stripHtml(description || '');
-    // Update year from endDate or startDate
-    if (endDate) entry.year = new Date(endDate).getFullYear();
-    else if (startDate) entry.year = new Date(startDate).getFullYear();
+    const errors = applyHistoryPayload('education', req.body, entry, { isCreate: false });
+    if (errors.length) return historyValidationResponse(res, errors);
+    normalizeEducationInstitutions(user);
 
     await user.save();
 
@@ -1694,7 +2075,7 @@ router.put('/education/:educationId', validateObjectId('educationId'), authentic
     });
   } catch (error) {
     logger.error('Update education error:', error.message);
-    res.status(500).json({ success: false, message: 'Gabim në përditësimin e arsimimit' });
+    historySaveErrorResponse(res, error, 'Gabim në përditësimin e arsimimit');
   }
 });
 
@@ -1731,7 +2112,7 @@ router.delete('/work-experience/:experienceId', validateObjectId('experienceId')
     });
   } catch (error) {
     logger.error('Delete work experience error:', error.message);
-    res.status(500).json({ success: false, message: 'Gabim në fshirjen e përvojës së punës' });
+    historySaveErrorResponse(res, error, 'Gabim në fshirjen e përvojës së punës');
   }
 });
 
@@ -1768,7 +2149,7 @@ router.delete('/education/:educationId', validateObjectId('educationId'), authen
     });
   } catch (error) {
     logger.error('Delete education error:', error.message);
-    res.status(500).json({ success: false, message: 'Gabim në fshirjen e arsimimit' });
+    historySaveErrorResponse(res, error, 'Gabim në fshirjen e arsimimit');
   }
 });
 
@@ -2152,16 +2533,17 @@ router.get('/export', authenticate, async (req, res) => {
         notifications: jsp.notifications
       };
 
-      // Applications with job titles
+      // Applications with job titles — ALL of them (157): withdrawn ones are
+      // still personal data the platform holds, flagged `withdrawn: true`.
       const applications = await Application.find({
-        jobSeekerId: user._id,
-        withdrawn: false
+        jobSeekerId: user._id
       })
         .populate('jobId', 'title location category')
-        .select('status appliedAt applicationMethod coverLetter customAnswers viewedAt respondedAt messages resumeUrl resumeType')
+        .select('status appliedAt applicationMethod coverLetter customAnswers viewedAt respondedAt messages resumeUrl resumeType withdrawn withdrawnAt withdrawalReason')
         .sort({ appliedAt: -1 })
         .lean();
 
+      const selfId = String(user._id);
       exportData.applications = applications.map(app => ({
         jobTitle: app.jobId?.title || '(pune e fshire)',
         jobLocation: app.jobId?.location,
@@ -2176,7 +2558,16 @@ router.get('/export', authenticate, async (req, res) => {
         attachedCv: app.resumeUrl ? { file: '(file on record)', fileType: app.resumeType || null } : null,
         viewedAt: app.viewedAt,
         respondedAt: app.respondedAt,
-        messageCount: app.messages?.length || 0
+        withdrawn: !!app.withdrawn,
+        withdrawnAt: app.withdrawnAt || null,
+        // 157: the conversation with the employer (the Profile export card
+        // promises "mesazhet"). `from` is 'ju' (you) or 'punedhenesi'.
+        messages: (app.messages || []).map(m => ({
+          from: String(m.from) === selfId ? 'ju' : 'punedhenesi',
+          type: m.type,
+          message: m.message,
+          sentAt: m.sentAt
+        }))
       }));
 
       // Saved jobs
@@ -2224,6 +2615,21 @@ router.get('/export', authenticate, async (req, res) => {
         applicationCount: j.applicationCount
       }));
     }
+
+    // 157: in-app notifications (the export card promises "njoftimet").
+    const { default: Notification } = await import('../models/Notification.js');
+    const notifications = await Notification.find({ userId: user._id })
+      .select('type title message read readAt createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+    exportData.notifications = notifications.map(n => ({
+      type: n.type,
+      title: n.title,
+      message: n.message,
+      read: !!n.read,
+      readAt: n.readAt || null,
+      createdAt: n.createdAt
+    }));
 
     res.json({ success: true, data: exportData });
   } catch (err) {

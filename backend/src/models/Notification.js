@@ -30,10 +30,13 @@ const notificationSchema = new Schema({
     required: true,
     maxlength: 200
   },
+  // Sized for the longest producer: admin bulk notifications accept 2,000
+  // characters (routes/bulk-notifications.js, BulkNotification.message). At
+  // the old 500 cap every recipient's in-app save failed validation.
   message: {
     type: String,
     required: true,
-    maxlength: 500
+    maxlength: 2100
   },
   data: {
     type: Schema.Types.Mixed, // For storing additional contextual data
@@ -152,6 +155,15 @@ notificationSchema.statics.createApplicationStatusNotification = async function(
       }
     };
 
+    // A hire the employer took back (hired → shortlisted) is not a fresh
+    // "Urime!": tell the candidate plainly that the decision changed.
+    if (oldStatus === 'hired' && newStatus === 'shortlisted') {
+      statusMessages.shortlisted = {
+        title: 'Përditësim për aplikimin tuaj',
+        message: `${application.employerId?.profile?.employerProfile?.companyName || 'Punëdhënësi'} e ktheu aplikimin tuaj për pozicionin "${application.jobId?.title}" në listën e shkurtër. Punësimi i njoftuar më parë nuk është më përfundimtar.`
+      };
+    }
+
     const statusInfo = statusMessages[newStatus];
     
     if (statusInfo) {
@@ -195,8 +207,10 @@ notificationSchema.statics.getUserNotifications = function(userId, options = {})
     query.read = false;
   }
   
+  // _id breaks ties between notifications created in the same millisecond
+  // (ObjectIds increase), so the newest is always first.
   return this.find(query)
-    .sort({ createdAt: -1 })
+    .sort({ createdAt: -1, _id: -1 })
     .limit(limit)
     .skip(skip)
     .populate('relatedJob', 'title')
@@ -219,9 +233,16 @@ notificationSchema.statics.getUnreadCount = function(userId) {
   return this.countDocuments({ userId, read: false });
 };
 
+// Longest admin-written reason shown inside an account-action notification.
+// The message adds up to ~80 characters of fixed text around it.
+const ACCOUNT_ACTION_REASON_MAX = 1000;
+
 // Static method to create account action notification (warning, suspension, ban)
-notificationSchema.statics.createAccountActionNotification = async function(userId, action, reason, duration = null, reportId = null) {
+notificationSchema.statics.createAccountActionNotification = async function(userId, action, rawReason, duration = null, reportId = null) {
   try {
+    const reason = typeof rawReason === 'string' && rawReason.length > ACCOUNT_ACTION_REASON_MAX
+      ? `${rawReason.slice(0, ACCOUNT_ACTION_REASON_MAX - 1)}…`
+      : rawReason;
     const actionMessages = {
       warning: {
         type: 'account_warning',

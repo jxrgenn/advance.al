@@ -1,13 +1,11 @@
 /**
- * Integration tests for GET /api/jobs — PR-E personalized listing.
+ * Integration tests for GET /api/jobs — the main listing is NOT personalised.
  *
- * Covers:
- *   - Page 1 + default sort + jobseeker with embedding → re-ranked by embedding score
- *   - More relevant job (higher cosine) surfaces before less relevant one
- *   - Guest / employer / page 2 / explicit non-default sort → falls through to normal unranked path
- *   - Response shape: personalized:true flag present, no embedding vector leaked
- *   - Filter still respected in personalized path (city filter, category filter)
- *   - Jobseeker with no/incomplete embedding falls through to normal path
+ * PR-E used to re-rank page 1 by embedding for logged-in jobseekers while
+ * pages 2+ stayed chronological, so some of the newest jobs appeared on no
+ * page and others on two (deep-logic 75/102); the owner had also removed
+ * recommendations from the jobs page. The listing is now one stable,
+ * newest-first partition for every viewer; personalized is always false.
  *
  * Vectors are injected directly into Mongo (no OpenAI calls).
  */
@@ -61,7 +59,7 @@ async function setJobEmbedding(jobId, vector) {
   });
 }
 
-describe('GET /api/jobs — PR-E personalized listing', () => {
+describe('GET /api/jobs — no personalisation of the main listing (75/102)', () => {
   beforeAll(async () => {
     await connectTestDB();
     await seedLocations();
@@ -74,7 +72,7 @@ describe('GET /api/jobs — PR-E personalized listing', () => {
 
   afterAll(async () => { await closeTestDB(); });
 
-  it('re-ranks page 1 by embedding: high-cosine job surfaces before low-cosine job', async () => {
+  it('does NOT re-rank page 1 by embedding: a jobseeker sees newest first', async () => {
     const { user: js } = await createJobseeker();
     const { user: emp } = await createVerifiedEmployer();
 
@@ -95,13 +93,40 @@ describe('GET /api/jobs — PR-E personalized listing', () => {
       .set(createAuthHeaders(js));
 
     expect(r.status).toBe(200);
-    expect(r.body.data.personalized).toBe(true);
+    expect(r.body.data.personalized).toBe(false);
 
     const titles = r.body.data.jobs.map(j => j.title);
-    expect(titles.indexOf('High Relevance Job')).toBeLessThan(titles.indexOf('Low Relevance Job'));
+    expect(titles).toEqual(['Low Relevance Job', 'High Relevance Job']);
   });
 
-  it('response shape: personalized:true, no embedding.vector in jobs array', async () => {
+  it('pages are a stable partition for a jobseeker with an embedding (every job exactly once, newest first)', async () => {
+    const { user: js } = await createJobseeker();
+    const { user: emp } = await createVerifiedEmployer();
+    await setUserEmbedding(js._id, spikedVector(0));
+
+    const now = Date.now();
+    const created = [];
+    for (let i = 0; i < 23; i++) {
+      const job = await createJob(emp, { title: `Partition Job ${i}` });
+      // older jobs are the most "relevant" — a re-rank would pull them onto page 1
+      await setJobEmbedding(job._id, i >= 15 ? nearVector(0, 0.95) : spikedVector(700));
+      await Job.findByIdAndUpdate(job._id, { $set: { postedAt: new Date(now - i * 60000) } });
+      created.push(String(job._id));
+    }
+
+    const seen = [];
+    for (let page = 1; page <= 3; page++) {
+      const r = await request(app).get(`/api/jobs?page=${page}&limit=10&sortBy=postedAt&sortOrder=desc`).set(createAuthHeaders(js));
+      expect(r.status).toBe(200);
+      expect(r.body.data.personalized).toBe(false);
+      expect(r.body.data.pagination.totalJobs).toBe(23);
+      seen.push(...r.body.data.jobs.map(j => j._id));
+    }
+    // newest first (created[0] is the newest), each exactly once
+    expect(seen).toEqual(created);
+  });
+
+  it('response shape: personalized:false, no embedding.vector in jobs array', async () => {
     const { user: js } = await createJobseeker();
     const { user: emp } = await createVerifiedEmployer();
 
@@ -114,7 +139,7 @@ describe('GET /api/jobs — PR-E personalized listing', () => {
       .set(createAuthHeaders(js));
 
     expect(r.status).toBe(200);
-    expect(r.body.data.personalized).toBe(true);
+    expect(r.body.data.personalized).toBe(false);
     for (const j of r.body.data.jobs) {
       expect(j.embedding?.vector).toBeUndefined();
     }
@@ -123,7 +148,7 @@ describe('GET /api/jobs — PR-E personalized listing', () => {
     expect(r.body.data.pagination).toHaveProperty('totalJobs');
   });
 
-  it('respects filters in the personalized path (category filter reduces pool)', async () => {
+  it('respects filters for a jobseeker with an embedding (category filter)', async () => {
     const { user: js } = await createJobseeker();
     const { user: emp } = await createVerifiedEmployer();
 

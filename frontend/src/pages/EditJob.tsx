@@ -34,6 +34,7 @@ import Footer from "@/components/Footer";
 import { validateForm, postJobRules, formatValidationErrors } from "@/lib/formValidation";
 import { TextAreaWithCounter, InputWithCounter } from "@/components/CharacterCounter";
 import { JOB_CATEGORY_OPTIONS } from "@/constants/jobCategories";
+import { JOB_TYPE_OPTIONS } from "@/lib/labels";
 import { annualToMonthly, monthlyToAnnual } from "@/lib/salary";
 
 // Listing lifetime policy (backend models/Job.js JOB_TTL_DAYS): expiresAt is
@@ -508,6 +509,7 @@ const EditJob = () => {
             <SimpleGrid cols={2} spacing="md">
               <Select
                 label="Kategoria"
+                allowDeselect={false}
                 placeholder="Zgjidhni kategorinë"
                 value={formData.category}
                 onChange={(value) => handleInputChange('category', value || '')}
@@ -517,14 +519,11 @@ const EditJob = () => {
               />
               <Select
                 label="Lloji i Punës"
+                allowDeselect={false}
                 placeholder="Zgjidhni llojin"
                 value={formData.jobType}
                 onChange={(value) => handleInputChange('jobType', value || '')}
-                data={[
-                  { value: 'full-time', label: 'Full-time' },
-                  { value: 'part-time', label: 'Part-time' },
-                  { value: 'internship', label: 'Praktikë' }
-                ]}
+                data={JOB_TYPE_OPTIONS}
                 required
               />
             </SimpleGrid>
@@ -558,6 +557,7 @@ const EditJob = () => {
             <Box>
               <Select
                 label="Qyteti"
+                allowDeselect={false}
                 placeholder="Zgjidhni qytetin"
                 value={formData.city}
                 onChange={(value) => {
@@ -611,6 +611,7 @@ const EditJob = () => {
                   />
                   <Select
                     label="Monedha"
+                    allowDeselect={false}
                     value={formData.salaryCurrency}
                     onChange={(value) => handleInputChange('salaryCurrency', value || 'EUR')}
                     data={[
@@ -924,7 +925,7 @@ const EditJob = () => {
                 onClick={currentStep === 0 ? () => navigate('/employer-dashboard') : handlePrevStep}
                 size="sm"
               >
-                {currentStep === 0 ? 'Dashboard' : 'Prapa'}
+                {currentStep === 0 ? 'Paneli' : 'Prapa'}
               </Button>
 
               <Group>

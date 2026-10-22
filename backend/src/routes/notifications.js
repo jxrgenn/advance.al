@@ -1,6 +1,6 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { Notification, Job, QuickUser } from '../models/index.js';
 import { authenticate, requireEmployer, requireAdmin } from '../middleware/auth.js';
 import notificationService from '../lib/notificationService.js';
@@ -9,14 +9,39 @@ import logger from '../config/logger.js';
 
 const router = express.Router();
 
-// Rate limiting for notification operations
+// Rate limiting for mark-read / mark-all / delete. Mounted AFTER authenticate
+// and keyed per user: an office or mobile-carrier NAT shares one IP, and the
+// old per-IP 20/15min bucket (which also counted unauthenticated requests)
+// made reading notifications silently fail for everyone behind it. Opening
+// the bell and clicking through ~10 items is normal use, so the cap only
+// stops scripted abuse. Standard {success:false, message} 429 body.
 const notificationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // limit each IP to 20 notification requests per window
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => (req.user?._id ? `user:${req.user._id}` : ipKeyGenerator(req.ip)),
+  skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
   message: {
-    error: 'Shumë kërkesa për njoftimet, ju lutemi provoni përsëri pas 15 minutash.',
+    success: false,
+    message: 'Shumë kërkesa për njoftimet, ju lutemi provoni përsëri pas 15 minutash.',
   }
 });
+
+// Albanian relative time for a notification ("3 orë më parë"). Lean query
+// results carry no virtuals, so the route adds it explicitly (same wording
+// as the Notification `timeAgo` virtual).
+const timeAgoSq = (createdAt, now = Date.now()) => {
+  const diffMs = now - new Date(createdAt).getTime();
+  if (!Number.isFinite(diffMs)) return '';
+  const minutes = Math.floor(diffMs / 60000);
+  const hours = Math.floor(diffMs / 3600000);
+  const days = Math.floor(diffMs / 86400000);
+  if (days > 0) return `${days} ditë më parë`;
+  if (hours > 0) return `${hours} orë më parë`;
+  if (minutes > 0) return minutes === 1 ? '1 minutë më parë' : `${minutes} minuta më parë`;
+  return 'Tani';
+};
 
 // Handle validation errors
 const handleValidationErrors = (req, res, next) => {
@@ -64,11 +89,12 @@ router.get('/', authenticate, async (req, res) => {
     ]);
 
     const totalPages = Math.ceil(totalNotifications / sanitizedLimit);
+    const now = Date.now();
 
     res.json({
       success: true,
       data: {
-        notifications,
+        notifications: notifications.map(n => ({ ...n, timeAgo: timeAgoSq(n.createdAt, now) })),
         pagination: {
           currentPage,
           totalPages,
@@ -113,7 +139,7 @@ router.get('/unread-count', authenticate, async (req, res) => {
 // @route   PATCH /api/notifications/:id/read
 // @desc    Mark single notification as read
 // @access  Private
-router.patch('/:id/read', notificationLimiter, validateObjectId('id'), authenticate, async (req, res) => {
+router.patch('/:id/read', validateObjectId('id'), authenticate, notificationLimiter, async (req, res) => {
   try {
     const notification = await Notification.findOne({
       _id: req.params.id,
@@ -146,7 +172,7 @@ router.patch('/:id/read', notificationLimiter, validateObjectId('id'), authentic
 // @route   PATCH /api/notifications/mark-all-read
 // @desc    Mark all notifications as read for user
 // @access  Private
-router.patch('/mark-all-read', notificationLimiter, authenticate, async (req, res) => {
+router.patch('/mark-all-read', authenticate, notificationLimiter, async (req, res) => {
   try {
     const result = await Notification.markAllAsReadForUser(req.user._id);
 
@@ -168,7 +194,7 @@ router.patch('/mark-all-read', notificationLimiter, authenticate, async (req, re
 // @route   DELETE /api/notifications/:id
 // @desc    Delete a notification
 // @access  Private
-router.delete('/:id', notificationLimiter, validateObjectId('id'), authenticate, async (req, res) => {
+router.delete('/:id', validateObjectId('id'), authenticate, notificationLimiter, async (req, res) => {
   try {
     const result = await Notification.findOneAndDelete({
       _id: req.params.id,
@@ -198,8 +224,20 @@ router.delete('/:id', notificationLimiter, validateObjectId('id'), authenticate,
 
 // === QuickUser Notification System Routes ===
 
+// The admin "test"/"manual" endpoints send REAL emails. Only a job that is
+// actually live may be announced — never a closed, expired, unpaid or
+// deleted one.
+const isLiveJob = (job) => job
+  && job.status === 'active'
+  && job.isDeleted !== true
+  && (!job.expiresAt || new Date(job.expiresAt).getTime() > Date.now());
+const NOT_LIVE_MESSAGE = 'Njoftimet mund të dërgohen vetëm për punë aktive (jo të mbyllura, të skaduara ose të fshira)';
+
 // @route   POST /api/notifications/test-job-match
-// @desc    Test job matching and notification system (admin only)
+// @desc    DRY RUN of the job-alert matching for one live job (admin only):
+//          reports who WOULD be emailed now / queued for a digest / skipped.
+//          Sends nothing and records nothing — a real announcement only ever
+//          happens through the job's exactly-once claim (services/jobFanOut.js).
 // @access  Admin
 router.post('/test-job-match', authenticate, requireAdmin, async (req, res) => {
   try {
@@ -220,21 +258,32 @@ router.post('/test-job-match', authenticate, requireAdmin, async (req, res) => {
       });
     }
 
-    // Find the job
-    const job = await Job.findById(jobId);
+    // Find the job (company name is rendered in the email)
+    const job = await Job.findById(jobId).populate('employerId', 'profile.employerProfile.companyName');
     if (!job) {
       return res.status(404).json({
         success: false,
         message: 'Puna nuk u gjet'
       });
     }
+    if (!isLiveJob(job)) {
+      return res.status(409).json({ success: false, message: NOT_LIVE_MESSAGE });
+    }
 
-    // Test notification process
-    const result = await notificationService.notifyMatchingUsers(job);
-
+    const result = await notificationService.notifyMatchingUsers(job, { dryRun: true });
+    const st = result.stats || {};
+    if (!result.success) {
+      return res.status(502).json({
+        success: false,
+        message: `Testi nuk u krye plotësisht: ${result.error || 'gabim në kërkimin e përdoruesve'}`,
+        data: result
+      });
+    }
     res.json({
       success: true,
-      message: 'Test i njoftimeve u krye me sukses',
+      message: st.totalUsers
+        ? `Test pa dërguar asnjë email: ${st.totalUsers} përdorues përputhen — ${st.wouldEmailNow || 0} do merrnin email tani, ${st.wouldQueueForDigest || 0} do shtoheshin në përmbledhje, ${st.wouldSkip || 0} e kanë marrë tashmë.`
+        : 'Test pa dërguar asnjë email: asnjë përdorues nuk përputhet me këtë punë.',
       data: result
     });
 
@@ -354,10 +403,14 @@ router.get('/quickuser-stats', authenticate, requireAdmin, async (req, res) => {
       convertedToFullUser: false
     });
 
+    // Never-notified users (lastNotifiedAt null) need a notification too.
     const usersNeedingNotification = await QuickUser.countDocuments({
       isActive: true,
       convertedToFullUser: false,
-      lastNotifiedAt: { $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+      $or: [
+        { lastNotifiedAt: null },
+        { lastNotifiedAt: { $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } }
+      ]
     });
 
     const frequencyDistribution = await QuickUser.aggregate([
@@ -468,13 +521,16 @@ router.post('/manual-notify', authenticate, requireAdmin, [
       });
     }
 
-    // Find the job
-    const job = await Job.findById(jobId);
+    // Find the job (company name is rendered in the email)
+    const job = await Job.findById(jobId).populate('employerId', 'profile.employerProfile.companyName');
     if (!job) {
       return res.status(404).json({
         success: false,
         message: 'Puna nuk u gjet'
       });
+    }
+    if (!isLiveJob(job)) {
+      return res.status(409).json({ success: false, message: NOT_LIVE_MESSAGE });
     }
 
     // Check if user is eligible for notifications
@@ -485,12 +541,29 @@ router.post('/manual-notify', authenticate, requireAdmin, [
       });
     }
 
-    // Send notification
+    // Send notification (same exactly-once / gap rules as the fan-out)
     const result = await notificationService.sendJobNotificationToUser(quickUser, job);
 
-    res.json({
-      success: true,
-      message: 'Njoftimi u dërgua me sukses',
+    if (result.sent) {
+      return res.json({ success: true, message: 'Njoftimi u dërgua me sukses', data: result });
+    }
+    if (!result.success) {
+      return res.status(502).json({
+        success: false,
+        message: `Email-i nuk u dërgua: ${result.error || 'gabim i shërbimit të email-it'}. Puna u ruajt për përmbledhjen e radhës të këtij përdoruesi.`,
+        data: result
+      });
+    }
+    if (result.queued) {
+      return res.json({
+        success: true,
+        message: 'Email-i nuk u dërgua tani: puna u shtua në përmbledhjen e radhës të këtij përdoruesi.',
+        data: result
+      });
+    }
+    return res.status(409).json({
+      success: false,
+      message: 'Asgjë nuk u dërgua: ky përdorues e ka marrë tashmë njoftimin për këtë punë ose nuk është më aktiv.',
       data: result
     });
 

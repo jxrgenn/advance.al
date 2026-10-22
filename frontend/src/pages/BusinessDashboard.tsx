@@ -218,7 +218,7 @@ const BusinessDashboard: React.FC = () => {
           <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
             <Badge className="bg-yellow-400 text-yellow-900 hover:bg-yellow-400 text-xs">
               <Star className="h-3 w-3 mr-1" />
-              Popullar
+              Popullor
             </Badge>
           </div>
           <CardHeader className="text-center pb-2 px-3 pt-5">

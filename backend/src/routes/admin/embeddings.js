@@ -4,6 +4,8 @@ import JobQueue from '../../models/JobQueue.js';
 import WorkerStatus from '../../models/WorkerStatus.js';
 import jobEmbeddingService from '../../services/jobEmbeddingService.js';
 import { fireEmbedding } from '../../services/embeddingTrigger.js';
+import { markManyEmbeddingsStale } from '../../services/embeddingStaleness.js';
+import { getWorkerStats, runJobSweepNow } from '../../services/embeddingRetryWorker.js';
 import debugLogger from '../../services/debugLogger.js';
 import { authenticate, requireAdmin } from '../../middleware/auth.js';
 import { sanitizeLimit, validateObjectId } from '../../utils/sanitize.js';
@@ -76,9 +78,20 @@ router.get('/status', async (req, res) => {
           completed: jobsWithEmbeddings,
           failed: failedJobs
         },
+        // LEGACY (#98): the JobQueue collection has no consumer —
+        // workers/embeddingWorker.js is not deployed. Embeddings are generated
+        // inline (services/embeddingTrigger.js) and repaired by
+        // embeddingRetryWorker (see `retryWorker`). Live routes no longer write
+        // queue rows; these numbers only describe old rows.
         queue: {
           ...queueStats,
-          health: queueStats.byStatus?.pending < 100 ? 'healthy' : 'degraded'
+          health: queueStats.byStatus?.pending < 100 ? 'healthy' : 'degraded',
+          legacy: true
+        },
+        retryWorker: {
+          ...getWorkerStats(),
+          openaiConfigured: jobEmbeddingService.isAvailable(),
+          stale: await Job.countDocuments({ 'embedding.staleSince': { $type: 'date' }, isDeleted: false, status: 'active' })
         },
         workers: {
           active: activeWorkers.length,
@@ -245,37 +258,34 @@ router.get('/workers', async (req, res) => {
 
 /**
  * @route   POST /api/admin/embeddings/recompute-all
- * @desc    Requeue all jobs for embedding generation
+ * @desc    Re-embed all active jobs (stale marker + one background sweep)
  * @access  Admin only
  */
 router.post('/recompute-all', async (req, res) => {
   try {
-    const jobs = await Job.find({ isDeleted: false }).select('_id').limit(500);
+    // Active jobs only: they are the ones matched/announced, and the ones the
+    // retry worker regenerates (an inactive job is re-embedded when renewed).
+    const jobs = await Job.find({ isDeleted: false, status: 'active' }).select('_id').limit(500);
+    const ids = jobs.map(j => j._id);
 
-    let queuedCount = 0;
-    let errorCount = 0;
-
-    for (const job of jobs) {
-      try {
-        // Round P: keep the JobQueue write for admin-UI/audit purposes, AND fire
-        // the inline trigger that does the actual generation. The queue is now
-        // a passive audit record; fireEmbedding has cost caps + retry guarantees.
-        await jobEmbeddingService.queueEmbeddingGeneration(job._id, 5);
-        fireEmbedding({ kind: 'job', id: job._id, reason: 'admin-recompute' });
-        queuedCount++;
-      } catch (error) {
-        logger.error(`Error queuing job ${job._id}:`, error.message);
-        errorCount++;
-      }
-    }
+    // #92/#98: firing up to 500 inline kicks at once overflowed the 20-slot
+    // in-flight cap — most were dropped and kept their old vectors — and the
+    // JobQueue rows written alongside were never consumed. Instead every job
+    // gets the stale marker (the old vector keeps serving until replaced) and
+    // one background sweep regenerates them sequentially, bounded by the
+    // embedding concurrency limit. Anything it doesn't reach (restart,
+    // OpenAI down) is finished by the 10-minute retry worker.
+    const queuedCount = ids.length ? await markManyEmbeddingsStale('job', { _id: { $in: ids } }) : 0;
+    const sweep = ids.length ? runJobSweepNow({ batchSize: ids.length, reason: 'admin-recompute' }) : { started: false };
 
     res.json({
       success: true,
       message: `Queued ${queuedCount} jobs for recomputation`,
       data: {
         queued: queuedCount,
-        errors: errorCount,
-        total: jobs.length
+        errors: ids.length - queuedCount,
+        total: jobs.length,
+        sweepStarted: sweep.started
       }
     });
   } catch (error) {
@@ -298,36 +308,25 @@ router.post('/retry-failed', async (req, res) => {
       'embedding.status': 'failed'
     }).select('_id');
 
-    let queuedCount = 0;
-    let errorCount = 0;
-
-    for (const job of failedJobs) {
-      try {
-        // Reset status and retry
-        await Job.findByIdAndUpdate(job._id, {
-          $set: {
-            'embedding.status': 'pending',
-            'embedding.retries': 0,
-            'embedding.error': null
-          }
-        });
-
-        await jobEmbeddingService.queueEmbeddingGeneration(job._id, 5);
-        fireEmbedding({ kind: 'job', id: job._id, reason: 'admin-retry-failed' });
-        queuedCount++;
-      } catch (error) {
-        logger.error(`Error retrying job ${job._id}:`, error.message);
-        errorCount++;
-      }
-    }
+    // Reset to pending (the retry worker selects non-completed jobs) and let
+    // one background sweep regenerate them sequentially — no per-job inline
+    // kicks (in-flight cap drops), no JobQueue rows (no consumer, #98).
+    const ids = failedJobs.map(j => j._id);
+    const reset = ids.length ? await Job.updateMany(
+      { _id: { $in: ids }, 'embedding.status': 'failed' },
+      { $set: { 'embedding.status': 'pending', 'embedding.retries': 0, 'embedding.error': null } }
+    ) : { modifiedCount: 0 };
+    const queuedCount = reset.modifiedCount ?? 0;
+    const sweep = queuedCount ? runJobSweepNow({ batchSize: queuedCount, reason: 'admin-retry-failed' }) : { started: false };
 
     res.json({
       success: true,
       message: `Retrying ${queuedCount} failed jobs`,
       data: {
         queued: queuedCount,
-        errors: errorCount,
-        total: failedJobs.length
+        errors: ids.length - queuedCount,
+        total: failedJobs.length,
+        sweepStarted: sweep.started
       }
     });
   } catch (error) {
@@ -424,15 +423,14 @@ router.post('/queue-job/:jobId', validateObjectId('jobId'), async (req, res) => 
       });
     }
 
-    // Round P: keep JobQueue write for backwards-compat with admin UI, AND fire
-    // the inline trigger. fireEmbedding has cost caps + retry guarantees;
-    // the queue row is now a passive audit record.
-    await jobEmbeddingService.queueEmbeddingGeneration(jobId, priority);
+    // One inline kick (it stamps the stale marker first, so the retry
+    // worker finishes the job if the kick is dropped). No JobQueue row: the
+    // queue has no consumer (#98).
     fireEmbedding({ kind: 'job', id: jobId, reason: 'admin-queue' });
 
     res.json({
       success: true,
-      message: `Job ${jobId} queued + triggered for embedding generation`,
+      message: `Job ${jobId} triggered for embedding generation`,
       data: { jobId, priority }
     });
   } catch (error) {

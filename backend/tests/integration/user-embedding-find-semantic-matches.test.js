@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
+import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
 import { seedLocations } from '../fixtures/locations.fixture.js';
 import { createJobseeker, createVerifiedEmployer } from '../factories/user.factory.js';
@@ -18,7 +19,7 @@ import QuickUser from '../../src/models/QuickUser.js';
 import User from '../../src/models/User.js';
 import Job from '../../src/models/Job.js';
 
-const VEC_LEN = 1536;
+const VEC_LEN = EMBEDDING_DIMS;
 function vec(seed = 1) {
   return Array.from({ length: VEC_LEN }, (_, i) => Math.sin((i + seed) * 0.01));
 }

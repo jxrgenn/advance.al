@@ -12,6 +12,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, jest } from '@jest/globals';
+import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
 import { seedLocations } from '../fixtures/locations.fixture.js';
 import { createJobseeker, createEmployer } from '../factories/user.factory.js';
@@ -26,10 +27,10 @@ import {
   _internal,
 } from '../../src/services/jobAlertsDigest.js';
 
-// Build a fixed-direction 1536-d vector. Different `phase` values produce
+// Build a fixed-direction EMBEDDING_DIMS-length vector. Different `phase` values produce
 // vectors with high cosine similarity to themselves and low to others.
 function vectorAt(phase = 0) {
-  return Array.from({ length: 1536 }, (_, i) => Math.cos((i + phase) / 100));
+  return Array.from({ length: EMBEDDING_DIMS }, (_, i) => Math.cos((i + phase) / 100));
 }
 
 async function makeJobseekerOptedIn(emailSuffix) {
@@ -44,7 +45,7 @@ async function makeJobseekerOptedIn(emailSuffix) {
   user.profile.jobSeekerProfile.embedding = {
     vector: vectorAt(7),
     model: 'text-embedding-3-small',
-    dimensions: 1536,
+    dimensions: EMBEDDING_DIMS,
     generatedAt: new Date(),
     status: 'completed',
     error: null,
@@ -57,7 +58,7 @@ async function makeActiveJobWithEmbedding(emp, overrides = {}) {
   const job = await createJob(emp, { category: 'Teknologji', city: 'Tiranë', ...overrides });
   job.embedding = {
     vector: vectorAt(7),
-    model: 'text-embedding-3-small', dimensions: 1536,
+    model: 'text-embedding-3-small', dimensions: EMBEDDING_DIMS,
     generatedAt: new Date(), status: 'completed', retries: 0, error: null,
   };
   await job.save();

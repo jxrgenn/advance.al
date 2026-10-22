@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
 import { User } from '../models/index.js';
 import logger from '../config/logger.js';
+import { formatAlbanianDateTime } from '../lib/albanianDate.js';
 
 // Generate JWT Token
 export const generateToken = (payload) => {
@@ -95,7 +96,7 @@ export const authenticate = async (req, res, next) => {
     if (user.status === 'suspended') {
       const expiryDate = user.suspensionDetails.expiresAt;
       const expiryText = expiryDate
-        ? ` deri më ${new Date(expiryDate).toLocaleDateString('sq-AL')}`
+        ? ` deri më ${formatAlbanianDateTime(expiryDate)}`
         : ' përgjithmonë';
 
       return res.status(401).json({

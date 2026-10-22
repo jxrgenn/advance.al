@@ -89,13 +89,19 @@ class ErrorSanitizer {
     if (error.status === 429 || error.message?.includes('Rate limit')) return 'RATE_LIMIT';
     if (error.status === 401 || error.message?.includes('Invalid API key')) return 'INVALID_API_KEY';
     if (error.status === 400) return 'BAD_REQUEST';
+    // #94: OpenAI 5xx and the SDK's connection/timeout errors were classed as
+    // non-retryable (generic name) and our own "Timeout after N ms" missed the
+    // case-sensitive 'timeout' match below.
+    if (typeof error.status === 'number' && error.status >= 500) return 'SERVER_ERROR';
+    if (error.name === 'APIConnectionTimeoutError') return 'TIMEOUT';
+    if (error.name === 'APIConnectionError') return 'CONNECTION_ERROR';
 
     // Database errors
     if (error.name === 'MongoError') return 'DATABASE_ERROR';
     if (error.name === 'ValidationError') return 'VALIDATION_ERROR';
 
     // Timeout errors
-    if (error.name === 'TimeoutError' || error.message?.includes('timeout')) return 'TIMEOUT';
+    if (error.name === 'TimeoutError' || /time(?:d)?\s?out/i.test(error.message || '')) return 'TIMEOUT';
 
     // Generic
     if (error.name) return error.name.toUpperCase();
@@ -112,6 +118,8 @@ class ErrorSanitizer {
     const retryableTypes = [
       'TIMEOUT',
       'RATE_LIMIT',
+      'SERVER_ERROR',
+      'CONNECTION_ERROR',
       'CONNECTION_REFUSED',
       'NOT_FOUND',
       'ECONNREFUSED',

@@ -5,6 +5,7 @@ import userEmbeddingService from '../services/userEmbeddingService.js';
 import { escapeHtml, safeSubject } from '../utils/sanitize.js';
 import logger from '../config/logger.js';
 import { formatSalary } from './salary.js';
+import { formatAlbanianDate } from './albanianDate.js';
 
 // Salary line for job-alert emails. Stored salaries are ANNUAL; formatSalary
 // converts to a monthly "800-1,500 EUR/muaj" string and returns null when the
@@ -13,14 +14,19 @@ import { formatSalary } from './salary.js';
 const jobSalaryText = (job) => formatSalary(job?.salary, 'monthly');
 
 // "Afati" (deadline) = the listing's expiresAt, rendered as an Albanian date in
-// Tirana time. Returns null for a missing/invalid date so the line is omitted
-// instead of printing "Invalid Date" (Job has no applicationDeadline field).
-const jobDeadlineText = (job) => {
-  if (!job?.expiresAt) return null;
-  const d = new Date(job.expiresAt);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString('sq-AL', { timeZone: 'Europe/Tirane', day: 'numeric', month: 'long', year: 'numeric' });
-};
+// Tirana time ("3 tetor 2026", independent of the server's ICU data / TZ).
+// Returns null for a missing/invalid date so the line is omitted instead of
+// printing "Invalid Date" (Job has no applicationDeadline field).
+const jobDeadlineText = (job) => formatAlbanianDate(job?.expiresAt) || null;
+
+// Footer links every QuickUser job-alert email carries (manage + unsubscribe).
+const quickUserFooterHtml = (user) => `
+      <p>
+        <a href="https://advance.al/preferences?token=${user.unsubscribeToken}" style="color: #667eea; text-decoration: none;">🔧 Ndrysho preferencat</a> |
+        <a href="${user.getUnsubscribeUrl()}" style="color: #667eea; text-decoration: none;">❌ Çregjistrohu</a>
+      </p>`;
+const quickUserFooterText = (user) => `🔧 Ndrysho preferencat: https://advance.al/preferences?token=${user.unsubscribeToken}
+❌ Çregjistrohu: ${user.getUnsubscribeUrl()}`;
 
 class NotificationService {
   constructor() {
@@ -111,7 +117,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
       <p>${safeDescription}${job.description?.length > 300 ? '...' : ''}</p>
 
       <div style="text-align: center; margin: 30px 0;">
-        <a href="https://advance.al/jobs/${job.slug || job._id}?utm_source=email&utm_medium=notification&utm_campaign=job_match&token=${user.unsubscribeToken}"
+        <a href="https://advance.al/jobs/${job.slug || job._id}?utm_source=email&utm_medium=notification&utm_campaign=job_match"
            style="display: inline-block; background: #667eea; color: white; padding: 15px 30px; text-decoration: none; border-radius: 25px; font-weight: bold;">
           👀 Shiko Detajet dhe Apliko
         </a>
@@ -233,13 +239,17 @@ advance.al - Platforma #1 e Punës në Shqipëri
 
   /**
    * Build a single email summarising multiple matched jobs queued during the
-   * digest window. Used by the per-jobseeker digest flush in jobAlertsDigest.js.
+   * digest window. Used by the digest flushes in jobAlertsDigest.js for both
+   * full jobseeker accounts (User) and QuickUsers.
    *
-   * @param {Object} user - jobseeker User document
+   * @param {Object} user - jobseeker User document, or a QuickUser document
+   *   when `options.audience === 'quickuser'`
    * @param {Array<Object>} jobs - list of Job docs (sorted desc by matchScore)
+   * @param {{ audience?: 'jobseeker'|'quickuser' }} [options]
    */
-  generateJobAlertsDigestEmail(user, jobs) {
-    const firstName = user.profile?.firstName || 'Kandidat';
+  generateJobAlertsDigestEmail(user, jobs, options = {}) {
+    const isQuickUser = options.audience === 'quickuser';
+    const firstName = (isQuickUser ? user.firstName : user.profile?.firstName) || 'Kandidat';
     const safeFirstName = escapeHtml(firstName);
     const count = jobs.length;
     // Albanian agreement: pozicion is masculine. "1 pozicion i ri" (sg) vs
@@ -252,6 +262,8 @@ advance.al - Platforma #1 e Punës në Shqipëri
     const matchesVerb = isSingular ? 'përputhet' : 'përputhen';
     const thisOrThese = isSingular ? 'Ky pozicion' : 'Këto pozicione';
     const groupingSentence = isSingular ? '' : ' Ne i grupojmë në një email për të mos ju shqetësuar shumë herë.';
+    const target = isQuickUser ? 'interesat tuaja' : 'profilin tuaj';
+    const utmCampaign = isQuickUser ? 'job_match_digest' : 'job_match';
 
     const textJobLines = jobs.map((job, i) => {
       const company = job.employerId?.profile?.employerProfile?.companyName || 'Kompani';
@@ -260,15 +272,19 @@ advance.al - Platforma #1 e Punës në Shqipëri
       return `${i + 1}. ${job.title} — ${company} (${job.location?.city || ''})${salary}\n   https://advance.al/jobs/${job.slug || job._id}`;
     }).join('\n\n');
 
+    const textFooter = isQuickUser
+      ? quickUserFooterText(user)
+      : 'Menaxhoni njoftimet nga profili juaj: https://advance.al/profile';
+
     const textContent = `
 Përshëndetje ${firstName},
 
-Gjetëm ${positionsPhrase} që ${matchesVerb} me profilin tuaj:
+Gjetëm ${positionsPhrase} që ${matchesVerb} me ${target}:
 
 ${textJobLines}
 
 ---
-Menaxhoni njoftimet nga profili juaj: https://advance.al/profile
+${textFooter}
 
 advance.al - Platforma #1 e Punës në Shqipëri
 `;
@@ -290,11 +306,18 @@ advance.al - Platforma #1 e Punës në Shqipëri
           <div style="margin: 4px 0; font-size: 13px;"><strong>📍</strong> ${safeCity}${job.location?.remote ? ' <span style="color:#28a745;">(distancë)</span>' : ''}${safeCategory ? ` · <span style="color:#666;">${safeCategory}</span>` : ''}</div>
           ${salaryLine}
           <div style="margin-top: 10px;">
-            <a href="https://advance.al/jobs/${job.slug || job._id}?utm_source=email&utm_medium=digest&utm_campaign=job_match"
+            <a href="https://advance.al/jobs/${job.slug || job._id}?utm_source=email&utm_medium=digest&utm_campaign=${utmCampaign}"
                style="display: inline-block; background: #667eea; color: white; padding: 8px 18px; text-decoration: none; border-radius: 20px; font-size: 13px; font-weight: 600;">Shiko detajet →</a>
           </div>
         </div>`;
     }).join('');
+
+    const whyText = isQuickUser
+      ? `Jeni regjistruar për njoftimet e punës në advance.al dhe ${thisOrThese.toLowerCase()} ${matchesVerb} me interesat tuaja.${groupingSentence}`
+      : `Keni aktivizuar njoftimet e punës dhe ${thisOrThese.toLowerCase()} ${matchesVerb} me profilin tuaj.${groupingSentence}`;
+    const htmlFooterLinks = isQuickUser
+      ? quickUserFooterHtml(user)
+      : '<p><a href="https://advance.al/profile" style="color: #667eea; text-decoration: none;">⚙️ Menaxho njoftimet</a></p>';
 
     const htmlContent = `
 <!DOCTYPE html>
@@ -304,18 +327,18 @@ advance.al - Platforma #1 e Punës në Shqipëri
   <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
       <h1 style="margin: 0;">🎯 ${count} ${isSingular ? 'punë e re' : 'punë të reja'} për ju!</h1>
-      <p style="margin: 10px 0 0 0;">Përshëndetje ${safeFirstName}, gjetëm ${positionsPhrase} që ${matchesVerb} me profilin tuaj.</p>
+      <p style="margin: 10px 0 0 0;">Përshëndetje ${safeFirstName}, gjetëm ${positionsPhrase} që ${matchesVerb} me ${target}.</p>
     </div>
     <div style="background: #fff; padding: 24px; border: 1px solid #e0e0e0;">
       ${htmlJobCards}
       <p style="font-size: 14px; color: #666; margin-top: 24px;">
         💡 <strong>Përse mora këtë email?</strong><br>
-        Keni aktivizuar njoftimet e punës dhe ${thisOrThese.toLowerCase()} ${matchesVerb} me profilin tuaj.${groupingSentence}
+        ${whyText}
       </p>
     </div>
     <div style="background: #f8f9fa; padding: 20px; border-radius: 0 0 10px 10px; font-size: 12px; color: #666;">
       <p><strong>advance.al</strong> - Platforma #1 e Punës në Shqipëri</p>
-      <p><a href="https://advance.al/profile" style="color: #667eea; text-decoration: none;">⚙️ Menaxho njoftimet</a></p>
+      ${htmlFooterLinks}
     </div>
   </div>
 </body></html>
@@ -347,25 +370,49 @@ advance.al - Platforma #1 e Punës në Shqipëri
     }
   }
 
-  // Send job notification to a specific user.
-  // Round P guards:
-  //   - isActive: if the user unsubscribed (or QuickUser.isActive=false), skip silently.
-  //     This is the SECOND check (the matchers' queries already filter), defending the
-  //     race where a user unsubscribes between match-scan and send.
-  //   - cooldown: QuickUser.canReceiveNotification virtual enforces the per-frequency
-  //     window (1h immediate, 24h daily, 7d weekly). Without this check the semantic
-  //     match path would re-email users on every new matching job.
-  async sendJobNotificationToUser(user, job) {
+  // Send (or queue) a new-job alert to a QuickUser.
+  //
+  // Exactly-once + frequency gap, both enforced ATOMICALLY in Mongo
+  // (QuickUser.claimJobAlertSlot) instead of on the in-memory snapshot the
+  // matcher loaded — two fan-outs running at once can no longer both email
+  // inside one gap or lose a counter increment:
+  //   - gap passed and job never sent  → claim + send now
+  //   - inside the gap (1h / 24h / 7d) → queue the job for the subscriber's
+  //     next digest (jobAlertsDigest.flushQuickUserDigests) — never dropped
+  //   - job already sent or queued     → skipped
+  // A permanently rejected email (non-transient) or a crash before the send
+  // releases the claim AND puts the job back in the subscriber's digest queue
+  // (QuickUser.giveBackJobAlert, bounded to MAX_ALERT_DELIVERY_ATTEMPTS), so
+  // the next digest retries it even though the job's fan-out as a whole is
+  // recorded as sent.
+  //
+  // Delivery guarantee: at-most-once per (subscriber, job). The claim is taken
+  // before the email is sent, so a process crash between claim and send loses
+  // that one email (at most one in-flight batch of 4 per fan-out); it is never
+  // sent twice.
+  //
+  // Returns { success, sent?, queued?, reason?, userId, notifications? }:
+  // success === false only for a real delivery failure.
+  async _giveBackJobAlert(user, job, claim, matchScore) {
+    try {
+      await QuickUser.giveBackJobAlert(user._id, job._id, claim, matchScore);
+    } catch (err) {
+      logger.error(`Could not give job alert back to QuickUser ${user._id}:`, err.message);
+    }
+  }
+
+  async sendJobNotificationToUser(user, job, { matchScore = 0 } = {}) {
+    let claim = null;
     try {
       // Guard: user has been deactivated since match-time → no send.
       if (user.isActive === false) {
-        return { success: false, reason: 'inactive', userId: user._id };
+        return { success: true, sent: false, reason: 'inactive', userId: user._id };
       }
-      // Guard: user is within cooldown window (per emailFrequency preference).
-      // Virtual exists on QuickUser. Full Users use a different gate (digest cron),
-      // so we only enforce when the virtual is defined.
-      if (user.canReceiveNotification === false) {
-        return { success: false, reason: 'cooldown', userId: user._id };
+
+      claim = await QuickUser.claimJobAlertSlot(user._id, job._id);
+      if (!claim.claimed) {
+        const queued = await QuickUser.queueJobAlert(user._id, job._id, matchScore);
+        return { success: true, sent: false, queued, reason: queued ? 'queued-for-digest' : 'already-notified-or-inactive', userId: user._id };
       }
 
       const notifications = [];
@@ -386,8 +433,15 @@ advance.al - Platforma #1 e Punës në Shqipëri
         messageId: emailResult.messageId
       });
 
+      if (!emailResult.success) {
+        // Not delivered and not queued in the outbox: give the slot back and
+        // re-queue the job for this subscriber's next digest.
+        await this._giveBackJobAlert(user, job, claim, matchScore);
+        return { success: false, sent: false, error: emailResult.error || 'email send failed', userId: user._id, notifications };
+      }
+
       // Send SMS notification if user has opted in and provided phone
-      if (user.preferences.smsNotifications && user.phone) {
+      if (user.preferences?.smsNotifications && user.phone) {
         const smsContent = this.generateJobNotificationSMS(user, job);
         const smsResult = await this.sendSMS(user.phone, smsContent);
 
@@ -398,17 +452,19 @@ advance.al - Platforma #1 e Punës në Shqipëri
         });
       }
 
-      // Record notification sent
-      await user.recordNotificationSent(job._id);
-
       return {
         success: true,
+        sent: true,
         notifications,
         userId: user._id
       };
 
     } catch (error) {
       logger.error(`Error sending notification to user ${user._id}:`, error.message);
+      if (claim?.claimed) {
+        // The email did not go out: hand the slot back and re-queue the job.
+        await this._giveBackJobAlert(user, job, claim, matchScore);
+      }
       return {
         success: false,
         error: error.message,
@@ -420,7 +476,18 @@ advance.al - Platforma #1 e Punës në Shqipëri
   // Notify all matching users about a new job.
   // Uses semantic embedding matching (preferred) with keyword fallback for QuickUsers.
   // Also notifies full jobseeker accounts that have opted into alerts (semantic only).
-  async notifyMatchingUsers(job) {
+  //
+  // Returns { success: false, error } when the fan-out did NOT complete —
+  // a lookup failed (job, matchers) or every targeted delivery failed — so the
+  // caller marks the job's notification 'failed' and the retry sweep runs it
+  // again. A retry is safe: QuickUsers remember announced job ids and the
+  // jobseeker digest queue is deduplicated per job.
+  //
+  // { dryRun: true } runs the matching only and reports who WOULD be
+  // notified (and how) — nothing is sent, queued or recorded. Used by the
+  // admin "test" endpoint, which must not announce a job outside the job's
+  // exactly-once claim (services/jobFanOut.js).
+  async notifyMatchingUsers(job, { dryRun = false } = {}) {
     try {
       // Load job with embedding vector (select: false by default)
       const jobWithVector = await Job.findById(job._id).select('+embedding.vector').populate('employerId', '_id');
@@ -441,12 +508,17 @@ advance.al - Platforma #1 e Punës në Shqipëri
       // ── 1. Semantic matching (QuickUsers + full jobseekers) ──────────────────
       let semanticQuickUsers = [];
       let semanticJobSeekers = [];
+      let semanticError = null;
       try {
         const semanticResult = await userEmbeddingService.findSemanticMatchesForJob(jobForSemantic);
         semanticQuickUsers = semanticResult.quickUsers || [];
         semanticJobSeekers = semanticResult.jobSeekers || [];
-      } catch (semanticError) {
-        logger.error('Semantic matching failed, falling back to keyword-only:', semanticError.message);
+      } catch (err) {
+        // Keep going with the keyword path (those subscribers should not wait),
+        // but report the fan-out as failed so it is retried for the embedded
+        // QuickUsers and the jobseekers this lookup never reached.
+        semanticError = err;
+        logger.error('Semantic matching failed, falling back to keyword-only:', err.message);
       }
 
       // ── 2. Keyword fallback for QuickUsers (always run, deduplicated later) ──
@@ -455,6 +527,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
 
       // ── 3. Merge & deduplicate QuickUser lists ───────────────────────────────
       const semanticQuickUserIds = new Set((semanticQuickUsers || []).map(e => e.user._id.toString()));
+      const quickUserScore = new Map((semanticQuickUsers || []).map(e => [e.user._id.toString(), e.score]));
       // Extract raw user docs (semantic results are { user, score } objects)
       const semanticQuickUserDocs = (semanticQuickUsers || []).map(e => e.user);
       const newKeywordUsers = keywordQuickUsers.filter(
@@ -466,15 +539,67 @@ advance.al - Platforma #1 e Punës në Shqipëri
       const totalTargets = allQuickUsers.length + allJobSeekers.length;
 
       if (totalTargets === 0) {
+        if (semanticError) {
+          return {
+            success: false,
+            ...(dryRun ? { dryRun: true } : {}),
+            error: `semantic matching failed: ${semanticError.message}`,
+            stats: { totalUsers: 0, notificationsSent: 0, errors: 1 }
+          };
+        }
         return {
           success: true,
+          ...(dryRun ? { dryRun: true } : {}),
           message: 'No matching users found',
           stats: { totalUsers: 0, notificationsSent: 0, errors: 0 }
         };
       }
 
+      if (dryRun) {
+        const jobIdStr = String(job._id);
+        const quickUsers = allQuickUsers.map(u => {
+          const alreadySent = (u.notifiedJobIds || []).some(id => String(id) === jobIdStr)
+            || (u.pendingJobAlerts || []).some(p => String(p.jobId) === jobIdStr);
+          const action = u.isActive === false || alreadySent
+            ? 'skip'
+            : (u.canReceiveNotification === false ? 'queue_for_digest' : 'email_now');
+          return {
+            id: u._id, email: u.email, action,
+            path: semanticQuickUserIds.has(u._id.toString()) ? 'semantic' : 'keyword',
+            score: quickUserScore.get(u._id.toString()) ?? null,
+          };
+        });
+        const jobSeekers = allJobSeekers.map(u => ({
+          id: u._id, email: u.email,
+          action: (u.pendingJobAlerts || []).some(p => String(p.jobId) === jobIdStr) ? 'skip' : 'queue_for_digest',
+          score: (semanticJobSeekers || []).find(e => e.user._id.toString() === u._id.toString())?.score ?? null,
+        }));
+        const count = (list, action) => list.filter(x => x.action === action).length;
+        return {
+          success: !semanticError,
+          dryRun: true,
+          ...(semanticError ? { error: `semantic matching failed: ${semanticError.message}` } : {}),
+          stats: {
+            totalUsers: totalTargets,
+            wouldEmailNow: count(quickUsers, 'email_now'),
+            wouldQueueForDigest: count(quickUsers, 'queue_for_digest') + count(jobSeekers, 'queue_for_digest'),
+            wouldSkip: count(quickUsers, 'skip') + count(jobSeekers, 'skip'),
+            notificationsSent: 0,
+            breakdown: {
+              quickUsers: allQuickUsers.length,
+              jobSeekers: allJobSeekers.length,
+              semanticMatches: semanticQuickUsers.length + allJobSeekers.length,
+              keywordMatches: newKeywordUsers.length
+            }
+          },
+          recipients: { quickUsers, jobSeekers }
+        };
+      }
+
       const results = [];
       let successCount = 0;
+      let quickUsersQueued = 0;
+      let skippedCount = 0;
       let errorCount = 0;
 
       // ── 4. Notify QuickUsers ─────────────────────────────────────────────────
@@ -484,20 +609,25 @@ advance.al - Platforma #1 e Punës në Shqipëri
       for (let i = 0; i < allQuickUsers.length; i += batchSize) {
         const batch = allQuickUsers.slice(i, i + batchSize);
         const batchResults = await Promise.allSettled(
-          batch.map(user => this.sendJobNotificationToUser(user, job))
+          batch.map(user => this.sendJobNotificationToUser(user, job, { matchScore: quickUserScore.get(user._id.toString()) || 0 }))
         );
 
+        let batchSent = 0;
         batchResults.forEach((result, index) => {
           if (result.status === 'fulfilled') {
             results.push(result.value);
-            result.value.success ? successCount++ : errorCount++;
+            if (!result.value.success) errorCount++;
+            else if (result.value.sent) { successCount++; batchSent++; }
+            else if (result.value.queued) quickUsersQueued++;
+            else skippedCount++;
           } else {
             logger.error(`QuickUser batch error for ${batch[index]._id}:`, result.reason?.message || result.reason);
             errorCount++;
           }
         });
 
-        if (i + batchSize < allQuickUsers.length) {
+        // Only pace when this batch actually hit Resend.
+        if (batchSent > 0 && i + batchSize < allQuickUsers.length) {
           await new Promise(resolve => setTimeout(resolve, batchDelay));
         }
       }
@@ -518,27 +648,46 @@ advance.al - Platforma #1 e Punës në Shqipëri
         try {
           const r = await digestModule.queueMatchForDigest(u, job, scoreByUserId.get(u._id.toString()) || 0);
           if (r.queued) queuedCount++;
+          else skippedCount++;
         } catch (err) {
           logger.error(`Digest queue error for jobseeker ${u._id}:`, err.message);
           errorCount++;
         }
       }
 
+      const stats = {
+        totalUsers: totalTargets,
+        notificationsSent: successCount,
+        quickUsersQueuedForDigest: quickUsersQueued,
+        jobseekersQueuedForDigest: queuedCount,
+        skipped: skippedCount,
+        errors: errorCount,
+        breakdown: {
+          quickUsers: allQuickUsers.length,
+          jobSeekers: allJobSeekers.length,
+          semanticMatches: semanticQuickUsers.length + allJobSeekers.length,
+          keywordMatches: newKeywordUsers.length
+        }
+      };
+
+      // Every targeted delivery failed (e.g. Resend rejecting all sends):
+      // nothing reached anyone, so this is a failed fan-out, not a sent one.
+      const delivered = successCount + quickUsersQueued + queuedCount + skippedCount;
+      if (semanticError || (errorCount > 0 && delivered === 0)) {
+        return {
+          success: false,
+          error: semanticError
+            ? `semantic matching failed: ${semanticError.message}`
+            : `all ${errorCount} deliveries failed`,
+          stats,
+          results
+        };
+      }
+
       return {
         success: true,
-        message: `Notifications sent to ${successCount} users, queued ${queuedCount} jobseeker digests`,
-        stats: {
-          totalUsers: totalTargets,
-          notificationsSent: successCount,
-          jobseekersQueuedForDigest: queuedCount,
-          errors: errorCount,
-          breakdown: {
-            quickUsers: allQuickUsers.length,
-            jobSeekers: allJobSeekers.length,
-            semanticMatches: semanticQuickUsers.length + allJobSeekers.length,
-            keywordMatches: newKeywordUsers.length
-          }
-        },
+        message: `Notifications sent to ${successCount} users, queued ${quickUsersQueued} quick-user and ${queuedCount} jobseeker digests`,
+        stats,
         results
       };
 
@@ -568,12 +717,17 @@ advance.al - Platforma #1 e Punës në Shqipëri
       let userEmail = null;
       let firstName = null;
       let city = null;
+      let quickUser = null;
 
       if (type === 'quickuser') {
         const qu = await QuickUser.findById(userId).select('+embedding.vector');
         if (!qu || qu.embedding?.status !== 'completed' || !qu.embedding?.vector) {
           return { success: true, matchCount: 0, message: 'No embedding available yet' };
         }
+        if (qu.isActive === false) {
+          return { success: true, matchCount: 0, message: 'Subscriber is not active' };
+        }
+        quickUser = qu;
         userVector = qu.embedding.vector;
         userEmail = qu.email;
         firstName = qu.firstName;
@@ -589,8 +743,10 @@ advance.al - Platforma #1 e Punës në Shqipëri
         city = user.profile?.location?.city;
       }
 
-      // Find matching jobs
-      const matches = await userEmbeddingService.findMatchingJobsForUser(userVector, { limit: 5, city });
+      // Find matching jobs (live listings only; a job whose employer account
+      // is gone is not advertised)
+      const matches = (await userEmbeddingService.findMatchingJobsForUser(userVector, { limit: 5, city }))
+        .filter(({ job }) => job.employerId != null);
 
       if (matches.length === 0) {
         logger.info(`No matching jobs found for ${type} ${userId}`);
@@ -643,15 +799,22 @@ advance.al - Platforma #1 e Punës në Shqipëri
     </div>
     <div style="background: #f8f9fa; padding: 15px; border-radius: 0 0 10px 10px; font-size: 12px; color: #666; text-align: center;">
       <p><strong>advance.al</strong> — Platforma #1 e Punës në Shqipëri</p>
+      ${quickUser ? quickUserFooterHtml(quickUser) : '<p><a href="https://advance.al/profile" style="color: #667eea; text-decoration: none;">⚙️ Menaxho njoftimet nga profili juaj</a></p>'}
     </div>
   </div>
 </body>
 </html>`;
 
-      const textContent = `Përshëndetje ${firstName || 'Kandidat'},\n\nGjenim ${matches.length} punë që përputhen me profilin tuaj:\n\n${jobListText}\n\nShiko të gjitha punët: https://advance.al\n\nadvance.al — Platforma #1 e Punës në Shqipëri`;
+      const textFooter = quickUser ? quickUserFooterText(quickUser) : 'Menaxhoni njoftimet nga profili juaj: https://advance.al/profile';
+      const textContent = `Përshëndetje ${firstName || 'Kandidat'},\n\nGjenim ${matches.length} punë që përputhen me profilin tuaj:\n\n${jobListText}\n\nShiko të gjitha punët: https://advance.al\n\n---\n${textFooter}\n\nadvance.al — Platforma #1 e Punës në Shqipëri`;
 
-      // Send the digest email
-      const emailResult = await this.sendEmail(userEmail, subject, htmlContent, textContent);
+      // Send the digest email (provenance lets the outbox drain re-check the
+      // subscriber before a retry)
+      const emailResult = await this.sendEmail(userEmail, subject, htmlContent, textContent, {
+        tags: ['welcome_matches'],
+        userId,
+        userType: type === 'quickuser' ? 'quickuser' : 'user',
+      });
 
       logger.info(`Sent ${matches.length} matching jobs to ${type} ${userId} (${userEmail})`);
 
@@ -788,14 +951,19 @@ Ekipi i advance.al
     }
   }
 
-  // Daily/weekly digests are not yet implemented.
-  // Real-time per-job notifications via notifyMatchingUsers() are the active path.
+  // QuickUser digests (matches queued while the subscriber's immediate /
+  // daily / weekly email gap was running). The 15-minute cron
+  // (jobAlertsDigest.flushPendingJobAlerts) sends them automatically; these
+  // admin triggers just run that flush now. Both send every digest that is
+  // due — the gap per subscriber decides, not which button was pressed.
   async sendDailyDigest() {
-    return { success: true, message: 'Daily digest not yet implemented' };
+    const { flushQuickUserDigests } = await import('../services/jobAlertsDigest.js');
+    const stats = await flushQuickUserDigests();
+    return { success: true, message: `QuickUser digests sent: ${stats.sent}`, stats };
   }
 
   async sendWeeklyDigest() {
-    return { success: true, message: 'Weekly digest not yet implemented' };
+    return this.sendDailyDigest();
   }
 }
 

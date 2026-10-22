@@ -17,6 +17,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach, jest } from '@jest/globals';
+import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
 import mongoose from 'mongoose';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
 import { seedLocations } from '../fixtures/locations.fixture.js';
@@ -26,7 +27,7 @@ import QuickUser from '../../src/models/QuickUser.js';
 import userEmbeddingService from '../../src/services/userEmbeddingService.js';
 import jobEmbeddingService from '../../src/services/jobEmbeddingService.js';
 
-const FAKE_VECTOR = Array.from({ length: 1536 }, (_, i) => Math.sin(i) * 0.5);
+const FAKE_VECTOR = Array.from({ length: EMBEDDING_DIMS }, (_, i) => Math.sin(i) * 0.5);
 
 describe('userEmbeddingService — generate paths', () => {
   beforeAll(async () => { await connectTestDB(); await seedLocations(); });

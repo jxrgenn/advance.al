@@ -13,6 +13,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
+import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
 import jobEmbeddingService from '../../src/services/jobEmbeddingService.js';
 import userEmbeddingService from '../../src/services/userEmbeddingService.js';
@@ -31,11 +32,11 @@ describe('jobEmbeddingService.callOpenAIWithRetry', () => {
     jobEmbeddingService._setClientForTesting(originalClient);
   });
 
-  it('returns the 1536-dim vector from successful response', async () => {
+  it('returns the EMBEDDING_DIMS-length vector from successful response', async () => {
     jobEmbeddingService._setClientForTesting(makeOpenAIStub());
     const vector = await jobEmbeddingService.callOpenAIWithRetry('test text', 'dbg-1');
     expect(Array.isArray(vector)).toBe(true);
-    expect(vector).toHaveLength(1536);
+    expect(vector).toHaveLength(EMBEDDING_DIMS);
     expect(typeof vector[0]).toBe('number');
   });
 
@@ -60,7 +61,7 @@ describe('jobEmbeddingService.callOpenAIWithRetry', () => {
             throw err;
           }
           return {
-            data: [{ embedding: Array(1536).fill(0.1) }],
+            data: [{ embedding: Array(EMBEDDING_DIMS).fill(0.1) }],
             model: 'text-embedding-3-small',
             usage: { prompt_tokens: 10, total_tokens: 10 },
           };
@@ -69,7 +70,7 @@ describe('jobEmbeddingService.callOpenAIWithRetry', () => {
     };
     jobEmbeddingService._setClientForTesting(flakyClient);
     const vector = await jobEmbeddingService.callOpenAIWithRetry('text', 'dbg-3', 1, 5);
-    expect(vector).toHaveLength(1536);
+    expect(vector).toHaveLength(EMBEDDING_DIMS);
     expect(calls).toBe(3);
   }, 30000);
 
@@ -122,13 +123,13 @@ describe('userEmbeddingService.generateQuickUserEmbedding — DB integration', (
     });
 
     const vector = await userEmbeddingService.generateQuickUserEmbedding(qu._id);
-    expect(vector).toHaveLength(1536);
+    expect(vector).toHaveLength(EMBEDDING_DIMS);
 
     const refetched = await QuickUser.findById(qu._id).select('+embedding.vector');
     expect(refetched.embedding.status).toBe('completed');
     expect(refetched.embedding.generatedAt).toBeInstanceOf(Date);
     expect(refetched.embedding.error).toBeNull();
-    expect(refetched.embedding.vector).toHaveLength(1536);
+    expect(refetched.embedding.vector).toHaveLength(EMBEDDING_DIMS);
   });
 
   it('sets status=failed when prepareQuickUserText yields a too-short string (<10 chars)', async () => {
@@ -210,7 +211,7 @@ describe('userEmbeddingService.generateJobSeekerEmbedding — DB integration', (
     const { user } = await createJobseeker({ skills: ['React', 'Node.js'] });
 
     const vector = await userEmbeddingService.generateJobSeekerEmbedding(user._id);
-    expect(vector).toHaveLength(1536);
+    expect(vector).toHaveLength(EMBEDDING_DIMS);
   });
 
   it('returns null (no-op) for non-jobseeker user types', async () => {

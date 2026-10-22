@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   MapPin,
   Building,
-  Euro,
   X,
   Eye,
   ArrowRight,
@@ -19,7 +18,7 @@ import { Job, jobsApi } from "@/lib/api";
 import useRecentlyViewed from "@/hooks/useRecentlyViewed";
 import { useToast } from "@/hooks/use-toast";
 import JobCard from "./JobCard";
-import { formatSalary } from "@/lib/salary";
+import SalaryDisplay from "@/components/SalaryDisplay";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface RecentlyViewedJobsProps {
@@ -286,14 +285,14 @@ const RecentlyViewedJobs = ({
 
                       {/* Wage - Right aligned on mobile, inline on desktop */}
                       <div className="flex items-center gap-1 sm:ml-auto">
-                        {job.salary?.showPublic && (job.salary.min || job.salary.max) ? (
-                          <>
-                            <Euro className="h-3 w-3 flex-shrink-0 text-green-600" />
-                            <span className="font-semibold text-green-700 whitespace-nowrap">{formatSalary(job.salary, user?.preferences?.salaryViewPeriod)}</span>
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground whitespace-nowrap">Pagë për t'u negociuar</span>
-                        )}
+                        <SalaryDisplay
+                          salary={job.salary}
+                          period={user?.preferences?.salaryViewPeriod}
+                          className="flex items-center gap-1"
+                          iconClassName="h-3 w-3 flex-shrink-0"
+                          amountClassName="font-semibold text-green-700 whitespace-nowrap"
+                          negotiableClassName="text-muted-foreground whitespace-nowrap"
+                        />
                       </div>
                     </div>
                   </div>
@@ -382,14 +381,14 @@ const RecentlyViewedJobs = ({
 
                       {/* Wage - Right aligned on mobile, inline on desktop */}
                       <div className="flex items-center gap-1 sm:ml-auto">
-                        {job.salary?.showPublic && (job.salary.min || job.salary.max) ? (
-                          <>
-                            <Euro className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0 text-green-600" />
-                            <span className="font-semibold text-green-700 whitespace-nowrap">{formatSalary(job.salary, user?.preferences?.salaryViewPeriod)}</span>
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground whitespace-nowrap">Pagë për t'u negociuar</span>
-                        )}
+                        <SalaryDisplay
+                          salary={job.salary}
+                          period={user?.preferences?.salaryViewPeriod}
+                          className="flex items-center gap-1"
+                          iconClassName="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0"
+                          amountClassName="font-semibold text-green-700 whitespace-nowrap"
+                          negotiableClassName="text-muted-foreground whitespace-nowrap"
+                        />
                       </div>
                     </div>
                   </div>

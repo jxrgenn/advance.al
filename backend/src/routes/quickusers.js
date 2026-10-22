@@ -4,7 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { body, validationResult } from 'express-validator';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { QuickUser } from '../models/index.js';
 import notificationService from '../lib/notificationService.js';
 import resendEmailService from '../lib/resendEmailService.js';
@@ -19,6 +19,7 @@ import { isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE } from '../lib/phonePolicy
 import logger from '../config/logger.js';
 import { JOB_CATEGORIES } from '../constants/jobCategories.js';
 import { notifyDiscord, deriveRequestSignals } from '../services/discordNotifier.js';
+import { fireEmbedding } from '../services/embeddingTrigger.js';
 
 // Check if Cloudinary is configured
 const isCloudinaryConfigured = () =>
@@ -83,7 +84,11 @@ const quickUserLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: process.env.NODE_ENV === 'development' ? 10000 : 20, // 20 requests per window in prod
   skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
+  // Standard { success, message } body (the frontend reads `message`); `error`
+  // kept for older clients. Same class as the global limiter fix (#61).
   message: {
+    success: false,
+    message: 'Shumë kërkesa për regjistrimin e shpejtë, ju lutemi provoni përsëri pas 15 minutash.',
     error: 'Shumë kërkesa për regjistrimin e shpejtë, ju lutemi provoni përsëri pas 15 minutash.',
   }
 });
@@ -359,7 +364,7 @@ router.post('/', quickUserLimiter, handleMultipart, quickUserValidation, handleV
       fields: [
         { name: 'Email', value: quickUser.email, inline: true },
         { name: 'Name', value: `${quickUser.firstName} ${quickUser.lastName || ''}`.trim() || '—', inline: true },
-        { name: 'City', value: quickUser.location?.city || '—', inline: true },
+        { name: 'City', value: quickUser.location || '—', inline: true }, // QuickUser.location is a plain city string
         { name: 'Interests', value: (quickUser.allInterests || []).slice(0, 5).join(', ') || '—', inline: false },
         { name: 'Resume', value: pdfBuffer ? 'attached' : 'none', inline: true },
         ...deriveRequestSignals(req),
@@ -481,6 +486,153 @@ router.post('/track-click', async (req, res) => {
       success: false,
       message: 'Gabim në regjistrimin e click-ut'
     });
+  }
+});
+
+// ── Self-service preferences (the "Ndrysho preferencat" link in every
+// job-alert / welcome email: https://advance.al/preferences?token=…) ──────
+// The token is the subscriber's unsubscribeToken (64 hex chars, 256 bits).
+// It only ever appears in the PAGE url; the page reads it client-side and
+// sends it in the JSON body, so it never lands in API access logs (morgan
+// logs the request URL incl. query). Job links in alert emails carry no
+// token, so sharing a job link does not expose the subscription.
+// An unknown/malformed token is a 404, never a 401: the page may be opened
+// by a logged-in user and a 401 would make the frontend drop their session.
+const EMAIL_FREQUENCIES = ['immediate', 'daily', 'weekly'];
+const QUICKUSER_JOB_TYPES = ['full-time', 'part-time', 'contract', 'internship'];
+const PREFERENCES_TOKEN_RE = /^[a-f0-9]{64}$/;
+const PREFS_LINK_INVALID = 'Lidhja e preferencave nuk është e vlefshme ose ka skaduar.';
+
+// Keyed per TOKEN, not per IP: after a mass email many subscribers behind
+// one mobile-carrier NAT open the page at once, and a 256-bit token cannot
+// be brute-forced anyway. Malformed tokens fall back to a per-IP bucket.
+const preferencesLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const token = req.body?.token;
+    return typeof token === 'string' && PREFERENCES_TOKEN_RE.test(token)
+      ? `prefs:${crypto.createHash('sha256').update(token).digest('hex').slice(0, 32)}`
+      : ipKeyGenerator(req.ip);
+  },
+  skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
+  message: { success: false, message: 'Shumë kërkesa. Ju lutemi provoni përsëri pas 15 minutash.' },
+});
+
+const maskEmail = (email = '') => {
+  const [local, domain] = String(email).split('@');
+  if (!domain) return '';
+  return `${local.slice(0, 1)}***@${domain}`;
+};
+
+const preferencesView = (qu) => ({
+  firstName: qu.firstName,
+  email: maskEmail(qu.email),
+  emailNotifications: qu.isActive === true,
+  convertedToFullUser: qu.convertedToFullUser === true,
+  // Only categories that still exist can be shown as checkboxes; a legacy
+  // value (removed from JOB_CATEGORIES) is reported separately.
+  interests: (qu.interests || []).filter(i => JOB_CATEGORIES.includes(i)),
+  legacyInterests: (qu.interests || []).filter(i => !JOB_CATEGORIES.includes(i)),
+  customInterests: qu.customInterests || [],
+  emailFrequency: EMAIL_FREQUENCIES.includes(qu.preferences?.emailFrequency) ? qu.preferences.emailFrequency : 'immediate',
+  pendingDigestCount: (qu.pendingJobAlerts || []).length,
+});
+
+const findByPreferencesToken = async (token) => {
+  if (typeof token !== 'string' || !PREFERENCES_TOKEN_RE.test(token)) return null;
+  return QuickUser.findOne({ unsubscribeToken: token })
+    .select('firstName email isActive convertedToFullUser interests customInterests preferences pendingJobAlerts');
+};
+
+// @route   POST /api/quickusers/preferences/view   body: { token }
+// @desc    Read a subscriber's notification preferences (email-link page).
+//          POST (not GET ?token=) so the token stays out of access logs.
+// @access  Public (token)
+router.post('/preferences/view', preferencesLimiter, async (req, res) => {
+  try {
+    const qu = await findByPreferencesToken(req.body?.token);
+    if (!qu) return res.status(404).json({ success: false, message: PREFS_LINK_INVALID });
+    res.json({ success: true, data: preferencesView(qu) });
+  } catch (error) {
+    logger.error('Get preferences error:', error.message);
+    res.status(500).json({ success: false, message: 'Gabim në marrjen e preferencave' });
+  }
+});
+
+// @route   PUT /api/quickusers/preferences
+// @desc    Update a subscriber's notification preferences (email-link page)
+// @body    { token, emailNotifications?: boolean, interests?: string[],
+//            emailFrequency?: 'immediate'|'daily'|'weekly' }
+// @access  Public (token)
+router.put('/preferences', preferencesLimiter, async (req, res) => {
+  try {
+    const body = req.body ?? {};
+    const token = body.token; // body only — never the query string (logs)
+    const { emailNotifications, interests, emailFrequency } = body;
+
+    const errors = [];
+    if (emailNotifications !== undefined && typeof emailNotifications !== 'boolean') {
+      errors.push({ field: 'emailNotifications', message: 'Vlera duhet të jetë true ose false' });
+    }
+    if (emailFrequency !== undefined && !EMAIL_FREQUENCIES.includes(emailFrequency)) {
+      errors.push({ field: 'emailFrequency', message: 'Frekuenca duhet të jetë immediate, daily ose weekly' });
+    }
+    if (interests !== undefined) {
+      if (!Array.isArray(interests) || interests.length === 0) {
+        errors.push({ field: 'interests', message: 'Duhet të zgjidhni të paktën një kategori' });
+      } else if (interests.length > JOB_CATEGORIES.length || !interests.every(i => typeof i === 'string' && JOB_CATEGORIES.includes(i))) {
+        errors.push({ field: 'interests', message: 'Një nga kategoritë e zgjedhura nuk është e vlefshme' });
+      }
+    }
+    if (emailNotifications === undefined && emailFrequency === undefined && interests === undefined) {
+      errors.push({ field: 'preferences', message: 'Asnjë preferencë për të ndryshuar' });
+    }
+    if (errors.length) {
+      return res.status(400).json({ success: false, message: errors[0].message, errors });
+    }
+
+    const qu = await findByPreferencesToken(token);
+    if (!qu) return res.status(404).json({ success: false, message: PREFS_LINK_INVALID });
+
+    if (emailNotifications === true && qu.convertedToFullUser) {
+      return res.status(409).json({
+        success: false,
+        message: 'Ky abonim u kalua në llogarinë tuaj në advance.al. Njoftimet i menaxhoni nga profili juaj.'
+      });
+    }
+
+    // Atomic $set of only the validated fields — no full-document save(), so
+    // a stored legacy category can't make the update fail.
+    const $set = {};
+    if (emailNotifications !== undefined) $set.isActive = emailNotifications;
+    if (emailFrequency !== undefined) $set['preferences.emailFrequency'] = emailFrequency;
+    const uniqueInterests = interests !== undefined ? [...new Set(interests)] : undefined;
+    if (uniqueInterests !== undefined) $set.interests = uniqueInterests;
+    const update = { $set };
+    if (emailNotifications === false) update.$set.pendingJobAlerts = [];
+    await QuickUser.updateOne({ _id: qu._id }, update);
+
+    // interests are embedding-relevant (prepareQuickUserText) → re-embed.
+    const interestsChanged = uniqueInterests !== undefined
+      && JSON.stringify([...uniqueInterests].sort()) !== JSON.stringify([...(qu.interests || [])].sort());
+    if (interestsChanged) {
+      fireEmbedding({ kind: 'quickuser', id: qu._id, reason: 'preferences-update' });
+    }
+
+    const fresh = await findByPreferencesToken(token);
+    res.json({
+      success: true,
+      message: emailNotifications === false
+        ? 'Njoftimet me email u çaktivizuan. Nuk do të merrni më email për punë të reja.'
+        : 'Preferencat u ruajtën me sukses.',
+      data: preferencesView(fresh)
+    });
+  } catch (error) {
+    logger.error('Update preferences (token) error:', error.message);
+    res.status(500).json({ success: false, message: 'Gabim në përditësimin e preferencave' });
   }
 });
 
@@ -609,14 +761,16 @@ router.put('/:id/preferences', validateObjectId('id'), async (req, res) => {
     const { id } = req.params;
     const { preferences, token } = req.body;
 
-    if (!token) {
-      return res.status(401).json({
+    // A missing link token is a bad request, not a 401: the frontend treats
+    // every 401 as an expired session (refresh + retry + forced logout).
+    if (typeof token !== 'string' || !token) {
+      return res.status(400).json({
         success: false,
         message: 'Token i verifikimit është i detyrueshëm'
       });
     }
 
-    if (!preferences) {
+    if (!preferences || typeof preferences !== 'object' || Array.isArray(preferences)) {
       return res.status(400).json({
         success: false,
         message: 'Preferencat janë të detyrueshme'
@@ -647,34 +801,62 @@ router.put('/:id/preferences', validateObjectId('id'), async (req, res) => {
       });
     }
 
-    // Update preferences.
+    // Validate BEFORE touching the document: an invalid enum value used to
+    // reach save() and come back as a generic 500.
+    const fieldErrors = [];
+    if (preferences.emailFrequency !== undefined && !EMAIL_FREQUENCIES.includes(preferences.emailFrequency)) {
+      fieldErrors.push({ field: 'preferences.emailFrequency', message: 'Frekuenca e email-it duhet të jetë immediate, daily ose weekly' });
+    }
+    if (preferences.jobTypes !== undefined
+        && (!Array.isArray(preferences.jobTypes) || !preferences.jobTypes.every(t => QUICKUSER_JOB_TYPES.includes(t)))) {
+      fieldErrors.push({ field: 'preferences.jobTypes', message: 'Lloji i punës duhet të jetë full-time, part-time, contract ose internship' });
+    }
+    if (preferences.remoteWork !== undefined && typeof preferences.remoteWork !== 'boolean') {
+      fieldErrors.push({ field: 'preferences.remoteWork', message: 'Puna në distancë duhet të jetë true ose false' });
+    }
+    const salaryRange = preferences.salaryRange;
+    if (salaryRange !== undefined) {
+      if (salaryRange === null || typeof salaryRange !== 'object' || Array.isArray(salaryRange)) {
+        fieldErrors.push({ field: 'preferences.salaryRange', message: 'Diapazoni i pagës nuk është i vlefshëm' });
+      } else {
+        for (const k of ['min', 'max']) {
+          if (salaryRange[k] !== undefined && (typeof salaryRange[k] !== 'number' || !Number.isFinite(salaryRange[k]) || salaryRange[k] < 0)) {
+            fieldErrors.push({ field: `preferences.salaryRange.${k}`, message: 'Paga duhet të jetë një numër pozitiv' });
+          }
+        }
+        if (salaryRange.currency !== undefined && !['EUR', 'ALL'].includes(salaryRange.currency)) {
+          fieldErrors.push({ field: 'preferences.salaryRange.currency', message: 'Monedha duhet të jetë EUR ose ALL' });
+        }
+      }
+    }
+    if (fieldErrors.length) {
+      return res.status(400).json({ success: false, message: 'Gabime në validim', errors: fieldErrors });
+    }
+
+    // Update preferences (atomic $set of the validated fields — a stored
+    // legacy interest can no longer make the update fail).
     // no-embedding: preferences.{emailFrequency,jobTypes,remoteWork,salaryRange}
     // are filter/notification fields only — prepareQuickUserText reads
     // interests/customInterests/location/parsedCV. See contract in
     // services/userEmbeddingService.js header.
-    if (preferences.emailFrequency) {
-      quickUser.preferences.emailFrequency = preferences.emailFrequency;
+    const $set = {};
+    if (preferences.emailFrequency !== undefined) $set['preferences.emailFrequency'] = preferences.emailFrequency;
+    if (preferences.jobTypes !== undefined) $set['preferences.jobTypes'] = preferences.jobTypes;
+    if (preferences.remoteWork !== undefined) $set['preferences.remoteWork'] = preferences.remoteWork;
+    if (salaryRange) {
+      for (const k of ['min', 'max', 'currency']) {
+        if (salaryRange[k] !== undefined) $set[`preferences.salaryRange.${k}`] = salaryRange[k];
+      }
     }
-    if (preferences.jobTypes !== undefined) {
-      quickUser.preferences.jobTypes = preferences.jobTypes;
-    }
-    if (preferences.remoteWork !== undefined) {
-      quickUser.preferences.remoteWork = preferences.remoteWork;
-    }
-    if (preferences.salaryRange) {
-      quickUser.preferences.salaryRange = {
-        ...quickUser.preferences.salaryRange,
-        ...preferences.salaryRange
-      };
-    }
-
-    await quickUser.save();
+    const updated = Object.keys($set).length
+      ? await QuickUser.findOneAndUpdate({ _id: quickUser._id }, { $set }, { new: true })
+      : quickUser;
 
     res.json({
       success: true,
       message: 'Preferencat u përditësuan me sukses',
       data: {
-        preferences: quickUser.preferences
+        preferences: updated.preferences
       }
     });
 

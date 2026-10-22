@@ -103,10 +103,15 @@ describe('QuickUser.canReceiveNotification', () => {
     expect(u.canReceiveNotification).toBe(true);
   });
 
-  it('returns false for unknown frequency value', () => {
+  // An unrecognised stored frequency is treated like 'immediate' (1h gap)
+  // instead of silently never notifying that subscriber again.
+  it('treats an unknown frequency value like immediate (1h gap)', () => {
     const u = mkUser();
     u.preferences.emailFrequency = 'mystery';
+    u.lastNotifiedAt = new Date(Date.now() - 30 * 60 * 1000);
     expect(u.canReceiveNotification).toBe(false);
+    u.lastNotifiedAt = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    expect(u.canReceiveNotification).toBe(true);
   });
 });
 

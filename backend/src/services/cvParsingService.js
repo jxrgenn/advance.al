@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import { createOpenAIClient } from '../lib/openaiClient.js';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import mammoth from 'mammoth';
 import { QuickUser } from '../models/index.js';
@@ -13,7 +13,12 @@ let _clientOverride = null;
 function getOpenAI() {
   if (_clientOverride) return _clientOverride;
   if (!openai) {
-    openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    // #60 (W2-4b): bounded. `new OpenAI({ apiKey })` meant the SDK defaults —
+    // a 10-minute timeout and 2 hidden retries — so POST /users/parse-resume
+    // could outlive its socket. 45 s × (1 + 1 SDK retry for 429/5xx/network)
+    // + the Cloudinary upload stays below AI_ROUTE_TIMEOUT_MS (150 s).
+    openai = createOpenAIClient({ timeout: parseInt(process.env.OPENAI_PARSE_TIMEOUT_MS || '45000', 10), maxRetries: 1 });
+    if (!openai) throw new Error('OPENAI_API_KEY is not configured');
   }
   return openai;
 }
@@ -272,16 +277,58 @@ const DATE_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 // labels ("Bachelor", "BsC", "Master") which would leave the dropdown unselected
 // in the edit modal — normalize at parse time so saved value matches the form.
 const DEGREE_ENUMS = ['diploma_shkollore', 'certificate', 'bachelors', 'masters', 'phd', 'other'];
+
+// 64: words/abbreviations are matched as WHOLE tokens (start-of-token for the
+// spelled-out words, both ends for abbreviations). The previous patterns
+// matched any word starting with "ma"/"ms" — "Bachelor in Management",
+// "Maturë Shtetërore", "Bachelor në Matematikë" all became 'masters'.
+// \p{L} (Unicode letter) instead of \b, which treats ë/ç as non-letters.
+const TOKEN_START = '(?:^|[^\\p{L}])';
+const TOKEN_END = '(?=$|[^\\p{L}])';
+const degreeRe = (body, { wholeWord = false } = {}) =>
+  new RegExp(`${TOKEN_START}(?:${body})${wholeWord ? TOKEN_END : ''}`, 'iu');
+const DEGREE_RULES = [
+  ['phd', degreeRe('doktor|doctor|ph\\.?\\s?d')],
+  ['masters', degreeRe('master|magjist')],
+  ['masters', degreeRe('m\\.?\\s?sc|m\\.?\\s?a|m\\.?\\s?s|m\\.?\\s?b\\.?\\s?a|mph|msh', { wholeWord: true })],
+  ['bachelors', degreeRe('bachelor|baçelor|licenc|license|licence|undergraduate')],
+  ['bachelors', degreeRe('b\\.?\\s?sc|b\\.?\\s?a|b\\.?\\s?s|b\\.?\\s?eng', { wholeWord: true })],
+  ['certificate', degreeRe('certifi|certifik')],
+  ['diploma_shkollore', degreeRe('matur|gjimnaz|high\\s*school|secondary|shkoll\\p{L}*\\s+(?:e\\s+)?mesm|shkoll\\p{L}*\\s+profesional|e\\s+mesme|diplom')],
+];
 function normalizeDegreeToEnum(raw) {
   if (!raw || typeof raw !== 'string') return 'other';
   const v = raw.trim().toLowerCase();
   if (DEGREE_ENUMS.includes(v)) return v;
-  if (/(^|\s|\.)(phd|doctorate|doctoral|doktoratur|doktor)/i.test(v)) return 'phd';
-  if (/(^|\s|\.)(master|m\.?a\.?|m\.?sc?\.?|m\.?b\.?a\.?|mph)/i.test(v)) return 'masters';
-  if (/(^|\s|\.)(bachelor|b\.?a\.?|b\.?sc?\.?|bs|licenc|licencë)/i.test(v)) return 'bachelors';
-  if (/(certificat|certifik)/i.test(v)) return 'certificate';
-  if (/(diplom[eë]?|matur|high\s*school|shkoll[eë]?\s*(e\s*)?mes[ae]m)/i.test(v)) return 'diploma_shkollore';
+  for (const [degree, re] of DEGREE_RULES) {
+    if (re.test(v)) return degree;
+  }
   return 'other';
+}
+
+// Dates the profile accepts (routes/users.js parseHistoryDate): 1950…now+10.
+const CV_MIN_YEAR = 1950;
+/**
+ * Normalize a CV date to 'YYYY-MM' (the profile's format), or '' when it
+ * can't be read. Besides 'YYYY-MM' accepts 'YYYY-M', 'YYYY/MM', 'MM/YYYY',
+ * 'MM.YYYY' and a bare 'YYYY' (CVs often list only years — they used to be
+ * blanked, then stored as null and shown as "1970 – Tani"). A bare year is
+ * read as January for a start date and December for an end date.
+ */
+function normalizeCvDate(raw, { isEnd = false } = {}) {
+  if (typeof raw !== 'string') return '';
+  const v = raw.trim();
+  let year;
+  let month;
+  let m;
+  if ((m = v.match(/^(\d{4})[-/.](\d{1,2})$/))) [, year, month] = m;
+  else if ((m = v.match(/^(\d{1,2})[-/.](\d{4})$/))) [, month, year] = m;
+  else if ((m = v.match(/^(\d{4})$/))) { year = m[1]; month = isEnd ? '12' : '01'; }
+  else return '';
+  const y = Number(year);
+  const mo = Number(month);
+  if (mo < 1 || mo > 12 || y < CV_MIN_YEAR || y > new Date().getFullYear() + 10) return '';
+  return `${y}-${String(mo).padStart(2, '0')}`;
 }
 
 /**
@@ -297,10 +344,14 @@ function calculateExperienceFromHistory(workEntries) {
     if (!entry.startDate || !DATE_REGEX.test(entry.startDate)) continue;
     const start = new Date(entry.startDate + '-01');
     let end;
-    if (entry.isCurrentJob || !entry.endDate || !DATE_REGEX.test(entry.endDate)) {
+    if (entry.isCurrentJob) {
       end = now;
-    } else {
+    } else if (entry.endDate && DATE_REGEX.test(entry.endDate)) {
       end = new Date(entry.endDate + '-01');
+    } else {
+      // 64: a PAST job whose end date is unknown is not counted — treating it
+      // as "until today" turned a 2005–2007 job into "10+ vjet".
+      continue;
     }
     const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
     if (months > 0) totalMonths += months;
@@ -346,8 +397,8 @@ function sanitizeParsedProfile(parsed) {
         position: w.position.trim().slice(0, 100),
         company: w.company.trim().slice(0, 100),
         location: typeof w.location === 'string' ? w.location.trim().slice(0, 100) : '',
-        startDate: DATE_REGEX.test(w.startDate) ? w.startDate : '',
-        endDate: w.isCurrentJob ? '' : (DATE_REGEX.test(w.endDate) ? w.endDate : ''),
+        startDate: normalizeCvDate(w.startDate),
+        endDate: w.isCurrentJob === true ? '' : normalizeCvDate(w.endDate, { isEnd: true }),
         isCurrentJob: w.isCurrentJob === true,
         description: typeof w.description === 'string' ? w.description.trim().slice(0, 500) : '',
         achievements: typeof w.achievements === 'string' ? w.achievements.trim().slice(0, 500) : ''
@@ -363,8 +414,8 @@ function sanitizeParsedProfile(parsed) {
         institution: e.institution.trim().slice(0, 100),
         fieldOfStudy: typeof e.fieldOfStudy === 'string' ? e.fieldOfStudy.trim().slice(0, 100) : '',
         location: typeof e.location === 'string' ? e.location.trim().slice(0, 100) : '',
-        startDate: DATE_REGEX.test(e.startDate) ? e.startDate : '',
-        endDate: e.isCurrentStudy ? '' : (DATE_REGEX.test(e.endDate) ? e.endDate : ''),
+        startDate: normalizeCvDate(e.startDate),
+        endDate: e.isCurrentStudy === true ? '' : normalizeCvDate(e.endDate, { isEnd: true }),
         isCurrentStudy: e.isCurrentStudy === true,
         gpa: typeof e.gpa === 'string' ? e.gpa.trim().slice(0, 20) : '',
         description: typeof e.description === 'string' ? e.description.trim().slice(0, 500) : ''
@@ -434,6 +485,8 @@ export const _internal = {
   extractTextFromDOCX,
   calculateExperienceFromHistory,
   sanitizeParsedProfile,
+  normalizeDegreeToEnum,
+  normalizeCvDate,
   EXPERIENCE_ENUMS,
   PROFICIENCY_ENUMS,
   DATE_REGEX,

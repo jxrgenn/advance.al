@@ -12,7 +12,8 @@
  * flush the event loop a few times before asserting.
  */
 
-import { describe, it, expect, beforeAll, afterAll, afterEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, jest } from '@jest/globals';
+import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
 import request from 'supertest';
 import { Document, Packer, Paragraph, TextRun } from 'docx';
 import app from '../../server.js';
@@ -48,7 +49,7 @@ async function makeDocx(text = 'Senior Software Engineer with 6 years experience
   return Packer.toBuffer(doc);
 }
 
-const FAKE_VECTOR = Array.from({ length: 1024 }, (_, i) => Math.cos(i / 50));
+const FAKE_VECTOR = Array.from({ length: EMBEDDING_DIMS }, (_, i) => Math.cos(i / 50));
 let openAISpy;
 
 describe('QuickUser CV pipeline — signup → parse → embed', () => {
@@ -59,8 +60,16 @@ describe('QuickUser CV pipeline — signup → parse → embed', () => {
   beforeAll(async () => {
     await connectTestDB();
     process.env.OPENAI_API_KEY = 'sk-test-stub';
-    // Stub the embedding-side OpenAI call (jobEmbeddingService.callOpenAIWithRetry)
-    // so we don't make real network requests for the vector.
+  });
+
+  // Stub the embedding-side OpenAI call (jobEmbeddingService.callOpenAIWithRetry)
+  // so we don't make real network requests for the vector. In beforeEach, not
+  // beforeAll: the Jest config sets restoreMocks, which undid a beforeAll spy
+  // before the first test — the "stubbed" embedding then went to the real
+  // API (with the import-time client: the real .env.test key, billed, and a
+  // vector whose length only matched FAKE_VECTOR when the production .env
+  // leaked OPENAI_EMBEDDING_DIMS=1024 into the test process).
+  beforeEach(() => {
     openAISpy = jest.spyOn(jobEmbeddingService, 'callOpenAIWithRetry').mockResolvedValue(FAKE_VECTOR);
   });
 

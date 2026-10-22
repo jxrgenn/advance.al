@@ -207,8 +207,8 @@ describe('Phase 19.A.3 — Feature Edge Cases', () => {
         .set(createAuthHeaders(emp))
         .send({ message: 'too late', type: 'text' });
 
-      // Either succeeds (route doesn't filter on withdrawn) or 404
-      expect(r.status).toBeLessThan(500);
+      // Application messaging was removed (48): the route no longer exists.
+      expect(r.status).toBe(404);
     });
   });
 

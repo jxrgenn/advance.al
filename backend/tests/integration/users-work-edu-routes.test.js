@@ -230,7 +230,10 @@ describe('users.js — /education routes', () => {
     const after = await User.findById(user._id);
     const entry = after.profile.jobSeekerProfile.education.find(e => e._id.toString() === id.toString());
     expect(entry.degree).toBe('New');
-    expect(entry.school).toBe('New U');
+    // 138/153: edits write the canonical `institution` (create does too).
+    expect(entry.institution).toBe('New U');
+    expect(entry.school).toBeUndefined();
+    expect(entry.year).toBe(2024);
   });
 
   it('PUT 404 when entry id does not exist (empty education)', async () => {

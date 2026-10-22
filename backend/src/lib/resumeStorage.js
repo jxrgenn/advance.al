@@ -17,7 +17,7 @@
 import fs from 'fs';
 import path from 'path';
 import { randomInt } from 'crypto';
-import { uploadToCloudinary, deleteFromCloudinary, extractCloudinaryPublicId } from '../config/cloudinary.js';
+import { uploadToCloudinary, deleteFromCloudinary, extractCloudinaryPublicId, isOwnedCloudinaryAsset } from '../config/cloudinary.js';
 import logger from '../config/logger.js';
 
 export const RESUME_ALLOWED_MIME_TYPES = [
@@ -138,23 +138,50 @@ export async function storeResumeBuffer(buffer, ownerId) {
 
 /**
  * Best-effort delete of a stored CV (Cloudinary or local fallback). Never throws.
+ *
+ * `ownerId` is REQUIRED: the CV is destroyed only when it is provably a file
+ * stored for that user (O-78 — Cloudinary public_id `advance-al/cvs/resume-
+ * <ownerId>-<digits>` on our cloud, or a local file named `resume-<ownerId>-…`).
+ * A URL read from a user/application document is not proof of ownership, so a
+ * foreign or crafted URL is logged and left alone instead of being destroyed
+ * with the platform's API secret.
+ *
+ * @returns {Promise<'deleted'|'not_found'|'refused'|'skipped'|'failed'>}
  */
-export async function deleteStoredResume(url) {
-  if (!url || typeof url !== 'string') return;
+export async function deleteStoredResume(url, ownerId) {
+  if (!url || typeof url !== 'string') return 'skipped';
   try {
     if (url.includes('cloudinary.com')) {
+      if (!isOwnedCloudinaryAsset(url, ownerId, 'resume')) {
+        logger.warn('deleteStoredResume: refused to delete a CV not owned by this user', {
+          ownerId: ownerId ? String(ownerId) : null,
+          publicId: extractCloudinaryPublicId(url),
+        });
+        return 'refused';
+      }
       const publicId = extractCloudinaryPublicId(url);
-      if (!publicId) return;
       const type = /\/authenticated\//.test(url) ? 'authenticated' : 'upload';
-      await deleteFromCloudinary(publicId, 'raw', type);
-      return;
+      const result = await deleteFromCloudinary(publicId, 'raw', type);
+      if (result?.result === 'ok') return 'deleted';
+      // Cloudinary answers {result:'not found'} instead of throwing — the
+      // bytes may still exist under another type; make it visible.
+      logger.warn('deleteStoredResume: Cloudinary did not delete the CV', { publicId, type, result: result?.result });
+      return 'not_found';
     }
     if (url.startsWith('/uploads/resumes/')) {
       // basename() — never follow a crafted path outside the resumes dir.
-      await fs.promises.unlink(path.join(LOCAL_RESUME_DIR(), path.basename(url)));
+      const filename = path.basename(url);
+      if (!ownerId || !filename.startsWith(`resume-${String(ownerId)}-`)) {
+        logger.warn('deleteStoredResume: refused to delete a local CV not owned by this user', { ownerId: ownerId ? String(ownerId) : null, filename });
+        return 'refused';
+      }
+      await fs.promises.unlink(path.join(LOCAL_RESUME_DIR(), filename));
+      return 'deleted';
     }
+    return 'skipped';
   } catch (err) {
     logger.warn('deleteStoredResume failed (non-fatal)', { error: err.message });
+    return 'failed';
   }
 }
 
@@ -186,7 +213,7 @@ export async function swapProfileResume(userId, newUrl, { resumeType = null, exp
       { $set: set }
     );
     if (result.matchedCount === 1) {
-      if (expected && expected !== newUrl) await deleteStoredResume(expected);
+      if (expected && expected !== newUrl) await deleteStoredResume(expected, userId);
       return { displacedUrl: expected || null };
     }
     const current = await User.findById(userId).select('profile.jobSeekerProfile.resume').lean();

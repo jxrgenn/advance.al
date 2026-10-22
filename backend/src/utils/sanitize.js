@@ -22,10 +22,10 @@ export function isObjectIdString(s) {
  */
 export async function findJobByIdOrSlug(JobModel, idOrSlug, extraFilter = {}) {
   if (!idOrSlug || typeof idOrSlug !== 'string') return null;
-  const query = isObjectIdString(idOrSlug)
-    ? { _id: idOrSlug, ...extraFilter }
-    : { slug: idOrSlug, ...extraFilter };
-  return JobModel.findOne(query);
+  if (isObjectIdString(idOrSlug)) return JobModel.findOne({ _id: idOrSlug, ...extraFilter });
+  // A slug from before a title edit is kept in previousSlugs (#113).
+  return (await JobModel.findOne({ slug: idOrSlug, ...extraFilter }))
+    || JobModel.findOne({ previousSlugs: idOrSlug, ...extraFilter });
 }
 
 /**

@@ -1,8 +1,69 @@
 import mongoose from 'mongoose';
 import logger from '../config/logger.js';
 import { stripHiddenSalary } from '../lib/salary.js';
+import { employerContactForApplicant } from '../lib/serializers.js';
 
 const { Schema } = mongoose;
+
+/**
+ * The applicant fields an employer view renders (dashboard list + detail
+ * modal): contact, professional profile, CV. Explicit leaf paths on purpose:
+ * selecting the parent `profile.jobSeekerProfile` pulled in the 1536-float
+ * embedding vector (select:false does not survive a parent projection), the
+ * AI-generated CV (date of birth, address, references), desired salary and
+ * notification settings — ~30 KB per applicant (30).
+ */
+export const APPLICANT_FIELDS = [
+  'email',
+  'profile.firstName',
+  'profile.lastName',
+  'profile.phone',
+  'profile.location',
+  'profile.jobSeekerProfile.title',
+  'profile.jobSeekerProfile.bio',
+  'profile.jobSeekerProfile.experience',
+  'profile.jobSeekerProfile.skills',
+  'profile.jobSeekerProfile.education',
+  'profile.jobSeekerProfile.workHistory',
+  'profile.jobSeekerProfile.resume',
+  'profile.jobSeekerProfile.resumeType',
+  'profile.jobSeekerProfile.availability',
+  'profile.jobSeekerProfile.openToRemote',
+  'profile.jobSeekerProfile.profilePhoto',
+].join(' ');
+
+/** Allowed employer-driven status changes (from → to). */
+export const STATUS_TRANSITIONS = Object.freeze({
+  pending: ['viewed', 'shortlisted', 'rejected'],
+  viewed: ['shortlisted', 'rejected'],
+  shortlisted: ['hired', 'rejected'],
+  rejected: [],
+  hired: ['shortlisted'],
+});
+
+/**
+ * Statuses a candidate may still withdraw from (49): everything not yet
+ * decided. A shortlisted candidate who found another job must be able to say
+ * so — the employer is notified (routes/applications.js).
+ */
+export const WITHDRAWABLE_STATUSES = Object.freeze(['pending', 'viewed', 'shortlisted']);
+
+const decrementJobApplicationCount = (jobId) => mongoose.model('Job').findByIdAndUpdate(
+  jobId,
+  [{ $set: { applicationCount: { $max: [0, { $add: [{ $ifNull: ['$applicationCount', 0] }, -1] }] } } }]
+);
+
+const notifyStatusChange = async (applicationId, oldStatus, newStatus) => {
+  try {
+    // A fresh, unpopulated document: the notification helper populates it in
+    // place, which must not touch the document a route is about to return.
+    const fresh = await mongoose.model('Application').findById(applicationId);
+    if (!fresh) return;
+    await mongoose.model('Notification').createApplicationStatusNotification(fresh, oldStatus, newStatus);
+  } catch (error) {
+    logger.error('Error creating status change notification:', error.message);
+  }
+};
 
 const applicationSchema = new Schema({
   jobId: {
@@ -108,13 +169,24 @@ const applicationSchema = new Schema({
     }
   }],
   
-  // Withdrawal
+  // Withdrawal — ONLY the candidate's own withdrawal (or their account
+  // deletion). Every list, count and CV-access check treats withdrawn:true as
+  // "this application no longer exists for the employer".
   withdrawn: {
     type: Boolean,
     default: false
   },
   withdrawnAt: Date,
-  withdrawalReason: String
+  withdrawalReason: {
+    type: String,
+    maxlength: 500
+  },
+
+  // Data retention (services/dataRetention.js): set on decided (hired /
+  // rejected) applications older than a year. A marker only — the
+  // application stays visible to both parties (74: retention used to set
+  // withdrawn:true, which made hired candidates vanish and cut CV access).
+  archivedAt: Date
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -155,40 +227,69 @@ applicationSchema.virtual('unreadMessageCount').get(function() {
   return this.messages ? this.messages.filter(msg => !msg.read).length : 0;
 });
 
-// Mark application as viewed by employer
-applicationSchema.methods.markAsViewed = function() {
-  if (this.status === 'pending') {
-    this.status = 'viewed';
-    this.viewedAt = new Date();
-    return this.save();
+// Mark application as viewed by employer (GET /api/applications/:id).
+// Atomic (35/36): only a still-pending application moves, so a late view can
+// never overwrite a status the employer set in the meantime (it used to save
+// the whole stale document and turn "shortlisted" back into "viewed"). The
+// winner notifies the candidate exactly like an explicit "Shëno si të
+// shikuar" does. The in-memory document is updated to the stored state.
+applicationSchema.methods.markAsViewed = async function() {
+  if (this.status !== 'pending' || this.withdrawn) return this;
+  const viewedAt = new Date();
+  const r = await this.constructor.updateOne(
+    { _id: this._id, status: 'pending', withdrawn: false },
+    { $set: { status: 'viewed', viewedAt } }
+  );
+  if (r.modifiedCount === 1) {
+    this.set({ status: 'viewed', viewedAt });
+    await notifyStatusChange(this._id, 'pending', 'viewed');
+  } else {
+    const current = await this.constructor.findById(this._id).select('status viewedAt').lean();
+    if (current) this.set({ status: current.status, viewedAt: current.viewedAt });
   }
-  return Promise.resolve(this);
+  return this;
 };
 
-// Update application status
+/**
+ * Employer status change as ONE conditional update (35): it applies only if
+ * the application is still in `fromStatus` (and active, and this employer's).
+ * Two concurrent changes can no longer both "win" and send the candidate
+ * contradictory notifications — the loser gets null (→ 409 in the route).
+ * Returns the updated document, or null when the precondition failed.
+ */
+applicationSchema.statics.transitionStatus = async function({ applicationId, employerId, fromStatus, toStatus, notes }) {
+  if (!(STATUS_TRANSITIONS[fromStatus] || []).includes(toStatus)) return null;
+  const now = new Date();
+  const set = { status: toStatus, respondedAt: now };
+  if (toStatus === 'viewed') set.viewedAt = now;
+  if (notes) set.employerNotes = notes;
+  const updated = await this.findOneAndUpdate(
+    {
+      _id: applicationId,
+      employerId,
+      withdrawn: false,
+      // documents written before the status default existed count as pending
+      status: fromStatus === 'pending' ? { $in: ['pending', null] } : fromStatus,
+    },
+    { $set: set },
+    { new: true, runValidators: true }
+  );
+  if (updated) await notifyStatusChange(updated._id, fromStatus, toStatus);
+  return updated;
+};
+
+// Kept for scripts/tests that hold a document: same atomic rule as
+// transitionStatus, from the document's current status.
 applicationSchema.methods.updateStatus = async function(newStatus, notes = '') {
-  const oldStatus = this.status;
-  this.status = newStatus;
-  this.respondedAt = new Date();
-  if (notes) {
-    this.employerNotes = notes;
-  }
-  
-  // Save the application first
-  await this.save();
-  
-  // Create notification for status change if status actually changed
-  if (oldStatus !== newStatus && ['viewed', 'shortlisted', 'rejected', 'hired'].includes(newStatus)) {
-    try {
-      const Notification = mongoose.model('Notification');
-      await Notification.createApplicationStatusNotification(this, oldStatus, newStatus);
-    } catch (error) {
-      logger.error('Error creating status change notification:', error.message);
-      // Don't fail the status update if notification fails
-    }
-  }
-  
-  return this;
+  const updated = await this.constructor.transitionStatus({
+    applicationId: this._id,
+    employerId: this.employerId,
+    fromStatus: this.status || 'pending',
+    toStatus: newStatus,
+    notes,
+  });
+  if (updated) this.set({ status: updated.status, respondedAt: updated.respondedAt, employerNotes: updated.employerNotes });
+  return updated ? this : null;
 };
 
 // Add message to application
@@ -220,20 +321,33 @@ applicationSchema.methods.markMessagesAsRead = function(userId) {
   return Promise.resolve(this);
 };
 
-// Withdraw application
-applicationSchema.methods.withdraw = async function(reason = '') {
-  this.withdrawn = true;
-  this.withdrawnAt = new Date();
-  if (reason) {
-    this.withdrawalReason = reason;
-  }
-  await this.save();
-  // Decrement the job's application count (floor at 0 to prevent negative)
-  const Job = mongoose.model('Job');
-  await Job.findByIdAndUpdate(
-    this.jobId,
-    [{ $set: { applicationCount: { $max: [0, { $add: ['$applicationCount', -1] }] } } }]
+/**
+ * Candidate withdrawal as ONE conditional update (35/49): only an active
+ * application in a WITHDRAWABLE_STATUSES status of this candidate is
+ * withdrawn, and only the call that actually withdrew it decrements the
+ * job's applicationCount (two concurrent withdrawals used to decrement it
+ * twice). Returns the application as it was BEFORE the withdrawal (its
+ * status / resumeUrl are what the caller needs), or null.
+ */
+applicationSchema.statics.withdrawForSeeker = async function({ applicationId, jobSeekerId, reason = '' }) {
+  const set = { withdrawn: true, withdrawnAt: new Date() };
+  if (reason) set.withdrawalReason = reason;
+  const before = await this.findOneAndUpdate(
+    { _id: applicationId, jobSeekerId, withdrawn: false, status: { $in: [...WITHDRAWABLE_STATUSES, null] } },
+    { $set: set },
+    { new: false, runValidators: true }
   );
+  if (before) await decrementJobApplicationCount(before.jobId);
+  return before;
+};
+
+// Withdraw application (document form, same atomic rule).
+applicationSchema.methods.withdraw = async function(reason = '') {
+  const before = await this.constructor.withdrawForSeeker({ applicationId: this._id, jobSeekerId: this.jobSeekerId, reason });
+  if (before) {
+    const after = await this.constructor.findById(this._id).select('withdrawn withdrawnAt withdrawalReason').lean();
+    this.set({ withdrawn: after.withdrawn, withdrawnAt: after.withdrawnAt, withdrawalReason: after.withdrawalReason });
+  }
   return this;
 };
 
@@ -261,30 +375,37 @@ applicationSchema.statics.getEmployerApplications = function(employerId, filters
     query.jobId = filters.jobId;
   }
   
+  // No .sort() here (43): the caller's sort must be the primary key — a sort
+  // set here was MERGED first by Mongoose and silently won.
   return this.find(query)
-    .populate('jobId', 'title location category employerId')
-    .populate('jobSeekerId', 'profile.firstName profile.lastName profile.jobSeekerProfile profile.location email')
-    .sort({ appliedAt: -1 });
+    .populate('jobId', 'title slug location category employerId')
+    .populate('jobSeekerId', APPLICANT_FIELDS);
 };
 
 // Static method to get applications for job seeker
 applicationSchema.statics.getJobSeekerApplications = function(jobSeekerId, filters = {}) {
-  const query = { 
+  const query = {
     jobSeekerId,
     withdrawn: false
   };
-  
+
   if (filters.status) {
     query.status = filters.status;
   }
-  
+
+  // The candidate never receives the employer's private notes.
   return this.find(query)
+    .select('-employerNotes -messages')
     .populate({
       path: 'jobId',
-      select: 'title location category salary employerId',
+      select: 'title slug location category salary employerId',
       populate: {
         path: 'employerId',
-        select: 'email profile.employerProfile.companyName profile.employerProfile.phone profile.employerProfile.whatsapp profile.employerProfile.contactPreferences'
+        select: 'email profile.employerProfile.companyName profile.employerProfile.phone profile.employerProfile.whatsapp profile.employerProfile.contactPreferences',
+        // 38: only the contact channels the employer switched ON leave the
+        // server (the login email only with enableEmailContact) — the UI used
+        // to hide disabled ones while the JSON still carried them.
+        transform: (employer) => employerContactForApplicant(employer)
       },
       // The seeker's view: a salary the employer hid (showPublic === false)
       // keeps only its flags, never the numbers (lib/salary.js).
@@ -292,8 +413,7 @@ applicationSchema.statics.getJobSeekerApplications = function(jobSeekerId, filte
         if (job?.salary?.showPublic === false) job.salary = stripHiddenSalary(job.salary);
         return job;
       }
-    })
-    .sort({ appliedAt: -1 });
+    });
 };
 
 // Track if this is a new application (for post-save hook)

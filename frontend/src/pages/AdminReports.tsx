@@ -12,6 +12,18 @@ import { useToast } from "@/hooks/use-toast";
 import Navigation from "@/components/Navigation";
 import { AlertTriangle, Eye, FileText, Clock, CheckCircle, XCircle, Search, Filter, RotateCcw, ArrowLeft } from "lucide-react";
 import { reportsApi, Report, ReportAction } from "@/lib/api";
+import { formatAlbanianDate, formatAlbanianDateTime } from "@/lib/albanianDate";
+import {
+  displayUserName, reportActionLabel, reportActionTypeLabel, reportCategoryLabel,
+  reportPriorityLabel, reportStatusLabel,
+} from "@/lib/labels";
+
+// "Gent Hoxha (Gent Shpk)" for a reported user, "Puna: <title>" for a job-only report.
+const reportedTargetName = (report: Report): string => {
+  if (report.reportedUser) return displayUserName(report.reportedUser);
+  if (report.reportedJob) return `Puna: ${report.reportedJob.title || 'Pa titull'}`;
+  return 'E panjohur';
+};
 
 const AdminReports = () => {
   const navigate = useNavigate();
@@ -134,7 +146,7 @@ const AdminReports = () => {
       if (response.success) {
         toast({
           title: "Sukses",
-          description: `Veprimi "${actionData.action}" u mor me sukses`
+          description: `Veprimi "${reportActionLabel(actionData.action)}" u krye me sukses`
         });
 
         // Refresh reports list
@@ -280,39 +292,17 @@ const AdminReports = () => {
     }
   };
 
-  const getCategoryLabel = (category: string) => {
-    const categoryLabels: { [key: string]: string } = {
-      'fake_cv': 'CV i rremë',
-      'inappropriate_content': 'Përmbajtje e papërshtatshme',
-      'suspicious_profile': 'Profil i dyshimtë',
-      'spam_behavior': 'Sjellje spam',
-      'impersonation': 'Personifikim',
-      'harassment': 'Ngacmim',
-      'fake_job_posting': 'Njoftim pune i rremë',
-      'unprofessional_behavior': 'Sjellje joprofesionale',
-      'other': 'Tjetër'
-    };
-    return categoryLabels[category] || category;
-  };
+  const getCategoryLabel = (category: string) => reportCategoryLabel(category);
 
-  const getActionLabel = (action: string) => {
-    const actionLabels: { [key: string]: string } = {
-      'no_action': 'Asnjë veprim',
-      'warning': 'Paralajmërim',
-      'temporary_suspension': 'Pezullim i përkohshëm',
-      'permanent_suspension': 'Pezullim i përhershëm',
-      'account_termination': 'Mbyllje llogarie'
-    };
-    return actionLabels[action] || action;
-  };
+  const getActionLabel = (action: string) => reportActionLabel(action);
 
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
 
       <div className="container py-8">
-        <div className="flex justify-between items-center mb-6">
-          <div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center mb-6">
+          <div className="min-w-0">
             <div className="flex items-center gap-4 mb-2">
               <Button
                 variant="ghost"
@@ -321,16 +311,16 @@ const AdminReports = () => {
                 className="gap-2"
               >
                 <ArrowLeft className="h-4 w-4" />
-                Dashboard
+                Paneli
               </Button>
             </div>
-            <h1 className="text-3xl font-bold">Menaxhimi i Raportimeve</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold">Menaxhimi i Raportimeve</h1>
             <p className="text-muted-foreground">
               Shqyrtoni dhe menaxhoni raportimet e përdoruesve
             </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Badge variant="outline">
               {pagination.totalReports} Raporte Totale
             </Badge>
@@ -421,7 +411,7 @@ const AdminReports = () => {
                     <SelectItem value="pending">Në pritje</SelectItem>
                     <SelectItem value="under_review">Në shqyrtim</SelectItem>
                     <SelectItem value="resolved">Të zgjidhura</SelectItem>
-                    <SelectItem value="dismissed">Të refuzuara</SelectItem>
+                    <SelectItem value="dismissed">Të hedhura poshtë</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -499,24 +489,24 @@ const AdminReports = () => {
             reports.map((report) => (
               <Card key={report._id} className="hover:shadow-md transition-shadow">
                 <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-1">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start">
+                    <div className="space-y-1 min-w-0">
                       <CardTitle className="text-lg">
                         {getCategoryLabel(report.category)}
                       </CardTitle>
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <span>Raportuar nga: {report.reportingUser?.firstName} {report.reportingUser?.lastName}</span>
-                        <span>{report.reportedUser ? `Përdoruesi i raportuar: ${report.reportedUser.firstName} ${report.reportedUser.lastName}` : report.reportedJob ? `Puna e raportuar: ${report.reportedJob.title || 'Pa titull'}` : 'E panjohur'}</span>
-                        <span>{new Date(report.createdAt).toLocaleDateString('sq-AL')}</span>
+                      <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 text-sm text-muted-foreground">
+                        <span>Raportuar nga: {displayUserName(report.reportingUser)}</span>
+                        <span>{report.reportedUser ? `Përdoruesi i raportuar: ${displayUserName(report.reportedUser)}` : report.reportedJob ? `Puna e raportuar: ${report.reportedJob.title || 'Pa titull'}` : 'E panjohur'}</span>
+                        <span className="whitespace-nowrap">{formatAlbanianDate(report.createdAt)}</span>
                       </div>
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <Badge variant={getPriorityBadgeVariant(report.priority)}>
-                        {report.priority}
+                        {reportPriorityLabel(report.priority)}
                       </Badge>
                       <Badge variant={getStatusBadgeVariant(report.status)}>
-                        {report.status}
+                        {reportStatusLabel(report.status)}
                       </Badge>
                     </div>
                   </div>
@@ -568,7 +558,7 @@ const AdminReports = () => {
                           variant="outline"
                           onClick={() => handleReopenClick(
                             report._id,
-                            `${report.reportedUser?.firstName || report.reportedJob?.title || 'E panjohur'} ${report.reportedUser?.lastName || ''} - ${getCategoryLabel(report.category)}`
+                            `${reportedTargetName(report)} - ${getCategoryLabel(report.category)}`
                           )}
                           disabled={reopening === report._id}
                         >
@@ -607,16 +597,16 @@ const AdminReports = () => {
                               </TabsList>
 
                               <TabsContent value="details" className="space-y-4">
-                                <div className="grid grid-cols-2 gap-4">
-                                  <div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                  <div className="min-w-0">
                                     <h4 className="font-medium">{reportDetails.report.reportedUser ? 'Përdoruesi i raportuar' : 'Puna e raportuar'}</h4>
-                                    <p>{reportDetails.report.reportedUser ? `${reportDetails.report.reportedUser.firstName} ${reportDetails.report.reportedUser.lastName}` : reportDetails.report.reportedJob?.title || 'E panjohur'}</p>
-                                    <p className="text-sm text-muted-foreground">{reportDetails.report.reportedUser?.email || ''}</p>
+                                    <p>{reportDetails.report.reportedUser ? displayUserName(reportDetails.report.reportedUser) : reportDetails.report.reportedJob?.title || 'E panjohur'}</p>
+                                    <p className="text-sm text-muted-foreground break-anywhere">{reportDetails.report.reportedUser?.email || ''}</p>
                                   </div>
-                                  <div>
+                                  <div className="min-w-0">
                                     <h4 className="font-medium">Raportuar nga</h4>
-                                    <p>{reportDetails.report.reportingUser?.firstName} {reportDetails.report.reportingUser?.lastName}</p>
-                                    <p className="text-sm text-muted-foreground">{reportDetails.report.reportingUser?.email || ''}</p>
+                                    <p>{displayUserName(reportDetails.report.reportingUser)}</p>
+                                    <p className="text-sm text-muted-foreground break-anywhere">{reportDetails.report.reportingUser?.email || ''}</p>
                                   </div>
                                 </div>
 
@@ -625,7 +615,9 @@ const AdminReports = () => {
                                   <p className="mt-1">{reportDetails.report.description}</p>
                                 </div>
 
-                                {reportDetails.report.resolution && (
+                                {/* Only a resolved report has a resolution (the API returns an
+                                    empty sub-document otherwise). */}
+                                {reportDetails.report.resolution?.action && (
                                   <div>
                                     <h4 className="font-medium">Zgjidhja</h4>
                                     <div className="mt-1 space-y-1">
@@ -645,16 +637,16 @@ const AdminReports = () => {
                                     <div key={action._id} className="border rounded p-3">
                                       <div className="flex justify-between items-start">
                                         <div>
-                                          <p className="font-medium">{action.actionType}</p>
+                                          <p className="font-medium">{reportActionTypeLabel(action.actionType)}</p>
                                           <p className="text-sm text-muted-foreground">
-                                            {action.performedBy.firstName} {action.performedBy.lastName}
+                                            {displayUserName(action.performedBy)}
                                           </p>
                                         </div>
-                                        <span className="text-xs text-muted-foreground">
-                                          {new Date(action.createdAt).toLocaleDateString('sq-AL')}
+                                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                          {formatAlbanianDateTime(action.createdAt)}
                                         </span>
                                       </div>
-                                      {action.actionDetails.actionData.reason && (
+                                      {action.actionDetails?.actionData?.reason && (
                                         <p className="mt-2 text-sm">{action.actionDetails.actionData.reason}</p>
                                       )}
                                     </div>
@@ -671,11 +663,11 @@ const AdminReports = () => {
                                         <div className="flex justify-between">
                                           <span>{getCategoryLabel(relatedReport.category)}</span>
                                           <Badge variant={getStatusBadgeVariant(relatedReport.status)}>
-                                            {relatedReport.status}
+                                            {reportStatusLabel(relatedReport.status)}
                                           </Badge>
                                         </div>
                                         <p className="text-sm text-muted-foreground mt-1">
-                                          {new Date(relatedReport.createdAt).toLocaleDateString('sq-AL')}
+                                          {formatAlbanianDate(relatedReport.createdAt)}
                                         </p>
                                       </div>
                                     ))}

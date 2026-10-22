@@ -14,7 +14,14 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { adminApi, reportsApi, isAuthenticated, getUserType, User, usersApi } from "@/lib/api";
+import { experienceLabel, NO_EXPERIENCE } from "@/lib/profileUtils";
 import { viewResume, downloadResume, isInlineViewable, DOCX_VIEW_TOOLTIP } from "@/lib/resumeView";
+import { formatAlbanianDate, formatAlbanianDateTime } from "@/lib/albanianDate";
+import { formatTimeAgoSq } from "@/lib/relativeTime";
+import {
+  jobStatusLabel, userStatusLabel, canAdminApproveJob, canAdminRejectJob,
+  displayUserName, reportCategoryLabel, reportActionLabel,
+} from "@/lib/labels";
 import {
   CheckCircle, XCircle, Clock, Building, MapPin, Mail, Phone,
   Users, Briefcase, TrendingUp, TrendingDown, DollarSign,
@@ -22,6 +29,10 @@ import {
   BarChart3, Activity, Database, Shield, Star, Trash2, Edit,
   ChevronLeft, ChevronRight, Calendar, Send, Zap, Download, Search, Loader2
 } from "lucide-react";
+
+// "Pezullo" in the dashboard's reports list: a temporary suspension of this
+// many days (the full action dialog with every option is at /admin/reports).
+const REPORT_QUICK_SUSPENSION_DAYS = 7;
 
 interface DashboardStats {
   totalUsers: number;
@@ -1316,7 +1327,8 @@ const AdminDashboard = () => {
       console.error('Error managing job:', error);
       toast({
         title: "Gabim",
-        description: "Nuk mund të përditësohet puna",
+        // Show the API's reason (e.g. "Kjo punë nuk është paguar…"), not a generic line.
+        description: error?.message || "Nuk mund të përditësohet puna",
         variant: "destructive"
       });
     }
@@ -1330,7 +1342,9 @@ const AdminDashboard = () => {
       if (response.success) {
         toast({
           title: "Sukses",
-          description: `Përdoruesi u ${action === 'suspend' ? 'pezullua' : action === 'activate' ? 'aktivizua' : 'fshirë'} me sukses`,
+          // The API says what actually happened (e.g. lifting a suspension of
+          // an unverified employer puts it back in the verification queue).
+          description: response.message || `Përdoruesi u ${action === 'suspend' ? 'pezullua' : action === 'activate' ? 'aktivizua' : 'fshirë'} me sukses`,
         });
 
         // Reload users to reflect changes
@@ -1342,7 +1356,7 @@ const AdminDashboard = () => {
       console.error('Error managing user:', error);
       toast({
         title: "Gabim",
-        description: "Nuk mund të përditësohet përdoruesi",
+        description: error?.message || "Nuk mund të përditësohet përdoruesi",
         variant: "destructive"
       });
     }
@@ -1389,17 +1403,17 @@ const AdminDashboard = () => {
           id: report._id,
           type: report.category || 'other',
           reportedUser: {
-            id: report.reportedUser?._id || report.reportedUserId,
-            name: report.reportedUser?.profile ?
-              `${report.reportedUser.profile.firstName} ${report.reportedUser.profile.lastName}` :
-              'I panjohur',
-            email: report.reportedUser?.email || 'N/A',
-            phone: report.reportedUser?.profile?.phone || 'N/A'
+            id: report.reportedUser?._id,
+            // Job-only reports have no reportedUser — name the job instead.
+            name: report.reportedUser
+              ? displayUserName(report.reportedUser)
+              : report.reportedJob ? `punës "${report.reportedJob.title || 'Pa titull'}"` : 'I panjohur',
+            email: report.reportedUser?.email || '—',
+            phone: report.reportedUser?.profile?.phone || '—'
           },
+          // The API field is reportingUser (there is no `reporter`).
           reportedBy: {
-            name: report.reporter?.profile ?
-              `${report.reporter.profile.firstName} ${report.reporter.profile.lastName}` :
-              'Anonim'
+            name: displayUserName(report.reportingUser, 'Anonim')
           },
           reason: report.description || report.category || '',
           timestamp: report.createdAt,
@@ -1442,9 +1456,11 @@ const AdminDashboard = () => {
   const handleReportAction = async (reportId: string, action: 'approve' | 'reject', userId?: string, customReason?: string) => {
     try {
       if (action === 'approve' && userId) {
-        // Take action on the report via real API
+        // Take action on the report via real API. 'suspend' is not an action
+        // the API accepts (400) — use the temporary suspension it does accept.
         await reportsApi.takeAction(reportId, {
-          action: 'suspend',
+          action: 'temporary_suspension',
+          duration: REPORT_QUICK_SUSPENSION_DAYS,
           reason: customReason || 'Pezulluar për shkak të raportimit',
           notifyUser: true,
         });
@@ -1458,13 +1474,15 @@ const AdminDashboard = () => {
 
       toast({
         title: "Sukses",
-        description: `Raportimi u ${action === 'approve' ? 'miratua dhe përdoruesi u pezullua' : 'refuzua'} me sukses`,
+        description: action === 'approve'
+          ? `Përdoruesi u pezullua për ${REPORT_QUICK_SUSPENSION_DAYS} ditë`
+          : 'Raportimi u hodh poshtë',
       });
     } catch (error: any) {
       console.error('Error handling report:', error);
       toast({
         title: "Gabim",
-        description: "Nuk mund të përpunohet raportimi",
+        description: error?.message || "Nuk mund të përpunohet raportimi",
         variant: "destructive"
       });
     }
@@ -1477,11 +1495,11 @@ const AdminDashboard = () => {
       if (reportsResponse.success && reportsResponse.data.reports) {
         const realActions = reportsResponse.data.reports.map((report: any) => ({
           id: report._id,
-          action: report.status === 'resolved' ? 'Zgjidhur' : 'Veprim',
-          user: report.reportedUser ?
-                `${report.reportedUser.firstName} ${report.reportedUser.lastName}` :
-                'Përdorues i fshirë',
-          reason: report.adminNotes || report.reason || 'Nuk ka arsye të specifikuar',
+          action: report.resolution?.action ? reportActionLabel(report.resolution.action) : 'Zgjidhur',
+          user: report.reportedUser
+            ? displayUserName(report.reportedUser)
+            : report.reportedJob ? `Puna "${report.reportedJob.title || 'Pa titull'}"` : 'Përdorues i fshirë',
+          reason: report.resolution?.reason || 'Nuk ka arsye të specifikuar',
           date: report.updatedAt || report.createdAt,
           status: 'default'
         }));
@@ -1509,21 +1527,8 @@ const AdminDashboard = () => {
     setActionsHistory(prev => [newAction, ...prev]);
   };
 
-  const formatTimeAgo = (timestamp: string) => {
-    const now = new Date();
-    const time = new Date(timestamp);
-    const diffInMinutes = Math.floor((now.getTime() - time.getTime()) / (1000 * 60));
-
-    if (diffInMinutes < 60) {
-      return `${diffInMinutes} minuta më parë`;
-    } else if (diffInMinutes < 1440) {
-      const hours = Math.floor(diffInMinutes / 60);
-      return `${hours} orë më parë`;
-    } else {
-      const days = Math.floor(diffInMinutes / 1440);
-      return `${days} ditë më parë`;
-    }
-  };
+  // Shared Albanian helper: "Tani" (not "0 minuta më parë"), correct units.
+  const formatTimeAgo = (timestamp: string) => formatTimeAgoSq(timestamp);
 
 
   return (
@@ -1533,16 +1538,22 @@ const AdminDashboard = () => {
       <div className="container py-8">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
-          <div className="mb-8 flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground mb-2">
+          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">
                 Paneli i Administratorit
               </h1>
-              <p className="text-muted-foreground text-lg">
+              <p className="text-muted-foreground text-base sm:text-lg">
                 Menaxho platformën advance.al dhe monitoro aktivitetin
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              {/* The configuration dialog (payment_enabled, require_job_approval,
+                  …) existed but had no button to open it. */}
+              <Button variant="outline" onClick={handleConfiguration} data-testid="open-configuration">
+                <Settings className="h-4 w-4 mr-2" />
+                Konfigurimi
+              </Button>
               <Button
                 onClick={() => setActiveTab("business")}
                 className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
@@ -1716,7 +1727,7 @@ const AdminDashboard = () => {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Kategoritë më Populullore</CardTitle>
+                    <CardTitle>Kategoritë më Popullore</CardTitle>
                   </CardHeader>
                   <CardContent>
                     {dashboardStats?.topCategories && (
@@ -1885,13 +1896,7 @@ const AdminDashboard = () => {
                           </div>
 
                           <div className="text-xs text-muted-foreground pt-3 border-t">
-                            Regjistruar: {new Date(employer.createdAt || '').toLocaleDateString('sq-AL', {
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
+                            Regjistruar: {formatAlbanianDateTime(employer.createdAt)}
                           </div>
                         </div>
                       ))}
@@ -2098,7 +2103,7 @@ const AdminDashboard = () => {
                           <div className="flex items-center gap-3 text-xs text-muted-foreground">
                             <span>Audienca: {notification.targetAudience || 'all'}</span>
                             <span>Marrës: {notification.recipientCount || 0}</span>
-                            <span>{new Date(notification.createdAt).toLocaleDateString('sq-AL')}</span>
+                            <span>{formatAlbanianDate(notification.createdAt)}</span>
                           </div>
                         </div>
                       ))}
@@ -2189,7 +2194,7 @@ const AdminDashboard = () => {
                             </div>
                             <div className="flex items-center gap-1">
                               <Calendar className="h-4 w-4" />
-                              {new Date(job.postedAt).toLocaleDateString('sq-AL')}
+                              {formatAlbanianDate(job.postedAt)}
                             </div>
                           </div>
                         </div>
@@ -2200,12 +2205,7 @@ const AdminDashboard = () => {
                             'secondary'
                           }
                         >
-                          {job.status === 'active' ? 'Aktiv' :
-                           job.status === 'expired' ? 'Skaduar' :
-                           job.status === 'draft' ? 'Draft' :
-                           job.status === 'pending_approval' ? 'Në pritje' :
-                           job.status === 'pending_payment' ? 'Pa paguar' :
-                           job.status === 'rejected' ? 'Refuzuar' : job.status}
+                          {jobStatusLabel(job.status, (job as any).closedReason)}
                         </Badge>
                       </div>
 
@@ -2227,7 +2227,10 @@ const AdminDashboard = () => {
                           </Button>
                         )}
 
-                        {job.status !== 'approved' && job.status !== 'active' && (
+                        {/* Only actions the API accepts for this state (PATCH
+                            /admin/jobs/:id/manage): approve from pending_approval
+                            / rejected — never on closed, expired or unpaid jobs. */}
+                        {canAdminApproveJob(job.status) && (
                           <Button
                             variant="default"
                             size="sm"
@@ -2238,7 +2241,7 @@ const AdminDashboard = () => {
                           </Button>
                         )}
 
-                        {job.status === 'active' && (
+                        {canAdminRejectJob(job.status) && (
                           <Button
                             variant="destructive"
                             size="sm"
@@ -2343,7 +2346,7 @@ const AdminDashboard = () => {
                             </div>
                             <div className="flex items-center gap-1">
                               <Calendar className="h-4 w-4" />
-                              {new Date(job.postedAt).toLocaleDateString('sq-AL')}
+                              {formatAlbanianDate(job.postedAt)}
                             </div>
                           </div>
                         </div>
@@ -2463,12 +2466,12 @@ const AdminDashboard = () => {
                             </div>
                             <div className="flex items-center gap-1">
                               <Calendar className="h-4 w-4" />
-                              Krijuar: {new Date(job.postedAt).toLocaleDateString('sq-AL')}
+                              Krijuar: {formatAlbanianDate(job.postedAt)}
                             </div>
                             {job.expiresAt && (
                               <div className="flex items-center gap-1 text-red-600">
                                 <Clock className="h-4 w-4" />
-                                Skaduar: {new Date(job.expiresAt).toLocaleDateString('sq-AL')}
+                                Skaduar: {formatAlbanianDate(job.expiresAt)}
                               </div>
                             )}
                           </div>
@@ -2488,23 +2491,12 @@ const AdminDashboard = () => {
 
                       {/* Job Actions */}
                       <div className="flex items-center gap-2 pt-2">
-                        <Button
-                          variant="default"
-                          size="sm"
-                          onClick={() => handleJobAction(job._id, 'approve')}
-                        >
-                          <CheckCircle className="h-4 w-4 mr-1" />
-                          Riaktivizo
-                        </Button>
-
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleJobAction(job._id, 'feature')}
-                        >
-                          <Star className="h-4 w-4 mr-1" />
-                          Promovo & Riaktivizo
-                        </Button>
+                        {/* An expired listing is re-published only by a (paid)
+                            renewal: the employer's "Riposto", or "Riposto si e
+                            paguar" in Pagesat. Approve/feature never reactivated it. */}
+                        <span className="text-xs text-muted-foreground">
+                          Ripostohet nga punëdhënësi ose te Pagesat → &ldquo;Riposto si e paguar&rdquo;.
+                        </span>
 
                         <Button
                           variant="destructive"
@@ -2596,7 +2588,7 @@ const AdminDashboard = () => {
                             </div>
                             <div className="flex items-center gap-1">
                               <Calendar className="h-4 w-4" />
-                              Regjistruar: {new Date(user.createdAt).toLocaleDateString('sq-AL')}
+                              Regjistruar: {formatAlbanianDate(user.createdAt)}
                             </div>
                             {user.profile.phone && (
                               <div className="flex items-center gap-1">
@@ -2625,10 +2617,7 @@ const AdminDashboard = () => {
                               'secondary'
                             }
                           >
-                            {user.status === 'active' ? 'Aktiv' :
-                             user.status === 'suspended' ? 'Pezulluar' :
-                             user.status === 'pending_verification' ? 'Në pritje' :
-                             'Fshirë'}
+                            {userStatusLabel(user)}
                           </Badge>
                         </div>
                       </div>
@@ -2655,7 +2644,7 @@ const AdminDashboard = () => {
                             {user.profile.jobSeekerProfile.experience && (
                               <>
                                 <span>•</span>
-                                <span>{user.profile.jobSeekerProfile.experience} përvojë</span>
+                                <span>{user.profile.jobSeekerProfile.experience === NO_EXPERIENCE ? experienceLabel(NO_EXPERIENCE) : `${user.profile.jobSeekerProfile.experience} përvojë`}</span>
                               </>
                             )}
                             {user.profile.jobSeekerProfile.resume && (
@@ -2859,7 +2848,7 @@ const AdminDashboard = () => {
                             )}
                             <div className="flex items-center gap-1">
                               <Calendar className="h-4 w-4" />
-                              {new Date(user.createdAt).toLocaleDateString('sq-AL')}
+                              {formatAlbanianDate(user.createdAt)}
                             </div>
                           </div>
                         </div>
@@ -2882,10 +2871,7 @@ const AdminDashboard = () => {
                               'secondary'
                             }
                           >
-                            {user.status === 'active' ? 'Aktiv' :
-                             user.status === 'suspended' ? 'Pezulluar' :
-                             user.status === 'pending_verification' ? 'Në pritje' :
-                             'Fshirë'}
+                            {userStatusLabel(user)}
                           </Badge>
                         </div>
                       </div>
@@ -3057,14 +3043,13 @@ const AdminDashboard = () => {
                             <div className="space-y-2">
                               <div className="flex items-center gap-2">
                                 <Badge variant="destructive">
-                                  {report.type === 'inappropriate_content' ? 'Përmbajtje e papërshtatshme' :
-                                   report.type === 'spam' ? 'Spam' : 'Tjetër'}
+                                  {reportCategoryLabel(report.type)}
                                 </Badge>
                                 <span className="text-sm text-muted-foreground">
                                   {formatTimeAgo(report.timestamp)}
                                 </span>
                               </div>
-                              <p className="font-semibold">Profili i {report.reportedUser.name}</p>
+                              <p className="font-semibold">Raport për {report.reportedUser.name}</p>
                               <p className="text-sm text-muted-foreground">
                                 Raportuar nga: {report.reportedBy.name} për {report.reason}
                               </p>
@@ -3079,27 +3064,25 @@ const AdminDashboard = () => {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => {
-                                  toast({
-                                    title: "Info",
-                                    description: `Shiko detajet e raportimit për ${report.reportedUser.name}`,
-                                  });
-                                }}
+                                // Full details + every action live on the reports page.
+                                onClick={() => navigate('/admin/reports')}
                               >
                                 <Eye className="h-4 w-4 mr-1" />
                                 Shiko
                               </Button>
+                              {report.reportedUser.id && (
                               <Button
                                 size="sm"
                                 variant="destructive"
                                 onClick={() => openReasonDialog(
-                                  'Arsyeja e Pezullimit të Përdoruesit',
+                                  `Pezullim ${REPORT_QUICK_SUSPENSION_DAYS}-ditor — arsyeja`,
                                   'Pezulluar për shkak të raportimit',
                                   (reason) => handleReportAction(report.id, 'approve', report.reportedUser.id, reason)
                                 )}
                               >
                                 Pezullo
                               </Button>
+                              )}
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -3610,13 +3593,8 @@ const AdminDashboard = () => {
                       selectedUserForDetails.userType === 'employer' ? 'Punëdhënës' :
                       'Kërkues pune'
                     }</p>
-                    <p><strong>Statusi:</strong> {
-                      selectedUserForDetails.status === 'active' ? 'Aktiv' :
-                      selectedUserForDetails.status === 'suspended' ? 'Pezulluar' :
-                      selectedUserForDetails.status === 'pending_verification' ? 'Në pritje' :
-                      'Fshirë'
-                    }</p>
-                    <p><strong>Regjistruar:</strong> {new Date(selectedUserForDetails.createdAt).toLocaleDateString('sq-AL')}</p>
+                    <p><strong>Statusi:</strong> {userStatusLabel(selectedUserForDetails)}</p>
+                    <p><strong>Regjistruar:</strong> {formatAlbanianDate(selectedUserForDetails.createdAt)}</p>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -3649,7 +3627,7 @@ const AdminDashboard = () => {
                   <h3 className="font-semibold text-lg">Profili i Kërkuesit të Punës</h3>
                   <div className="space-y-1 text-sm">
                     <p><strong>Titulli:</strong> {selectedUserForDetails.profile.jobSeekerProfile.title || 'Nuk është dhënë'}</p>
-                    <p><strong>Përvojë:</strong> {selectedUserForDetails.profile.jobSeekerProfile.experience || 'Nuk është dhënë'}</p>
+                    <p><strong>Përvojë:</strong> {experienceLabel(selectedUserForDetails.profile.jobSeekerProfile.experience) || 'Nuk është dhënë'}</p>
                     <p><strong>Aftësi:</strong> {selectedUserForDetails.profile.jobSeekerProfile.skills?.join(', ') || 'Nuk janë dhënë'}</p>
                     <p><strong>Përshkrimi:</strong> {selectedUserForDetails.profile.jobSeekerProfile.bio || 'Nuk është dhënë'}</p>
                     <div className="flex items-center gap-2">
