@@ -18,6 +18,7 @@ import { createJob } from '../factories/job.factory.js';
 import { createAuthHeaders } from '../helpers/auth.helper.js';
 import Job from '../../src/models/Job.js';
 import User from '../../src/models/User.js';
+import PaymentOrder from '../../src/models/PaymentOrder.js';
 
 describe('admin.js — GET /dashboard-stats branch coverage', () => {
   beforeAll(async () => {
@@ -65,24 +66,34 @@ describe('admin.js — GET /dashboard-stats branch coverage', () => {
     expect(r.body.data.monthlyGrowth.users).toBe(100);
   });
 
-  it('totalRevenue reflects premium + featured tier counts', async () => {
+  it('totalRevenue = money collected this month (paid orders that published, net of refunds) — not tier counts', async () => {
     const { user: admin } = await createAdmin();
     const { user: emp } = await createVerifiedEmployer();
-    // Create 2 premium + 1 featured directly in DB to set tier
     const j1 = await createJob(emp);
     const j2 = await createJob(emp);
     const j3 = await createJob(emp);
+    // Premium/featured tiers alone are NOT money (the old formula said 98 here).
     await Job.updateOne({ _id: j1._id }, { $set: { tier: 'premium' } });
-    await Job.updateOne({ _id: j2._id }, { $set: { tier: 'premium' } });
-    await Job.updateOne({ _id: j3._id }, { $set: { tier: 'featured' } });
+    await Job.updateOne({ _id: j2._id }, { $set: { tier: 'featured' } });
+    const now = new Date();
+    const lastMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) - 24 * 60 * 60 * 1000);
+    const mk = (job, extra) => PaymentOrder.create({
+      jobId: job._id, employerId: emp._id, purpose: 'job_post', tier: 'standard', amountCents: 3500,
+      provider: 'stripe', status: 'paid', paidAt: now, activation: { status: 'applied' }, ...extra,
+    });
+    await mk(j1, { tier: 'promoted', amountCents: 4900 });                                  // +49
+    await mk(j2, { status: 'partially_refunded', refundedCents: 1000 });                    // +25
+    await mk(j3, { status: 'refunded', refundedCents: 3500 });                              // +0
+    await mk(j3, { paidAt: lastMonth });                                                    // other month
+    await mk(j3, { activation: { status: 'skipped' }, needsRefund: true });                  // never published
+    await PaymentOrder.create({ jobId: j3._id, employerId: emp._id, purpose: 'job_post', tier: 'standard', amountCents: 0, provider: 'free', status: 'paid', paidAt: now, activation: { status: 'applied' } });
 
     const r = await request(app)
       .get('/api/admin/dashboard-stats')
       .set(createAuthHeaders(admin));
 
     expect(r.status).toBe(200);
-    // 2 premium × 28 + 1 featured × 42 = 56 + 42 = 98
-    expect(r.body.data.totalRevenue).toBe(98);
+    expect(r.body.data.totalRevenue).toBe(74);
   });
 
   it('recentActivity formats employer vs jobseeker correctly (L128-130)', async () => {

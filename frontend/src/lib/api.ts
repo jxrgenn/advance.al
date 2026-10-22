@@ -113,7 +113,7 @@ export interface Job {
   postedAt: string;
   expiresAt: string;
   // Payment / lifecycle bookkeeping (employer-facing views)
-  paymentStatus?: 'pending' | 'paid' | 'failed' | 'refunded';
+  paymentStatus?: 'pending' | 'paid' | 'failed' | 'refunded' | 'not_required';
   // Why a 'closed' job was closed — only 'employer' closes can be re-opened.
   closedReason?: 'employer' | 'suspension' | 'refund' | 'payment_canceled';
   closedFromStatus?: string;
@@ -1303,6 +1303,7 @@ export type AdminPaymentOrder = {
   needsRefundReason: string | null;
   failureReason: string | null;
   notes: string | null;
+  processingSince?: string | null;
   createdAt: string;
   paidAt: string | null;
   refundedAt: string | null;
@@ -2266,6 +2267,8 @@ export type PaymentOrderView = {
   paidAt: string | null;
   activation: 'not_applied' | 'applied' | 'skipped';
   checkoutExpiresAt: string | null;
+  // Delayed payment method: the customer finished at Stripe, the bank hasn't settled yet.
+  processing?: boolean;
 };
 
 export const paymentsApi = {

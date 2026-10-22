@@ -2,9 +2,15 @@
  * Stripe adapter — the ONLY file that talks to the Stripe SDK.
  *
  * Env:
- *   STRIPE_SECRET_KEY      sk_test_… / sk_live_… (rk_… restricted keys also work)
+ *   STRIPE_SECRET_KEY      sk_test_… / sk_live_… (rk_…, rkcs_… restricted keys also work)
  *   STRIPE_WEBHOOK_SECRET  whsec_… of the endpoint /api/payments/stripe/webhook
  *   FRONTEND_URL           base of the success/cancel return URLs
+ *   STRIPE_PAYMENT_METHOD_CONFIGURATION  optional pmc_… — which payment methods
+ *                          Checkout offers. Unset = the Dashboard default
+ *                          (Settings → Payment methods). The API version we pin
+ *                          REJECTS payment_method_types on Checkout Sessions.
+ *   STRIPE_KEY_MODE        optional live|test — only for a key whose prefix
+ *                          says neither (see stripeKeyMode()).
  *
  * isConfigured() needs BOTH secrets: a key without a webhook secret would let
  * employers pay while we can never receive the confirmation.
@@ -30,9 +36,120 @@ export function isConfigured() {
   return !!(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET);
 }
 
-export function keyIsLive() {
+/**
+ * Mode of a key from its prefix: every Stripe secret/restricted key format
+ * carries a "live" or "test" segment (sk_live_, rk_test_, rkcs_test_ …).
+ * Only the leading segments are looked at — the random tail has no "_".
+ * @returns {'live'|'test'|null}
+ */
+export function keyModeFromKey(key) {
+  const segments = String(key || '').split('_').slice(0, 3);
+  if (segments.includes('live')) return 'live';
+  if (segments.includes('test')) return 'test';
+  return null;
+}
+
+// livemode as reported by Stripe for objects WE fetched/created with the
+// CURRENT key (API responses only — never webhooks: a signed event proves the
+// webhook secret's mode, not the key's). Ground truth — it wins over the
+// prefix guess, and a disagreement is logged loudly.
+let observed = { key: null, livemode: null };
+let lastMismatchKey = null;
+let lastWebhookMismatch = null;
+
+/**
+ * Record the livemode Stripe reported in an API response made with our key.
+ * Returns false (and logs an ERROR once per key) when it contradicts what
+ * the key prefix / STRIPE_KEY_MODE said.
+ */
+export function noteLivemode(livemode, source = 'api') {
+  if (typeof livemode !== 'boolean') return true;
   const key = process.env.STRIPE_SECRET_KEY || '';
-  return key.startsWith('sk_live_') || key.startsWith('rk_live_');
+  const declared = keyModeFromKey(key) || envKeyMode();
+  observed = { key, livemode };
+  const agrees = !declared || (declared === 'live') === livemode;
+  if (!agrees && lastMismatchKey !== key) {
+    lastMismatchKey = key;
+    logger.error(`stripe: key mode mismatch — the key looks ${declared.toUpperCase()} but Stripe reports livemode=${livemode} (${source}). Using Stripe's answer.`);
+  }
+  return agrees;
+}
+
+/**
+ * A signed webhook event's livemode vs the key's mode. A mismatch means the
+ * webhook secret belongs to the other mode's endpoint (misconfiguration):
+ * logged once, never used to change the key mode. Payments from such events
+ * are still refused by fulfilment's livemode check.
+ */
+export function checkWebhookLivemode(livemode) {
+  const { mode } = stripeKeyMode();
+  if (typeof livemode !== 'boolean' || mode === 'unknown') return true;
+  const agrees = (mode === 'live') === livemode;
+  const sig = `${process.env.STRIPE_SECRET_KEY || ''}|${livemode}`;
+  if (!agrees && lastWebhookMismatch !== sig) {
+    lastWebhookMismatch = sig;
+    logger.error(`stripe: webhook event livemode=${livemode} but the API key is ${mode.toUpperCase()} — STRIPE_WEBHOOK_SECRET and STRIPE_SECRET_KEY come from different modes`);
+  }
+  return agrees;
+}
+
+/** Test seam: forget what Stripe told us about the key's mode. */
+export function __resetKeyModeForTests() {
+  observed = { key: null, livemode: null };
+  lastMismatchKey = null;
+  lastWebhookMismatch = null;
+}
+
+function envKeyMode() {
+  const v = String(process.env.STRIPE_KEY_MODE || '').trim().toLowerCase();
+  return v === 'live' || v === 'test' ? v : null;
+}
+
+/**
+ * Which Stripe mode the configured key operates in.
+ *   source 'api'  — Stripe told us (authoritative)
+ *          'key'  — key prefix
+ *          'env'  — STRIPE_KEY_MODE (key with an unrecognised prefix)
+ *          'none' — unknown: production refuses checkout until resolved
+ * @returns {{ mode: 'live'|'test'|'unknown', source: 'api'|'key'|'env'|'none' }}
+ */
+export function stripeKeyMode() {
+  const key = process.env.STRIPE_SECRET_KEY || '';
+  if (key && observed.key === key && typeof observed.livemode === 'boolean') {
+    return { mode: observed.livemode ? 'live' : 'test', source: 'api' };
+  }
+  const byKey = keyModeFromKey(key);
+  if (byKey) return { mode: byKey, source: 'key' };
+  const byEnv = envKeyMode();
+  if (byEnv) return { mode: byEnv, source: 'env' };
+  return { mode: 'unknown', source: 'none' };
+}
+
+export function keyIsLive() {
+  return stripeKeyMode().mode === 'live';
+}
+
+/**
+ * For a key whose prefix says neither live nor test: ask Stripe. Uses only
+ * the Checkout Sessions list (a restricted key without balance/account
+ * access can still read it). Learns nothing on an account without sessions.
+ */
+export async function probeKeyMode() {
+  if (!process.env.STRIPE_SECRET_KEY || stripeKeyMode().source === 'api') return stripeKeyMode();
+  try {
+    const list = await getStripe().checkout.sessions.list({ limit: 1 });
+    const first = list?.data?.[0];
+    if (first) noteLivemode(first.livemode, 'boot probe');
+  } catch (err) {
+    logStripeError('key mode probe', err);
+  }
+  return stripeKeyMode();
+}
+
+/** Optional pmc_… id; anything else is ignored (and reported by the boot check). */
+export function paymentMethodConfiguration() {
+  const v = String(process.env.STRIPE_PAYMENT_METHOD_CONFIGURATION || '').trim();
+  return /^pmc_[A-Za-z0-9_]+$/.test(v) ? v : null;
 }
 
 /** Test seam: replace the SDK client (network boundary) with a fake. */
@@ -85,11 +202,14 @@ export async function createCheckoutSession(order, { employerEmail, jobTitle } =
     ? 'Postim pune i promovuar — advance.al'
     : 'Postim pune standard — advance.al';
   const description = String(jobTitle || '').slice(0, 200) || undefined;
+  const pmc = paymentMethodConfiguration();
   const params = {
     mode: 'payment',
-    // Cards only (L2): delayed methods (SEPA, bank transfer…) would leave the
-    // order 'pending' for days and block new checkouts for the job.
-    payment_method_types: ['card'],
+    // Which payment methods Checkout offers is decided by the Stripe Dashboard
+    // (Settings → Payment methods) or STRIPE_PAYMENT_METHOD_CONFIGURATION —
+    // the pinned API version REJECTS payment_method_types here (400). Delayed
+    // methods are handled end to end (order 'processing', async_* webhooks).
+    ...(pmc ? { payment_method_configuration: pmc } : {}),
     line_items: [{
       quantity: 1,
       price_data: {
@@ -111,6 +231,7 @@ export async function createCheckoutSession(order, { employerEmail, jobTitle } =
     locale: 'auto',
   };
   const session = await stripe.checkout.sessions.create(params, { idempotencyKey: `checkout-${orderId}` });
+  noteLivemode(session.livemode, 'checkout session create');
   return {
     sessionId: session.id,
     url: session.url,
@@ -124,12 +245,16 @@ export async function createCheckoutSession(order, { employerEmail, jobTitle } =
  * caller sees refunds that happened before we fulfilled (M2).
  */
 export async function retrieveSession(sessionId) {
-  return getStripe().checkout.sessions.retrieve(sessionId, { expand: ['payment_intent.latest_charge'] });
+  const session = await getStripe().checkout.sessions.retrieve(sessionId, { expand: ['payment_intent.latest_charge'] });
+  noteLivemode(session?.livemode, 'checkout session retrieve');
+  return session;
 }
 
 /** PaymentIntent with its latest charge (metadata.orderId lives on the PI). */
 export async function retrievePaymentIntent(paymentIntentId) {
-  return getStripe().paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] });
+  const pi = await getStripe().paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] });
+  noteLivemode(pi?.livemode, 'payment intent retrieve');
+  return pi;
 }
 
 /**
@@ -200,16 +325,33 @@ export function logStripeError(context, err, extra = {}) {
     ...extra,
     type: err?.type,
     code: err?.code,
+    param: err?.param,
     statusCode: err?.statusCode,
     requestId: err?.requestId,
     message: err?.message,
   });
 }
 
+/**
+ * Stripe refused the REQUEST itself (4xx invalid request / permission) — a
+ * bug or misconfiguration on our side that will fail for every employer, as
+ * opposed to a transient network/5xx error.
+ */
+export function isRequestRejected(err) {
+  return err?.type === 'StripeInvalidRequestError' || err?.type === 'StripePermissionError'
+    || err?.type === 'StripeAuthenticationError';
+}
+
 export default {
   STRIPE_API_VERSION,
   isConfigured,
   keyIsLive,
+  keyModeFromKey,
+  stripeKeyMode,
+  noteLivemode,
+  probeKeyMode,
+  paymentMethodConfiguration,
+  isRequestRejected,
   getStripe,
   createCheckoutSession,
   retrieveSession,

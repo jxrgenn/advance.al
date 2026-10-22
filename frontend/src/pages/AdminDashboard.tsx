@@ -62,6 +62,22 @@ interface DashboardStats {
 // Every money action requires a written reason that lands in the audit log.
 type AdminOrderAction = { kind: 'refund' | 'resolve'; order: import("@/lib/api").AdminPaymentOrder } | null;
 
+// Pagesat dates: "22 tetor 2026, 15:35" in Tirana time, 24-hour clock.
+// Chromium ships no Albanian ICU data, so toLocaleString('sq-AL') rendered
+// "2026 M10 6 12:58:37 AM" — the month names are spelled out here instead.
+const MONTHS_SQ = ['janar', 'shkurt', 'mars', 'prill', 'maj', 'qershor', 'korrik', 'gusht', 'shtator', 'tetor', 'nëntor', 'dhjetor'];
+const formatTiranaDateTime = (value: string | number | Date | null | undefined): string => {
+  if (value === null || value === undefined || value === '') return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Tirane', year: 'numeric', month: 'numeric', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(d);
+  const get = (type: string) => parts.find((x) => x.type === type)?.value || '';
+  return `${Number(get('day'))} ${MONTHS_SQ[Number(get('month')) - 1]} ${get('year')}, ${get('hour')}:${get('minute')}`;
+};
+
 const ORDER_STATUS_LABEL: Record<string, { label: string; color: string }> = {
   created: { label: 'Krijuar', color: 'bg-gray-100 text-gray-800 border-gray-200' },
   pending: { label: 'Në pritje', color: 'bg-amber-100 text-amber-800 border-amber-200' },
@@ -207,7 +223,9 @@ const AdminPaymentOrdersView = () => {
             </thead>
             <tbody>
               {orders.map(o => {
-                const st = ORDER_STATUS_LABEL[o.status] || { label: o.status, color: 'bg-gray-100 text-gray-800 border-gray-200' };
+                const st = o.status === 'pending' && o.processingSince
+                  ? { label: 'Në përpunim (banka)', color: 'bg-blue-100 text-blue-800 border-blue-200' }
+                  : ORDER_STATUS_LABEL[o.status] || { label: o.status, color: 'bg-gray-100 text-gray-800 border-gray-200' };
                 return (
                   <tr key={o.orderId} className="border-b last:border-0 align-top">
                     <td className="py-2 pr-3 font-mono text-xs" title={o.orderId}>
@@ -240,7 +258,7 @@ const AdminPaymentOrdersView = () => {
                       )}
                     </td>
                     <td className="py-2 pr-3 text-xs whitespace-nowrap">
-                      {new Date(o.paidAt || o.createdAt).toLocaleString('sq-AL')}
+                      {formatTiranaDateTime(o.paidAt || o.createdAt)}
                     </td>
                     <td className="py-2 pr-3">
                       <div className="flex flex-col gap-1">
@@ -430,6 +448,7 @@ const AdminPaymentJobsView = () => {
     if (paymentStatus === 'paid') return { label: 'E paguar', color: 'bg-green-100 text-green-800 border-green-200' };
     if (paymentStatus === 'refunded') return { label: 'Rimbursuar', color: 'bg-blue-100 text-blue-800 border-blue-200' };
     if (paymentStatus === 'failed') return { label: 'E dështuar', color: 'bg-red-100 text-red-800 border-red-200' };
+    if (paymentStatus === 'not_required') return { label: 'Falas', color: 'bg-gray-100 text-gray-800 border-gray-200' };
     return { label: paymentStatus, color: 'bg-gray-100 text-gray-800 border-gray-200' };
   };
 
@@ -493,7 +512,7 @@ const AdminPaymentJobsView = () => {
                     </td>
                     <td className="py-2 pr-3 text-right">€{Number(p.latestOrder?.amountEur ?? p.paymentRequired ?? 0).toFixed(2)}</td>
                     <td className="py-2 pr-3 text-xs">
-                      {p.paidAt ? new Date(p.paidAt).toLocaleString('sq-AL') : p.paymentInitiatedAt ? new Date(p.paymentInitiatedAt).toLocaleString('sq-AL') : '—'}
+                      {formatTiranaDateTime(p.paidAt || p.paymentInitiatedAt)}
                     </td>
                     <td className="py-2 pr-3">
                       {canManualAccept(p) && (
@@ -1687,13 +1706,13 @@ const AdminDashboard = () => {
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Të Ardhurat (Vlerësim)</CardTitle>
+                  <CardTitle className="text-sm font-medium">Të Ardhurat</CardTitle>
                   <DollarSign className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">€{dashboardStats.totalRevenue.toLocaleString()}</div>
                   <p className="text-xs text-muted-foreground">
-                    Vlerësim — këtë muaj
+                    Këtë muaj — pagesa të arkëtuara, pa rimbursimet
                   </p>
                 </CardContent>
               </Card>
@@ -2067,7 +2086,7 @@ const AdminDashboard = () => {
                       <div className="space-y-4">
                         <div>
                           <div className="text-2xl font-bold">€{dashboardStats.totalRevenue.toLocaleString()}</div>
-                          <div className="text-sm text-muted-foreground">Vlerësim — të ardhura të muajit</div>
+                          <div className="text-sm text-muted-foreground">Të ardhurat e muajit — pagesa të arkëtuara, pa rimbursimet</div>
                         </div>
                         <div className="space-y-2">
                           <div className="flex justify-between">

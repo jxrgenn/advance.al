@@ -354,7 +354,7 @@ describe('payments — checkout + orders', () => {
       expect(r.body.data).toEqual({
         orderId, status: 'pending', purpose: 'job_post', tier: 'standard', amountEur: 35, currency: 'EUR', provider: 'stripe',
         jobId: String(job._id), jobSlug: job.slug, jobTitle: 'Shofer', jobStatus: 'pending_payment', paidAt: null,
-        activation: 'not_applied', checkoutExpiresAt: expect.any(String),
+        activation: 'not_applied', checkoutExpiresAt: expect.any(String), processing: false,
       });
     });
 

@@ -188,12 +188,16 @@ router.get('/dashboard-stats', async (req, res) => {
       }))
     ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 10);
 
-    // Calculate real revenue (basic calculation based on job tiers)
-    const [premiumJobs, featuredJobs] = await Promise.all([
-      Job.countDocuments({ tier: 'premium' }),
-      Job.countDocuments({ tier: 'featured' })
+    // Revenue this month (UTC) = money actually collected: orders paid this
+    // month that published a listing, net of refunds. (It used to be
+    // premiumJobs × 28 + featuredJobs × 42 over every job ever — not money.)
+    const nowUtc = new Date();
+    const monthStart = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), 1));
+    const [monthRevenue] = await PaymentOrder.aggregate([
+      { $match: { paidAt: { $gte: monthStart }, 'activation.status': 'applied', amountCents: { $gt: 0 } } },
+      { $group: { _id: null, cents: { $sum: { $subtract: ['$amountCents', { $ifNull: ['$refundedCents', 0] }] } } } },
     ]);
-    const totalRevenue = (premiumJobs * 28) + (featuredJobs * 42); // EUR pricing
+    const totalRevenue = Math.max(0, monthRevenue?.cents || 0) / 100;
 
     const dashboardStats = {
       totalUsers,
@@ -1401,6 +1405,8 @@ router.get('/payments/orders', async (req, res) => {
           needsRefundReason: o.needsRefundReason || null,
           failureReason: o.failureReason || null,
           notes: o.notes || null,
+          // Delayed payment method still settling at the bank (order pending).
+          processingSince: o.processingSince || null,
           createdAt: o.createdAt,
           paidAt: o.paidAt || null,
           refundedAt: o.refundedAt || null,

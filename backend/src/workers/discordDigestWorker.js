@@ -8,7 +8,7 @@
  *   DISCORD_DIGEST_LOOKBACK_H rolling window size in hours (default 24)
  */
 
-import { User, Job, Application, PaymentEvent, Report, QuickUser } from '../models/index.js';
+import { User, Job, Application, PaymentOrder, Report, QuickUser } from '../models/index.js';
 import logger from '../config/logger.js';
 import { notifyDiscord } from '../services/discordNotifier.js';
 
@@ -33,14 +33,20 @@ export async function runDailyDigest() {
       Job.countDocuments({ status: 'active', createdAt: window, isDeleted: { $ne: true } }),
       Job.countDocuments({ status: 'pending_payment', createdAt: window, isDeleted: { $ne: true } }),
       Application.countDocuments({ createdAt: window }),
-      PaymentEvent.countDocuments({ event: 'callback_paid', createdAt: window }),
-      PaymentEvent.countDocuments({ event: 'callback_failed', createdAt: window }),
+      // Orders, not the legacy Paysera 'callback_paid' events (the Stripe
+      // flow never writes those — the digest always said 0 / €0.00).
+      PaymentOrder.countDocuments({ paidAt: window, amountCents: { $gt: 0 } }),
+      PaymentOrder.countDocuments({ failedAt: window }),
       Report.countDocuments({ createdAt: window }),
     ]);
 
-    const paidRevenue = await PaymentEvent.aggregate([
-      { $match: { event: 'callback_paid', createdAt: window } },
+    const paidRevenue = await PaymentOrder.aggregate([
+      { $match: { paidAt: window, amountCents: { $gt: 0 } } },
       { $group: { _id: null, total: { $sum: '$amountCents' } } },
+    ]).then(r => (r[0]?.total || 0) / 100).catch(() => 0);
+    const refundedEur = await PaymentOrder.aggregate([
+      { $match: { refundedAt: window, refundedCents: { $gt: 0 } } },
+      { $group: { _id: null, total: { $sum: '$refundedCents' } } },
     ]).then(r => (r[0]?.total || 0) / 100).catch(() => 0);
 
     const dateLabel = new Date(since).toISOString().slice(0, 10) + ' → ' + new Date().toISOString().slice(0, 10);
@@ -52,7 +58,7 @@ export async function runDailyDigest() {
       fields: [
         { name: 'Signups', value: `${jobseekers} jobseeker · ${employers} employer · ${quickusers} quickuser`, inline: false },
         { name: 'Jobs',    value: `${jobsActive} active · ${jobsPending} pending payment`, inline: false },
-        { name: 'Payments', value: `${paymentsPaid} success · ${paymentsFailed} failed · €${paidRevenue.toFixed(2)} revenue`, inline: false },
+        { name: 'Payments', value: `${paymentsPaid} paid · ${paymentsFailed} failed · €${paidRevenue.toFixed(2)} collected · €${refundedEur.toFixed(2)} refunded`, inline: false },
         { name: 'Applications', value: String(applications), inline: true },
         { name: 'Reports', value: String(reports), inline: true },
       ],
@@ -61,7 +67,7 @@ export async function runDailyDigest() {
 
     logger.info('discordDigest: posted', {
       jobseekers, employers, quickusers, jobsActive, jobsPending,
-      applications, paymentsPaid, paymentsFailed, paidRevenue, reports,
+      applications, paymentsPaid, paymentsFailed, paidRevenue, refundedEur, reports,
     });
   } catch (err) {
     logger.error('discordDigest error', { error: err.message });
