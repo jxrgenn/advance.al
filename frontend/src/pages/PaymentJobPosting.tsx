@@ -186,7 +186,11 @@ const PaymentJobPosting = () => {
         navigate("/employer-dashboard");
         return;
       }
-      toast({ title: "Gabim", description: "Nuk mund të anulohet tani. Provoni përsëri.", variant: "destructive" });
+      // 409 PAYMENT_PROCESSING / CHECKOUT_IN_PROGRESS carry the reason in Albanian.
+      const description = err instanceof ApiError && err.status === 409 && err.message
+        ? err.message
+        : "Nuk mund të anulohet tani. Provoni përsëri.";
+      toast({ title: "Gabim", description, variant: "destructive" });
     } finally {
       setCancelling(false);
     }
@@ -288,7 +292,9 @@ const PaymentJobPosting = () => {
                       title="Standart"
                       price={prices?.standard ?? null}
                       description="Postim i rregullt"
-                      features={["Aktiv për 21 ditë", "Renditje normale në listim", "Aplikime të pakufizuara", "Statistika bazë"]}
+                      // Only what the code does (both tiers: same listing, search,
+                      // stats, unlimited applications, job-alert emails).
+                      features={["Aktiv për 21 ditë", "Në listën e punëve dhe në kërkim", "Aplikime të pakufizuara", "Njoftim me email për kandidatët që përputhen"]}
                       disabled={paying}
                     />
                     <TierCard
@@ -298,7 +304,9 @@ const PaymentJobPosting = () => {
                       price={prices?.promoted ?? null}
                       description="Dukshmëri më e madhe"
                       badge="I rekomanduar"
-                      features={["Aktiv për 21 ditë", "Pozicion prioritar në listim", "Shenjë premium në kartelë", "Statistika të plota"]}
+                      // Promoted = tier 'premium' → shown in the "Punë të Promovuara"
+                      // carousel (home page + Punët; newest 10 promoted jobs).
+                      features={["Gjithçka që përfshin Standarti", "Në karuselin “Punë të Promovuara” në faqen kryesore dhe te Punët", "Aktiv për 21 ditë"]}
                       disabled={paying}
                     />
                   </div>

@@ -17,7 +17,7 @@
 import crypto from 'crypto';
 import Stripe from 'stripe';
 import { jest } from '@jest/globals';
-import { __setStripeClientForTests } from '../../src/services/payments/stripeProvider.js';
+import { __setStripeClientForTests, __resetKeyModeForTests, keyModeFromKey } from '../../src/services/payments/stripeProvider.js';
 import resendEmailService from '../../src/lib/resendEmailService.js';
 import jobEmbeddingService from '../../src/services/jobEmbeddingService.js';
 import notificationService from '../../src/lib/notificationService.js';
@@ -33,6 +33,7 @@ const PAYMENT_ENV_KEYS = [
   'PAYSERA_PROJECT_ID', 'PAYSERA_SIGN_PASSWORD', 'PAYSERA_TEST', 'PAYSERA_ALLOW_FAKE_SUCCESS',
   'FRONTEND_URL', 'BACKEND_URL', 'NODE_ENV', 'ALERT_EMAIL_TO', 'ENABLE_MOCK_PAYMENTS',
   'STRIPE_ALLOW_TEST_MODE_IN_PRODUCTION', 'STRIPE_TEST_MODE_ALLOWLIST',
+  'STRIPE_PAYMENT_METHOD_CONFIGURATION', 'STRIPE_KEY_MODE',
 ];
 const DISCORD_KEYS = [
   'DISCORD_WEBHOOK_SIGNUPS', 'DISCORD_WEBHOOK_PAYMENTS', 'DISCORD_WEBHOOK_JOBS', 'DISCORD_WEBHOOK_APPLICATIONS',
@@ -50,6 +51,7 @@ export function savePaymentEnv() {
 /** Restore env + drop the injected Stripe client. Call in afterAll. */
 export function restorePaymentEnv() {
   __setStripeClientForTests(null);
+  __resetKeyModeForTests();
   if (!savedEnv) return;
   for (const [k, v] of Object.entries(savedEnv)) {
     if (v === undefined) delete process.env[k];
@@ -64,6 +66,9 @@ export function useFakeStripe(fake = makeFakeStripe()) {
   process.env.STRIPE_WEBHOOK_SECRET = TEST_WEBHOOK_SECRET;
   process.env.FRONTEND_URL = 'https://advance.test';
   delete process.env.PAYMENTS_ALLOW_FAKE;
+  delete process.env.STRIPE_PAYMENT_METHOD_CONFIGURATION;
+  delete process.env.STRIPE_KEY_MODE;
+  __resetKeyModeForTests();
   __setStripeClientForTests(fake);
   return fake;
 }
@@ -164,7 +169,12 @@ export async function backdate(Model, _id, field, date) {
  * In-memory stand-in for the Stripe SDK client — the network boundary only.
  * Mirrors the request/response shapes of the real API for the calls the
  * adapter makes. markPaid()/markExpired() simulate what happens at Stripe
- * when the customer pays / the session times out.
+ * when the customer pays / the session times out; markProcessing() a
+ * delayed payment method (session complete, money not settled yet).
+ *
+ * It REJECTS what the real API (pinned 2026-09-30.endive) rejects — verified
+ * against real Stripe 2026-10-22: `payment_method_types` on a Checkout
+ * Session is a 400, and an unknown payment_method_configuration is a 400.
  */
 export function makeFakeStripe() {
   const calls = { create: [], retrieve: [], expire: [], refund: [], piRetrieve: [] };
@@ -178,6 +188,9 @@ export function makeFakeStripe() {
   const rand = () => crypto.randomBytes(6).toString('hex');
 
   const notOpenError = (msg) => Object.assign(new Error(msg), { type: 'StripeInvalidRequestError', statusCode: 400, code: 'checkout_session_not_open' });
+  const invalidRequest = (msg, extra = {}) => Object.assign(new Error(msg), { type: 'StripeInvalidRequestError', statusCode: 400, ...extra });
+  // Methods the Dashboard default offered on the real sandbox (2026-10-22).
+  const DASHBOARD_METHODS = ['card', 'bancontact', 'eps', 'link', 'mb_way', 'pay_by_bank', 'satispay'];
 
   const fake = {
     calls,
@@ -188,18 +201,34 @@ export function makeFakeStripe() {
     // first (e.g. "the payment completes right now").
     failExpireWith: null,
     beforeExpire: null,
+    // pmc_… ids that exist on the fake account → the methods they enable.
+    paymentMethodConfigurations: new Map([['pmc_test_cardonly', ['card']]]),
+    // Like real Stripe, objects carry the mode of the key that made them;
+    // set to true/false to simulate a key whose prefix lies.
+    livemode: null,
     checkout: {
       sessions: {
         async create(params, opts = {}) {
           calls.create.push({ params, opts });
           if (fake.failCreateWith) throw fake.failCreateWith;
+          if ('payment_method_types' in params) {
+            throw invalidRequest('The `payment_method_types` parameter is no longer supported when creating a Checkout Session. Payment methods are now managed from your Dashboard settings (https://dashboard.stripe.com/settings/payment_methods).', { param: 'payment_method_types' });
+          }
+          let methods = DASHBOARD_METHODS;
+          if (params.payment_method_configuration !== undefined) {
+            methods = fake.paymentMethodConfigurations.get(params.payment_method_configuration);
+            if (!methods) {
+              // Real API (verified): code resource_missing and NO `param` on this error.
+              throw invalidRequest(`No such payment_method_configuration: ${params.payment_method_configuration}`, { code: 'resource_missing' });
+            }
+          }
           const id = `cs_test_${++seq}_${rand()}`;
           const s = {
             id,
             object: 'checkout.session',
             url: `https://checkout.stripe.com/c/pay/${id}`,
             expires_at: params.expires_at,
-            livemode: false,
+            livemode: fake.livemode ?? keyModeFromKey(process.env.STRIPE_SECRET_KEY) === 'live',
             status: 'open',
             payment_status: 'unpaid',
             amount_total: params.line_items[0].price_data.unit_amount,
@@ -207,14 +236,18 @@ export function makeFakeStripe() {
             metadata: { ...params.metadata },
             client_reference_id: params.client_reference_id,
             payment_intent: null,
+            payment_method_types: [...methods],
           };
           sessions.set(id, s);
           return { ...s };
         },
+        async list({ limit = 10 } = {}) {
+          return { object: 'list', data: [...sessions.values()].reverse().slice(0, limit).map((s) => ({ ...s })), has_more: false };
+        },
         async retrieve(id, params = {}) {
           calls.retrieve.push(id);
           const s = sessions.get(id);
-          if (!s) throw Object.assign(new Error(`No such checkout.session: '${id}'`), { type: 'StripeInvalidRequestError', statusCode: 404 });
+          if (!s) throw Object.assign(new Error(`No such checkout.session: '${id}'`), { type: 'StripeInvalidRequestError', statusCode: 404, code: 'resource_missing', param: 'session' });
           const out = { ...s, metadata: { ...s.metadata } };
           const pi = s.payment_intent && paymentIntents.get(s.payment_intent);
           if (pi && (params.expand || []).some((e) => e.startsWith('payment_intent'))) {
@@ -227,7 +260,7 @@ export function makeFakeStripe() {
           if (fake.beforeExpire) await fake.beforeExpire(id);
           if (fake.failExpireWith) throw fake.failExpireWith;
           const s = sessions.get(id);
-          if (!s) throw Object.assign(new Error(`No such checkout.session: '${id}'`), { type: 'StripeInvalidRequestError', statusCode: 404 });
+          if (!s) throw Object.assign(new Error(`No such checkout.session: '${id}'`), { type: 'StripeInvalidRequestError', statusCode: 404, code: 'resource_missing', param: 'session' });
           if (s.status !== 'open') throw notOpenError(`Only Checkout Sessions with a status in ["open"] can be expired. This Checkout Session has a status of "${s.status}".`);
           s.status = 'expired';
           return { ...s };
@@ -239,7 +272,7 @@ export function makeFakeStripe() {
         calls.piRetrieve.push(id);
         const pi = paymentIntents.get(id);
         if (!pi) throw Object.assign(new Error(`No such payment_intent: '${id}'`), { type: 'StripeInvalidRequestError', statusCode: 404 });
-        return { id: pi.id, metadata: { ...pi.metadata }, latest_charge: { id: `ch_${pi.id}`, amount_refunded: pi.amount_refunded } };
+        return { id: pi.id, livemode: fake.livemode ?? keyModeFromKey(process.env.STRIPE_SECRET_KEY) === 'live', metadata: { ...pi.metadata }, latest_charge: { id: `ch_${pi.id}`, amount_refunded: pi.amount_refunded } };
       },
     },
     refunds: {
@@ -261,6 +294,20 @@ export function makeFakeStripe() {
       s.payment_intent = overrides.payment_intent || `pi_test_${rand()}`;
       Object.assign(s, overrides);
       piAmounts.set(s.payment_intent, s.amount_total);
+      paymentIntents.set(s.payment_intent, { id: s.payment_intent, metadata: { ...s.metadata }, amount_refunded: 0 });
+      return { ...s, metadata: { ...s.metadata } };
+    },
+    /**
+     * Customer finished Checkout with a DELAYED payment method: session
+     * complete, payment_status 'unpaid'. settle()/fail later via markPaid()
+     * (async_payment_succeeded) or the async_payment_failed webhook.
+     */
+    markProcessing(id, overrides = {}) {
+      const s = sessions.get(id);
+      s.status = 'complete';
+      s.payment_status = 'unpaid';
+      s.payment_intent = overrides.payment_intent || `pi_test_${rand()}`;
+      Object.assign(s, overrides);
       paymentIntents.set(s.payment_intent, { id: s.payment_intent, metadata: { ...s.metadata }, amount_refunded: 0 });
       return { ...s, metadata: { ...s.metadata } };
     },

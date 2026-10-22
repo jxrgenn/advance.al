@@ -13,14 +13,16 @@ import { AlertTriangle, CheckCircle2, Clock, ExternalLink, LayoutDashboard, Load
  * Stripe sends the customer here after checkout — but a redirect proves
  * nothing. We poll the real order status (the server also asks Stripe
  * directly if the webhook is late) and only say "paid" when the server says
- * so. States: verifying → paid | failed | not found | timeout (90 s).
+ * so. States: verifying → paid | failed | not found | timeout (90 s), or
+ * processing (a delayed payment method — the bank settles it later; the
+ * job is published automatically when it does).
  */
 
 const POLL_MS = 2000;
 const TIMEOUT_MS = 90 * 1000;
 const FINAL = new Set(["paid", "refunded", "partially_refunded", "disputed", "failed", "canceled", "expired"]);
 
-type ViewState = "verifying" | "paid" | "refunded" | "disputed" | "failed" | "notfound" | "timeout";
+type ViewState = "verifying" | "paid" | "processing" | "refunded" | "disputed" | "failed" | "notfound" | "timeout";
 
 // L3: a refunded / disputed order must never be shown as "published".
 function viewStateFor(status: string): ViewState {
@@ -55,6 +57,10 @@ const PaymentSuccess = () => {
           const settled = FINAL.has(r.data.status) && !(r.data.status === "paid" && r.data.activation === "not_applied");
           if (settled) {
             setState(viewStateFor(r.data.status));
+            return;
+          }
+          if (r.data.processing) {
+            setState("processing");
             return;
           }
         }
@@ -214,6 +220,24 @@ const PaymentSuccess = () => {
                       Te paneli
                     </Button>
                   </div>
+                </>
+              )}
+
+              {state === "processing" && (
+                <>
+                  <div className="bg-blue-100 p-4 rounded-full inline-flex">
+                    <Clock className="h-12 w-12 text-blue-600" />
+                  </div>
+                  <h1 className="text-2xl font-bold">Pagesa po përpunohet</h1>
+                  <p className="text-muted-foreground">
+                    Mënyra e pagesës që zgjodhët konfirmohet nga banka me vonesë.
+                    {order?.jobTitle ? ` Puna "${order.jobTitle}"` : " Puna"} publikohet automatikisht
+                    sapo pagesa të konfirmohet dhe fatura ju vjen me email. Nuk keni nevojë të paguani përsëri.
+                  </p>
+                  <Button onClick={() => navigate("/employer-dashboard")} className="w-full sm:w-auto">
+                    <LayoutDashboard className="h-4 w-4 mr-2" />
+                    Te paneli
+                  </Button>
                 </>
               )}
 

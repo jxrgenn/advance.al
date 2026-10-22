@@ -96,6 +96,12 @@ const paymentOrderSchema = new Schema({
   refundedAt: Date,
   refundedCents: { type: Number, default: 0 },
   disputedAt: Date,
+  // Delayed payment methods: the customer finished Checkout but the money is
+  // still settling (session complete, payment_status 'unpaid'). The order
+  // stays 'pending' (its openSlot blocks a second payment) until
+  // checkout.session.async_payment_succeeded / _failed.
+  processingSince: Date,
+  processingAlertedAt: Date,
 
   activation: {
     status: { type: String, enum: ['not_applied', 'applied', 'skipped'], default: 'not_applied' },

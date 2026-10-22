@@ -63,6 +63,8 @@ const paymentEventSchema = new Schema({
       'dispute_closed',
       'refund_unmatched',
       'free_publication',
+      'payment_processing',
+      'checkout_rejected',
       'webhook_received',
     ],
     required: true,

@@ -18,9 +18,11 @@
 
 import express from 'express';
 import { PaymentEvent, PaymentOrder } from '../models/index.js';
-import { constructEvent, retrievePaymentIntent, isConfigured as stripeConfigured } from '../services/payments/stripeProvider.js';
 import {
-  fulfillFromStripeSession, markOrderFailed, markOrderExpired, recordRefund, recordDispute, recordDisputeClosed, isValidOrderId, logOrderEvent,
+  constructEvent, retrievePaymentIntent, checkWebhookLivemode, isConfigured as stripeConfigured,
+} from '../services/payments/stripeProvider.js';
+import {
+  fulfillFromStripeSession, markOrderFailed, markOrderExpired, markOrderProcessing, recordRefund, recordDispute, recordDisputeClosed, isValidOrderId, logOrderEvent,
 } from '../services/payments/orderService.js';
 import { alertPaymentsAdmin } from '../services/payments/paymentAlerts.js';
 import logger from '../config/logger.js';
@@ -90,7 +92,12 @@ async function handleEvent(event) {
         const r = await fulfillFromStripeSession(obj, { source: 'webhook', eventId: event.id, livemode: event.livemode });
         return `fulfil:${r.outcome}`;
       }
-      // 'unpaid' = delayed payment method still settling; the async_* events follow.
+      // 'unpaid' = delayed payment method still settling; the async_* events
+      // follow. The order stays pending (blocks a 2nd payment) as 'processing'.
+      if (obj.payment_status === 'unpaid' && obj.status === 'complete') {
+        const r = await markOrderProcessing(obj, { source: 'webhook' });
+        return r ? 'processing' : 'processing:no-change';
+      }
       return `left-open:payment_status=${obj.payment_status}`;
     }
     case 'checkout.session.async_payment_succeeded': {
@@ -100,7 +107,7 @@ async function handleEvent(event) {
     case 'checkout.session.async_payment_failed': {
       const orderId = orderIdOfSession(obj);
       if (!orderId) return 'ignored:no-order-id';
-      const r = await markOrderFailed(orderId, 'async payment failed', { source: 'webhook' });
+      const r = await markOrderFailed(orderId, 'delayed payment failed at the bank (checkout.session.async_payment_failed)', { source: 'webhook' });
       return r ? 'order-failed' : 'no-change';
     }
     case 'checkout.session.expired': {
@@ -183,6 +190,9 @@ export async function stripeWebhookHandler(req, res) {
     }).catch(() => {});
     return res.status(400).json({ received: false, error: 'bad signature' });
   }
+
+  // Webhook secret and API key must belong to the same Stripe mode.
+  checkWebhookLivemode(event.livemode);
 
   try {
     let marker;

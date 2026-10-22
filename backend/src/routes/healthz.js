@@ -32,6 +32,7 @@ import { getOutboxStats } from '../services/emailOutboxDrain.js';
 import { PaymentOrder } from '../models/index.js';
 import { paymentsReadiness } from '../services/payments/bootCheck.js';
 import { getReconcileStats } from '../services/payments/reconcileWorker.js';
+import { PROCESSING_ALERT_AFTER_MS } from '../services/payments/orderService.js';
 import logger from '../config/logger.js';
 
 const router = express.Router();
@@ -173,13 +174,16 @@ router.get('/notifications', async (req, res) => {
 /**
  * GET /healthz/payments — same auth pattern.
  * Secret-free provider status + money-safety counters:
- *   payments: { provider, enabledProviders, configured, mode: live|test|fake|unconfigured,
- *               webhookSecretSet, testModeInProduction, testModeAllowlisted,
+ *   payments: { provider, enabledProviders, configured, mode: live|test|unknown|fake|unconfigured,
+ *               modeSource: api|key|env|none, webhookSecretSet, paymentMethods,
+ *               testModeInProduction, testModeAllowlisted,
  *               paymentEnabled, paymentEnabledSource, blocking, degradedReasons[] }
- *   orders:   { open, openOlderThan60m, needsRefund, paidNotActivated }
+ *   orders:   { open, openOlderThan60m, needsRefund, paidNotActivated, processing, processingOverdue }
  * status === 'degraded' when blocking (paid posting on, no provider), any
- * order needs a refund, a paid order was never applied, or checkouts are
- * piling up open for > 60 min (lost webhooks; a session lives 31 min + one 15-min reconcile tick).
+ * order needs a refund, a paid order was never applied, checkouts are
+ * piling up open for > 60 min (lost webhooks; a session lives 31 min + one
+ * 15-min reconcile tick — delayed payments still settling don't count), or a
+ * delayed payment has been settling for > 14 days.
  */
 router.get('/payments', async (req, res) => {
   const gate = checkHealthzToken(req);
@@ -191,18 +195,21 @@ router.get('/payments', async (req, res) => {
   }
   try {
     const now = Date.now();
-    const [payments, open, openOld, needsRefund, paidNotActivated] = await Promise.all([
+    const [payments, open, openOld, needsRefund, paidNotActivated, processing, processingOverdue] = await Promise.all([
       paymentsReadiness(),
       PaymentOrder.countDocuments({ status: { $in: ['created', 'pending'] } }),
-      PaymentOrder.countDocuments({ status: { $in: ['created', 'pending'] }, createdAt: { $lt: new Date(now - 60 * 60 * 1000) } }),
+      // Lost webhooks / stuck checkouts — NOT delayed payments still settling.
+      PaymentOrder.countDocuments({ status: { $in: ['created', 'pending'] }, processingSince: { $exists: false }, createdAt: { $lt: new Date(now - 60 * 60 * 1000) } }),
       PaymentOrder.countDocuments({ needsRefund: true }),
       PaymentOrder.countDocuments({ status: 'paid', 'activation.status': 'not_applied', paidAt: { $lt: new Date(now - 10 * 60 * 1000) } }),
+      PaymentOrder.countDocuments({ status: { $in: ['created', 'pending'] }, processingSince: { $exists: true } }),
+      PaymentOrder.countDocuments({ status: { $in: ['created', 'pending'] }, processingSince: { $lt: new Date(now - PROCESSING_ALERT_AFTER_MS) } }),
     ]);
-    const orders = { open, openOlderThan60m: openOld, needsRefund, paidNotActivated };
+    const orders = { open, openOlderThan60m: openOld, needsRefund, paidNotActivated, processing, processingOverdue };
     // degradedReasons covers: no usable provider, Stripe TEST mode in
     // production (H1), missing payment_enabled switch in production (M4).
     const degraded = payments.blocking || payments.degradedReasons.length > 0
-      || needsRefund > 0 || paidNotActivated > 0 || openOld > 0;
+      || needsRefund > 0 || paidNotActivated > 0 || openOld > 0 || processingOverdue > 0;
     res.json({
       status: degraded ? 'degraded' : 'healthy',
       checkedAt: new Date().toISOString(),

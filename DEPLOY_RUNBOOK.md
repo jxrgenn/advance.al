@@ -114,8 +114,10 @@ and the boot logs an ERROR. Run `PAYMENTS.md` §8.
 
 **B. Live** — on the Render backend service:
 ```
-STRIPE_SECRET_KEY=sk_live_…
+STRIPE_SECRET_KEY=sk_live_…             # or rk_live_… (restricted)
 STRIPE_WEBHOOK_SECRET=whsec_…            # of the LIVE endpoint (differs from test)
+# optional: STRIPE_PAYMENT_METHOD_CONFIGURATION=pmc_…  (else Dashboard default methods)
+# only if healthz says mode "unknown": STRIPE_KEY_MODE=live
 PAYMENT_PROVIDERS=stripe                 # default; Paysera stays disabled
 ALERT_EMAIL_TO=ops@advance.al            # money alerts (also Discord DISCORD_WEBHOOK_PAYMENTS)
 HEALTHZ_TOKEN=…                          # for GET /healthz/payments monitoring
@@ -127,6 +129,29 @@ since 2026-10, but each one still logs an ERROR at every boot):
 `PAYSERA_ALLOW_FAKE_SUCCESS`, `ENABLE_MOCK_PAYMENTS`, `PAYMENTS_ALLOW_FAKE`.
 Paysera keys (`PAYSERA_PROJECT_ID`, `PAYSERA_SIGN_PASSWORD`, `PAYSERA_TEST`)
 are unused unless `PAYMENT_PROVIDERS` lists `paysera`.
+
+**Stripe Dashboard settings (the client's account, LIVE mode — do these
+before the first real payment):**
+1. **Settings → Payment methods**: this decides what Checkout offers (the code
+   no longer restricts it — the pinned API rejects `payment_method_types`).
+   Recommended: **Cards** on, **Apple Pay** and **Google Pay** on (wallets of
+   cards). Turn OFF anything you don't want (the sandbox default also offered
+   Pay by Bank, Bancontact, MB WAY, EPS, Satispay, Link). Delayed bank methods
+   work (order shows "Në përpunim", job goes live when the bank settles) but
+   publication waits days — keep them off unless you want them.
+   (Alternative: create a payment method configuration and set
+   `STRIPE_PAYMENT_METHOD_CONFIGURATION=pmc_…` on Render.)
+2. **Settings → Business → Public details / Branding**: business name, logo,
+   icon, brand colour, support email/phone, website `https://advance.al`,
+   privacy/terms URLs — they appear on the hosted Checkout page and receipts.
+3. **Settings → Business → Public details → Statement descriptor**: e.g.
+   `ADVANCE.AL` (what appears on the card statement — max 22 chars; a short
+   descriptor prefix e.g. `ADVANCE` if asked).
+4. **Settings → Emails**: Stripe's own "successful payments" / "refunds"
+   customer emails — optional (advance.al already emails its own receipt).
+5. **Developers → API keys**: copy the LIVE secret key (or create a
+   restricted key: Checkout Sessions write, PaymentIntents read, Charges read,
+   Refunds write — see PAYMENTS.md §5).
 
 Stripe dashboard → Developers → Webhooks → **Add endpoint** (once in test mode,
 once in live mode) `https://api.advance.al/api/payments/stripe/webhook`, events:
@@ -148,9 +173,23 @@ before launch.
 Smoke after the LIVE deploy:
 ```bash
 curl -s -H "X-Healthz-Token: $HEALTHZ_TOKEN" https://api.advance.al/healthz/payments | jq '.status, .payments'
-# Expected: "healthy", { provider: "stripe", configured: true, mode: "live", testModeInProduction: false,
-#            webhookSecretSet: true, paymentEnabled: true, paymentEnabledSource: "config", blocking: false, degradedReasons: [] }
+# Expected: "healthy", { provider: "stripe", configured: true, mode: "live", modeSource: "key", testModeInProduction: false,
+#            webhookSecretSet: true, paymentMethods: "dashboard-default", paymentEnabled: true,
+#            paymentEnabledSource: "config", blocking: false, degradedReasons: [] }
 ```
+**One real €35 smoke payment + refund (launch day, live keys):**
+1. As a real verified employer account you control (not whitelisted, paid
+   posting on), post a short test job → "Paguaj me kartë" → pay €35 with a
+   real card.
+2. `/payment/success` must reach "Pagesa u krye me sukses!"; the job is live
+   for 21 days; Admin → Pagesat shows the order `E paguar · stripe`; Stripe
+   Dashboard → Payments shows €35 succeeded; Developers → Webhooks → the live
+   endpoint shows `checkout.session.completed` delivered **200**.
+3. Admin → Pagesat → "Rimburso" → reason → Konfirmo → order `Rimbursuar`, the
+   job closes; Stripe Dashboard shows the refund; `charge.refunded` delivered
+   200. (Stripe keeps its processing fee on refunds.) Delete the test job.
+4. `/healthz/payments` back to `"healthy"` (no `needsRefund`).
+
 Rehearsal steps: `PAYMENTS.md` → "Test-mode procedure".
 
 ## Step 2 — Verify Render env matches local (sanity)

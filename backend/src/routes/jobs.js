@@ -1211,6 +1211,7 @@ router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPo
       // M5b: remember that this listing period was granted free, so an
       // approval after payments are switched on still honours it.
       job.postingBasis = 'free';
+      job.paymentStatus = 'not_required';
       // Free jobs / whitelisted employers go live immediately (or to moderation).
       job.status = requireApproval ? 'pending_approval' : 'active';
     }
@@ -1612,6 +1613,9 @@ async function retireOpenCheckouts(job, reason, source) {
   if (results.some((r) => r.outcome === 'paid')) {
     return { conflict: 'PAYMENT_COMPLETED', job: await Job.findById(job._id) };
   }
+  if (results.some((r) => r.outcome === 'processing')) {
+    return { conflict: 'PAYMENT_PROCESSING' };
+  }
   if (results.some((r) => r.outcome === 'unknown' || r.outcome === 'busy')) {
     return { conflict: 'CHECKOUT_IN_PROGRESS' };
   }
@@ -1625,6 +1629,13 @@ function sendCheckoutConflict(res, r, action) {
       code: 'PAYMENT_COMPLETED',
       message: `Pagesa për këtë punë sapo u krye. Rifreskoni panelin${action === 'delete' ? ' përpara se ta fshini' : ''}.`,
       data: { job: r.job }
+    });
+  }
+  if (r.conflict === 'PAYMENT_PROCESSING') {
+    return res.status(409).json({
+      success: false,
+      code: 'PAYMENT_PROCESSING',
+      message: `Pagesa për këtë punë po përpunohet nga banka — puna nuk mund të ${action === 'delete' ? 'fshihet' : 'mbyllet'} derisa pagesa të konfirmohet ose të dështojë.`
     });
   }
   return res.status(409).json({
@@ -1650,7 +1661,7 @@ function writeIfUnchanged(job, update) {
 
 async function sendChangedMeanwhile(res, job) {
   const fresh = await Job.findById(job._id);
-  if (fresh && fresh.paymentId !== job.paymentId && fresh.paymentStatus === 'paid') {
+  if (fresh && fresh.paymentId !== job.paymentId && ['paid', 'not_required'].includes(fresh.paymentStatus)) {
     return res.status(409).json({
       success: false,
       code: 'PAYMENT_COMPLETED',
@@ -1887,6 +1898,7 @@ router.post('/:id/renew', validateObjectId('id'), authenticate, requireEmployer,
     // Free renewal never carries a paid placement over.
     job.tier = 'basic';
     job.postingBasis = 'free';
+    job.paymentStatus = 'not_required';
     job.closedReason = undefined;
     job.closedFromStatus = undefined;
 

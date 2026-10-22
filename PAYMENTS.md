@@ -2,8 +2,11 @@
 
 Owner decisions (2026-10-02, binding):
 
-1. **Stripe-hosted Checkout is the only checkout** (cards). Paysera code stays
-   in the repo but is disabled unless `PAYMENT_PROVIDERS` includes `paysera`.
+1. **Stripe-hosted Checkout is the only checkout.** Which payment methods it
+   offers is set in the **Stripe Dashboard → Settings → Payment methods**
+   (recommended: Cards + Apple Pay / Google Pay), or by an optional
+   `STRIPE_PAYMENT_METHOD_CONFIGURATION=pmc_…`. Paysera code stays in the repo
+   but is disabled unless `PAYMENT_PROVIDERS` includes `paysera`.
 2. **Fixed prices**: standard 35 € / promoted 49 € by default, editable by an
    admin (SystemConfiguration `pricing_standard_posting`,
    `pricing_promoted_posting`). The PricingRule / BusinessCampaign discount
@@ -64,6 +67,7 @@ charge one amount and expect another).
 created ──► pending                     provider session created (URL handed out)
 created|pending ──► paid                provider confirmed the money
 created|pending ──► failed | canceled | expired
+pending (+processingSince)              delayed method: checkout complete, bank still settling
 canceled|expired ──► paid               late payment (a Paysera page can't be expired)
 paid ──► refunded | partially_refunded | disputed
 paid ──► refunded | partially_refunded refunded BEFORE it could be applied (activation skipped)
@@ -113,9 +117,41 @@ disputed ──► refunded                  dispute lost (money gone, listing c
    `{orderId, jobId, purpose, tier}` on session AND PaymentIntent,
    `success_url …/payment/success?order=<id>&session_id={CHECKOUT_SESSION_ID}`,
    `cancel_url …/payment/cancel?order=<id>`) → order `pending`.
-   Stripe error → order `failed`, slot freed, `502 PROVIDER_ERROR`.
-   **Cards only** (`payment_method_types: ['card']`) — delayed methods would
-   leave orders pending for days and block new checkouts (review L2).
+   Stripe error → order `failed`, slot freed, `502 PROVIDER_ERROR`. If Stripe
+   **rejected the request itself** (invalid parameter, unknown payment method
+   configuration, key permissions — it will fail for every employer) the
+   order also gets a `checkout_rejected` audit event and admins are alerted at
+   once ("Stripe rejects our checkout request — nobody can pay").
+   **Payment methods are NOT sent** — the pinned API version **rejects**
+   `payment_method_types` on Checkout Sessions (found against real Stripe
+   2026-10-22; the earlier "cards only" L2 fix broke every real checkout).
+   Methods come from the Dashboard settings, or from
+   `STRIPE_PAYMENT_METHOD_CONFIGURATION=pmc_…` (sent as
+   `payment_method_configuration`; a malformed value is ignored and reported
+   by healthz). The test-suite's fake Stripe rejects `payment_method_types`
+   exactly like the real API, so this cannot regress silently.
+
+### 3.1b Delayed payment methods ("processing")
+Some Dashboard methods settle later (bank debits / transfers). Then Checkout
+completes with `payment_status: unpaid`:
+* `checkout.session.completed` (unpaid) → the order stays **`pending`** with
+  `processingSince` (+ the PaymentIntent id); its open slot keeps a second
+  payment for the same job impossible. The success page shows **"Pagesa po
+  përpunohet"**; admin Pagesat shows "Në përpunim (banka)".
+* Another checkout for that job → **409 `PAYMENT_PROCESSING`** "Pagesa juaj
+  për këtë punë po përpunohet nga banka… mos paguani përsëri" (never a second
+  Stripe session); deleting/closing the job → 409 `PAYMENT_PROCESSING`.
+* `checkout.session.async_payment_succeeded` → normal fulfilment (fresh 21
+  days from settlement, receipt, job alerts).
+  `checkout.session.async_payment_failed` → order `failed`, slot freed, the
+  employer can pay again.
+* Lost webhook: a new checkout or the reconcile cron reads the session from
+  Stripe and marks the order processing. Still unsettled after **14 days** →
+  one admin alert + healthz `processingOverdue` (degraded).
+* These orders are NOT counted as stuck checkouts (`openOlderThan60m`).
+* Verified with signed events against the fake Stripe; the claimable sandbox
+  offered no delayed method, and Stripe's own CLI fixture for
+  `async_payment_succeeded` fails on the same `payment_method_types` change.
 
 `GET /api/payments/options?jobId=` (verified owner) tells the tier page what
 THIS employer can do now: `{ free, paymentsAvailable, testMode, prices }` —
@@ -159,7 +195,13 @@ dev-fake completion, admin manual accept. All call `fulfillOrder()`:
        page) → **needsRefund**
      - a test-mode payment in production for a non-allowlisted employer → no
        flag (no real money)
-   * `postingBasis` = `paid` (amount > 0) or `free` (waiver / free order).
+   * `postingBasis` = `paid` (amount > 0) or `free` (waiver / free order), and
+     job `paymentStatus` = `paid` (amount > 0) or **`not_required`** (0 €).
+     Free posts and free renewals (whitelisted employer, `payment_enabled`
+     off) are `not_required` too. "Unpaid" is only ever job status
+     `pending_payment` — reminder, timeout, checkout and admin views all
+     select on that status; a legacy free job left at `paymentStatus:
+     pending` is therefore never treated as unpaid.
 4. Side effects (never block or fail the money path): receipt email (+ .docx,
    says "awaiting approval" when applicable), Discord, embedding refresh with
    **`notifyUsers: true` for the first publication of a `job_post` that is
@@ -267,7 +309,7 @@ global `/api` rate limiter and before maintenance mode.
 
 | Event | Effect |
 |---|---|
-| `checkout.session.completed` | `payment_status=paid` → fulfil; `unpaid` (delayed method) → stays pending |
+| `checkout.session.completed` | `payment_status=paid` → fulfil; `unpaid` (delayed method) → order processing (§3.1b) |
 | `checkout.session.async_payment_succeeded` | fulfil |
 | `checkout.session.async_payment_failed` | order failed |
 | `checkout.session.expired` | order expired (slot freed) |
@@ -288,8 +330,10 @@ processed again (every handler is idempotent).
 ## 5. Configuration
 
 ```
-STRIPE_SECRET_KEY=sk_test_… | sk_live_…
+STRIPE_SECRET_KEY=sk_test_… | sk_live_… | rk_live_… (restricted)
 STRIPE_WEBHOOK_SECRET=whsec_…          # per endpoint AND per mode (test ≠ live)
+STRIPE_PAYMENT_METHOD_CONFIGURATION=pmc_…   # optional; unset = Dashboard default methods
+STRIPE_KEY_MODE=live                    # ONLY for a key whose prefix says neither live nor test
 PAYMENT_PROVIDERS=stripe                # first = checkout provider
 ALERT_EMAIL_TO=ops@advance.al           # + Discord DISCORD_WEBHOOK_PAYMENTS
 FRONTEND_URL=https://advance.al         # Stripe return URLs
@@ -313,27 +357,57 @@ exist and be active (missing ⇒ treated as ON + ERROR).
 
 The Stripe API version is pinned in `stripeProvider.js`
 (`2026-09-30.endive`, the version `stripe@23.0.0` was generated against). Bump
-it together with the SDK.
+it together with the SDK — and re-run `tests/integration/stripe-real` with a
+test key, which checks every request shape we send against the real API.
+
+**Live or test?** Parsed from the key's `live`/`test` segment (`sk_live_`,
+`rk_live_`, `sk_test_`, `rkcs_test_` claimable sandbox, …); then **Stripe's own
+`livemode`** on the objects we create/retrieve wins (a contradiction is
+logged as an ERROR). A signed webhook from the other mode is only logged (it
+means `STRIPE_WEBHOOK_SECRET` and `STRIPE_SECRET_KEY` come from different
+modes). A key with an unrecognised prefix: the boot check asks Stripe
+(Checkout Sessions list — works with restricted keys); still unknown →
+production refuses checkout (fail closed: a test key mistaken for live would
+publish for free) with a boot ERROR + alert telling you to set
+`STRIPE_KEY_MODE=live`. `/healthz/payments` shows `mode` and `modeSource`
+(`api`/`key`/`env`/`none`).
+
+**Restricted live key** (optional, instead of `sk_live_`): it needs Checkout
+Sessions (write — create/expire/retrieve/list), PaymentIntents (read), Charges
+(read — `latest_charge` is expanded to see refunds) and Refunds (write). It
+does NOT need balance, account, disputes or payment-method-configuration
+access (the claimable sandbox key had none of those and everything worked).
+Create it in TEST mode first and run `stripe-real` with it.
 
 ---
 
 ## 6. Monitoring
 
 * `GET /healthz/payments` (header `X-Healthz-Token`) →
-  `payments: { provider, configured, mode: live|test|fake|unconfigured,
-  webhookSecretSet, testModeInProduction, testModeAllowlisted, paymentEnabled,
+  `payments: { provider, configured, mode: live|test|unknown|fake|unconfigured,
+  modeSource, webhookSecretSet, paymentMethods: dashboard-default|configuration|invalid,
+  testModeInProduction, testModeAllowlisted, paymentEnabled,
   paymentEnabledSource, blocking, degradedReasons[] }`, `orders: { open,
-  openOlderThan60m, needsRefund, paidNotActivated }`, reconcile worker
-  heartbeat. `status: degraded` when blocking, Stripe TEST mode in production,
-  `payment_enabled` missing in production, any `needsRefund`, any
-  paid-not-activated, or checkouts open > 60 min (lost webhooks). Point
-  UptimeRobot at it with a keyword monitor on `"healthy"`.
+  openOlderThan60m, needsRefund, paidNotActivated, processing,
+  processingOverdue }`, reconcile worker heartbeat. `status: degraded` when
+  blocking, Stripe TEST mode or an unknown key mode in production,
+  `payment_enabled` missing in production, a malformed
+  `STRIPE_PAYMENT_METHOD_CONFIGURATION`, any `needsRefund`, any
+  paid-not-activated, checkouts open > 60 min (lost webhooks — delayed
+  payments still settling don't count), or a delayed payment unsettled > 14
+  days. Point UptimeRobot at it with a keyword monitor on `"healthy"`.
 * Business control → "update analytics" recomputes today's revenue from paid
   orders (net of refunds, split standard/promoted) — it used to overwrite it
-  with jobs × 50 €.
-* Alerts (Discord `payments` + email): checkout unavailable, verification
-  failure, duplicate / un-appliable payment, payment for a closed order,
-  payment for an unknown order, dispute, daily needsRefund digest.
+  with jobs × 50 €. The admin overview card **"Të Ardhurat"** is this
+  month's (UTC) money collected — paid orders that published a listing, net
+  of refunds (it used to be premium jobs × 28 + featured × 42 over all jobs
+  ever). The Discord daily digest counts paid / failed / refunded **orders**
+  (it counted legacy Paysera `callback_paid` events — always 0 with Stripe).
+* Alerts (Discord `payments` + email): checkout unavailable, **Stripe rejects
+  our checkout request**, verification failure, duplicate / un-appliable
+  payment, payment for a closed order, payment for an unknown order, dispute,
+  delayed payment unsettled > 14 days, key mode unknown, daily needsRefund
+  digest.
 * Audit trail: `PaymentEvent` (filter by `orderId`); admin tab "Pagesat".
 
 ---
@@ -367,7 +441,25 @@ Stripe dashboard → Developers → Webhooks → endpoint → failed deliveries 
 endpoint (wrong secret = every delivery 400).
 
 **Webhook replay** — safe at any time: processed events are no-ops, the rest
-are idempotent.
+are idempotent (verified against real Stripe: `stripe events resend` and a
+re-signed copy of a real event both answered 200 `duplicate`, order paid once).
+
+**Alert "Stripe rejects our checkout request — nobody can pay"** — every
+checkout fails. Read the parameter/message in the alert (or the order's
+`checkout_rejected` audit event). Typical causes: a wrong
+`STRIPE_PAYMENT_METHOD_CONFIGURATION` (remove it or fix the `pmc_` id), a
+restricted key missing a permission, a Stripe API change after an SDK bump.
+Until fixed, set `payment_enabled=false` if employers must keep publishing.
+
+**Order "Në përpunim (banka)" / employer sees "Pagesa po përpunohet"** — a
+delayed payment method; nothing to do, the job goes live on
+`async_payment_succeeded`. Alert after 14 days → check the PaymentIntent in
+the Stripe dashboard; if the bank failed it without a webhook, the next
+reconcile frees the slot.
+
+**Alert "Stripe key mode unknown"** — the key's prefix says neither live nor
+test and production refuses checkout. Set `STRIPE_KEY_MODE=live` (or `test`)
+on Render and redeploy.
 
 **Refund flag that needs no refund** (customer agreed to a credit, etc.) →
 "Zgjidh pa rimbursim" with a reason (recorded).
@@ -411,15 +503,28 @@ it (review H1). Choose ONE:
    date, any CVC → back on `/payment/success` the page must go from "Po
    verifikojmë…" to "Pagesa u krye me sukses" and the job is live with
    `expiresAt` 21 days from now.
-4. Repeat with `4000 0000 0000 0002` (declined) → stays on Stripe, job not live.
-5. Cancel on the Stripe page → `/payment/cancel` → "Provo përsëri" works.
-6. Admin → Pagesat → refund the order → job closed; Stripe dashboard shows the
+4. Repeat with `4000 0000 0000 0002` (declined) → Stripe says "Your credit
+   card was declined", stays on Stripe, job not live.
+5. `4000 0027 6000 3184` → 3-D Secure test page → COMPLETE → paid, live.
+6. Cancel on the Stripe page (← top left) → `/payment/cancel` → "Provo
+   përsëri" → the SAME checkout is reused → pay → live.
+7. Choose Standart → Stripe → browser Back → choose I Promovuar → Stripe shows
+   €49.00; the first session is expired at Stripe; pay → job premium.
+8. Admin → Pagesat → refund the order → job closed; Stripe dashboard shows the
    refund; `charge.refunded` webhook delivered 200.
-7. Expired/closed job → "Riposto" → checkout with `purpose=job_renewal` → live
+9. Expired/closed job → "Riposto" → checkout with `purpose=job_renewal` → live
    again for 21 days.
-8. `cd backend && STRIPE_SECRET_KEY=sk_test_… npx jest tests/integration/stripe-real`
-   — real test-mode API checks.
-9. Then **switch to live** (§7) and remove the rehearsal flags.
+10. `4000 0000 0000 0259` → paid, then a dispute within seconds → order
+   "Kontestim", success page "Pagesa është në kontestim", alert; job stays live.
+11. Webhook down (stop `stripe listen`), pay → order stays pending → the
+   reconcile cron fulfils it (orders > 10 min old).
+12. `cd backend && STRIPE_SECRET_KEY=<test key> npx jest tests/integration/stripe-real`
+   — real test-mode API checks (any TEST key: sk_test_/rk_test_/rkcs_test_).
+13. Then **switch to live** (§7) and remove the rehearsal flags.
+
+All of 3–12 were run against a real Stripe sandbox on 2026-10-22 (Playwright
+on the hosted Checkout page, `stripe listen` webhooks); see the payments
+agent report for evidence.
 
 ---
 
