@@ -22,7 +22,9 @@
  * go-live rehearsal). /healthz/payments is 'degraded' the whole time.
  */
 
-import { isConfigured as stripeConfigured, keyIsLive as stripeKeyIsLive } from './stripeProvider.js';
+import {
+  isConfigured as stripeConfigured, stripeKeyMode, paymentMethodConfiguration as stripePmc,
+} from './stripeProvider.js';
 import { isConfigured as payseraConfigured, isTestMode as payseraTestMode } from '../payseraService.js';
 
 export const KNOWN_PROVIDERS = Object.freeze(['stripe', 'paysera']);
@@ -68,9 +70,20 @@ export function providerConfigured(provider) {
  * undefined when the provider has no notion of livemode.
  */
 export function expectedLivemode(provider) {
-  if (provider === 'stripe') return stripeKeyIsLive();
+  if (provider === 'stripe') {
+    const { mode } = stripeKeyMode();
+    return mode === 'unknown' ? undefined : mode === 'live';
+  }
   if (provider === 'paysera') return !payseraTestMode();
   return undefined;
+}
+
+/**
+ * Stripe key configured but we cannot tell whether it is live or test
+ * (unrecognised prefix, STRIPE_KEY_MODE unset, Stripe not asked yet).
+ */
+export function stripeModeUnknown(provider = primaryProvider()) {
+  return provider === 'stripe' && stripeConfigured() && stripeKeyMode().mode === 'unknown';
 }
 
 /** Provider credentials are test-mode while NODE_ENV=production. */
@@ -110,6 +123,15 @@ export function resolveCheckoutProvider(requested, opts = {}) {
   if (!wanted) return { provider: null, reason: 'no payment provider enabled (PAYMENT_PROVIDERS)' };
   if (!isProviderEnabled(wanted)) return { provider: null, reason: `${wanted} is not enabled (PAYMENT_PROVIDERS)` };
   if (providerConfigured(wanted)) {
+    if (isProduction() && stripeModeUnknown(wanted)) {
+      // Fail closed: a test key we mistook for live would let anyone publish
+      // with card 4242. STRIPE_KEY_MODE=live resolves it (boot ERROR says so).
+      return {
+        provider: null,
+        code: 'KEY_MODE_UNKNOWN',
+        reason: 'cannot tell whether STRIPE_SECRET_KEY is live or test (unrecognised prefix) — set STRIPE_KEY_MODE=live',
+      };
+    }
     if (testModeInProduction(wanted)) {
       if (wanted === 'stripe' && testModeOptedIn() && isTestModeAllowlisted(opts.employer)) {
         return { provider: wanted, testMode: true };
@@ -135,8 +157,9 @@ export function paymentsHealth() {
   const primary = primaryProvider();
   const configured = primary ? providerConfigured(primary) : false;
   let mode = 'unconfigured';
+  let modeSource;
   if (configured) {
-    if (primary === 'stripe') mode = stripeKeyIsLive() ? 'live' : 'test';
+    if (primary === 'stripe') ({ mode, source: modeSource } = stripeKeyMode());
     else if (primary === 'paysera') mode = payseraTestMode() ? 'test' : 'live';
   } else if (primary && fakeAllowed()) {
     mode = 'fake';
@@ -147,7 +170,13 @@ export function paymentsHealth() {
     enabledProviders: enabledProviders(),
     configured,
     mode,
+    ...(modeSource ? { modeSource } : {}),
     webhookSecretSet: !!process.env.STRIPE_WEBHOOK_SECRET,
+    // Which payment methods Checkout offers: the Dashboard default, or a
+    // pmc_… configuration ('invalid' = set but malformed → ignored).
+    paymentMethods: process.env.STRIPE_PAYMENT_METHOD_CONFIGURATION
+      ? (stripePmc() ? 'configuration' : 'invalid')
+      : 'dashboard-default',
     testModeInProduction: testInProd,
     // Only meaningful when testModeInProduction: a supervised rehearsal with
     // an allowlist (counts only — never the list itself).

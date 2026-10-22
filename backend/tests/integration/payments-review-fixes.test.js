@@ -464,12 +464,18 @@ describe('payments — adversarial review fixes', () => {
     });
   });
 
-  // ─── L2 ──────────────────────────────────────────────────────────────────
-  it('L2: checkout sessions accept cards only', async () => {
+  // ─── L2 (superseded 2026-10-22) ──────────────────────────────────────────
+  // Real Stripe (API 2026-09-30.endive) REJECTS payment_method_types on
+  // Checkout Sessions — methods come from the Dashboard or
+  // STRIPE_PAYMENT_METHOD_CONFIGURATION; delayed methods are handled as
+  // 'processing' (payments-stripe-api.test.js).
+  it('L2: checkout never sends payment_method_types (Stripe rejects it); the Dashboard decides the methods', async () => {
     const { user: emp } = await createVerifiedEmployer();
     const job = await createJobPendingPayment(emp);
-    await checkout(emp, { jobId: String(job._id), tier: 'standard' });
-    expect(fake.calls.create[0].params.payment_method_types).toEqual(['card']);
+    const r = await checkout(emp, { jobId: String(job._id), tier: 'standard' });
+    expect(r.status).toBe(200);
+    expect(Object.keys(fake.calls.create[0].params)).not.toContain('payment_method_types');
+    expect(Object.keys(fake.calls.create[0].params)).not.toContain('payment_method_configuration');
   });
 
   // ─── L6b ─────────────────────────────────────────────────────────────────

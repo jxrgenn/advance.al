@@ -62,6 +62,9 @@ const CREATED_WITHOUT_SESSION_GRACE_MS = 2 * 60 * 1000;
 const NON_STRIPE_CHECKOUT_TTL_MS = 30 * 60 * 1000;
 
 export const MSG_PAYMENTS_UNAVAILABLE = 'Pagesat me kartë nuk janë aktive ende. Ju lutemi kontaktoni mbështetjen.';
+export const MSG_PAYMENT_PROCESSING = 'Pagesa juaj për këtë punë po përpunohet nga banka. Puna publikohet automatikisht sapo pagesa të konfirmohet — mos paguani përsëri.';
+// A delayed payment still unsettled after this long is escalated to an admin.
+export const PROCESSING_ALERT_AFTER_MS = 14 * DAY_MS;
 
 export class PaymentError extends Error {
   constructor(status, message, code, data) {
@@ -128,10 +131,40 @@ export const markOrderFailed = (orderId, reason, opts) => transitionOpenOrder(or
 export const markOrderExpired = (orderId, reason, opts) => transitionOpenOrder(orderId, 'expired', reason, opts);
 export const markOrderCanceled = (orderId, reason, opts) => transitionOpenOrder(orderId, 'canceled', reason, opts);
 
+/**
+ * Delayed payment method: Checkout is complete but the money is still
+ * settling (payment_status 'unpaid'). The order stays 'pending' — its open
+ * slot keeps a second payment for the same job impossible — and is marked
+ * processing until checkout.session.async_payment_succeeded / _failed.
+ * Idempotent; returns the order when this call marked it.
+ */
+export async function markOrderProcessing(session, { source } = {}) {
+  const orderId = session?.metadata?.orderId || session?.client_reference_id;
+  if (!isValidOrderId(orderId)) return null;
+  const filter = { orderId, provider: 'stripe', status: { $in: OPEN }, processingSince: { $exists: false } };
+  if (session?.id) filter.providerSessionId = session.id;
+  const set = { processingSince: new Date() };
+  const pi = stripeProvider.paymentIntentIdOf(session);
+  if (pi) set.providerPaymentId = pi;
+  const updated = await PaymentOrder.findOneAndUpdate(filter, { $set: set, $unset: { checkoutUrl: 1 } }, { new: true });
+  if (updated) {
+    await logOrderEvent(updated, 'payment_processing', { source, paymentId: pi, notes: 'delayed payment method — waiting for the bank to settle' });
+  }
+  return updated;
+}
+
+const isProcessingSession = (s) => s?.status === 'complete' && s?.payment_status === 'unpaid';
+
 // ─── checkout ───────────────────────────────────────────────────────────────
 
 function allowedJobStatesFor(purpose) {
   return purpose === 'job_renewal' ? ['expired', 'closed'] : ['pending_payment'];
+}
+
+/** A Stripe order created under the OTHER mode than the current key (test ↔ live switch). */
+function stripeModeSwitched(order) {
+  const live = expectedLivemode('stripe');
+  return typeof order.livemode === 'boolean' && typeof live === 'boolean' && order.livemode !== live;
 }
 
 /**
@@ -140,7 +173,10 @@ function allowedJobStatesFor(purpose) {
  */
 async function supersedeOrder(order, reason, { source = 'checkout-supersede' } = {}) {
   if (order.provider === 'stripe') {
-    if (typeof order.livemode === 'boolean' && order.livemode !== stripeProvider.keyIsLive()) {
+    // Money is on its way (delayed method) — never cancel it, never let a
+    // second payment start.
+    if (order.processingSince) return 'processing';
+    if (stripeModeSwitched(order)) {
       // Session belongs to the other Stripe mode — the current key can't see
       // it and its webhooks go to the other endpoint. Nothing to expire here.
       await markOrderCanceled(order.orderId, `${reason} (stripe mode switched)`, { source });
@@ -166,7 +202,11 @@ async function supersedeOrder(order, reason, { source = 'checkout-supersede' } =
         await fulfillFromStripeSession(s, { source });
         return 'paid';
       }
-      return 'unknown'; // complete-but-processing or still open — cannot safely cancel
+      if (isProcessingSession(s)) {
+        await markOrderProcessing(s, { source });
+        return 'processing';
+      }
+      return 'unknown'; // still open per Stripe yet not expirable — cannot safely cancel
     } catch (err) {
       stripeProvider.logStripeError('expire session (supersede)', err, { orderId: order.orderId });
       return 'unknown';
@@ -249,9 +289,10 @@ export async function createCheckout({ employer, jobId, tier, purpose = 'job_pos
   const open = await PaymentOrder.find({ jobId: job._id, purpose, status: { $in: OPEN }, provider: { $ne: 'admin' } }).sort({ createdAt: -1 });
   for (const o of open) {
     const reusable = o.status === 'pending'
+      && !o.processingSince
       && o.tier === tier
       && o.provider === provider
-      && (provider !== 'stripe' || o.livemode === stripeProvider.keyIsLive())
+      && (provider !== 'stripe' || o.livemode === expectedLivemode('stripe'))
       && o.amountCents === amountCents
       && o.checkoutUrl
       && o.checkoutExpiresAt
@@ -273,6 +314,9 @@ export async function createCheckout({ employer, jobId, tier, purpose = 'job_pos
     if (outcome === 'paid') {
       throw new PaymentError(409, 'Kjo punë sapo u pagua. Rifreskoni panelin.', 'ALREADY_PAID');
     }
+    if (outcome === 'processing') {
+      throw new PaymentError(409, MSG_PAYMENT_PROCESSING, 'PAYMENT_PROCESSING', { orderId: o.orderId });
+    }
     if (outcome === 'busy' || outcome === 'unknown') {
       throw new PaymentError(409, 'Një pagesë për këtë punë është ende e hapur. Provoni përsëri pas pak.', 'CHECKOUT_IN_PROGRESS');
     }
@@ -291,7 +335,7 @@ export async function createCheckout({ employer, jobId, tier, purpose = 'job_pos
       provider,
       status: 'created',
       openSlot: `${job._id}:${purpose}`,
-      livemode: provider === 'stripe' ? stripeProvider.keyIsLive() : (provider === 'paysera' ? !payseraTestMode() : false),
+      livemode: provider === 'stripe' ? expectedLivemode('stripe') : (provider === 'paysera' ? !payseraTestMode() : false),
     });
   } catch (err) {
     if (err?.code === 11000 && err?.keyPattern?.openSlot) {
@@ -321,6 +365,23 @@ export async function createCheckout({ employer, jobId, tier, purpose = 'job_pos
   } catch (err) {
     stripeProvider.logStripeError('create checkout session', err, { orderId: order.orderId, provider });
     await markOrderFailed(order.orderId, `provider session creation failed: ${err?.message || 'unknown error'}`, { source: 'checkout' });
+    if (provider === 'stripe' && stripeProvider.isRequestRejected(err)) {
+      // Stripe refused the request itself (bad/unsupported parameter, unknown
+      // payment method configuration, key permissions) — it will fail for
+      // EVERY employer until someone fixes it. Not a transient error.
+      const what = `${err.type}${err.code ? `/${err.code}` : ''}${err.param ? ` (${err.param})` : ''}`;
+      await logOrderEvent(order, 'checkout_rejected', { source: 'checkout', notes: `${what}: ${String(err.message).slice(0, 500)}` });
+      alertPaymentsAdmin({
+        title: '🚨 Stripe rejects our checkout request — nobody can pay',
+        description: 'Stripe refused to create a Checkout Session. This is a configuration/code problem, not a network blip: every checkout fails until it is fixed.',
+        fields: [
+          { name: 'Error', value: `${err.type}${err.code ? ` / ${err.code}` : ''}` },
+          ...(err.param ? [{ name: 'Parameter', value: String(err.param) }] : []),
+          { name: 'Message', value: String(err.message).slice(0, 900) },
+        ],
+        dedupKey: `stripe-checkout-rejected:${err.type}:${err.param || err.code || ''}`,
+      });
+    }
     throw new PaymentError(502, 'Nuk mund të hapet faqja e pagesës. Provoni përsëri pas pak.', 'PROVIDER_ERROR');
   }
 
@@ -620,7 +681,8 @@ export async function activateJobFromOrder(order, { source } = {}) {
   const set = {
     status: targetStatus,
     tier: tierToJobTier[claimed.tier],
-    paymentStatus: 'paid',
+    // A 0 € free/waived order grants the period without money.
+    paymentStatus: claimed.amountCents > 0 ? 'paid' : 'not_required',
     paymentId: claimed.orderId,
     paymentMethod: claimed.provider,
     paidAt: now,
@@ -1029,7 +1091,7 @@ export async function reconcileStripeOrder(order, { source = 'reconcile' } = {})
   if (!order || order.provider !== 'stripe' || !OPEN.includes(order.status) || !stripeProvider.isConfigured()) {
     return { outcome: 'skipped' };
   }
-  if (typeof order.livemode === 'boolean' && order.livemode !== stripeProvider.keyIsLive()) {
+  if (stripeModeSwitched(order)) {
     // Created under the other Stripe mode (test ↔ live key switch). The
     // current key cannot even see that session — retire it instead of
     // retrying forever.
@@ -1053,6 +1115,20 @@ export async function reconcileStripeOrder(order, { source = 'reconcile' } = {})
   if (session?.payment_status === 'paid') {
     const r = await fulfillFromStripeSession(session, { source });
     return { outcome: r.outcome, order: r.order };
+  }
+  if (isProcessingSession(session)) {
+    const marked = await markOrderProcessing(session, { source });
+    const since = new Date((marked || order).processingSince || Date.now()).getTime();
+    if (Date.now() - since > PROCESSING_ALERT_AFTER_MS && !order.processingAlertedAt) {
+      await PaymentOrder.updateOne({ _id: order._id, processingAlertedAt: { $exists: false } }, { $set: { processingAlertedAt: new Date() } });
+      alertPaymentsAdmin({
+        title: '⏳ Delayed payment still not settled',
+        description: 'A customer completed Checkout with a delayed payment method, but Stripe has not confirmed or failed the payment for over 14 days. Check the PaymentIntent in the Stripe dashboard.',
+        fields: [{ name: 'Order', value: order.orderId }, { name: 'PaymentIntent', value: String(order.providerPaymentId || stripeProvider.paymentIntentIdOf(session)) }],
+        dedupKey: `pay-processing-overdue:${order.orderId}`,
+      });
+    }
+    return { outcome: 'processing' };
   }
   if (session?.status === 'expired') {
     await markOrderExpired(order.orderId, 'checkout session expired', { source });
@@ -1404,6 +1480,8 @@ export function serializeOrderForViewer(order, job) {
     paidAt: order.paidAt || null,
     activation: order.activation?.status || 'not_applied',
     checkoutExpiresAt: order.checkoutExpiresAt || null,
+    // Delayed payment method: paid at Stripe's page, the bank hasn't settled yet.
+    processing: !!order.processingSince && OPEN.includes(order.status),
   };
 }
 
@@ -1416,6 +1494,7 @@ export default {
   markOrderFailed,
   markOrderExpired,
   markOrderCanceled,
+  markOrderProcessing,
   recordRefund,
   recordDispute,
   recordRevenue,

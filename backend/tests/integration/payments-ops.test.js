@@ -73,11 +73,11 @@ describe('payments — ops surface', () => {
       expect(r.status).toBe(200);
       expect(r.body.status).toBe('healthy');
       expect(r.body.payments).toEqual({
-        provider: 'stripe', enabledProviders: ['stripe'], configured: true, mode: 'test', webhookSecretSet: true,
-        testModeInProduction: false, testModeAllowlisted: 0,
+        provider: 'stripe', enabledProviders: ['stripe'], configured: true, mode: 'test', modeSource: 'key', webhookSecretSet: true,
+        paymentMethods: 'dashboard-default', testModeInProduction: false, testModeAllowlisted: 0,
         paymentEnabled: true, paymentEnabledSource: 'config', blocking: false, degradedReasons: [],
       });
-      expect(r.body.orders).toEqual({ open: 0, openOlderThan60m: 0, needsRefund: 0, paidNotActivated: 0 });
+      expect(r.body.orders).toEqual({ open: 0, openOlderThan60m: 0, needsRefund: 0, paidNotActivated: 0, processing: 0, processingOverdue: 0 });
       const raw = JSON.stringify(r.body);
       expect(raw).not.toContain(FAKE_STRIPE_KEY);
       expect(raw).not.toContain(TEST_WEBHOOK_SECRET);

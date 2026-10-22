@@ -1733,7 +1733,7 @@ advance.al`;
 <body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: Arial, sans-serif;">
   <div style="max-width: 700px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
     <h2 style="color: #dc2626; margin: 0 0 12px 0;">⚠️ Payment timeout alert</h2>
-    <p style="color: #374151;">${jobs.length} job(s) have been in <code>pending_payment</code> for more than ${thresholdDays} days without a successful Paysera callback. Review the audit trail (PaymentEvent) and decide whether to manually mark-paid, contact the employer, or close out.</p>
+    <p style="color: #374151;">${jobs.length} job(s) have been in <code>pending_payment</code> for more than ${thresholdDays} days without a completed payment (no paid order — neither a Stripe card payment nor an admin manual accept). Review Admin → Pagesat (orders + PaymentEvent audit trail) and decide whether to mark it paid ("Shëno si e paguar"), contact the employer, or close it out.</p>
     <table style="width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px;">
       <thead>
         <tr style="text-align: left; background: #f3f4f6;">

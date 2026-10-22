@@ -15,7 +15,7 @@ of Phase 28 (test-suite genuineness sprint).
 | Upstash Redis | yes | gracefully degrades to in-memory | ⚠️ Real path uncovered in CI |
 | Sentry | yes | not exercised | ⚠️ Production-only |
 | Twilio (SMS) | partially configured | NOT TESTED — no Twilio account | 🔴 **Known gap** |
-| Stripe (card checkout) | yes (2026-10) | SDK client faked at the network boundary; webhook signatures REAL; real test-mode suite auto-runs with `sk_test_` | ⚠️ Real API path pending keys |
+| Stripe (card checkout) | yes (2026-10) | SDK client faked at the network boundary (fake rejects what the real API rejects); webhook signatures REAL; real test-mode suite runs with any TEST key; full hosted-Checkout E2E run against a real sandbox 2026-10-22 | ✅ Real API path verified (test mode); delayed methods fake-only |
 
 ## Stripe (card checkout — added 2026-10)
 
@@ -26,17 +26,34 @@ verification (`Stripe.webhooks.generateTestHeaderString` → route →
 network calls (`checkout.sessions.create/retrieve/expire`, `refunds.create`)
 are replaced by an in-memory fake injected through
 `stripeProvider.__setStripeClientForTests()`; tests assert the exact params
-we send (amount, metadata, return URLs, idempotency keys).
+we send (amount, metadata, return URLs, idempotency keys). The fake REJECTS
+`payment_method_types` (400) and unknown `payment_method_configuration`
+exactly like the pinned real API — the 2026-10-22 real-Stripe run found that
+an earlier "cards only" param broke every real checkout while the old fake
+accepted it.
 
-**What needs a real key** (`tests/integration/stripe-real/`): our Checkout
-Session params accepted by the live test-mode API (expires_at window, pinned
-apiVersion `2026-09-30.endive`), retrieve/expire round-trip, idempotency on
-the order id. Runs automatically when `STRIPE_SECRET_KEY=sk_test_…` is set,
-otherwise skipped with a printed reason.
+**What needs a real key** (`tests/integration/stripe-real/`): the pinned API
+rejects `payment_method_types`; our Checkout Session params accepted
+(expires_at window, pinned apiVersion `2026-09-30.endive`), retrieve with
+`expand`, expire round-trip (+ the not-open 400), idempotency (identical
+replay → same session, different body → refused),
+`payment_method_configuration` pass-through, PaymentIntent retrieve with
+`latest_charge`, refunds (partial, idempotent replay, full remainder), 404
+shapes, key mode confirmed by Stripe. Runs when `STRIPE_SECRET_KEY` is any
+TEST key (`sk_test_`/`rk_test_`/`rkcs_test_`), otherwise skipped with a
+printed reason. 8/8 green against the claimable sandbox on 2026-10-22.
 
-**Never automated**: a live-mode charge, real refunds, real disputes. Do the
-manual test-mode procedure in `PAYMENTS.md` (card 4242…, `stripe listen`)
-before switching to live keys.
+**Run manually, not in CI**: the full hosted-Checkout E2E (Playwright on
+checkout.stripe.com, `stripe listen`) — card, decline, 3DS, cancel/retry,
+tier switch, admin refund, renewal, webhook replay, lost webhook →
+reconcile, dispute, Bancontact. Harness is local-only
+(`backend/qa-harness/pa/`, git-excluded).
+
+**Not verified against real Stripe**: delayed payment methods (no such
+method was enabled in the sandbox; Stripe's own CLI fixture for
+`async_payment_succeeded` fails on the same `payment_method_types` change) —
+covered by signed-event tests against the fake. A live-mode charge: do the
+€35 smoke payment + refund in `DEPLOY_RUNBOOK.md` on launch day.
 
 ## Twilio (the major gap)
 

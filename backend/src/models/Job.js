@@ -290,9 +290,13 @@ const jobSchema = new Schema({
     type: Number,
     default: 0
   },
+  // 'not_required' = the current listing period was granted free (whitelisted
+  // employer, payment_enabled off, 0 € free/waived order) — no money was owed.
+  // 'pending' alone never means "unpaid": unpaid is status 'pending_payment'
+  // (every reminder/timeout/checkout path selects on that status).
   paymentStatus: {
     type: String,
-    enum: ['pending', 'paid', 'failed', 'refunded'],
+    enum: ['pending', 'paid', 'failed', 'refunded', 'not_required'],
     default: 'pending'
   },
   paymentId: {

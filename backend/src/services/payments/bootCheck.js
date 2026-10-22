@@ -13,7 +13,10 @@
  *   degradedReasons   human-readable problems that make /healthz 'degraded'
  */
 
-import { paymentsHealth, LEGACY_FAKE_PAYMENT_FLAGS, testModeOptedIn } from './providerConfig.js';
+import {
+  paymentsHealth, LEGACY_FAKE_PAYMENT_FLAGS, testModeOptedIn, stripeModeUnknown,
+} from './providerConfig.js';
+import { probeKeyMode, isConfigured as stripeConfigured } from './stripeProvider.js';
 import { getPaymentEnabledState } from '../../lib/pricing.js';
 import { alertPaymentsAdmin } from './paymentAlerts.js';
 import logger from '../../config/logger.js';
@@ -26,13 +29,21 @@ export async function paymentsReadiness() {
 
   // Test keys in production: usable only as an opted-in, allowlisted rehearsal.
   const testBlocked = health.testModeInProduction && !testModeOptedIn();
+  // A key whose mode we cannot tell is refused in production (fail closed).
+  const modeBlocked = isProd && stripeModeUnknown(health.provider);
   // In production the fake provider is a misconfiguration, not a fallback.
-  const usable = (health.configured && !testBlocked) || (!isProd && health.mode === 'fake');
+  const usable = (health.configured && !testBlocked && !modeBlocked) || (!isProd && health.mode === 'fake');
   const blocking = pe.enabled && !usable;
 
   if (blocking) degradedReasons.push('paid posting is on but no usable payment provider');
   if (isProd && pe.source !== 'config') {
     degradedReasons.push(`payment_enabled config ${pe.source} — treated as PAID (fail closed); create/activate it in Admin → Konfigurimi`);
+  }
+  if (modeBlocked) {
+    degradedReasons.push('cannot tell whether STRIPE_SECRET_KEY is live or test — checkout refused; set STRIPE_KEY_MODE=live');
+  }
+  if (health.paymentMethods === 'invalid') {
+    degradedReasons.push('STRIPE_PAYMENT_METHOD_CONFIGURATION is not a pmc_… id — ignored (Dashboard default methods are offered)');
   }
   if (health.testModeInProduction) {
     degradedReasons.push(testBlocked
@@ -49,8 +60,23 @@ export async function paymentsReadiness() {
 }
 
 export async function runPaymentsBootCheck() {
+  // Key with an unrecognised prefix (neither _live_ nor _test_): ask Stripe.
+  if (stripeConfigured() && stripeModeUnknown()) await probeKeyMode();
   const r = await paymentsReadiness();
   const isProd = process.env.NODE_ENV === 'production';
+
+  if (r.provider === 'stripe' && r.configured && r.mode === 'unknown') {
+    logger.error(`payments: cannot tell whether STRIPE_SECRET_KEY is LIVE or TEST (unrecognised key prefix)${isProd ? ' — checkout REFUSED in production' : ''}. Set STRIPE_KEY_MODE=live (or test).`);
+    alertPaymentsAdmin({
+      title: '⚠️ Stripe key mode unknown',
+      description: 'The Stripe secret key has a prefix that says neither live nor test, and Stripe could not be asked. Production refuses checkout until STRIPE_KEY_MODE=live (or test) is set on Render.',
+      fields: [{ name: 'NODE_ENV', value: String(process.env.NODE_ENV) }],
+      dedupKey: 'payments-key-mode-unknown',
+    });
+  }
+  if (r.paymentMethods === 'invalid') {
+    logger.error('payments: STRIPE_PAYMENT_METHOD_CONFIGURATION is set but is not a pmc_… id — ignored; Checkout offers the Dashboard default payment methods');
+  }
 
   if (r.blocking) {
     logger.error('PAYMENTS NOT USABLE: paid posting is on but no usable card provider — employers cannot publish paid jobs', {
@@ -60,7 +86,9 @@ export async function runPaymentsBootCheck() {
       title: '🚨 Payments not usable — paid posting is ON',
       description: r.testModeInProduction
         ? 'Production is running Stripe TEST keys without the supervised-rehearsal opt-in, so checkout is refused. Set sk_live_ + the live webhook secret (PAYMENTS.md).'
-        : 'payment_enabled is on but STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET are missing. Employers can create jobs but cannot pay to publish them. Configure Stripe (PAYMENTS.md) or set payment_enabled=false.',
+        : r.mode === 'unknown'
+          ? 'Production cannot tell whether the Stripe key is live or test, so checkout is refused. Set STRIPE_KEY_MODE=live on Render (PAYMENTS.md).'
+          : 'payment_enabled is on but STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET are missing. Employers can create jobs but cannot pay to publish them. Configure Stripe (PAYMENTS.md) or set payment_enabled=false.',
       fields: [
         { name: 'Provider', value: String(r.provider) },
         { name: 'Mode', value: r.mode },
