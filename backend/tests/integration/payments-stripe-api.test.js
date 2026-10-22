@@ -341,6 +341,93 @@ describe('payments — Stripe API contract, delayed methods, key mode', () => {
     });
   });
 
+  // ─── foreign Stripe objects (not advance.al orders) → 200 ignored, never 500 ─
+  describe('events about payments that are NOT advance.al orders', () => {
+    const refundEvt = (pi, metadata = {}) => stripeEvent('charge.refunded', { id: `ch_${pi}`, payment_intent: pi, amount: 2000, amount_refunded: 2000, refunded: true, currency: 'eur', metadata });
+    async function expectIgnored(evt) {
+      const r = await postStripeEvent(request, app, evt);
+      expect(r.status).toBe(200);
+      const marker = await PaymentEvent.findOne({ providerEventId: evt.id }).lean();
+      expect(marker.status).toBe('ignored:not-ours');
+      expect(marker.processedAt).toBeInstanceOf(Date);
+      return r;
+    }
+    const noAlert = async (title) => {
+      await drainSideEffects();
+      expect(spies.alertEmail.mock.calls.some((c) => String(c[1]).includes(title))).toBe(false);
+    };
+
+    it('refund of a PaymentIntent unknown to this account (404) → 200 ignored; no refund_unmatched row, no alert', async () => {
+      await expectIgnored(refundEvt('pi_test_someone_else'));
+      expect(await PaymentEvent.countDocuments({ event: 'refund_unmatched' })).toBe(0);
+      await noAlert('refund');
+    });
+
+    it('refund of another integration\'s payment (PaymentIntent exists, no advance.al metadata) → 200 ignored', async () => {
+      fake.addForeignPaymentIntent('pi_test_payment_link', { source: 'payment-link' });
+      await expectIgnored(refundEvt('pi_test_payment_link'));
+      expect(fake.calls.piRetrieve).toEqual(['pi_test_payment_link']);
+    });
+
+    it('refund carrying an advance.al-looking orderId that is NOT an order here (stripe-real suite, other environment) → 200 ignored, no Stripe lookup', async () => {
+      await expectIgnored(refundEvt('pi_test_lookalike', { orderId: 'ord_0123456789abcdef01234567', jobId: 'a'.repeat(24), purpose: 'job_post', tier: 'standard' }));
+      expect(fake.calls.piRetrieve).toHaveLength(0);
+    });
+
+    it('our refund (charge metadata carries our orderId) is applied immediately, even before checkout.session.completed', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const job = await createJobPendingPayment(emp);
+      const c = await checkout(emp, { jobId: String(job._id), tier: 'standard' });
+      const paid = fake.markPaid(fake.lastSession().id);
+      const r = await postStripeEvent(request, app, stripeEvent('charge.refunded', { id: 'ch_ours', payment_intent: paid.payment_intent, amount: 3500, amount_refunded: 3500, refunded: true, currency: 'eur', metadata: { ...paid.metadata } }));
+      expect(r.status).toBe(200);
+      const o = await PaymentOrder.findOne({ orderId: c.body.data.orderId }).lean();
+      expect(o.refundedCents).toBe(3500);
+      expect(o.providerPaymentId).toBe(paid.payment_intent);
+    });
+
+    it('dispute created / closed on a foreign payment → 200 ignored, no alert', async () => {
+      fake.addForeignPaymentIntent('pi_test_foreign_dispute');
+      await expectIgnored(stripeEvent('charge.dispute.created', { id: 'du_foreign', payment_intent: 'pi_test_foreign_dispute', amount: 2000, reason: 'fraudulent', currency: 'eur', metadata: {} }));
+      await expectIgnored(stripeEvent('charge.dispute.closed', { id: 'du_foreign', payment_intent: 'pi_test_foreign_dispute', amount: 2000, status: 'lost', currency: 'eur', metadata: {} }));
+      await noAlert('dispute');
+    });
+
+    it('a dispute on OUR payment while Stripe is unreachable → 500 + alert; the re-delivery marks the order disputed', async () => {
+      const { user: emp } = await createVerifiedEmployer();
+      const job = await createJobPendingPayment(emp);
+      const c = await checkout(emp, { jobId: String(job._id), tier: 'standard' });
+      const paid = fake.markPaid(fake.lastSession().id);
+      await postStripeEvent(request, app, stripeEvent('checkout.session.completed', paid));
+      // Disputes carry no metadata (verified on real Stripe) and this PI is not
+      // linked yet in this scenario → a lookup is needed.
+      await PaymentOrder.updateOne({ orderId: c.body.data.orderId }, { $unset: { providerPaymentId: 1 } });
+      fake.failPiRetrieveWith = Object.assign(new Error('Stripe 503'), { type: 'StripeAPIError', statusCode: 503 });
+      const evt = stripeEvent('charge.dispute.created', { id: 'du_ours', payment_intent: paid.payment_intent, amount: 3500, reason: 'fraudulent', currency: 'eur', metadata: {} });
+      const r1 = await postStripeEvent(request, app, evt);
+      expect(r1.status).toBe(500);
+      expect(await alerted('Stripe dispute not matched yet (will retry)')).toBe(true);
+      fake.failPiRetrieveWith = null;
+      const r2 = await postStripeEvent(request, app, evt);
+      expect(r2.status).toBe(200);
+      expect((await PaymentOrder.findOne({ orderId: c.body.data.orderId }).lean()).status).toBe('disputed');
+    });
+
+    it('checkout.session.completed for a session without our order id (Payment Link) → 200 ignored, no "unknown order" alert', async () => {
+      const evt = stripeEvent('checkout.session.completed', { id: 'cs_test_paymentlink', object: 'checkout.session', payment_status: 'paid', status: 'complete', amount_total: 2000, currency: 'eur', metadata: {}, client_reference_id: null, payment_intent: 'pi_test_pl' });
+      await expectIgnored(evt);
+      expect(await PaymentEvent.countDocuments({ event: 'callback_failed' })).toBe(0);
+      await noAlert('Payment for an unknown order');
+    });
+
+    it('…but a PAID session carrying an advance.al order id we do not have still alerts (money for an order-looking id)', async () => {
+      const evt = stripeEvent('checkout.session.completed', { id: 'cs_test_missing', object: 'checkout.session', payment_status: 'paid', status: 'complete', amount_total: 3500, currency: 'eur', metadata: { orderId: 'ord_aaaaaaaaaaaaaaaaaaaaaaaa' }, client_reference_id: 'ord_aaaaaaaaaaaaaaaaaaaaaaaa', payment_intent: 'pi_test_missing', livemode: false });
+      const r = await postStripeEvent(request, app, evt);
+      expect(r.status).toBe(200);
+      expect(await alerted('Payment for an unknown order')).toBe(true);
+    });
+  });
+
   // ─── 3. key mode ─────────────────────────────────────────────────────────
   describe('key mode detection', () => {
     it.each([

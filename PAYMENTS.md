@@ -313,14 +313,25 @@ global `/api` rate limiter and before maintenance mode.
 | `checkout.session.async_payment_succeeded` | fulfil |
 | `checkout.session.async_payment_failed` | order failed |
 | `checkout.session.expired` | order expired (slot freed) |
-| `charge.refunded` | record refund (cumulative `amount_refunded`); payment not yet linked → order found through the PaymentIntent's metadata; still unmatched → **500, not marked processed** (Stripe re-delivers) |
-| `charge.dispute.created` | order disputed + alert |
+| `charge.refunded` | record refund (cumulative `amount_refunded`) on OUR order — matched by PaymentIntent id or the charge's metadata `orderId` (charges carry the PaymentIntent metadata), else the PaymentIntent's metadata; ours but undecidable right now (Stripe unreachable) → **500, not marked processed** (Stripe re-delivers) |
+| `charge.dispute.created` | order disputed + alert (disputes carry no metadata → PaymentIntent lookup; unreachable → 500 + alert, retried) |
 | `charge.dispute.closed` | won → paid; lost → refunded + listing closed |
+| any event about a payment that is **not an advance.al order** | **200**, recorded `ignored:not-ours`, one log line, no alert |
 | anything else | 200, recorded as ignored |
 
+**Not ours** = no advance.al `orderId` in the session / charge / PaymentIntent
+metadata, a PaymentIntent this account doesn't know (404), or an `orderId`
+this database doesn't have. Our order always exists BEFORE its Stripe objects,
+so such an id never "arrives later" — it belongs to another integration on the
+same account (Payment Links), another environment, or the stripe-real test
+suite. Answering 500 for those would make Stripe retry for days and
+eventually disable the endpoint. (Exception kept on purpose: a PAID Checkout
+Session whose advance.al-format `orderId` we don't have still alerts
+"Payment for an unknown order", deduped.)
+
 Responses: 400 bad/missing signature · 503 secret not set (Stripe retries) ·
-500 transient failure or not-yet-applicable event (Stripe retries) · 200
-otherwise. Each Stripe event id
+500 transient failure or an event about OUR payment that can't be applied
+yet (Stripe retries) · 200 otherwise. Each Stripe event id
 is stored once (`PaymentEvent.providerEventId`, unique); a re-delivery of a
 processed event is a no-op, a re-delivery of one that failed half-way is
 processed again (every handler is idempotent).
