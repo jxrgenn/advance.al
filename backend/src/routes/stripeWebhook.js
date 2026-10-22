@@ -14,6 +14,13 @@
  * Dedupe: one PaymentEvent row per Stripe event id (unique providerEventId).
  * A re-delivery of an event that was fully processed is a no-op; a
  * re-delivery of one whose earlier attempt failed is processed again.
+ *
+ * Foreign objects: the Stripe account may also take payments that are not
+ * advance.al job orders (Payment Links, another integration, another
+ * environment, the stripe-real test suite). Those events answer 200 and are
+ * recorded as `ignored:not-ours` — never 500, which Stripe would retry for
+ * days and eventually disable the endpoint over. 500 ("retry") is only for
+ * events about OUR payments that cannot be applied yet.
  */
 
 import express from 'express';
@@ -50,44 +57,68 @@ function orderIdOfSession(session) {
   return isValidOrderId(id) ? id : null;
 }
 
-async function findOrderForPaymentIntent(paymentIntentId, metadataOrderId) {
+async function linkPaymentIntent(order, paymentIntentId) {
+  if (order && paymentIntentId && !order.providerPaymentId) {
+    await PaymentOrder.updateOne({ _id: order._id, providerPaymentId: { $exists: false } }, { $set: { providerPaymentId: paymentIntentId } });
+  }
+  return order;
+}
+
+/**
+ * Which advance.al order a charge / dispute belongs to.
+ *   { order }            ours
+ *   { foreign: reason }  provably NOT an order of this deployment → 200 ignored
+ *   { unknown: reason }  cannot tell right now (Stripe unreachable…) → 500 retry
+ *
+ * An order is created BEFORE its Stripe session / PaymentIntent exist, so an
+ * orderId this database does not have will never appear later: it belongs to
+ * another system on the same account (e.g. the stripe-real suite's
+ * look-alike ids). Charges carry the PaymentIntent's metadata (verified on
+ * real Stripe); disputes do not — for those the PaymentIntent is fetched.
+ */
+async function matchStripePayment(paymentIntentId, metadata) {
   if (paymentIntentId) {
     const byPi = await PaymentOrder.findOne({ providerPaymentId: paymentIntentId, provider: 'stripe' });
-    if (byPi) return byPi;
+    if (byPi) return { order: byPi };
   }
-  if (isValidOrderId(metadataOrderId)) {
-    const byMeta = await PaymentOrder.findOne({ orderId: metadataOrderId, provider: 'stripe' });
-    if (byMeta) return byMeta;
+  const metaOrderId = metadata?.orderId;
+  if (isValidOrderId(metaOrderId)) {
+    const byMeta = await PaymentOrder.findOne({ orderId: metaOrderId, provider: 'stripe' });
+    if (byMeta) return { order: await linkPaymentIntent(byMeta, paymentIntentId) };
+    return { foreign: `orderId ${metaOrderId} is not an order of this deployment` };
   }
-  // M2: the charge arrived before checkout.session.completed linked the
-  // PaymentIntent to its order. Our orderId lives in the PaymentIntent's
-  // metadata (payment_intent_data.metadata) — ask Stripe.
-  if (paymentIntentId && stripeConfigured()) {
-    let pi = null;
-    try {
-      pi = await retrievePaymentIntent(paymentIntentId);
-    } catch (err) {
-      // Unknown to this account / Stripe unreachable: treat as unmatched — the
-      // caller defers the event so Stripe re-delivers it.
-      logger.warn('stripe webhook: PaymentIntent lookup failed', { paymentIntentId, error: err.message });
-      return null;
+  if (!paymentIntentId) return { foreign: 'no PaymentIntent and no advance.al metadata' };
+  if (!stripeConfigured()) return { unknown: 'Stripe not configured — cannot look up the PaymentIntent' };
+  // M2: our metadata lives on the PaymentIntent (payment_intent_data.metadata).
+  let pi;
+  try {
+    pi = await retrievePaymentIntent(paymentIntentId);
+  } catch (err) {
+    if (err?.statusCode === 404 || err?.code === 'resource_missing') {
+      return { foreign: `PaymentIntent ${paymentIntentId} is unknown to this Stripe account/mode` };
     }
-    const viaPi = pi?.metadata?.orderId;
-    if (isValidOrderId(viaPi)) {
-      const order = await PaymentOrder.findOne({ orderId: viaPi, provider: 'stripe' });
-      if (order && !order.providerPaymentId) {
-        await PaymentOrder.updateOne({ _id: order._id, providerPaymentId: { $exists: false } }, { $set: { providerPaymentId: paymentIntentId } });
-      }
-      return order;
-    }
+    // Network / 5xx / rate limit / key permission: can't tell — retry.
+    logger.warn('stripe webhook: PaymentIntent lookup failed — Stripe will re-deliver', { paymentIntentId, error: err?.message });
+    return { unknown: `PaymentIntent lookup failed: ${err?.message || 'error'}` };
   }
-  return null;
+  const viaPi = pi?.metadata?.orderId;
+  if (!isValidOrderId(viaPi)) return { foreign: `PaymentIntent ${paymentIntentId} has no advance.al orderId` };
+  const order = await PaymentOrder.findOne({ orderId: viaPi, provider: 'stripe' });
+  if (!order) return { foreign: `orderId ${viaPi} is not an order of this deployment` };
+  return { order: await linkPaymentIntent(order, paymentIntentId) };
+}
+
+function ignoreForeign(kind, obj, pi, reason) {
+  logger.info(`stripe webhook: ${kind} is not an advance.al payment — ignored`, { object: obj.id, paymentIntent: pi, reason });
+  return 'ignored:not-ours';
 }
 
 async function handleEvent(event) {
   const obj = event.data?.object || {};
   switch (event.type) {
     case 'checkout.session.completed': {
+      // A session without our order id (Payment Link, another integration).
+      if (!orderIdOfSession(obj)) return ignoreForeign('checkout session', obj, obj.payment_intent, 'no advance.al orderId');
       if (obj.payment_status === 'paid') {
         const r = await fulfillFromStripeSession(obj, { source: 'webhook', eventId: event.id, livemode: event.livemode });
         return `fulfil:${r.outcome}`;
@@ -101,30 +132,33 @@ async function handleEvent(event) {
       return `left-open:payment_status=${obj.payment_status}`;
     }
     case 'checkout.session.async_payment_succeeded': {
+      if (!orderIdOfSession(obj)) return ignoreForeign('checkout session', obj, obj.payment_intent, 'no advance.al orderId');
       const r = await fulfillFromStripeSession(obj, { source: 'webhook', eventId: event.id, livemode: event.livemode });
       return `fulfil:${r.outcome}`;
     }
     case 'checkout.session.async_payment_failed': {
       const orderId = orderIdOfSession(obj);
-      if (!orderId) return 'ignored:no-order-id';
+      if (!orderId) return ignoreForeign('checkout session', obj, obj.payment_intent, 'no advance.al orderId');
       const r = await markOrderFailed(orderId, 'delayed payment failed at the bank (checkout.session.async_payment_failed)', { source: 'webhook' });
       return r ? 'order-failed' : 'no-change';
     }
     case 'checkout.session.expired': {
       const orderId = orderIdOfSession(obj);
-      if (!orderId) return 'ignored:no-order-id';
+      if (!orderId) return ignoreForeign('checkout session', obj, obj.payment_intent, 'no advance.al orderId');
       const r = await markOrderExpired(orderId, 'checkout session expired', { source: 'webhook' });
       return r ? 'order-expired' : 'no-change';
     }
     case 'charge.refunded': {
       const pi = typeof obj.payment_intent === 'string' ? obj.payment_intent : obj.payment_intent?.id;
-      const order = await findOrderForPaymentIntent(pi, obj.metadata?.orderId);
+      const m = await matchStripePayment(pi, obj.metadata);
+      if (m.foreign) return ignoreForeign('refunded charge', obj, pi, m.foreign);
+      const { order } = m;
       if (!order) {
-        // Not processed → Stripe retries; never silently drop a refund (M2).
+        // Ours, but not decidable yet → Stripe retries; never drop OUR refund (M2).
         await PaymentEvent.create({
           event: 'refund_unmatched', provider: 'stripe', source: 'webhook', paymentId: pi,
           amountCents: Number.isInteger(obj.amount_refunded) ? obj.amount_refunded : undefined,
-          notes: `charge ${obj.id}: no order matched yet — left for Stripe to re-deliver`,
+          notes: `charge ${obj.id}: ${m.unknown} — left for Stripe to re-deliver`,
         }).catch(() => {});
         alertPaymentsAdmin({
           title: '❓ Stripe refund not matched to an order (will retry)',
@@ -132,30 +166,35 @@ async function handleEvent(event) {
           dedupKey: `stripe-refund-unknown:${obj.id}`,
           email: false,
         });
-        throw new RetryLaterError(`refund for unmatched payment ${pi}`);
+        throw new RetryLaterError(`refund for payment ${pi}: ${m.unknown}`);
       }
       const r = await recordRefund(order, obj.amount_refunded, 'webhook', { fullyRefunded: obj.refunded === true, notes: `charge ${obj.id}` });
       return `refund:${r.outcome}`;
     }
     case 'charge.dispute.created': {
       const pi = typeof obj.payment_intent === 'string' ? obj.payment_intent : obj.payment_intent?.id;
-      const order = await findOrderForPaymentIntent(pi, obj.metadata?.orderId);
+      const m = await matchStripePayment(pi, obj.metadata);
+      if (m.foreign) return ignoreForeign('dispute', obj, pi, m.foreign);
+      const { order } = m;
       if (!order) {
+        // Could be ours — never miss a chargeback: alert once, Stripe re-delivers.
         alertPaymentsAdmin({
-          title: '🛑 Stripe dispute for an unknown payment',
-          fields: [{ name: 'PaymentIntent', value: String(pi) }, { name: 'Dispute', value: String(obj.id) }, { name: 'Amount', value: `${obj.amount} ${obj.currency}` }],
+          title: '🛑 Stripe dispute not matched yet (will retry)',
+          fields: [{ name: 'PaymentIntent', value: String(pi) }, { name: 'Dispute', value: String(obj.id) }, { name: 'Amount', value: `${obj.amount} ${obj.currency}` }, { name: 'Why', value: m.unknown }],
           dedupKey: `stripe-dispute-unknown:${obj.id}`,
         });
-        return 'ignored:order-not-found';
+        throw new RetryLaterError(`dispute for payment ${pi}: ${m.unknown}`);
       }
       const r = await recordDispute(order, { disputeId: obj.id, amountCents: obj.amount, reason: obj.reason, source: 'webhook' });
       return `dispute:${r.outcome}`;
     }
     case 'charge.dispute.closed': {
       const pi = typeof obj.payment_intent === 'string' ? obj.payment_intent : obj.payment_intent?.id;
-      const order = await findOrderForPaymentIntent(pi, obj.metadata?.orderId);
+      const m = await matchStripePayment(pi, obj.metadata);
+      if (m.foreign) return ignoreForeign('dispute', obj, pi, m.foreign);
+      const { order } = m;
       if (!order) {
-        throw new RetryLaterError(`dispute close for unmatched payment ${pi}`);
+        throw new RetryLaterError(`dispute close for payment ${pi}: ${m.unknown}`);
       }
       const r = await recordDisputeClosed(order, { disputeId: obj.id, status: obj.status, amountCents: obj.amount, source: 'webhook' });
       return `dispute-closed:${r.outcome}`;
