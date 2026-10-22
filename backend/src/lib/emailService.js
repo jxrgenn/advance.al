@@ -6,39 +6,46 @@ class EmailService {
   constructor() {
     this.transporter = null;
     this.isConfigured = false;
-    this.initializeTransporter();
+    this.initialized = false;
   }
 
-  // Initialize email transporter based on environment
-  initializeTransporter() {
-    const emailConfig = {
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: parseInt(process.env.SMTP_PORT) || 587,
-      secure: process.env.SMTP_SECURE === 'true' || false,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      },
-      connectionTimeout: 5000,
-      socketTimeout: 10000
-    };
+  // Lazy: this module is imported on every boot (notificationService uses it
+  // for SMS), so nothing may touch the network at load. It used to create an
+  // Ethereal account (HTTPS to api.nodemailer.com) on every start, production
+  // included — and a production sendEmail would then have gone to a fake inbox.
+  // SMTP when SMTP_USER/SMTP_PASS are set; an Ethereal test inbox only with
+  // NODE_ENV=development; otherwise unconfigured → sendEmail returns a mock.
+  async ensureTransporter() {
+    if (this.initialized || this.transporter) return;
+    this.initialized = true;
 
-    // Check if email is configured
-    /* istanbul ignore if — SMTP_USER/PASS not set in test env; ethereal test-account path is exercised */
+    /* istanbul ignore if — SMTP_USER/PASS not set in test env */
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
       try {
-        this.transporter = nodemailer.createTransport(emailConfig);
+        this.transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST || 'smtp.gmail.com',
+          port: parseInt(process.env.SMTP_PORT) || 587,
+          secure: process.env.SMTP_SECURE === 'true' || false,
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS
+          },
+          connectionTimeout: 5000,
+          socketTimeout: 10000
+        });
         this.isConfigured = true;
+        return;
       } catch (error) {
         logger.error('Email configuration error:', error.message);
-        this.setupTestAccount();
       }
-    } else {
-      this.setupTestAccount();
+    }
+
+    if (process.env.NODE_ENV === 'development') {
+      await this.setupTestAccount();
     }
   }
 
-  // Setup ethereal test account for development
+  // Ethereal test inbox (development only — see ensureTransporter)
   async setupTestAccount() {
     try {
       const testAccount = await nodemailer.createTestAccount();
@@ -62,6 +69,7 @@ class EmailService {
 
   // Send email with retry logic
   async sendEmail(to, subject, htmlContent, textContent) {
+    await this.ensureTransporter();
     if (!this.isConfigured) {
       return {
         success: true,
@@ -155,6 +163,7 @@ class EmailService {
 
   // Verify email configuration
   async verifyConnection() {
+    await this.ensureTransporter();
     if (!this.isConfigured) {
       return { success: false, error: 'Email service not configured' };
     }

@@ -2153,6 +2153,17 @@ router.delete('/education/:educationId', validateObjectId('educationId'), authen
   }
 });
 
+// Saved-jobs routes accept an ObjectId or a slug. A title edit gives a job a
+// new slug and keeps the old one in previousSlugs (#113); links carrying the
+// old slug must keep working here too, exactly like GET /api/jobs/:idOrSlug:
+// current slug first, then previous slugs.
+async function findJobByIdOrSlug(param, extra = {}, projection = null) {
+  const { Job } = await import('../models/index.js');
+  if (isObjectIdString(param)) return Job.findOne({ _id: param, ...extra }, projection);
+  return (await Job.findOne({ slug: param, ...extra }, projection))
+    || Job.findOne({ previousSlugs: param, ...extra }, projection);
+}
+
 // @route   POST /api/users/saved-jobs/check-bulk
 // @desc    Check saved status for multiple jobs at once (avoids N+1 API calls)
 // @access  Private (Job Seeker only)
@@ -2200,18 +2211,9 @@ router.post('/saved-jobs/check-bulk', authenticate, requireJobSeeker, async (req
 // @access  Private (Job Seeker only)
 router.post('/saved-jobs/:jobId', authenticate, requireJobSeeker, async (req, res) => {
   try {
-    const { Job } = await import('../models/index.js');
-
-    // Dual-lookup: param may be 24-char hex ObjectId or slug.
+    // Dual-lookup: param may be 24-char hex ObjectId, slug or a previous slug.
     const param = req.params.jobId;
-    const jobQuery = isObjectIdString(param)
-      ? { _id: param }
-      : { slug: param };
-    const job = await Job.findOne({
-      ...jobQuery,
-      isDeleted: false,
-      status: 'active'
-    });
+    const job = await findJobByIdOrSlug(param, { isDeleted: false, status: 'active' });
 
     if (!job) {
       return res.status(404).json({
@@ -2278,8 +2280,7 @@ router.delete('/saved-jobs/:jobId', authenticate, requireJobSeeker, async (req, 
     const param = req.params.jobId;
     let resolvedJobId = param;
     if (!isObjectIdString(param)) {
-      const { Job } = await import('../models/index.js');
-      const job = await Job.findOne({ slug: param }).select('_id');
+      const job = await findJobByIdOrSlug(param, {}, { _id: 1 });
       if (!job) {
         return res.status(404).json({
           success: false,
@@ -2407,8 +2408,7 @@ router.get('/saved-jobs/check/:jobId', authenticate, requireJobSeeker, async (re
     const param = req.params.jobId;
     let resolvedJobId = param;
     if (!isObjectIdString(param)) {
-      const { Job } = await import('../models/index.js');
-      const job = await Job.findOne({ slug: param }).select('_id');
+      const job = await findJobByIdOrSlug(param, {}, { _id: 1 });
       if (!job) {
         // Job doesn't exist — by definition not saved
         return res.json({
