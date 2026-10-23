@@ -468,7 +468,7 @@ const Terms = () => {
                 </li>
                 <li>
                   <span className="font-medium text-foreground">Ofruesit e palës së tretë:</span> Disponueshmëria
-                  mund të ndikohet nga ofruesit e infrastrukturës (Railway, Vercel, MongoDB Atlas).
+                  mund të ndikohet nga ofruesit e infrastrukturës (Render, Vercel, MongoDB Atlas).
                 </li>
               </ul>
             </CardContent>

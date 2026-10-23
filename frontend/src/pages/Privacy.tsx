@@ -360,7 +360,7 @@ const Privacy = () => {
                   <p className="text-xs">Përpunimi i pagesave me kartë për publikimin e punëve</p>
                 </div>
                 <div className="bg-muted/50 p-3 rounded-lg">
-                  <p className="font-medium text-foreground text-sm">Railway / Vercel</p>
+                  <p className="font-medium text-foreground text-sm">Render / Vercel</p>
                   <p className="text-xs">Infrastruktura e hostimit të backend dhe frontend</p>
                 </div>
               </div>

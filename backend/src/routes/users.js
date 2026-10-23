@@ -30,7 +30,7 @@ const router = express.Router();
 const isCloudinaryConfigured = () =>
   !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
 
-// In production, Cloudinary is REQUIRED — local disk is ephemeral on Railway/Vercel
+// In production, Cloudinary is REQUIRED — local disk is ephemeral on Render/Vercel
 const isProduction = process.env.NODE_ENV === 'production';
 /* istanbul ignore next — boot-time production-only warning, never fires in tests */
 if (isProduction && !isCloudinaryConfigured()) {

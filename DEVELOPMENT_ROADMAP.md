@@ -4567,3 +4567,18 @@ Final candidate `1b010b3` (main + 23 commits, 354 files). Not merged to main, no
 4. Admin config: `payment_enabled` on.
 5. `/healthz/payments` reports healthy + live.
 6. One real 35 € payment + refund. Payments are not proven until it succeeds.
+
+### 🚀 Deploy log — 2026-10-23 (owner: "continue with everything", skipped own testing)
+- 21:12 CEST: `main` fast-forwarded 6eaeec9 → e53b52b and pushed.
+- Vercel production deployed e53b52b in ~45 s. Read-only production smoke (10 public pages × 1280/375):
+  no console errors, no failed requests, no sideways scroll; client-feedback content and the 6-field
+  employer signup are live.
+- **Render did NOT auto-deploy.** ~55 min later `api.advance.al/healthz/payments` was still 404 (old code).
+  - GitHub "QA Tests" is red: about 90 failures, mostly the upload/Cloudinary-dependent suites. CI
+    has no Cloudinary secrets, an open owner question.
+  - Render is likely set to deploy only after CI passes, or its auto-deploy is off.
+  - → Owner: Render → advance-al → "Manual Deploy → Deploy latest commit". Optionally set Auto-Deploy
+    to "On Commit".
+- Production config still holds the OLD prices `pricing_standard_posting` 28 / `pricing_promoted_posting` 45
+  (public /api/configuration/public). The new backend charges what config says → owner: Admin → set 35 / 49.
+- Privacy/Terms now name Render (not Railway) as the backend host.
