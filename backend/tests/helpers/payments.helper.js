@@ -247,7 +247,7 @@ export function makeFakeStripe() {
         async retrieve(id, params = {}) {
           calls.retrieve.push(id);
           const s = sessions.get(id);
-          if (!s) throw Object.assign(new Error(`No such checkout.session: '${id}'`), { type: 'StripeInvalidRequestError', statusCode: 404, code: 'resource_missing', param: 'session' });
+          if (!s) throw Object.assign(new Error(`No such checkout.session: '${id}'`), { type: 'StripeInvalidRequestError', statusCode: 404, code: 'resource_missing' });
           const out = { ...s, metadata: { ...s.metadata } };
           const pi = s.payment_intent && paymentIntents.get(s.payment_intent);
           if (pi && (params.expand || []).some((e) => e.startsWith('payment_intent'))) {
@@ -267,11 +267,15 @@ export function makeFakeStripe() {
         },
       },
     },
+    // Transient failure of PaymentIntent lookups (Stripe unreachable).
+    failPiRetrieveWith: null,
     paymentIntents: {
       async retrieve(id) {
         calls.piRetrieve.push(id);
+        if (fake.failPiRetrieveWith) throw fake.failPiRetrieveWith;
         const pi = paymentIntents.get(id);
-        if (!pi) throw Object.assign(new Error(`No such payment_intent: '${id}'`), { type: 'StripeInvalidRequestError', statusCode: 404 });
+        // Real API (verified): 404, code resource_missing.
+        if (!pi) throw Object.assign(new Error(`No such payment_intent: '${id}'`), { type: 'StripeInvalidRequestError', statusCode: 404, code: 'resource_missing' });
         return { id: pi.id, livemode: fake.livemode ?? keyModeFromKey(process.env.STRIPE_SECRET_KEY) === 'live', metadata: { ...pi.metadata }, latest_charge: { id: `ch_${pi.id}`, amount_refunded: pi.amount_refunded } };
       },
     },
@@ -310,6 +314,11 @@ export function makeFakeStripe() {
       Object.assign(s, overrides);
       paymentIntents.set(s.payment_intent, { id: s.payment_intent, metadata: { ...s.metadata }, amount_refunded: 0 });
       return { ...s, metadata: { ...s.metadata } };
+    },
+    /** A PaymentIntent that exists on the account but is NOT an advance.al order (Payment Link, other integration). */
+    addForeignPaymentIntent(id, metadata = {}) {
+      paymentIntents.set(id, { id, metadata: { ...metadata }, amount_refunded: 0 });
+      return id;
     },
     /** Refund at Stripe (dashboard / API) — sets the PI's cumulative refunded cents. */
     refundAtStripe(paymentIntentId, amountRefunded) {

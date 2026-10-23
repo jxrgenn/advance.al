@@ -260,13 +260,27 @@ describe('payments — adversarial review fixes', () => {
       expect((await Job.findById(job._id).lean()).status).toBe('pending_payment');
     });
 
-    it('a refund that cannot be matched to any order → 500 and NOT marked processed (Stripe re-delivers)', async () => {
-      const evt = stripeEvent('charge.refunded', { id: 'ch_ghost', payment_intent: 'pi_test_unknown_to_us', amount: 3500, amount_refunded: 3500, refunded: true, currency: 'eur', metadata: {} });
+    it('OUR refund that cannot be matched yet (no charge metadata, Stripe unreachable) → 500, NOT processed; the re-delivery is applied', async () => {
+      const { orderId, paid } = await paidButNotFulfilled();
+      const evt = stripeEvent('charge.refunded', { id: 'ch_ours_late', payment_intent: paid.payment_intent, amount: 3500, amount_refunded: 3500, refunded: true, currency: 'eur', metadata: {} });
+      fake.failPiRetrieveWith = Object.assign(new Error('connect ETIMEDOUT'), { type: 'StripeConnectionError' });
       const r = await postStripeEvent(request, app, evt);
       expect(r.status).toBe(500);
       expect(r.body.error).toBe('not yet applicable — retry');
       expect((await PaymentEvent.findOne({ providerEventId: evt.id }).lean()).processedAt).toBeUndefined();
-      expect(await PaymentEvent.countDocuments({ event: 'refund_unmatched', paymentId: 'pi_test_unknown_to_us' })).toBe(1);
+      expect(await PaymentEvent.countDocuments({ event: 'refund_unmatched', paymentId: paid.payment_intent })).toBe(1);
+      expect((await PaymentOrder.findOne({ orderId }).lean()).refundedCents).toBe(0);
+
+      // Stripe re-delivers the SAME event once it can be resolved.
+      fake.failPiRetrieveWith = null;
+      const again = await postStripeEvent(request, app, evt);
+      expect(again.status).toBe(200);
+      const o = await PaymentOrder.findOne({ orderId }).lean();
+      expect(o.refundedCents).toBe(3500);
+      expect(o.providerPaymentId).toBe(paid.payment_intent);
+      const marker = await PaymentEvent.findOne({ providerEventId: evt.id }).lean();
+      expect(marker.processedAt).toBeInstanceOf(Date);
+      expect(marker.status).toBe('refund:refunded');
     });
 
     it('reconcile (lost webhooks): paid session whose PaymentIntent was refunded → not published', async () => {
