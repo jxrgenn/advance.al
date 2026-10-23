@@ -84,7 +84,7 @@ const Terms = () => {
               <ul className="list-disc list-inside space-y-1 ml-2">
                 <li>Publikimi dhe kërkimi i njoftimeve të punës</li>
                 <li>Aplikimi për punë dhe menaxhimi i aplikimeve</li>
-                <li>Gjenerimi i CV-ve me inteligjencë artificiale</li>
+                <li>Krijimi i CV-ve me inteligjencë artificiale</li>
                 <li>Përputhja inteligjente e kandidatëve me punët</li>
                 <li>Profile kompanish dhe punëkërkuesish</li>
               </ul>
@@ -319,11 +319,11 @@ const Terms = () => {
               </p>
 
               <div>
-                <h4 className="font-semibold text-foreground mb-2">Gjenerimi i CV-së</h4>
+                <h4 className="font-semibold text-foreground mb-2">Krijimi i CV-së me AI</h4>
                 <ul className="list-disc list-inside space-y-1 ml-2 text-sm">
-                  <li>Gjeneruesi i CV-së është një mjet këshillues dhe nuk garanton saktësinë e përmbajtjes</li>
-                  <li>Ju jeni plotësisht përgjegjës për rishikimin dhe saktësinë e CV-së së gjeneruar</li>
-                  <li>Ndalohet përdorimi i gjeneruesit për të krijuar kualifikime, eksperienca ose aftësi të rreme</li>
+                  <li>Krijuesi i CV-së me AI është një mjet këshillues dhe nuk garanton saktësinë e përmbajtjes</li>
+                  <li>Ju jeni plotësisht përgjegjës për rishikimin dhe saktësinë e CV-së së krijuar me AI</li>
+                  <li>Ndalohet përdorimi i krijuesit të CV-së për të shpikur kualifikime, eksperienca ose aftësi të rreme</li>
                 </ul>
               </div>
 

@@ -125,7 +125,9 @@ describe('auth.js — success paths', () => {
     expect(initRes.body.message).toMatch(/telefon/i);
   });
 
-  it('register flow creates an employer with employerProfile populated', async () => {
+  // An older client still sends the full company payload (city, industry,
+  // size, description, website) — the short signup accepts and stores it.
+  it('register flow creates an employer with employerProfile populated (full legacy payload)', async () => {
     pinVerificationCode();
 
     await request(app)
@@ -136,6 +138,7 @@ describe('auth.js — success paths', () => {
         userType: 'employer',
         firstName: 'Emp',
         lastName: 'Loyer',
+        phone: '+355691112233',
         city: 'Tiranë',
         companyName: 'TestCo',
         industry: 'Tech',

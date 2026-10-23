@@ -7,7 +7,7 @@ import JobCard from "@/components/JobCard";
 import CoreFilters from "@/components/CoreFilters";
 import RecentlyViewedJobs from "@/components/RecentlyViewedJobs";
 import PremiumJobsCarousel from "@/components/PremiumJobsCarousel";
-import { QuickUserBanner } from "@/components/QuickUserBanner";
+import { JobListPromo, PROMO_EVERY, promoKindsFor, shouldInsertPromoAfter } from "@/components/JobListPromo";
 import OnboardingGuide from "@/components/OnboardingGuide";
 
 import { Button } from "@/components/ui/button";
@@ -1244,26 +1244,24 @@ const Index = () => {
             {/* Job Listings */}
             {!loading && (
               <>
-                <div className="grid gap-6">
-                  {getMergedJobs().reduce((acc: JSX.Element[], job, index) => {
-                    // Add job card
-                    acc.push(
-                      <JobCard key={job._id} job={job} onApply={handleApply} initialSaved={savedJobsMap[job._id]} />
-                    );
-
-                    // Add banner every 4 jobs for all users
-                    if ((index + 1) % 4 === 0) {
-                      if (!isAuthenticated) {
-                        acc.push(<QuickUserBanner key={`banner-${index}`} />);
-                      } else {
-                        acc.push(
-                          <QuickUserBanner key={`banner-${index}`} variant="cv" />
-                        );
+                <div className="grid gap-6" data-job-list>
+                  {(() => {
+                    // Inline promo after every PROMO_EVERY-th job (never after the last
+                    // one on the page). Which promo depends on who is looking
+                    // and rotates per slot + page, so pages don't repeat.
+                    const list = getMergedJobs();
+                    const kinds = promoKindsFor(user?.userType, isAuthenticated);
+                    return list.reduce((acc: JSX.Element[], job, index) => {
+                      acc.push(
+                        <JobCard key={job._id} job={job} onApply={handleApply} initialSaved={savedJobsMap[job._id]} />
+                      );
+                      if (kinds.length > 0 && shouldInsertPromoAfter(index, list.length)) {
+                        const slot = Math.floor(index / PROMO_EVERY) + (currentPage - 1);
+                        acc.push(<JobListPromo key={`promo-${index}`} kind={kinds[slot % kinds.length]} />);
                       }
-                    }
-
-                    return acc;
-                  }, [])}
+                      return acc;
+                    }, []);
+                  })()}
                 </div>
 
                 {/* No Results */}

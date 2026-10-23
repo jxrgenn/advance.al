@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Navigation from "@/components/Navigation";
+import SEO from "@/components/SEO";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, CheckCircle, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin, Play, Lightbulb, HelpCircle, Upload, ChevronDown, ChevronUp, CreditCard, RefreshCw } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, Users, Briefcase, TrendingUp, Building, Loader2, Save, X, MoreVertical, Check, CheckCircle, Clock, UserCheck, UserX, Star, FileText, Mail, Phone, MessageCircle, MapPin, Play, Lightbulb, HelpCircle, Upload, ChevronDown, ChevronUp, CreditCard, RefreshCw, ClipboardList, Circle, ArrowRight } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import ReportUserModal from "@/components/ReportUserModal";
 import { useToast } from "@/hooks/use-toast";
@@ -21,7 +22,7 @@ import { experienceLabel } from "@/lib/profileUtils";
 import { degreeLabel, periodLabel } from "@/lib/profileHistory";
 import { viewResume, downloadResume, isInlineViewable, DOCX_VIEW_TOOLTIP } from "@/lib/resumeView";
 import { useAuth } from "@/contexts/AuthContext";
-import { validateForm, employerDashboardSettingsRules, formatValidationErrors, isValidAlbanianPhone, normalizeAlbanianPhone, ALBANIAN_PHONE_MESSAGE, cleanAlbanianPhoneInput, COMPANY_DESCRIPTION_LIMITS, IMAGE_UPLOAD, uploadProblem } from "@/lib/formValidation";
+import { validateForm, employerDashboardSettingsRules, formatValidationErrors, isValidAlbanianPhone, normalizeAlbanianPhone, ALBANIAN_PHONE_MESSAGE, cleanAlbanianPhoneInput, COMPANY_DESCRIPTION_LIMITS, IMAGE_UPLOAD, uploadProblem, getEmployerProfileGaps, EMPLOYER_PROFILE_GAP_LABELS, type EmployerProfileGap } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { jobTypeLabel, jobStatusLabel } from "@/lib/labels";
 import { formatAlbanianDate } from "@/lib/albanianDate";
@@ -174,6 +175,14 @@ const EmployerDashboard = () => {
   const { toast } = useToast();
   const { user, updateUser } = useAuth();
   const navigate = useNavigate();
+  // Short employer signup (2026-10-22): what is still missing before the
+  // first job post — from the SAVED profile (same rule as the server gate).
+  const profileGaps: EmployerProfileGap[] = user?.userType === 'employer' ? getEmployerProfileGaps(user) : [];
+  const storedIndustry = user?.profile?.employerProfile?.industry || '';
+  const openCompanySettings = () => {
+    setCurrentTab('settings');
+    setTimeout(() => document.querySelector('[data-tutorial="settings-card"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
+  };
 
   // Tutorial steps for Jobs tab
   const jobsTutorialSteps = [
@@ -1427,6 +1436,7 @@ const EmployerDashboard = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="Paneli i punëdhënësit" path="/employer-dashboard" noindex />
       <Navigation />
 
       <div className="container py-8">
@@ -1478,20 +1488,71 @@ const EmployerDashboard = () => {
                     ? 'Nuk mund të publikoni punë me këtë llogari. Për më shumë informacion na shkruani në info@advance.al.'
                     : 'Ekipi ynë po verifikon kompaninë tuaj. Do të mund të publikoni punë sapo llogaria të verifikohet — do t\'ju njoftojmë me email. Ndërkohë mund të plotësoni profilin e kompanisë.'}
                 </p>
-                {!rejected && (
+                {/* With an incomplete profile the completion card below has the CTA. */}
+                {!rejected && profileGaps.length === 0 && (
                   <Button
                     variant="link"
                     size="sm"
                     className="h-auto p-0 text-amber-900 underline"
-                    onClick={() => setCurrentTab('settings')}
+                    onClick={openCompanySettings}
                   >
-                    Plotëso profilin e kompanisë
+                    Shiko profilin e kompanisë
                   </Button>
                 )}
               </div>
             </div>
           );
         })()}
+
+        {/* Company-profile completion (short signup): city, industry and the
+            description are required before the first job post — the server
+            refuses POST /api/jobs until they are saved. */}
+        {profileGaps.length > 0 && (
+          <div
+            role="region"
+            aria-labelledby="complete-profile-title"
+            data-testid="company-profile-completion"
+            className="mb-8 overflow-hidden rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-white shadow-sm"
+          >
+            <div className="flex flex-col gap-5 p-5 sm:p-6 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-start gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                  <ClipboardList className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <div className="space-y-1.5">
+                  <h2 id="complete-profile-title" className="text-lg font-semibold text-foreground">Plotëso profilin e kompanisë</h2>
+                  <p className="text-sm text-muted-foreground max-w-xl">
+                    Kandidatët duan të dinë kush jeni. Shtoni të dhënat më poshtë — pa to nuk mund të publikoni punën e parë
+                    {!user?.profile?.employerProfile?.verified ? ' dhe verifikimi i llogarisë merr më shumë kohë' : ''}.
+                  </p>
+                  <ul className="mt-2 grid gap-1.5 text-sm sm:grid-cols-3 sm:gap-4" aria-label="Çfarë mungon">
+                    {(['city', 'industry', 'description'] as EmployerProfileGap[]).map((gap) => {
+                      const missing = profileGaps.includes(gap);
+                      return (
+                        <li key={gap} className={`flex items-center gap-2 ${missing ? 'text-foreground' : 'text-muted-foreground line-through decoration-muted-foreground/40'}`}>
+                          {missing
+                            ? <Circle className="h-4 w-4 shrink-0 text-blue-500" aria-hidden="true" />
+                            : <CheckCircle className="h-4 w-4 shrink-0 text-green-600" aria-hidden="true" />}
+                          <span>{gap === 'description' ? 'Përshkrimi' : EMPLOYER_PROFILE_GAP_LABELS[gap]}</span>
+                          <span className="sr-only">{missing ? '— mungon' : '— plotësuar'}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              </div>
+              <div className="flex flex-col items-stretch gap-2 md:items-end">
+                <Button onClick={openCompanySettings} className="whitespace-nowrap" data-testid="complete-profile-cta">
+                  Plotëso profilin
+                  <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+                </Button>
+                <span className="text-xs text-muted-foreground text-center md:text-right">
+                  {3 - profileGaps.length} nga 3 të plotësuara
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid md:grid-cols-3 gap-6 mb-8">
@@ -2118,6 +2179,12 @@ const EmployerDashboard = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                {profileGaps.length > 0 && (
+                  <div role="status" data-testid="settings-missing-fields" className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                    <p className="font-semibold">Para punës së parë plotësoni dhe ruani:</p>
+                    <p className="mt-1">{profileGaps.map((g) => EMPLOYER_PROFILE_GAP_LABELS[g]).join(' · ')}</p>
+                  </div>
+                )}
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div data-tutorial="company-name">
@@ -2150,10 +2217,10 @@ const EmployerDashboard = () => {
                   <div data-tutorial="company-description">
                     <TextAreaWithCounter
                       id="description"
-                      label="Përshkrimi i Kompanisë"
+                      label="Përshkrimi i Kompanisë *"
                       value={profileData.description}
                       onChange={(e) => setProfileData(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Shkruani një përshkrim të shkurtër për kompanin..."
+                      placeholder="Çfarë bën kompania, sa punonjës keni, pse ia vlen të punosh me ju… (50–1000 karaktere)"
                       rows={3}
                       maxLength={COMPANY_DESCRIPTION_LIMITS.max}
                       minLength={COMPANY_DESCRIPTION_LIMITS.min}
@@ -2163,15 +2230,19 @@ const EmployerDashboard = () => {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div data-tutorial="industry">
-                      <Label htmlFor="industry">Industria</Label>
+                      <Label htmlFor="industry">Industria *</Label>
+                      {/* Locked for verified companies once SAVED (the server
+                          lets a verified employer set it once). */}
                       <Select
                         value={profileData.industry}
                         onValueChange={(value) => setProfileData(prev => ({ ...prev, industry: value }))}
-                        disabled={user?.profile?.employerProfile?.verified && profileData.industry !== ''}
+                        disabled={user?.profile?.employerProfile?.verified && storedIndustry !== ''}
                       >
                         <SelectTrigger
-                          className={(user?.profile?.employerProfile?.verified && profileData.industry !== '') ? "bg-muted cursor-not-allowed" : ""}
-                          style={(user?.profile?.employerProfile?.verified && profileData.industry !== '') ? { color: 'hsl(var(--foreground))' } : undefined}
+                          id="industry"
+                          aria-invalid={profileGaps.includes('industry')}
+                          className={(user?.profile?.employerProfile?.verified && storedIndustry !== '') ? "bg-muted cursor-not-allowed" : (profileGaps.includes('industry') ? "border-amber-400" : "")}
+                          style={(user?.profile?.employerProfile?.verified && storedIndustry !== '') ? { color: 'hsl(var(--foreground))' } : undefined}
                         >
                           <SelectValue
                             placeholder="Zgjidhni industrinë"
@@ -2198,12 +2269,12 @@ const EmployerDashboard = () => {
                           <SelectItem value="Tjetër">Tjetër</SelectItem>
                         </SelectContent>
                       </Select>
-                      {user?.profile?.employerProfile?.verified && profileData.industry !== '' && (
+                      {user?.profile?.employerProfile?.verified && storedIndustry !== '' && (
                         <p className="text-xs text-muted-foreground mt-1">
                           Industria nuk mund të ndryshohet për kompani të verifikuara
                         </p>
                       )}
-                      {user?.profile?.employerProfile?.verified && profileData.industry === '' && (
+                      {user?.profile?.employerProfile?.verified && storedIndustry === '' && (
                         <p className="text-xs text-muted-foreground mt-1">
                           Ju lutem zgjidhni industrinë tuaj
                         </p>
@@ -2228,7 +2299,7 @@ const EmployerDashboard = () => {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" data-tutorial="location">
                     <div>
-                      <Label htmlFor="city">Qyteti</Label>
+                      <Label htmlFor="city">Qyteti *</Label>
                       <Select value={profileData.city} onValueChange={(value) => {
                         const selectedLocation = locations.find(loc => loc.city === value);
                         setProfileData(prev => ({
@@ -2237,7 +2308,7 @@ const EmployerDashboard = () => {
                           region: selectedLocation?.region || ''
                         }));
                       }}>
-                        <SelectTrigger>
+                        <SelectTrigger id="city" aria-invalid={profileGaps.includes('city')} className={profileGaps.includes('city') ? "border-amber-400" : ""}>
                           <SelectValue placeholder="Zgjidhni qytetin" />
                         </SelectTrigger>
                         <SelectContent>

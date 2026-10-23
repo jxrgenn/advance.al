@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Navigation from "@/components/Navigation";
+import SEO from "@/components/SEO";
 import ReportUserModal from "@/components/ReportUserModal";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ const ReportUser = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="Raporto një përdorues" path="/report-user" noindex />
       <Navigation />
 
       <div className="container py-8 max-w-2xl">

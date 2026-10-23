@@ -23,6 +23,7 @@ import { getListingPrices, isEmployerFree, jobHasFreeBasis } from '../lib/pricin
 import { cancelOpenOrdersForJob, recordRevenue } from '../services/payments/orderService.js';
 import { SALARY_CURRENCIES, APPROX_ALL_PER_EUR, monthlyToAnnual } from '../lib/salary.js';
 import { diacriticInsensitivePattern } from '../lib/searchRegex.js';
+import { getEmployerProfileGaps, employerProfileIncompleteMessage, EMPLOYER_PROFILE_INCOMPLETE_CODE, EMPLOYER_SETTINGS_PATH } from '../lib/companyProfile.js';
 
 const router = express.Router();
 
@@ -1097,7 +1098,27 @@ const checkPostingFrozen = async (req, res, next) => {
   }
 };
 
-router.post('/', authenticate, requireEmployer, requireVerifiedEmployer, checkPostingFrozen, createJobValidation, handleValidationErrors, async (req, res) => {
+// Short employer signup (owner decision 2026-10-22): city, industry and the
+// company description are collected in the dashboard settings and are
+// required before an employer can publish. Checked BEFORE the verification
+// gate — completing the profile is the step the employer can take now, and
+// what the admin verifies. The frontend shows the same rule
+// (formValidation.ts getEmployerProfileGaps) but this is the enforcement.
+const requireCompleteEmployerProfile = (req, res, next) => {
+  const missing = getEmployerProfileGaps(req.user);
+  if (missing.length > 0) {
+    return res.status(403).json({
+      success: false,
+      code: EMPLOYER_PROFILE_INCOMPLETE_CODE,
+      message: employerProfileIncompleteMessage(missing),
+      missingFields: missing,
+      settingsUrl: EMPLOYER_SETTINGS_PATH
+    });
+  }
+  next();
+};
+
+router.post('/', authenticate, requireEmployer, requireCompleteEmployerProfile, requireVerifiedEmployer, checkPostingFrozen, createJobValidation, handleValidationErrors, async (req, res) => {
   try {
     const {
       title,

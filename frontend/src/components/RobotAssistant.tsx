@@ -85,7 +85,7 @@ const RobotAssistant = () => {
                   <FileText size={16} className="text-green-600" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-800">Gjenero CV</p>
+                  <p className="text-sm font-medium text-gray-800">Krijo CV</p>
                   <p className="text-xs text-gray-500">Krijo CV me inteligjencë artificiale</p>
                 </div>
               </button>

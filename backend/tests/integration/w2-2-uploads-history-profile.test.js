@@ -431,7 +431,7 @@ describe('W2-2 uploads / history / employer profile', () => {
     let seq = 0;
     const body = (over = {}) => ({
       email: `w22-signup-${Date.now()}-${++seq}@example.com`, password: 'StrongPass1', userType: 'employer',
-      firstName: 'Punë', lastName: 'Dhënës', city: 'Tiranë', companyName: 'Test Sh.p.k', industry: 'Teknologji',
+      firstName: 'Punë', lastName: 'Dhënës', phone: '+355691234567', city: 'Tiranë', companyName: 'Test Sh.p.k', industry: 'Teknologji',
       companySize: '1-10', description: 'Firmë e vogël ndërtimi në Tiranë me 10 punonjës, që nga 2015.', ...over,
     });
     async function signup(over) {

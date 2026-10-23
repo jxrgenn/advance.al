@@ -7,6 +7,11 @@ export const LEGACY_INDEXES = [
   // MongoDB TTL deletes the WHOLE users document once the oldest date in the
   // array is 7 days old, so any account with one stale refresh token vanished.
   { collection: 'users', name: 'refreshTokens.createdAt_1' },
+  // Plain unique index from `email: { unique: true }` on QuickUser. The quick
+  // profile now accepts a phone instead of an email (owner decision
+  // 2026-10-22); with this index every email-less subscriber collides on
+  // null. Replaced by the partial index `email_unique_if_present`.
+  { collection: 'quickusers', name: 'email_1' },
 ];
 
 const ALREADY_GONE = new Set(['IndexNotFound', 'NamespaceNotFound']);

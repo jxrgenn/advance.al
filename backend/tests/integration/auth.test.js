@@ -81,7 +81,9 @@ describe('Auth API - Integration Tests', () => {
       expect(response.body.errors).toBeDefined();
     });
 
-    it('rejects employer registration missing companySize', async () => {
+    // Short employer signup (owner decision 2026-10-22): company size is no
+    // longer asked at signup, but the mobile number is required.
+    it('rejects employer registration missing the mobile number → 400 on phone', async () => {
       const response = await request(app)
         .post('/api/auth/initiate-registration')
         .send({
@@ -90,12 +92,11 @@ describe('Auth API - Integration Tests', () => {
           userType: 'employer',
           firstName: 'Test',
           lastName: 'User',
-          city: 'Tiranë',
-          companyName: 'TestCo',
-          industry: 'Teknologji'
+          companyName: 'TestCo'
         });
 
       expect(response.status).toBe(400);
+      expect(response.body.errors).toEqual([{ field: 'phone', message: 'Numri i celularit është i detyrueshëm' }]);
     });
 
     it('accepts valid jobseeker initiate (caches pending record)', async () => {

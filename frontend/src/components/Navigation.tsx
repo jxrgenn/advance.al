@@ -253,7 +253,7 @@ const Navigation = () => {
               location.pathname === "/employers" ? "text-primary" : "text-muted-foreground"
             }`}
           >
-            Punëdhenes
+            Punëdhënës
           </Link>
           <Link
             to="/jobseekers"
@@ -532,7 +532,7 @@ loadNotifications();
               }`}
               onClick={() => setMobileMenuOpen(false)}
             >
-              Punëdhenes
+              Punëdhënës
             </Link>
             <Link
               to="/jobseekers"

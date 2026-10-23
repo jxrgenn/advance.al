@@ -1,0 +1,86 @@
+/* Motion for the hand-built SVG illustrations (components/illustrations).
+ *
+ * Rules:
+ *  - Everything here is decorative. Under prefers-reduced-motion every
+ *    animation is removed and each element simply shows its final state
+ *    (base styles are always the "finished" look; keyframes only describe
+ *    how we get there).
+ *  - Entrance animations are paused until the stage is on screen: the
+ *    component sets data-play="true" on .ill-stage once it is in view.
+ *  - Elements that carry a transform attribute are never animated with a
+ *    CSS transform themselves (CSS would override the attribute) — the
+ *    animated element is always an inner <g>.
+ */
+
+.ill-stage .ill-wait {
+  animation-play-state: paused;
+}
+.ill-stage[data-play="true"] .ill-wait {
+  animation-play-state: running;
+}
+
+.ill-box {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.ill-box-left {
+  transform-box: fill-box;
+  transform-origin: left center;
+}
+
+@keyframes ill-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ill-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes ill-pop {
+  0% { opacity: 0; transform: scale(0.2); }
+  65% { opacity: 1; transform: scale(1.12); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes ill-grow-x {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes ill-draw {
+  from { stroke-dashoffset: 100; }
+  to { stroke-dashoffset: 0; }
+}
+/* A short bright dash travelling along a path with pathLength="100". */
+@keyframes ill-travel {
+  from { stroke-dashoffset: 108; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes ill-breathe {
+  0%, 100% { opacity: 0.55; transform: scale(0.96); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+@keyframes ill-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes ill-float {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(0, -4px); }
+}
+/* Magnifier: drifts in from the crowd and settles on the chosen candidate. */
+@keyframes ill-settle {
+  0% { opacity: 0; transform: translate(-70px, 34px) rotate(-7deg); }
+  18% { opacity: 1; }
+  62% { transform: translate(6px, -3px) rotate(1deg); }
+  82% { transform: translate(-2px, 1px) rotate(-0.3deg); }
+  100% { opacity: 1; transform: translate(0, 0) rotate(0deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ill-stage,
+  .ill-stage * {
+    animation: none !important;
+  }
+  /* travelling signals only make sense in motion */
+  .ill-stage .ill-signal {
+    display: none;
+  }
+}

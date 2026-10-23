@@ -6,6 +6,7 @@ import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { DollarSign, Edit, Loader2, Save, CheckCircle, Briefcase, Star, Users } from 'lucide-react';
 import { useToast } from '../components/ui/use-toast';
+import { LISTING_DURATION_DAYS } from '@/lib/pricing';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -205,7 +206,7 @@ const BusinessDashboard: React.FC = () => {
               </div>
             )}
             <div className="text-xs text-muted-foreground space-y-0.5">
-              <p>Postim aktiv për 21 ditë</p>
+              <p>Postim aktiv për {LISTING_DURATION_DAYS} ditë</p>
               <p>Shfaqe në listën e punëve</p>
               <p>Aplikime të pakufizuara</p>
               <p>Menaxhim aplikimesh</p>
@@ -226,7 +227,7 @@ const BusinessDashboard: React.FC = () => {
               <Star className="h-5 w-5 text-yellow-600" />
             </div>
             <CardTitle className="text-base">Postim i Promovuar</CardTitle>
-            <p className="text-xs text-muted-foreground">Pozicion prioritar në listë</p>
+            <p className="text-xs text-muted-foreground">Shfaqet te &ldquo;Punë të Promovuara&rdquo;</p>
           </CardHeader>
           <CardContent className="text-center space-y-3 px-3 pb-4">
             {editMode ? (
@@ -248,46 +249,28 @@ const BusinessDashboard: React.FC = () => {
             )}
             <div className="text-xs text-muted-foreground space-y-0.5">
               <p>Gjithçka nga paketa Standarte</p>
-              <p>Pozicion prioritar në listë</p>
-              <p>Distinktiv &quot;E PROMOVUAR&quot;</p>
-              <p>3× më shumë dukshmëri</p>
+              <p>Në karuselin &ldquo;Punë të Promovuara&rdquo; në faqen kryesore dhe te Punët</p>
+              <p>Aktiv për {LISTING_DURATION_DAYS} ditë</p>
             </div>
           </CardContent>
         </Card>
 
-        {/* Candidate Viewing */}
-        <Card className="border-2 border-purple-200">
+        {/* Candidate Viewing — not built yet: shown as coming soon, no price and
+            no feature promises (its stored price is kept untouched on save). */}
+        <Card className="border-2 border-dashed border-purple-200 bg-muted/30" data-testid="pricing-candidate-viewing-soon">
           <CardHeader className="text-center pb-2 px-3 pt-4">
             <div className="mx-auto w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center mb-1">
               <Users className="h-5 w-5 text-purple-600" />
             </div>
             <CardTitle className="text-base">Shikimi i Kandidatëve</CardTitle>
-            <p className="text-xs text-muted-foreground">Qasje në profilet e kandidatëve</p>
-          </CardHeader>
-          <CardContent className="text-center space-y-3 px-3 pb-4">
-            {editMode ? (
-              <div className="space-y-1">
-                <Label className="text-xs">Çmimi (EUR)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={1000}
-                  value={editValues.candidateViewing}
-                  onChange={(e) => setEditValues({ ...editValues, candidateViewing: Number(e.target.value) })}
-                  className="text-center text-xl font-bold"
-                />
-              </div>
-            ) : (
-              <div className="text-3xl font-bold text-purple-600">
-                €{pricing.candidateViewing}
-              </div>
-            )}
-            <div className="text-xs text-muted-foreground space-y-0.5">
-              <p>Shiko profilet e kandidatëve</p>
-              <p>Shkarko CV-të e tyre</p>
-              <p>Kontakto kandidatët direkt</p>
-              <p>Filtrim i avancuar</p>
+            <div className="flex justify-center pt-1">
+              <Badge variant="secondary" className="text-xs">Së shpejti</Badge>
             </div>
+          </CardHeader>
+          <CardContent className="text-center px-3 pb-4">
+            <p className="text-xs text-muted-foreground">
+              Ky shërbim nuk është ende aktiv. Çmimi dhe përmbajtja do të caktohen kur të hapet.
+            </p>
           </CardContent>
         </Card>
       </div>

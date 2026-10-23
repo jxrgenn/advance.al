@@ -56,7 +56,9 @@ describe('quickusers.js — extra branches', () => {
   });
 
   describe('POST / signup branches', () => {
-    it('rejects missing firstName (validation L31-40)', async () => {
+    // CV-first quick profile (owner decision 2026-10-22): the name is
+    // optional — a missing firstName is no longer a validation error.
+    it('accepts a signup without firstName → 201, no firstName stored', async () => {
       const r = await request(app)
         .post('/api/quickusers')
         .send({
@@ -65,7 +67,23 @@ describe('quickusers.js — extra branches', () => {
           location: 'Tiranë',
           interests: ['Teknologji'],
         });
+      expect(r.status).toBe(201);
+      const stored = await QuickUser.findOne({ email: 'nofirst@example.com' }).lean();
+      expect(stored.firstName).toBeUndefined();
+      expect(stored.lastName).toBe('NoFirst');
+    });
+
+    it('rejects a firstName of 1 character (still validated when given) → 400', async () => {
+      const r = await request(app)
+        .post('/api/quickusers')
+        .send({
+          firstName: 'A',
+          email: 'shortname@example.com',
+          location: 'Tiranë',
+          interests: ['Teknologji'],
+        });
       expect(r.status).toBe(400);
+      expect(r.body.errors).toContainEqual({ field: 'firstName', message: 'Emri duhet të ketë midis 2-50 karaktere' });
     });
 
     it('accepts signup with phone field (L262-264)', async () => {

@@ -1001,7 +1001,7 @@ router.get('/user-insights', async (req, res) => {
       recentRegistrations: recentRegistrations.map(user => ({
         name: `${user.profile.firstName} ${user.profile.lastName}`,
         type: user.userType,
-        location: user.profile.location.city,
+        location: user.profile?.location?.city || null,
         registeredAt: user.createdAt,
         timeAgo: formatTimeAgo(user.createdAt)
       })),

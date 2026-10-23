@@ -136,7 +136,7 @@ describe('AI CV — use as profile CV (O-70) + cleanup/quota (O-71)', () => {
       _setOpenAIClient(throwingStub(() => new OpenAI.AuthenticationError(401, { message: 'Incorrect API key' }, 'Incorrect API key', {})));
       const r = await generate(user);
       expect(r.status).toBe(500);
-      expect(r.body.message).toBe('Gabim në gjenerimin e CV');
+      expect(r.body.message).toBe('Gabim në krijimin e CV-së');
       expect(await peek(`cv:${user._id}`)).toBe(0);
     }, 30000);
 
@@ -146,7 +146,7 @@ describe('AI CV — use as profile CV (O-70) + cleanup/quota (O-71)', () => {
       _setOpenAIClient(throwingStub(() => new OpenAI.APIConnectionTimeoutError()));
       const r = await generate(user);
       expect(r.status).toBe(504);
-      expect(r.body.message).toBe('Gjenerimi i CV-së po zgjat më shumë se zakonisht. Provoni përsëri pas pak minutash.');
+      expect(r.body.message).toBe('Krijimi i CV-së po zgjat më shumë se zakonisht. Provoni përsëri pas pak minutash.');
       expect(await peek(`cv:${user._id}`)).toBe(1);
     }, 30000);
 
@@ -180,7 +180,7 @@ describe('AI CV — use as profile CV (O-70) + cleanup/quota (O-71)', () => {
       _setOpenAIClient(chatStub('{"language":"sq","personalInfo":{"fullName":"Te', { finishReason: 'length' }));
       const r = await generate(user);
       expect(r.status).toBe(422);
-      expect(r.body.message).toBe('CV-ja doli shumë e gjatë për t\'u gjeneruar. Shkurtoni tekstin dhe provoni përsëri.');
+      expect(r.body.message).toBe('CV-ja doli shumë e gjatë për t\'u krijuar. Shkurtoni tekstin dhe provoni përsëri.');
       expect(await peek(`cv:${user._id}`)).toBe(1);
     });
 
@@ -225,7 +225,7 @@ describe('AI CV — use as profile CV (O-70) + cleanup/quota (O-71)', () => {
       const { user } = await createJobseeker({ email: 'o70-none@example.com' });
       const r = await useAsProfile(user);
       expect(r.status).toBe(404);
-      expect(r.body.message).toBe('Nuk keni një CV të gjeneruar me AI. Gjeneroni një CV fillimisht.');
+      expect(r.body.message).toBe('Nuk keni një CV të krijuar me AI. Krijoni një CV fillimisht.');
     });
 
     it('employer → 403, no auth → 401', async () => {
@@ -269,7 +269,7 @@ describe('AI CV — use as profile CV (O-70) + cleanup/quota (O-71)', () => {
 
       const r = await useAsProfile(user, first.body.data.files.pdf.fileId);
       expect(r.status).toBe(409);
-      expect(r.body.message).toBe('Kjo CV është zëvendësuar nga një gjenerim më i ri. Rifreskoni faqen dhe provoni përsëri.');
+      expect(r.body.message).toBe('Kjo CV është zëvendësuar nga një CV më e re. Rifreskoni faqen dhe provoni përsëri.');
       const fresh = await User.findById(user._id).lean();
       expect(fresh.profile.jobSeekerProfile.resume).toBeUndefined();
     });

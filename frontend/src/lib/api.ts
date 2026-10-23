@@ -30,7 +30,9 @@ export interface User {
     lastName: string;
     fullName: string;
     phone?: string;
-    location: {
+    // Employers from the short signup have no location until they fill in
+    // the dashboard settings (2026-10-22).
+    location?: {
       city: string;
       region: string;
     };
@@ -79,8 +81,9 @@ export interface User {
     };
     employerProfile?: {
       companyName: string;
-      companySize: string;
-      industry: string;
+      // Optional since the short employer signup — set in the dashboard.
+      companySize?: string;
+      industry?: string;
       description?: string;
       website?: string;
       verified: boolean;
@@ -528,7 +531,9 @@ export const authApi = {
     userType: 'jobseeker' | 'employer';
     firstName: string;
     lastName: string;
-    city: string;
+    // Required for jobseekers; employers add it later in the dashboard.
+    city?: string;
+    // Required for employers (short signup: name, company, email, mobile, password).
     phone?: string;
     companyName?: string;
     industry?: string;
@@ -1929,31 +1934,60 @@ export const adminApi = {
 };
 
 // Quick Users API
+export interface QuickProfileCvFields {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  city?: string;
+  title?: string;
+  interests: string[];
+}
+
+export interface QuickUserCreated {
+  id: string;
+  email?: string;
+  phone?: string;
+  // false for a phone-only profile — job alerts are emails
+  emailAlerts: boolean;
+}
+
+export interface QuickProfileCvResult {
+  // completed: read by AI · partial: only some details found · failed: unreadable
+  status: 'completed' | 'partial' | 'failed';
+  fields: QuickProfileCvFields;
+}
+
 export const quickUsersApi = {
-  // Create a quick user for job notifications (supports optional CV file upload)
+  // Create a quick user for job notifications (supports optional CV file upload).
+  // CV-first quick profile (2026-10-22): the name is optional and the contact
+  // is an email OR a mobile (at least one). Only an email gets job alerts.
   createQuickUser: async (data: {
-    firstName: string;
-    lastName: string;
-    email: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
     phone?: string;
     city: string;
     interests: string[];
     customInterests?: string[];
     resume?: File | null;
-  }): Promise<ApiResponse<{ quickUser: any }>> => {
+  }): Promise<ApiResponse<QuickUserCreated>> => {
+    const optional = {
+      ...(data.firstName?.trim() && { firstName: data.firstName.trim() }),
+      ...(data.lastName?.trim() && { lastName: data.lastName.trim() }),
+      ...(data.email?.trim() && { email: data.email.trim() }),
+      ...(data.phone && { phone: data.phone }),
+    };
     // Use FormData when a resume file is provided
     if (data.resume) {
       const formData = new FormData();
-      formData.append('firstName', data.firstName);
-      formData.append('lastName', data.lastName);
-      formData.append('email', data.email);
-      if (data.phone) formData.append('phone', data.phone);
+      for (const [k, v] of Object.entries(optional)) formData.append(k, v as string);
       formData.append('location', data.city);
       formData.append('interests', JSON.stringify(data.interests));
       if (data.customInterests) formData.append('customInterests', JSON.stringify(data.customInterests));
       formData.append('resume', data.resume);
 
-      return apiRequest<{ quickUser: any }>('/quickusers', {
+      return apiRequest<QuickUserCreated>('/quickusers', {
         method: 'POST',
         body: formData,
         isFormData: true,
@@ -1961,17 +1995,27 @@ export const quickUsersApi = {
     }
 
     // Plain JSON when no file
-    return apiRequest<{ quickUser: any }>('/quickusers', {
+    return apiRequest<QuickUserCreated>('/quickusers', {
       method: 'POST',
       body: JSON.stringify({
-        firstName: data.firstName,
-        lastName: data.lastName,
-        email: data.email,
-        ...(data.phone && { phone: data.phone }),
+        ...optional,
         location: data.city, // API expects 'location' field
         interests: data.interests,
         ...(data.customInterests && { customInterests: data.customInterests })
       }),
+    });
+  },
+
+  // CV-first quick profile, step 1: read the CV for the confirm step. The
+  // server stores NOTHING here — the subscription is created only by
+  // createQuickUser after the visitor confirms the (editable) details.
+  parseCv: async (file: File): Promise<ApiResponse<QuickProfileCvResult>> => {
+    const formData = new FormData();
+    formData.append('resume', file);
+    return apiRequest<QuickProfileCvResult>('/quickusers/parse-cv', {
+      method: 'POST',
+      body: formData,
+      isFormData: true,
     });
   },
 

@@ -54,7 +54,7 @@ const Footer = () => {
               </li>
               <li>
                 <button onClick={() => handleAnchorNavigation('/jobseekers', 'ai-cv-section')} className="text-muted-foreground hover:text-primary transition-colors text-left">
-                  Gjenero CV me AI
+                  Krijo CV me AI
                 </button>
               </li>
               {/* TEMPORARILY DISABLED - No companies using platform yet

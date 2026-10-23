@@ -1,4 +1,5 @@
 import Navigation from "@/components/Navigation";
+import SEO from "@/components/SEO";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -147,6 +148,7 @@ const Preferences = () => {
   if (status === "error") {
     return (
       <>
+        <SEO title="Preferencat e njoftimeve" path="/preferences" noindex />
         <Navigation />
         <div className="flex min-h-[calc(100vh-200px)] items-center justify-center bg-background px-4">
           <Card className="w-full max-w-md">
@@ -171,6 +173,7 @@ const Preferences = () => {
   if (status === "loading" || !saved) {
     return (
       <>
+        <SEO title="Preferencat e njoftimeve" path="/preferences" noindex />
         <Navigation />
         <div className="flex min-h-[calc(100vh-200px)] items-center justify-center bg-background px-4">
           <Card className="w-full max-w-md">
@@ -192,6 +195,7 @@ const Preferences = () => {
   if (saved.convertedToFullUser) {
     return (
       <>
+        <SEO title="Preferencat e njoftimeve" path="/preferences" noindex />
         <Navigation />
         <div className="flex min-h-[calc(100vh-200px)] items-center justify-center bg-background px-4">
           <Card className="w-full max-w-md">
@@ -220,6 +224,7 @@ const Preferences = () => {
 
   return (
     <>
+      <SEO title="Preferencat e njoftimeve" path="/preferences" noindex />
       <Navigation />
       <div className="flex min-h-[calc(100vh-200px)] items-center justify-center bg-background px-4 py-8">
         <Card className="w-full max-w-lg">

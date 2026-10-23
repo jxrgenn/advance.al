@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
+import SEO from "@/components/SEO";
 import {
   Container,
   Title,
@@ -27,11 +28,11 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { Plus, X, Loader2, CheckCircle, ArrowLeft, ArrowRight, Briefcase, HelpCircle, Lightbulb, Users, Play, AlertTriangle, Save, ShieldX } from "lucide-react";
+import { Plus, X, Loader2, CheckCircle, ArrowLeft, ArrowRight, Briefcase, HelpCircle, Lightbulb, Users, Play, AlertTriangle, Save, ShieldX, ClipboardList } from "lucide-react";
 import { locationsApi, Location, jobsApi, isAuthenticated, getUserType } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import Footer from "@/components/Footer";
-import { validateForm, postJobRules, formatValidationErrors } from "@/lib/formValidation";
+import { validateForm, postJobRules, formatValidationErrors, getEmployerProfileGaps, EMPLOYER_PROFILE_GAP_LABELS, EMPLOYER_PROFILE_INCOMPLETE_CODE, EMPLOYER_SETTINGS_PATH } from "@/lib/formValidation";
 import { TextAreaWithCounter, InputWithCounter } from "@/components/CharacterCounter";
 import { JOB_CATEGORY_OPTIONS } from "@/constants/jobCategories";
 import { JOB_TYPE_OPTIONS } from "@/lib/labels";
@@ -43,6 +44,14 @@ const PostJob = () => {
   const { user } = useAuth();
   const isUnverified = user?.userType === 'employer' && !user?.profile?.employerProfile?.verified;
   const [showUnverifiedDialog, setShowUnverifiedDialog] = useState(false);
+  // Short employer signup (2026-10-22): city, industry and the company
+  // description must be saved in the dashboard before the first job post.
+  // The server enforces it (403 EMPLOYER_PROFILE_INCOMPLETE); this mirrors it
+  // so the employer learns it up front, not after filling the whole form.
+  const profileGaps = user?.userType === 'employer' ? getEmployerProfileGaps(user) : [];
+  const [showProfileDialog, setShowProfileDialog] = useState(false);
+  const [serverProfileGate, setServerProfileGate] = useState<string | null>(null);
+  const profileIncomplete = profileGaps.length > 0 || serverProfileGate !== null;
 
   // Reset scroll lock on unmount
   useEffect(() => {
@@ -207,8 +216,8 @@ const PostJob = () => {
     },
     {
       selector: '[data-tutorial="tags"]',
-      title: "Tags",
-      content: "Shtoni tags që përshkruajnë pozicionin. Këto ndihmojnë kandidatët të gjejnë punën tuaj më lehtë.",
+      title: "Etiketa",
+      content: "Shtoni etiketa që përshkruajnë pozicionin. Këto ndihmojnë kandidatët të gjejnë punën tuaj më lehtë.",
       position: "bottom",
       formStep: 3
     },
@@ -475,6 +484,15 @@ const PostJob = () => {
       console.error('❌ Error response:', error.response);
 
       let errorMessage = "Nuk mund të postohet puna. Ju lutemi provoni përsëri.";
+
+      // Company profile incomplete (server gate) — keep the work as a draft
+      // and point to the settings tab instead of a bare error.
+      if (error.response?.code === EMPLOYER_PROFILE_INCOMPLETE_CODE) {
+        saveDraft();
+        setServerProfileGate(error.response.message || 'Plotësoni profilin e kompanisë para se të publikoni punë.');
+        setShowProfileDialog(true);
+        return;
+      }
 
       if (error.response && error.response.errors) {
         // Show specific validation errors
@@ -1293,7 +1311,7 @@ const PostJob = () => {
             </Box>
 
             <Box data-tutorial="tags">
-              <Text fw={500} mb="xs">Tags (Opsionale)</Text>
+              <Text fw={500} mb="xs">Etiketa (opsionale)</Text>
               <Text size="sm" c="dimmed" mb="md">Fjalë kyçe për t'u ndihmuar kandidatëve të gjejnë punën</Text>
               {tags.map((tag, index) => (
                 <Group key={index} mb="xs">
@@ -1548,6 +1566,7 @@ const PostJob = () => {
 
   return (
     <Box style={{ minHeight: '100vh' }}>
+      <SEO title="Posto një punë" path="/post-job" noindex />
       <Navigation />
 
       {/* Tutorial Overlay */}
@@ -1555,6 +1574,30 @@ const PostJob = () => {
 
       <Container size="lg" pt={90} pb="xl">
         <Stack gap="md" maw={960} mx="auto">
+              {/* Company profile incomplete — publishing is blocked until the
+                  city, industry and description are saved in Cilësimet. */}
+              {profileIncomplete && (
+                <Paper shadow="xs" p="md" radius="md" withBorder data-testid="postjob-profile-gate" style={{ borderColor: '#93c5fd', backgroundColor: '#eff6ff' }}>
+                  <Group gap="sm" wrap="nowrap" align="flex-start">
+                    <ClipboardList size={20} color="#1d4ed8" style={{ flexShrink: 0, marginTop: 2 }} aria-hidden />
+                    <Stack gap={6} style={{ flex: 1 }}>
+                      <Text size="sm" c="dark">
+                        <strong>Plotësoni profilin e kompanisë para punës së parë.</strong>{' '}
+                        {profileGaps.length > 0
+                          ? <>Mungon: {profileGaps.map((g) => EMPLOYER_PROFILE_GAP_LABELS[g]).join(' · ')}.</>
+                          : serverProfileGate}
+                        {' '}Formularin mund ta plotësoni dhe ta ruani si draft.
+                      </Text>
+                      <Group gap="xs">
+                        <Button size="xs" onClick={() => { if (jobForm.values.title?.trim() || jobForm.values.description?.trim()) saveDraft(); navigate(EMPLOYER_SETTINGS_PATH); }} rightSection={<ArrowRight size={14} />}>
+                          Plotëso profilin te Cilësimet
+                        </Button>
+                      </Group>
+                    </Stack>
+                  </Group>
+                </Paper>
+              )}
+
               {/* Unverified employer warning */}
               {isUnverified && (
                 <Paper shadow="xs" p="md" radius="md" withBorder style={{ borderColor: '#f59e0b', backgroundColor: '#fffbeb' }}>
@@ -1641,7 +1684,10 @@ const PostJob = () => {
                       <Button
                         rightSection={<CheckCircle size={16} />}
                         onClick={() => {
-                          if (isUnverified) {
+                          // Same order as the server: profile first, then verification.
+                          if (profileIncomplete) {
+                            setShowProfileDialog(true);
+                          } else if (isUnverified) {
                             setShowUnverifiedDialog(true);
                           } else {
                             handleSubmit();
@@ -1707,6 +1753,49 @@ const PostJob = () => {
                 }}
               >
                 Ruaj si Draft
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Company profile incomplete — save draft + go to the settings tab */}
+      {showProfileDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" role="dialog" aria-modal="true" aria-labelledby="profile-gate-title">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full overflow-hidden" data-testid="postjob-profile-dialog">
+            <div className="bg-blue-50 px-6 py-4 border-b border-blue-100">
+              <div className="flex items-center gap-3">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                  <ClipboardList className="w-5 h-5 text-blue-700" aria-hidden="true" />
+                </div>
+                <div>
+                  <h3 id="profile-gate-title" className="text-base font-semibold text-gray-900">Plotësoni profilin e kompanisë</h3>
+                  <p className="text-sm text-blue-800">Duhet para punës së parë</p>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 space-y-2">
+              <p className="text-sm text-gray-700">
+                {serverProfileGate || 'Puna nuk mund të publikohet ende: profili i kompanisë nuk është i plotë.'}
+              </p>
+              {profileGaps.length > 0 && (
+                <ul className="list-disc pl-5 text-sm text-gray-700">
+                  {profileGaps.map((g) => <li key={g}>{EMPLOYER_PROFILE_GAP_LABELS[g]}</li>)}
+                </ul>
+              )}
+              <p className="text-sm text-gray-600">Postimi juaj ruhet si draft — e gjeni këtu sapo të ktheheni.</p>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 border-t flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+              <Button variant="subtle" color="gray" size="sm" onClick={() => setShowProfileDialog(false)}>
+                Jo, Kthehu
+              </Button>
+              <Button
+                color="blue"
+                size="sm"
+                rightSection={<ArrowRight size={16} />}
+                onClick={() => { saveDraft(); setShowProfileDialog(false); navigate(EMPLOYER_SETTINGS_PATH); }}
+              >
+                Ruaj draftin dhe plotëso profilin
               </Button>
             </div>
           </div>

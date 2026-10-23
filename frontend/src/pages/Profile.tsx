@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import Navigation from "@/components/Navigation";
+import SEO from "@/components/SEO";
 import ApplicationStatusTimeline from "@/components/ApplicationStatusTimeline";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1742,6 +1743,7 @@ const Profile = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="Profili im" path="/profile" noindex />
       <Navigation />
 
       {/* Tutorial Overlay */}

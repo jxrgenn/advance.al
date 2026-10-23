@@ -42,8 +42,8 @@ import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { Play, Users, Bell, HelpCircle, X, Lightbulb, CheckCircle, ArrowRight, Briefcase, Zap, UserPlus, FileText, Send, Download, Eye, EyeOff, Mail, RefreshCw, Upload, Sparkles } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { authApi, quickUsersApi, cvApi, configApi, locationsApi } from "@/lib/api";
-import { validateForm, jobSeekerSignupRules, formatValidationErrors, normalizeAlbanianPhone, cleanAlbanianPhoneInput, isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE, validatePassword, PASSWORD_RULE_MESSAGE } from "@/lib/formValidation";
+import { authApi, quickUsersApi, cvApi, configApi, locationsApi, type QuickProfileCvResult } from "@/lib/api";
+import { validateForm, jobSeekerSignupRules, formatValidationErrors, normalizeAlbanianPhone, cleanAlbanianPhoneInput, isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE, validatePassword, PASSWORD_RULE_MESSAGE, quickProfileContactProblem, RESUME_UPLOAD, uploadProblem } from "@/lib/formValidation";
 import { waitForScrollSettle } from "@/lib/scrollSettle";
 import { InputWithCounter } from "@/components/CharacterCounter";
 import { JOB_CATEGORIES } from "@/constants/jobCategories";
@@ -57,6 +57,18 @@ const JobSeekersPage = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
+  // CV-first quick profile (client feedback + owner decision 2026-10-22):
+  //   'cv'      — primary action "Ngarko CV-në"
+  //   'reading' — the server reads the CV (POST /quickusers/parse-cv, stores nothing)
+  //   'confirm' — what was read, pre-filled and EDITABLE; nothing is
+  //               subscribed until the visitor confirms here
+  //   'manual'  — "Nuk kam CV": contact (email or phone) + profession + city
+  const [quickMode, setQuickMode] = useState<'cv' | 'reading' | 'confirm' | 'manual'>('cv');
+  const [cvRead, setCvRead] = useState<QuickProfileCvResult | null>(null);
+  const [cvReadError, setCvReadError] = useState<string | null>(null);
+  const [cvDragOver, setCvDragOver] = useState(false);
+  const [quickDone, setQuickDone] = useState<{ message: string; emailAlerts: boolean } | null>(null);
+  const cvInputRef = useRef<HTMLInputElement>(null);
 
   // Email verification flow state
   const [verificationOpen, setVerificationOpen] = useState(false);
@@ -201,12 +213,14 @@ const JobSeekersPage = () => {
       city: '',
       interests: [] as string[]
     },
+    // Name optional; contact = email OR phone (checked in handleQuickSubmit).
     validate: {
-      firstName: (value) => (!value ? 'Emri është i detyrueshëm' : null),
-      lastName: (value) => (!value ? 'Mbiemri është i detyrueshëm' : null),
-      email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Email i pavlefshëm'),
+      firstName: (value) => (!value.trim() || value.trim().length >= 2 ? null : 'Emri duhet të ketë të paktën 2 karaktere'),
+      lastName: (value) => (!value.trim() || value.trim().length >= 2 ? null : 'Mbiemri duhet të ketë të paktën 2 karaktere'),
+      email: (value) => (!value.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value.trim()) ? null : 'Email i pavlefshëm'),
       phone: (value) => (!value || isValidAlbanianPhone(value) ? null : ALBANIAN_PHONE_MESSAGE),
-      interests: (value) => (value.length === 0 ? 'Zgjidhni të paktën një kategori' : null),
+      city: (value) => (value ? null : 'Zgjidhni qytetin — njoftimet vijnë për punë në këtë qytet'),
+      interests: (value) => (value.length === 0 ? 'Zgjidhni të paktën një profesion ose industri' : null),
     },
   });
 
@@ -302,33 +316,33 @@ CERTIFIKATA (opsionale)
   // Tutorial steps configuration for quick notification form
   const quickFormTutorialSteps = [
     {
-      selector: '[data-tutorial="quick-name"]',
-      title: "Emri dhe Mbiemri",
-      content: "Shkruani emrin tuaj për njoftime të personalizuara.",
+      selector: '[data-tutorial="quick-cv"]',
+      title: "Ngarko CV-në",
+      content: "Ngarkoni CV-në (PDF ose Word). E lexojmë dhe plotësojmë emrin, kontaktin, qytetin dhe profesionin — ju vetëm i kontrolloni.",
+      position: "bottom"
+    },
+    {
+      selector: '[data-tutorial="quick-no-cv"]',
+      title: "Nuk keni CV?",
+      content: "Plotësoni vetëm 3 fusha: kontaktin (email ose celular), profesionin dhe qytetin.",
       position: "bottom"
     },
     {
       selector: '[data-tutorial="quick-email"]',
       title: "Email për Njoftime",
-      content: "Do të dërgojmë njoftime për punë të reja në këtë email.",
-      position: "bottom"
-    },
-    {
-      selector: '[data-tutorial="quick-phone"]',
-      title: "Telefoni (Opsional)",
-      content: "Për kontakt të shpejtë nëse ka punë urgjente.",
-      position: "bottom"
-    },
-    {
-      selector: '[data-tutorial="quick-city"]',
-      title: "Lokacioni",
-      content: "Zgjidhni qytetin për punë lokale.",
+      content: "Njoftimet për punë të reja dërgohen në këtë email. Pa email mund të lini vetëm celularin, por nuk do të merrni njoftime.",
       position: "bottom"
     },
     {
       selector: '[data-tutorial="interests"]',
-      title: "Llojet e Punës / Aftësitë",
-      content: "Shkruani llojet e punës ose aftësitë që ju interesojnë. Shtypni Enter ose përdorni presje (,) për të ndarë. Mund të zgjidhni edhe nga lista dropdown.",
+      title: "Profesioni / Industria",
+      content: "Zgjidhni nga lista ose shkruani profesionin tuaj. Shtypni Enter ose presje për të ndarë.",
+      position: "bottom"
+    },
+    {
+      selector: '[data-tutorial="quick-city"]',
+      title: "Qyteti",
+      content: "Njoftimet vijnë për punë në këtë qytet.",
       position: "bottom"
     }
   ];
@@ -486,89 +500,138 @@ CERTIFIKATA (opsionale)
     }
   };
 
+  // Step 1 of the CV path: read the CV (nothing is stored server-side).
+  const handleCvSelected = async (file: File | null | undefined) => {
+    if (!file) return;
+    const problem = uploadProblem(file, RESUME_UPLOAD);
+    if (problem) {
+      setCvReadError(problem);
+      return;
+    }
+    setCvReadError(null);
+    setResumeFile(file);
+    setQuickMode('reading');
+
+    let result: QuickProfileCvResult = { status: 'failed', fields: { interests: [] } };
+    try {
+      const res = await quickUsersApi.parseCv(file);
+      if (res.success && res.data) result = res.data;
+    } catch (error: any) {
+      // The FILE was refused (type / size / not a real PDF-Word / too many
+      // uploads): back to the upload screen with the reason.
+      if (error?.status === 400 || error?.status === 429) {
+        setResumeFile(null);
+        setQuickMode('cv');
+        setCvReadError(error?.message || 'CV-ja nuk u pranua. Provoni një skedar tjetër.');
+        return;
+      }
+      // Server / network trouble: keep the CV and let the visitor fill in by hand.
+    }
+
+    const f = result.fields || { interests: [] };
+    const interests = [...(f.interests || [])];
+    // The profession read from the CV becomes a tag too ("Zhvilluese Frontend").
+    if (f.title && !interests.some((i) => i.toLowerCase() === f.title!.toLowerCase())) interests.push(f.title.slice(0, 50));
+    quickForm.setValues({
+      firstName: f.firstName || '',
+      lastName: f.lastName || '',
+      email: f.email || '',
+      phone: f.phone ? cleanAlbanianPhoneInput(f.phone.replace(/^\+355/, '')) : '',
+      city: f.city && cities.includes(f.city) ? f.city : '',
+      interests: interests.slice(0, 10),
+    });
+    quickForm.clearErrors();
+    quickEmailAvail.reset();
+    if (f.email) quickEmailAvail.check(f.email);
+    setCvRead(result);
+    setQuickMode('confirm');
+  };
+
+  const backToCvUpload = () => {
+    setResumeFile(null);
+    setCvRead(null);
+    setCvReadError(null);
+    setQuickMode('cv');
+  };
+
+  const openNoCvForm = () => {
+    setResumeFile(null);
+    setCvRead(null);
+    setCvReadError(null);
+    quickForm.reset();
+    setQuickMode('manual');
+  };
+
   const handleQuickSubmit = async (values: typeof quickForm.values) => {
+    const email = values.email.trim();
+    const contactProblem = quickProfileContactProblem(email, values.phone);
+    if (contactProblem) {
+      quickForm.setFieldError('email', contactProblem);
+      notifications.show({ title: 'Kontakti mungon', message: contactProblem, color: 'red', autoClose: 6000 });
+      return;
+    }
+    if (email && quickEmailAvail.status === 'taken') {
+      notifications.show({
+        title: 'Email i regjistruar',
+        message: 'Ky email është tashmë i regjistruar. Provoni hyrjen ose përdorni një email tjetër.',
+        color: 'red',
+        autoClose: 6000,
+      });
+      return;
+    }
+    const validationResult = validateForm(
+      { firstName: values.firstName.trim(), lastName: values.lastName.trim(), email, phone: values.phone },
+      jobSeekerSignupRules.quickForm
+    );
+    if (!validationResult.isValid) {
+      notifications.show({
+        title: 'Kontrolloni fushat',
+        message: formatValidationErrors(validationResult.errors),
+        color: 'red',
+        autoClose: 6000,
+      });
+      return;
+    }
+
     try {
       setLoading(true);
-
-      if (quickEmailAvail.status === 'taken') {
-        notifications.show({
-          title: 'Email i regjistruar',
-          message: 'Ky email është tashmë i regjistruar. Provoni hyrjen ose përdorni një email tjetër.',
-          color: 'red',
-          autoClose: 6000,
-        });
-        setLoading(false);
-        return;
-      }
-
-      // Validate using validation system
-      const validationData = {
-        firstName: values.firstName,
-        lastName: values.lastName,
-        email: values.email,
-        phone: values.phone
-      };
-
-      const validationResult = validateForm(validationData, jobSeekerSignupRules.quickForm);
-
-      if (!validationResult.isValid) {
-        notifications.show({
-          title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
-          message: formatValidationErrors(validationResult.errors),
-          color: 'red',
-          autoClose: 6000,
-        });
-        setLoading(false);
-        return;
-      }
-
-      // Additional validation for interests (required for quick form)
-      if (!values.interests || values.interests.length === 0) {
-        notifications.show({
-          title: 'Zgjidhni interesat tuaja',
-          message: 'Ju lutemi zgjidhni të paktën një kategori pune ose aftësi',
-          color: 'red',
-          autoClose: 6000,
-        });
-        setLoading(false);
-        return;
-      }
-
-      // Normalize phone number
-      const formattedPhone = normalizeAlbanianPhone(values.phone);
-
       // Separate recognized interests from custom ones
       const recognized = values.interests.filter((i: string) => (JOB_CATEGORIES as readonly string[]).includes(i));
       const custom = values.interests.filter((i: string) => !(JOB_CATEGORIES as readonly string[]).includes(i));
 
+      // Only what the visitor sees and confirms here is sent — an email read
+      // from the CV is subscribed only if it is still in the email field.
       const response = await quickUsersApi.createQuickUser({
         firstName: values.firstName,
         lastName: values.lastName,
-        email: values.email,
-        ...(formattedPhone && { phone: formattedPhone }),
+        email,
+        phone: normalizeAlbanianPhone(values.phone),
         city: values.city,
         interests: recognized.length > 0 ? recognized : ['Tjetër'],
-        ...(custom.length > 0 && { customInterests: custom }),
-        ...(resumeFile && { resume: resumeFile })
+        ...(custom.length > 0 && { customInterests: custom.map((c: string) => c.slice(0, 50)) }),
+        resume: quickMode === 'confirm' ? resumeFile : null,
       });
 
       if (response.success) {
-        notifications.show({
-          title: "Sukses!",
-          message: resumeFile
-            ? "Do të filloni të merrni njoftime për punë të reja. CV-ja juaj u ngarkua me sukses."
-            : "Do të filloni të merrni njoftime për punë të reja.",
-          color: "green"
+        const emailAlerts = response.data?.emailAlerts ?? !!email;
+        setQuickDone({
+          emailAlerts,
+          message: emailAlerts
+            ? `Do t'ju shkruajmë në ${email} sapo të publikohet një punë në ${values.city} që ju përshtatet.`
+            : (response.message || "Profili u ruajt. Pa email nuk mund t'ju dërgojmë njoftime për punë të reja."),
         });
-        // Reset form
         quickForm.reset();
         setResumeFile(null);
-        setShowQuickForm(false);
+        setCvRead(null);
+        setQuickMode('cv');
       }
     } catch (error: any) {
+      const fieldErrors: string[] = Array.isArray(error?.response?.errors)
+        ? error.response.errors.map((e: any) => e?.message).filter(Boolean)
+        : [];
       notifications.show({
         title: "Gabim",
-        message: error.message || "Nuk mund të bëhet regjistrimi. Provoni përsëri.",
+        message: fieldErrors.length ? fieldErrors.join(' · ') : (error.message || "Nuk mund të bëhet regjistrimi. Provoni përsëri."),
         color: "red"
       });
     } finally {
@@ -581,7 +644,7 @@ CERTIFIKATA (opsionale)
     if (!isAuthenticated || user?.userType !== 'jobseeker') {
       notifications.show({
         title: "Duhet të jeni të regjistruar",
-        message: "Vetëm përdoruesit e regjistruar si punëkërkues mund të gjenerojnë CV.",
+        message: "Vetëm përdoruesit e regjistruar si punëkërkues mund të krijojnë CV me AI.",
         color: "red"
       });
       return;
@@ -591,7 +654,7 @@ CERTIFIKATA (opsionale)
     if (cvInput.trim().length < 50) {
       notifications.show({
         title: "Input i pamjaftueshëm",
-        message: "Ju lutemi shkruani të paktën 50 karaktere për të gjeneruar një CV të mirë",
+        message: "Ju lutemi shkruani të paktën 50 karaktere për të krijuar një CV të mirë",
         color: "red"
       });
       return;
@@ -607,7 +670,7 @@ CERTIFIKATA (opsionale)
         setGeneratedCV(response.data);
         setUsedAsProfileCV(false);
         notifications.show({
-          title: "CV u gjenerua me sukses!",
+          title: "CV u krijua me sukses!",
           message: `CV-ja juaj është gati për shkarkim (${response.data.language === 'sq' ? 'Shqip' : 'Anglisht'})`,
           color: "green"
         });
@@ -623,7 +686,7 @@ CERTIFIKATA (opsionale)
     } catch (error: any) {
       notifications.show({
         title: "Gabim",
-        message: error.message || "Nuk mund të gjenerojë CV. Ju lutemi provoni përsëri.",
+        message: error.message || "CV-ja nuk mund të krijohej. Ju lutemi provoni përsëri.",
         color: "red"
       });
     } finally {
@@ -1103,7 +1166,7 @@ CERTIFIKATA (opsionale)
                   // Scroll to form on mobile
                   if (window.innerWidth < 768) {
                     setTimeout(() => {
-                      const formElement = document.querySelector('[data-tutorial="quick-name"]');
+                      const formElement = document.querySelector('[data-quick-form]');
                       if (formElement) {
                         formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
                       }
@@ -1124,11 +1187,11 @@ CERTIFIKATA (opsionale)
                 </Group>
 
                 <Text c="dimmed" mb="md" size="sm">
-                  Nuk keni kohë? Vendosni vetëm të dhënat kryesore dhe lërini punëdhënësit t'ju kontaktojnë.
+                  Ngarkoni CV-në — e lexojmë ne, ju vetëm konfirmoni. Pa CV mjaftojnë 3 fusha.
                 </Text>
                 <Stack gap="xs" mt="auto">
-                  <Group gap="xs"><CheckCircle size={16} className="text-blue-500" /><Text size="sm">Pa regjistrim</Text></Group>
-                  <Group gap="xs"><CheckCircle size={16} className="text-blue-500" /><Text size="sm">Njoftime për punë</Text></Group>
+                  <Group gap="xs"><CheckCircle size={16} className="text-blue-500" /><Text size="sm">Pa llogari, pa fjalëkalim</Text></Group>
+                  <Group gap="xs"><CheckCircle size={16} className="text-blue-500" /><Text size="sm">Njoftime me email për punë të reja</Text></Group>
                 </Stack>
                 <Button
                   variant={showQuickForm ? "filled" : "light"}
@@ -1178,7 +1241,7 @@ CERTIFIKATA (opsionale)
                 </Text>
                 <Stack gap="xs" mt="auto">
                   <Group gap="xs"><CheckCircle size={16} className="text-blue-600" /><Text size="sm">Aplikim me 1 klik</Text></Group>
-                  <Group gap="xs"><CheckCircle size={16} className="text-blue-600" /><Text size="sm">Gjenerim CV me AI</Text></Group>
+                  <Group gap="xs"><CheckCircle size={16} className="text-blue-600" /><Text size="sm">Krijim CV me AI</Text></Group>
                 </Stack>
                 <Button
                   variant={!showQuickForm ? "filled" : "light"}
@@ -1371,170 +1434,263 @@ CERTIFIKATA (opsionale)
                     <Bell size={20} />
                   </ThemeIcon>
                   <Box>
-                    <Title order={3} fw={600} lh={1.2}>Njoftime Email për Punë të Reja</Title>
+                    <Title order={3} fw={600} lh={1.2}>Profil i Shpejtë — njoftime për punë</Title>
                     <Text size="sm" c="dimmed" mt={4}>
-                      Merrni njoftime direkt në email për punë që përputhen me interesat tuaja pa u regjistruar.
+                      {quickDone
+                        ? 'Profili juaj i shpejtë është gati.'
+                        : quickMode === 'manual'
+                        ? 'Pa CV: vetëm kontakti, profesioni dhe qyteti.'
+                        : quickMode === 'confirm'
+                          ? 'Kontrolloni të dhënat dhe ndryshoni çfarë nuk është e saktë.'
+                          : 'Ngarkoni CV-në — e lexojmë ne, ju vetëm konfirmoni. Pa llogari, pa fjalëkalim.'}
                     </Text>
                   </Box>
                 </Group>
-                <form onSubmit={quickForm.onSubmit(handleQuickSubmit)}>
-                  <Stack gap="sm">
-                    <SimpleGrid cols={2} spacing="md" data-tutorial="quick-name">
-                      <InputWithCounter
-                        placeholder="Emri *"
-                        value={quickForm.values.firstName}
-                        onChange={(e) => quickForm.setFieldValue('firstName', e.target.value)}
-                        maxLength={50}
-                        minLength={2}
-                        error={quickForm.errors.firstName as string | undefined}
-                        hideMinLengthWarning={true}
-                        required
-                      />
-                      <InputWithCounter
-                        placeholder="Mbiemri *"
-                        value={quickForm.values.lastName}
-                        onChange={(e) => quickForm.setFieldValue('lastName', e.target.value)}
-                        maxLength={50}
-                        minLength={2}
-                        error={quickForm.errors.lastName as string | undefined}
-                        hideMinLengthWarning={true}
-                        required
-                      />
-                    </SimpleGrid>
 
-                    <Box data-tutorial="quick-email">
-                      <TextInput
-                        placeholder="Email *"
-                        type="email"
-                        {...quickForm.getInputProps('email')}
-                        onBlur={() => quickEmailAvail.check(quickForm.values.email)}
-                        onChange={(e) => {
-                          quickForm.setFieldValue('email', e.currentTarget.value);
-                          if (quickEmailAvail.status !== 'idle') quickEmailAvail.reset();
-                        }}
-                        error={quickEmailAvail.status === 'taken' ? 'Ky email është tashmë i regjistruar. Provoni hyrjen.' : (quickForm.errors.email as string | undefined)}
-                        required
-                      />
-                    </Box>
-
-                    <Box data-tutorial="quick-phone">
-                      <TextInput
-                        placeholder="69 123 4567"
-                        leftSection={<Text size="sm" c="dimmed" fw={500}>+355</Text>}
-                        leftSectionWidth={52}
-                        {...quickForm.getInputProps('phone')}
-                        onChange={(e) => quickForm.setFieldValue('phone', cleanAlbanianPhoneInput(e.target.value))}
-                      />
-                    </Box>
-
-                    <Box data-tutorial="quick-city">
-                      <Select
-                        placeholder="Zgjidhni qytetin"
-                        searchable
-                        nothingFoundMessage="Qyteti nuk u gjet"
-                        {...quickForm.getInputProps('city')}
-                        data={cities}
-                      />
-                    </Box>
-
-                    <Box data-tutorial="interests">
-                      <TagsInput
-                        placeholder="Lloji i Punës / Aftësitë"
-                        description="Shtoni llojet e punës ose aftësitë që ju interesojnë. Përdorni Enter ose presje për të ndarë."
-                        data={jobCategories}
-                        {...quickForm.getInputProps('interests')}
-                        maxTags={10}
-                        splitChars={[',', ';', 'Enter']}
-                        acceptValueOnBlur
-                        clearable
-                      />
-                      {quickForm.errors.interests && (
-                        <Text size="xs" c="red" mt="xs">
-                          {quickForm.errors.interests}
-                        </Text>
-                      )}
-                    </Box>
-
-                    <Box>
-                      <Alert
-                        icon={<Sparkles size={16} />}
-                        color={resumeFile ? 'green' : 'blue'}
-                        variant="light"
-                        mb={6}
-                        p="xs"
-                      >
-                        <Text size="xs" fw={500}>
-                          {resumeFile
-                            ? '✓ CV e ngarkuar — përputhje të personalizuara'
-                            : 'Ngarko CV-në për përputhje të personalizuara (PDF/DOCX, max 5MB)'}
-                        </Text>
-                      </Alert>
-                      {/* Drag-and-drop wrapper around the FileInput. Native HTML5
-                          DnD avoids adding @mantine/dropzone as a dependency.
-                          Visual cue shifts when user drags over. */}
-                      <div
-                        onDragOver={(e) => {
+                {quickDone ? (
+                  /* Done — what happens next */
+                  <Stack align="center" gap="sm" py="md" data-testid="quick-profile-done" role="status">
+                    <ThemeIcon size={56} radius="xl" color={quickDone.emailAlerts ? 'green' : 'yellow'} variant="light">
+                      <CheckCircle size={28} />
+                    </ThemeIcon>
+                    <Title order={4} ta="center">{quickDone.emailAlerts ? 'Njoftimet u aktivizuan' : 'Profili u ruajt'}</Title>
+                    <Text size="sm" c="dimmed" ta="center" maw={440}>{quickDone.message}</Text>
+                    <Group justify="center" mt="sm" gap="sm">
+                      <Button onClick={() => navigate('/jobs')} rightSection={<ArrowRight size={16} />}>Shiko punët</Button>
+                      <Button variant="light" onClick={() => { setQuickDone(null); setShowQuickForm(false); }}>Krijo llogari të plotë</Button>
+                    </Group>
+                  </Stack>
+                ) : quickMode === 'cv' || quickMode === 'reading' ? (
+                  /* Primary action: upload the CV */
+                  <Stack gap="md">
+                    <div
+                      data-tutorial="quick-cv"
+                      role="button"
+                      tabIndex={0}
+                      aria-busy={quickMode === 'reading'}
+                      aria-label="Ngarko CV-në (PDF ose Word, deri në 5MB)"
+                      onClick={() => { if (quickMode !== 'reading') cvInputRef.current?.click(); }}
+                      onKeyDown={(e) => {
+                        if ((e.key === 'Enter' || e.key === ' ') && quickMode !== 'reading') {
                           e.preventDefault();
-                          e.currentTarget.classList.add('ring-2', 'ring-blue-400', 'bg-blue-50');
-                        }}
-                        onDragLeave={(e) => {
-                          e.currentTarget.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50');
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.currentTarget.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50');
-                          const file = e.dataTransfer.files?.[0];
-                          if (!file) return;
-                          const ok = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword'].includes(file.type);
-                          if (!ok) {
-                            notifications.show({ title: 'Format i pavlefshëm', message: 'Vetëm PDF ose DOCX lejohen.', color: 'red' });
-                            return;
-                          }
-                          setResumeFile(file);
-                        }}
-                        className="rounded-md transition-all"
-                      >
-                        <FileInput
-                          placeholder="Zgjidh skedarin ose tërhiqe këtu (PDF/DOCX)"
-                          accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
-                          leftSection={<Upload size={16} />}
-                          value={resumeFile}
-                          onChange={setResumeFile}
-                          clearable
-                          size="sm"
-                        />
-                      </div>
-                      {resumeFile && resumeFile.size > 5 * 1024 * 1024 && (
-                        <Text size="xs" c="red" mt="xs">
-                          Skedari duhet të jetë më i vogël se 5MB
-                        </Text>
-                      )}
-                    </Box>
-
-                    <Button
-                      type="submit"
-                      size="md"
-                      loading={loading}
-                      fullWidth
-                      mt="xs"
-                      color="blue"
+                          cvInputRef.current?.click();
+                        }
+                      }}
+                      onDragOver={(e) => { e.preventDefault(); setCvDragOver(true); }}
+                      onDragLeave={() => setCvDragOver(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setCvDragOver(false);
+                        if (quickMode !== 'reading') handleCvSelected(e.dataTransfer.files?.[0]);
+                      }}
+                      className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-5 py-10 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+                        quickMode === 'reading'
+                          ? 'cursor-wait border-blue-300 bg-blue-50'
+                          : cvDragOver
+                            ? 'cursor-copy border-blue-600 bg-blue-100'
+                            : 'cursor-pointer border-blue-300 bg-blue-50/60 hover:border-blue-500 hover:bg-blue-50'
+                      }`}
                     >
-                      {loading ? 'Duke regjistruar...' : 'Aktivizo Njoftimet Email'}
-                    </Button>
-
-                    <Divider my="sm" />
-
+                      {quickMode === 'reading' ? (
+                        <Loader size="md" />
+                      ) : (
+                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
+                          <Upload size={26} aria-hidden />
+                        </div>
+                      )}
+                      <Text fw={700} size="lg" c="dark">
+                        {quickMode === 'reading' ? 'Po lexojmë CV-në…' : 'Ngarko CV-në'}
+                      </Text>
+                      <Text size="sm" c="dimmed" maw={380}>
+                        {quickMode === 'reading'
+                          ? (resumeFile ? `${resumeFile.name} — zakonisht zgjat disa sekonda.` : 'Zakonisht zgjat disa sekonda.')
+                          : 'PDF ose Word, deri në 5MB. Emrin, kontaktin, qytetin dhe profesionin i plotësojmë ne.'}
+                      </Text>
+                      {quickMode !== 'reading' && (
+                        <span className="inline-flex items-center gap-2 rounded-md bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm ring-1 ring-blue-200">
+                          <FileText size={16} aria-hidden /> Zgjidh skedarin ose tërhiqe këtu
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      ref={cvInputRef}
+                      type="file"
+                      hidden
+                      accept={RESUME_UPLOAD.accept}
+                      data-testid="quick-cv-input"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        handleCvSelected(file);
+                      }}
+                    />
+                    {cvReadError && (
+                      <Alert color="red" variant="light" role="alert">
+                        <Text size="sm">{cvReadError}</Text>
+                      </Alert>
+                    )}
+                    <Group justify="center" gap={6}>
+                      <Text size="sm" c="dimmed">Nuk keni CV?</Text>
+                      <Button variant="subtle" size="compact-sm" onClick={openNoCvForm} disabled={quickMode === 'reading'} data-tutorial="quick-no-cv">
+                        Nuk kam CV
+                      </Button>
+                    </Group>
+                    <Text size="xs" c="dimmed" ta="center">
+                      Asgjë nuk ruhet pa konfirmimin tuaj në hapin tjetër.
+                    </Text>
+                    <Divider my={4} />
                     <Center>
-                      <Button
-                        variant="subtle"
-                        onClick={() => setShowQuickForm(false)}
-                        size="xs"
-                      >
+                      <Button variant="subtle" onClick={() => setShowQuickForm(false)} size="xs">
                         ← Kthehu te llogaria e plotë
                       </Button>
                     </Center>
                   </Stack>
-                </form>
+                ) : (
+                  /* Confirm step (CV) or "Nuk kam CV" (manual) */
+                  <form onSubmit={quickForm.onSubmit(handleQuickSubmit)} noValidate>
+                    <Stack gap="sm">
+                      {quickMode === 'confirm' && cvRead && (
+                        <Alert
+                          data-testid="quick-cv-status"
+                          color={cvRead.status === 'completed' ? 'green' : 'yellow'}
+                          variant="light"
+                          icon={<Sparkles size={16} />}
+                        >
+                          <Text size="sm">
+                            {cvRead.status === 'completed'
+                              ? 'E lexuam CV-në. Kontrolloni të dhënat dhe konfirmoni.'
+                              : cvRead.status === 'partial'
+                                ? 'E lexuam vetëm një pjesë të CV-së. Plotësoni fushat që mungojnë.'
+                                : 'Nuk arritëm ta lexojmë CV-në (p.sh. është skanuar si foto). Plotësoni fushat — CV-ja ruhet bashkë me profilin.'}
+                          </Text>
+                        </Alert>
+                      )}
+                      {quickMode === 'confirm' && resumeFile && (
+                        <Group justify="space-between" wrap="nowrap" gap="xs" className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                          <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+                            <FileText size={16} className="shrink-0 text-blue-600" aria-hidden />
+                            <Text size="sm" truncate="end">{resumeFile.name}</Text>
+                          </Group>
+                          <Button variant="subtle" size="compact-xs" onClick={backToCvUpload}>Ndrysho</Button>
+                        </Group>
+                      )}
+
+                      {quickMode === 'confirm' && (
+                        <SimpleGrid cols={{ base: 1, xs: 2 }} spacing="md" data-tutorial="quick-name">
+                          <TextInput
+                            label="Emri"
+                            placeholder="Emri"
+                            autoComplete="given-name"
+                            maxLength={50}
+                            {...quickForm.getInputProps('firstName')}
+                          />
+                          <TextInput
+                            label="Mbiemri"
+                            placeholder="Mbiemri"
+                            autoComplete="family-name"
+                            maxLength={50}
+                            {...quickForm.getInputProps('lastName')}
+                          />
+                        </SimpleGrid>
+                      )}
+
+                      <SimpleGrid cols={{ base: 1, xs: 2 }} spacing="md">
+                        <Box data-tutorial="quick-email">
+                          <TextInput
+                            label="Email"
+                            description="Njoftimet dërgohen këtu"
+                            placeholder="emri@shembull.com"
+                            type="email"
+                            autoComplete="email"
+                            {...quickForm.getInputProps('email')}
+                            onBlur={() => quickEmailAvail.check(quickForm.values.email)}
+                            onChange={(e) => {
+                              quickForm.setFieldValue('email', e.currentTarget.value);
+                              quickForm.clearFieldError('email');
+                              if (quickEmailAvail.status !== 'idle') quickEmailAvail.reset();
+                            }}
+                            error={quickEmailAvail.status === 'taken' ? 'Ky email është tashmë i regjistruar. Provoni hyrjen.' : (quickForm.errors.email as string | undefined)}
+                          />
+                        </Box>
+                        <Box data-tutorial="quick-phone">
+                          <TextInput
+                            label="Celulari"
+                            description="Opsional nëse keni email"
+                            placeholder="69 123 4567"
+                            type="tel"
+                            inputMode="numeric"
+                            autoComplete="tel-national"
+                            leftSection={<Text size="sm" c="dimmed" fw={500}>+355</Text>}
+                            leftSectionWidth={52}
+                            {...quickForm.getInputProps('phone')}
+                            onChange={(e) => {
+                              quickForm.setFieldValue('phone', cleanAlbanianPhoneInput(e.target.value));
+                              quickForm.clearFieldError('email');
+                            }}
+                          />
+                        </Box>
+                      </SimpleGrid>
+                      {!quickForm.values.email.trim() && !!quickForm.values.phone && (
+                        <Text size="xs" className="text-amber-800" fw={500} data-testid="quick-no-email-note">
+                          Pa email nuk mund t'ju dërgojmë njoftime për punë — profili ruhet vetëm me celularin. Shtoni email-in për t'i marrë.
+                        </Text>
+                      )}
+
+                      <Box data-tutorial="interests">
+                        <TagsInput
+                          label="Profesioni / industria"
+                          description="Zgjidhni nga lista ose shkruani profesionin — Enter ose presje për të ndarë."
+                          placeholder={quickForm.values.interests.length ? '' : 'p.sh. Teknologji, Kamarier'}
+                          data={jobCategories}
+                          {...quickForm.getInputProps('interests')}
+                          maxTags={10}
+                          splitChars={[',', ';']}
+                          acceptValueOnBlur
+                          clearable
+                        />
+                      </Box>
+
+                      <Box data-tutorial="quick-city">
+                        <Select
+                          label="Qyteti"
+                          placeholder="Zgjidhni qytetin"
+                          searchable
+                          nothingFoundMessage="Qyteti nuk u gjet"
+                          {...quickForm.getInputProps('city')}
+                          data={cities}
+                        />
+                      </Box>
+
+                      <Button
+                        type="submit"
+                        size="md"
+                        loading={loading}
+                        fullWidth
+                        mt="xs"
+                        color="blue"
+                      >
+                        {quickMode === 'confirm' ? 'Konfirmo dhe aktivizo njoftimet' : 'Aktivizo njoftimet'}
+                      </Button>
+
+                      <Divider my="sm" />
+
+                      <Group justify="center" gap="xs">
+                        {quickMode === 'manual' ? (
+                          <Button variant="subtle" size="xs" leftSection={<Upload size={14} />} onClick={backToCvUpload}>
+                            Kam CV — ngarkoje
+                          </Button>
+                        ) : (
+                          <Button variant="subtle" size="xs" onClick={openNoCvForm}>
+                            Vazhdo pa CV
+                          </Button>
+                        )}
+                        <Button variant="subtle" size="xs" onClick={() => setShowQuickForm(false)}>
+                          ← Llogari e plotë
+                        </Button>
+                      </Group>
+                    </Stack>
+                  </form>
+                )}
               </Paper>
             )}
 
@@ -1552,7 +1708,7 @@ CERTIFIKATA (opsionale)
                     <Lightbulb size={26} />
                   </ThemeIcon>
                   <Box>
-                    <Title order={3}>Gjenero CV me AI</Title>
+                    <Title order={3}>Krijo CV me AI</Title>
                     <Text c="dimmed" size="sm">
                       Shkruani informacionet tuaja në mënyrë të natyrshme dhe IA krijon një CV profesionale
                     </Text>
@@ -1574,7 +1730,7 @@ CERTIFIKATA (opsionale)
                 <Group justify="space-between" align="center">
                   <Box>
                     <Text size="sm" fw={500} mb={4}>Zgjidhni gjuhën e CV-së:</Text>
-                    <Text size="xs" c="dimmed">CV-ja do të gjenerohet në gjuhën që zgjidhni këtu</Text>
+                    <Text size="xs" c="dimmed">CV-ja do të krijohet në gjuhën që zgjidhni këtu</Text>
                   </Box>
                   <SegmentedControl
                     value={selectedLanguage}
@@ -1641,10 +1797,10 @@ CERTIFIKATA (opsionale)
                   {isAuthenticated && user?.userType === 'jobseeker' && cvInput.trim().length < 50
                     ? `Shkruani të paktën ${50 - cvInput.trim().length} karaktere më shumë.`
                     : isAuthenticated && user?.userType === 'jobseeker'
-                      ? 'Të dhënat tuaja janë gati — shtypni butonin për të gjeneruar.'
+                      ? 'Të dhënat tuaja janë gati — shtypni butonin për të krijuar CV-në.'
                       : isAuthenticated && user?.userType !== 'jobseeker'
-                        ? 'Vetëm kërkuesit e punës mund të gjenerojnë CV.'
-                        : 'Kyçuni si kërkues pune për të përdorur gjeneruesin e CV-së.'}
+                        ? 'Vetëm kërkuesit e punës mund të krijojnë CV me AI.'
+                        : 'Kyçuni si kërkues pune për të krijuar CV me AI.'}
                 </Text>
                 {!isAuthenticated ? (
                   <Button
@@ -1653,7 +1809,7 @@ CERTIFIKATA (opsionale)
                     rightSection={<ArrowRight size={18} />}
                     onClick={() => navigate('/login')}
                   >
-                    Kyçu për të gjeneruar CV
+                    Kyçu për të krijuar CV
                   </Button>
                 ) : (
                   <Button
@@ -1664,7 +1820,7 @@ CERTIFIKATA (opsionale)
                     loading={generating}
                     disabled={user?.userType !== 'jobseeker' || cvInput.trim().length < 50}
                   >
-                    {generating ? 'Duke gjeneruar...' : 'Gjenero CV-në'}
+                    {generating ? 'Duke krijuar...' : 'Krijo CV-në'}
                   </Button>
                 )}
               </Group>
@@ -1764,7 +1920,7 @@ CERTIFIKATA (opsionale)
                   <Text size="xs" c="dimmed" mt="sm">
                     {usedAsProfileCV
                       ? 'Punëdhënësit do ta shohin këtë CV (PDF) në aplikimet tuaja.'
-                      : 'CV-ja e gjeneruar u dërgohet punëdhënësve vetëm nëse e vendosni si CV-në tuaj në profil.'}
+                      : 'CV-ja e krijuar me AI u dërgohet punëdhënësve vetëm nëse e vendosni si CV-në tuaj në profil.'}
                   </Text>
                 </Card>
               </Grid.Col>
@@ -1788,7 +1944,7 @@ CERTIFIKATA (opsionale)
         size="sm"
       >
         <Text size="sm">
-          Keni tashmë një CV në profil. Nëse vazhdoni, ajo do të zëvendësohet me CV-në e gjeneruar (PDF) dhe CV-ja e mëparshme do të hiqet nga profili.
+          Keni tashmë një CV në profil. Nëse vazhdoni, ajo do të zëvendësohet me CV-në e krijuar me AI (PDF) dhe CV-ja e mëparshme do të hiqet nga profili.
         </Text>
         <Group justify="flex-end" mt="lg">
           <Button variant="default" onClick={() => setConfirmReplaceCVOpen(false)}>
@@ -1819,10 +1975,13 @@ CERTIFIKATA (opsionale)
             Kemi dërguar një kod 6-shifror {verificationMethod === 'sms' ? 'me SMS' : 'në'}{' '}
             <Text span fw={600} c="blue">{verificationMethod === 'sms' ? normalizeAlbanianPhone(fullForm.values.phone) : verificationEmail}</Text>
           </Text>
+          {/* md + small gap: 6 boxes fit a 375px-wide modal (lg overflowed it) */}
           <PinInput
             length={6}
             type="number"
-            size="lg"
+            size="md"
+            gap={6}
+            aria-label="Kodi i verifikimit"
             value={verificationCode}
             onChange={setVerificationCode}
             onComplete={handleVerifyCode}

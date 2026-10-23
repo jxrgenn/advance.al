@@ -256,6 +256,7 @@ const AI_ROUTE_TIMEOUT_MS = parseInt(process.env.AI_ROUTE_TIMEOUT_MS || '150000'
 const LONG_RUNNING_ROUTES = new Set([
   'POST /api/cv/generate',
   'POST /api/users/parse-resume',
+  'POST /api/quickusers/parse-cv',
   'POST /api/admin/backfill-user-embeddings',
 ]);
 app.use((req, res, next) => {

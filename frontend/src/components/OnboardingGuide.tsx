@@ -104,7 +104,7 @@ function NewUserBanner({
       <div className="flex flex-col sm:flex-row gap-2">
         <Button size="sm" onClick={onGenerateCV} className="gap-1.5">
           <FileText className="h-3.5 w-3.5" />
-          Gjenero CV me AI
+          Krijo CV me AI
         </Button>
         <Button size="sm" variant="outline" onClick={onCompleteProfile} className="gap-1.5">
           Plotëso Profilin

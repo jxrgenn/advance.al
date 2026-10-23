@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, Briefcase, Building2, Users, TrendingUp, ChevronDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { MagnifierCandidates } from "@/components/illustrations/MagnifierCandidates";
 
 export function Companies() {
   const navigate = useNavigate();
@@ -18,6 +19,24 @@ export function Companies() {
       if (formSection) {
         formSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
+    }
+  };
+
+  const isEmployer = isAuthenticated && user?.userType === 'employer';
+
+  // "Bashkohu me elitën" CTA: employers already have an account → their
+  // dashboard; everyone else → the signup form on this page (or the
+  // standalone signup page when the component is rendered elsewhere).
+  const handleRegisterCompanyClick = () => {
+    if (isEmployer) {
+      navigate('/employer-dashboard');
+      return;
+    }
+    const formSection = document.querySelector('[data-employer-form]');
+    if (formSection) {
+      formSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      navigate('/employer-register');
     }
   };
 
@@ -104,7 +123,7 @@ export function Companies() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4, duration: 0.8 }}
               >
-                Pozicionet tuaja të lira duhet të jenë aty ku mijëra kandidatë i shohin ato cdo ditë.
+                Pozicionet tuaja të lira duhet të jenë aty ku mijëra kandidatë i shohin ato çdo ditë.
               </motion.p>
               
               <motion.div 
@@ -121,7 +140,7 @@ export function Companies() {
                   >
                     <span className="relative z-10 flex items-center">
                       <Briefcase className="mr-2 h-5 w-5 group-hover:rotate-12 transition-transform duration-300" />
-                      Posto nje pune
+                      Posto një punë
                       <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform duration-300" />
                     </span>
                   </Button>
@@ -136,31 +155,9 @@ export function Companies() {
               animate={{ opacity: 1, scale: 1, x: 0 }}
               transition={{ delay: 0.4, duration: 1, ease: [0.16, 1, 0.3, 1] }}
             >
-              {/* Rotating profession images - no border, bigger on desktop */}
-              <div className="relative w-full max-w-[320px] md:max-w-[480px] h-[320px] md:h-[480px]">
-                {['/3d_assets/worker1.png', '/3d_assets/doctor1.png', '/3d_assets/lawyer1.png'].map((src, index) => (
-                  <img
-                    key={src}
-                    src={src}
-                    alt={`Professional ${index + 1}`}
-                    className="absolute inset-0 w-full h-full object-contain"
-                    style={{
-                      opacity: 0,
-                      animation: `carouselFade 9s infinite`,
-                      animationDelay: `${index * 3}s`,
-                      animationFillMode: 'forwards',
-                    }}
-                    loading="eager"
-                  />
-                ))}
-                <style>{`
-                  @keyframes carouselFade {
-                    0% { opacity: 0; }
-                    5% { opacity: 1; }
-                    28% { opacity: 1; }
-                    33%, 100% { opacity: 0; }
-                  }
-                `}</style>
+              {/* Magnifier over a crowd: the one right candidate, in a blue suit */}
+              <div className="relative w-full max-w-[340px] md:max-w-[480px] aspect-square">
+                <MagnifierCandidates className="absolute inset-0 w-full h-full" />
               </div>
             </motion.div>
           </div>
@@ -287,6 +284,16 @@ export function Companies() {
                 <p className="text-xl md:text-2xl text-muted-foreground">
                   Kompanitë lider janë të gjitha këtu.
                 </p>
+                <Button
+                  size="lg"
+                  onClick={handleRegisterCompanyClick}
+                  className="mt-6 h-14 px-7 text-base md:text-lg font-semibold shadow-xl shadow-primary/25 hover:shadow-primary/35 transition-shadow group w-full sm:w-auto"
+                  data-testid="elite-register-company"
+                >
+                  <Building2 className="mr-2 h-5 w-5" aria-hidden="true" />
+                  {isEmployer ? 'Hap panelin e kompanisë' : 'Regjistrohu si kompani'}
+                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform duration-200" aria-hidden="true" />
+                </Button>
               </motion.div>
               <motion.img
                 src="/3d_assets/elite.png"

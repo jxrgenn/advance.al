@@ -21,7 +21,7 @@ import { parseUserProfileCV } from '../services/cvParsingService.js';
 import { fireEmbedding } from '../services/embeddingTrigger.js';
 import { isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE } from '../lib/phonePolicy.js';
 import { publicJobseekerProfile, publicJob } from '../lib/serializers.js';
-import { COMPANY_DESCRIPTION_MIN, COMPANY_DESCRIPTION_MAX, COMPANY_DESCRIPTION_MESSAGE, normalizeWebsite } from '../lib/companyProfile.js';
+import { COMPANY_DESCRIPTION_MIN, COMPANY_DESCRIPTION_MAX, COMPANY_DESCRIPTION_MESSAGE, normalizeWebsite, getEmployerProfileGaps } from '../lib/companyProfile.js';
 import { toStoredCloudinaryUrl, swapProfileResume, deleteStoredResume, newResumePublicId } from '../lib/resumeStorage.js';
 
 const router = express.Router();
@@ -599,8 +599,10 @@ router.put('/profile', authenticate, async (req, res) => {
       const resolved = await resolveProfileCity(location.city, user.profile.location);
       if (resolved.error) return fieldError('location.city', resolved.error);
       cityChanged = resolved.city !== user.profile.location?.city;
-      user.profile.location.city = resolved.city;
-      user.profile.location.region = resolved.region;
+      // set() by path: an employer from the short signup has no
+      // profile.location yet (the city is added here, in the dashboard).
+      user.set('profile.location.city', resolved.city);
+      user.set('profile.location.region', resolved.region);
     }
     if (privacySettings) user.privacySettings = { ...user.privacySettings, ...privacySettings };
 
@@ -695,7 +697,14 @@ router.put('/profile', authenticate, async (req, res) => {
       // Unverified employers also need to be able to set companyName and
       // industry during initial profile completion.
       const unverifiedAllowed = [...verifiedAllowed, 'companyName', 'industry'];
-      const allowedFields = ep.verified ? verifiedAllowed : unverifiedAllowed;
+      const allowedFields = ep.verified ? [...verifiedAllowed] : unverifiedAllowed;
+      // Short signup: the industry is chosen in the dashboard, possibly after
+      // an admin already verified the account. A verified employer may set it
+      // once (when none is stored) — it is required before the first job
+      // post — but can't change it afterwards.
+      if (ep.verified && !(typeof ep.industry === 'string' && ep.industry.trim())) {
+        allowedFields.push('industry');
+      }
       for (const key of Object.keys(employerProfile)) {
         if (!allowedFields.includes(key)) continue;
         const value = employerProfile[key];
@@ -1626,7 +1635,10 @@ router.get('/admin/pending-employers', authenticate, requireAdmin, async (req, r
     res.json({
       success: true,
       data: {
-        employers: pendingEmployers,
+        // profileGaps: what the employer still has to fill in before it can
+        // publish (short signup — city / industry / description). The admin
+        // queue shows it so verification can wait for a complete profile.
+        employers: pendingEmployers.map((e) => ({ ...e.toJSON(), profileGaps: getEmployerProfileGaps(e) })),
         pagination: {
           currentPage,
           totalPages: Math.ceil(totalCount / safeLimit),

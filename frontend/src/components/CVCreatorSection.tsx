@@ -3,6 +3,7 @@ import { Container } from "@mantine/core";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { ArrowRight, FileText, Sparkles, Clock, Gift } from "lucide-react";
+import { AiRecruitVisual } from "@/components/illustrations/AiRecruitVisual";
 
 export function CVCreatorSection() {
   return (
@@ -60,20 +61,10 @@ export function CVCreatorSection() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.2, duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
           >
-            {/* CV character - no border, breathing only */}
-            <motion.img 
-              src="/3d_assets/cv_character.jpg" 
-              alt="CV creation illustration" 
-              className="w-full max-w-[360px] md:max-w-[480px] lg:max-w-[560px] h-auto relative z-10"
-              animate={{ 
-                scale: [1, 1.03, 1]
-              }}
-              transition={{ 
-                duration: 3,
-                repeat: Infinity,
-                ease: "easeInOut"
-              }}
-            />
+            {/* AI writes the CV and checks candidate profiles (vector, no raster) */}
+            <div className="w-full max-w-[400px] md:max-w-[480px] lg:max-w-[560px] relative z-10 rounded-[4.375%_/_6.667%] shadow-2xl shadow-blue-950/25">
+              <AiRecruitVisual className="block w-full h-auto" />
+            </div>
           </motion.div>
           
           {/* Content - shown second on mobile */}

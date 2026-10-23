@@ -5,6 +5,7 @@ import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import RotatingContact from "@/components/RotatingContact";
 import { Companies } from "@/components/CompaniesComponent";
+import { PeopleArrow } from "@/components/illustrations/PeopleArrow";
 import {
   Container,
   Title,
@@ -112,218 +113,62 @@ const EmployersPage = () => {
   // Use ref to track scroll lock state - refs can be read synchronously by event listeners
   const isScrollLockedRef = useRef(false);
 
-  // Multi-step form based on database fields
+  // Short employer signup (client feedback + owner decision 2026-10-22):
+  // first name, last name, company name, email, mobile, password — then the
+  // emailed code. City, industry, size, description and website are filled in
+  // later in the dashboard settings ("Plotëso profilin e kompanisë") and are
+  // required before the first job post (server gate on POST /api/jobs).
   const employerForm = useForm({
     initialValues: {
-      // Personal Information (required by User model)
       firstName: '',
       lastName: '',
-      email: '',
-      password: '',
-      phone: '',
-      // Company Information (required by employerProfile)
       companyName: '',
-      companySize: '',
-      city: '',
-      // Optional company fields
-      website: '',
-      description: '',
-      industry: '',
-    },
-    validate: (values) => {
-      const errors: any = {};
-
-      // Step 1: Personal Information validation
-      if (currentStep === 0) {
-        if (!values.firstName) errors.firstName = 'Emri është i detyrueshëm';
-        if (!values.lastName) errors.lastName = 'Mbiemri është i detyrueshëm';
-        
-        // Better email validation
-        if (!values.email) {
-          errors.email = 'Email është i detyrueshëm';
-        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
-          errors.email = 'Email i pavlefshëm';
-        }
-        
-        if (!values.password) {
-          errors.password = 'Fjalëkalimi është i detyrueshëm';
-        } else if (validatePassword(values.password).length > 0) {
-          errors.password = PASSWORD_RULE_MESSAGE;
-        }
-        // Phone is optional for step 0 — but if given, must be a valid AL mobile
-        if (values.phone && !isValidAlbanianPhone(values.phone)) {
-          errors.phone = ALBANIAN_PHONE_MESSAGE;
-        }
-      }
-
-      // Step 2: Company Information validation
-      if (currentStep === 1) {
-        if (!values.companyName) errors.companyName = 'Emri i kompanisë është i detyrueshëm';
-        if (!values.companySize) errors.companySize = 'Madhësia e kompanisë është e detyrueshme';
-        if (!values.industry) errors.industry = 'Industria është e detyrueshme';
-        if (!values.city) errors.city = 'Qyteti është i detyrueshëm';
-      }
-
-      return errors;
+      email: '',
+      phone: '',
+      password: '',
     },
   });
-
-  const industries = [
-    'Teknologji Informacioni',
-    'Financë dhe Bankë',
-    'Shëndetësi',
-    'Arsim',
-    'Ndërtim',
-    'Tregti',
-    'Turizëm dhe Hotelieri',
-    'Transport dhe Logjistikë',
-    'Prodhim',
-    'Media dhe Komunikim',
-    'Juridik',
-    'Konsulencë',
-    'Bujqësi',
-    'Energji',
-    'Marketing dhe Reklamim',
-    'Tjetër',
-  ];
-
-  // Cities load from the canonical Location collection (GET /api/locations) —
-  // single source of truth, same list job search & post-job use.
-  const [cities, setCities] = useState<string[]>([]);
-  useEffect(() => {
-    locationsApi.getLocations()
-      .then(res => {
-        if (res.success && res.data?.locations) {
-          setCities(res.data.locations.map((l: { city: string }) => l.city));
-        }
-      })
-      .catch(() => { /* leave empty — Select just shows no options */ });
-  }, []);
-
-  // Based on database schema: ['1-10', '11-50', '51-200', '200+']
-  const companySizes = [
-    '1-10', '11-50', '51-200', '200+'
-  ];
-
-  const steps = [
-    { label: 'Informacioni Personal', icon: User },
-    { label: 'Informacioni i Kompanisë', icon: Building },
-    { label: 'Konfirmimi', icon: CheckCircle }
-  ];
 
   // Tutorial steps configuration
   const tutorialSteps = [
     {
       selector: '[data-tutorial="firstName"]',
       title: "Emri dhe Mbiemri",
-      content: "Shkruani emrin dhe mbiemrin tuaj si do të shfaqen në profilin e kompanisë.",
-      position: "bottom",
-      formStep: 0
-    },
-    {
-      selector: '[data-tutorial="email"]',
-      title: "Email i Kompanisë",
-      content: "Përdorni një email të vlefshëm të kompanisë. Do të merrni konfirmim dhe njoftime këtu.",
-      position: "bottom",
-      formStep: 0
-    },
-    {
-      selector: '[data-tutorial="password"]',
-      title: "Fjalëkalimi",
-      content: "Krijoni një fjalëkalim të sigurt me të paktën 8 karaktere.",
-      position: "bottom",
-      formStep: 0
-    },
-    {
-      selector: '[data-tutorial="phone"]',
-      title: "Numri i Telefonit",
-      content: "Formati i pranueshëm: 69 123 4567 ose +355 69 123 4567. Ky numer do të përdoret për kontakt.",
+      content: "Emri dhe mbiemri i personit që krijon llogarinë e kompanisë.",
       position: "bottom",
       formStep: 0
     },
     {
       selector: '[data-tutorial="companyName"]',
       title: "Emri i Kompanisë",
-      content: "Shkruani emrin e plotë të kompanisë suaj si do të shfaqet në postimet e punës.",
+      content: "Emri i kompanisë si do të shfaqet në postimet e punës.",
       position: "bottom",
-      formStep: 1
+      formStep: 0
     },
     {
-      selector: '[data-tutorial="companyInfo"]',
-      title: "Informacioni i Kompanisë",
-      content: "Zgjidhni madhësinë e kompanisë për të ndihmuar kandidatët të kuptojnë përmasat e organizatës suaj.",
+      selector: '[data-tutorial="email"]',
+      title: "Email-i",
+      content: "Këtu do të merrni kodin e verifikimit dhe njoftimet për aplikimet.",
       position: "bottom",
-      formStep: 1
+      formStep: 0
     },
     {
-      selector: '[data-tutorial="location"]',
-      title: "Vendndodhja dhe Website",
-      content: "Specifikoni qytetin ku ndodhet kompania dhe website-in nëse keni. Kjo ndihmon kandidatët të mësojnë më shumë.",
+      selector: '[data-tutorial="phone"]',
+      title: "Numri i Celularit",
+      content: "Celular shqiptar, p.sh. 69 123 4567. Ekipi ynë ju kontakton këtu gjatë verifikimit.",
       position: "bottom",
-      formStep: 1
+      formStep: 0
     },
     {
-      selector: '[data-tutorial="description"]',
-      title: "Përshkrimi i Kompanisë",
-      content: "Shtoni një përshkrim të shkurtër të kompanisë. Kjo është opsionale por ndihmon kandidatët të kuptojnë misionin tuaj.",
+      selector: '[data-tutorial="password"]',
+      title: "Fjalëkalimi",
+      content: "Të paktën 8 karaktere, me një shkronjë të madhe, një të vogël dhe një numër. Qytetin, industrinë dhe përshkrimin e kompanisë i plotësoni pas regjistrimit, në panel.",
       position: "bottom",
-      formStep: 1
-    },
-    {
-      selector: '[data-tutorial="confirmation"]',
-      title: "Konfirmimi Final",
-      content: "Shqyrtoni të gjithë informacionin tuaj para se të krijoni llogarinë. Mund të ndryshoni çdo gjë më vonë.",
-      position: "bottom",
-      formStep: 2
+      formStep: 0
     }
   ];
 
   // Removed auto-redirect - users can visit this page even when logged in
-
-  // Step navigation functions
-  const handleNextStep = () => {
-    const values = employerForm.values;
-
-    // Validate current step before advancing
-    if (currentStep === 0) {
-      // Step 0: Personal Info (firstName, lastName, email, password, phone)
-      const step0Validation = validateForm(values, employerSignupRules.step0);
-
-      if (!step0Validation.isValid) {
-        notifications.show({
-          title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
-          message: formatValidationErrors(step0Validation.errors),
-          color: 'red',
-          autoClose: 6000,
-        });
-        return;
-      }
-    } else if (currentStep === 1) {
-      // Step 1: Company Info (companyName, companySize, city, description, website)
-      const step1Validation = validateForm(values, employerSignupRules.step1);
-
-      if (!step1Validation.isValid) {
-        notifications.show({
-          title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
-          message: formatValidationErrors(step1Validation.errors),
-          color: 'red',
-          autoClose: 6000,
-        });
-        return;
-      }
-    }
-
-    // All validation passed, advance to next step
-    if (currentStep < steps.length - 1) {
-      setCurrentStep(currentStep + 1);
-    }
-  };
-
-  const handlePrevStep = () => {
-    if (currentStep > 0) {
-      setCurrentStep(currentStep - 1);
-    }
-  };
 
   // Tutorial management functions (copied from JobSeekersPage)
   const startTutorial = () => {
@@ -360,24 +205,9 @@ const EmployersPage = () => {
         const formStepToValidate = currentStepData.formStep;
         const values = employerForm.values;
         
-        // Validation logic for each step using validation system
+        // Single-step signup: validate the whole short form before leaving it.
         if (formStepToValidate === 0) {
-          // Step 0: Personal Info (firstName, lastName, email, password, phone)
-          const validationResult = validateForm(values, employerSignupRules.step0);
-
-          if (!validationResult.isValid) {
-            notifications.show({
-              title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
-              message: formatValidationErrors(validationResult.errors),
-              color: 'red',
-              autoClose: 6000,
-            });
-            return;
-          }
-        } else if (formStepToValidate === 1) {
-          // Step 1: Company Info - Use validation system
-          const validationResult = validateForm(values, employerSignupRules.step2);
-
+          const validationResult = validateForm(values, employerSignupRules.account);
           if (!validationResult.isValid) {
             notifications.show({
               title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
@@ -756,77 +586,50 @@ const EmployersPage = () => {
     }
   };
 
+  // The six fields the short signup sends (mobile normalized to +355…).
+  const signupPayload = () => {
+    const values = employerForm.values;
+    const formattedPhone = normalizeAlbanianPhone(values.phone);
+    // SMS delivery is only possible when a phone number was provided.
+    const method: 'email' | 'sms' = verificationMethod === 'sms' && formattedPhone ? 'sms' : 'email';
+    return {
+      method,
+      formattedPhone,
+      body: {
+        email: values.email.trim().toLowerCase(),
+        password: values.password,
+        userType: 'employer' as const,
+        firstName: values.firstName.trim(),
+        lastName: values.lastName.trim(),
+        companyName: values.companyName.trim(),
+        phone: formattedPhone,
+        verificationMethod: method,
+      },
+    };
+  };
+
   const handleEmployerSubmit = async () => {
-    if (currentStep !== 2) return;
-
-    try {
-      const values = employerForm.values;
-
-      // Comprehensive validation before submit
-      const step0Validation = validateForm(values, employerSignupRules.step0);
-      const step1Validation = validateForm(values, employerSignupRules.step1);
-
-      if (!step0Validation.isValid) {
-        notifications.show({
-          title: 'Gabim në të dhënat personale',
-          message: formatValidationErrors(step0Validation.errors),
-          color: 'red',
-          autoClose: 6000,
-        });
-        setCurrentStep(0);
-        return;
-      }
-
-      if (!step1Validation.isValid) {
-        notifications.show({
-          title: 'Gabim në informacionin e kompanisë',
-          message: formatValidationErrors(step1Validation.errors),
-          color: 'red',
-          autoClose: 6000,
-        });
-        setCurrentStep(1);
-        return;
-      }
-    } catch (validationError) {
-      console.error('Validation error:', validationError);
+    const values = employerForm.values;
+    const check = validateForm({ ...values, firstName: values.firstName.trim(), lastName: values.lastName.trim(), companyName: values.companyName.trim(), email: values.email.trim() }, employerSignupRules.account);
+    if (!check.isValid) {
       notifications.show({
-        title: 'Gabim në validim',
-        message: 'Ju lutemi kontrolloni të gjitha fushat.',
+        title: 'Fushat e detyrueshme nuk janë plotësuar korrekt',
+        message: formatValidationErrors(check.errors),
         color: 'red',
-        autoClose: 4000,
+        autoClose: 6000,
       });
       return;
     }
 
     try {
       setLoading(true);
-      const values = employerForm.values;
-
-      // Normalize phone number
-      const formattedPhone = normalizeAlbanianPhone(values.phone);
-
-      // SMS delivery is only possible when a phone number was provided.
-      const method = verificationMethod === 'sms' && formattedPhone ? 'sms' : 'email';
+      const { method, formattedPhone, body } = signupPayload();
 
       // Step 1: Send verification code (account not created yet)
-      const response = await authApi.initiateRegistration({
-        email: values.email.trim().toLowerCase(),
-        password: values.password,
-        userType: 'employer',
-        firstName: values.firstName.trim(),
-        lastName: values.lastName.trim(),
-        ...(formattedPhone && { phone: formattedPhone }),
-        city: values.city,
-        companyName: values.companyName.trim(),
-        industry: values.industry || 'Tjetër',
-        companySize: values.companySize || '1-10',
-        description: values.description?.trim() || undefined,
-        website: values.website?.trim() || undefined,
-        verificationMethod: method,
-      });
+      const response = await authApi.initiateRegistration(body);
 
       if (response.success) {
-        setVerificationEmail(values.email.trim().toLowerCase());
+        setVerificationEmail(body.email);
         setVerificationCode('');
         setVerificationOpen(true);
         setResendCooldown(60);
@@ -842,10 +645,12 @@ const EmployersPage = () => {
         throw new Error(response.message || 'Gabim gjatë dërgimit të kodit');
       }
     } catch (error: any) {
-      console.error('Registration error:', error);
+      const fieldErrors: string[] = Array.isArray(error?.response?.errors)
+        ? error.response.errors.map((e: any) => e?.message).filter(Boolean)
+        : [];
       notifications.show({
         title: "Gabim",
-        message: error?.message || "Nuk mund të dërgohet kodi. Provoni përsëri.",
+        message: fieldErrors.length ? fieldErrors.join(' · ') : (error?.message || "Nuk mund të dërgohet kodi. Provoni përsëri."),
         color: "red",
         autoClose: 6000,
       });
@@ -885,24 +690,8 @@ const EmployersPage = () => {
   const handleResendCode = async () => {
     if (resendCooldown > 0) return;
     try {
-      const values = employerForm.values;
-      const formattedPhone = normalizeAlbanianPhone(values.phone);
-      const method = verificationMethod === 'sms' && formattedPhone ? 'sms' : 'email';
-      await authApi.initiateRegistration({
-        email: values.email.trim().toLowerCase(),
-        password: values.password,
-        userType: 'employer',
-        firstName: values.firstName.trim(),
-        lastName: values.lastName.trim(),
-        ...(formattedPhone && { phone: formattedPhone }),
-        city: values.city,
-        companyName: values.companyName.trim(),
-        industry: values.industry || 'Tjetër',
-        companySize: values.companySize || '1-10',
-        description: values.description?.trim() || undefined,
-        website: values.website?.trim() || undefined,
-        verificationMethod: method,
-      });
+      const { method, body } = signupPayload();
+      await authApi.initiateRegistration(body);
       setResendCooldown(60);
       setVerificationCode('');
       notifications.show({
@@ -1036,213 +825,112 @@ const EmployersPage = () => {
     );
   };
 
-  // Render step content
-  const renderStepContent = () => {
-    switch (currentStep) {
-      case 0:
-        return (
-          <Stack gap="md">
-            <Box>
-              <Title order={3} mb="xs">Informacioni Personal</Title>
-              <Text size="sm" c="dimmed">Krijoni llogarinë tuaj të punëdhënësit</Text>
-            </Box>
+  // Short signup fields (one step)
+  const renderSignupFields = () => (
+    <Stack gap="md">
+      <SimpleGrid cols={{ base: 1, xs: 2 }} spacing="md" data-tutorial="firstName">
+        <TextInput
+          label="Emri"
+          placeholder="p.sh. Arben"
+          autoComplete="given-name"
+          maxLength={50}
+          {...employerForm.getInputProps('firstName')}
+          required
+        />
+        <TextInput
+          label="Mbiemri"
+          placeholder="p.sh. Kola"
+          autoComplete="family-name"
+          maxLength={50}
+          {...employerForm.getInputProps('lastName')}
+          required
+        />
+      </SimpleGrid>
 
-            <SimpleGrid cols={2} spacing="md" data-tutorial="firstName">
-              <InputWithCounter
-                placeholder="Emri *"
-                value={employerForm.values.firstName}
-                onChange={(e) => employerForm.setFieldValue('firstName', e.target.value)}
-                maxLength={50}
-                minLength={2}
-                error={employerForm.errors.firstName}
-                hideMinLengthWarning={true}
-                required
-              />
-              <InputWithCounter
-                placeholder="Mbiemri *"
-                value={employerForm.values.lastName}
-                onChange={(e) => employerForm.setFieldValue('lastName', e.target.value)}
-                maxLength={50}
-                minLength={2}
-                error={employerForm.errors.lastName}
-                hideMinLengthWarning={true}
-                required
-              />
-            </SimpleGrid>
+      <Box data-tutorial="companyName">
+        <TextInput
+          label="Emri i kompanisë"
+          placeholder="p.sh. Kola Tech Sh.p.k"
+          autoComplete="organization"
+          maxLength={100}
+          {...employerForm.getInputProps('companyName')}
+          required
+        />
+      </Box>
 
-            <Box data-tutorial="email">
-              <TextInput
-                placeholder="Email *"
-                type="email"
-                {...employerForm.getInputProps('email')}
-                required
-              />
-            </Box>
+      <Box data-tutorial="email">
+        <TextInput
+          label="Email"
+          placeholder="emri@kompania.al"
+          type="email"
+          autoComplete="email"
+          {...employerForm.getInputProps('email')}
+          required
+        />
+      </Box>
 
-            <Box data-tutorial="password">
-              <TextInput
-                placeholder="Fjalëkalimi (min. 8 karaktere, 1 e madhe, 1 e vogël, 1 numër) *"
-                type={showPassword ? "text" : "password"}
-                {...employerForm.getInputProps('password')}
-                required
-                rightSection={
-                  <ActionIcon variant="subtle" color="gray" onClick={() => setShowPassword(!showPassword)} tabIndex={-1} aria-label={showPassword ? "Fshih fjalëkalimin" : "Shfaq fjalëkalimin"}>
-                    {showPassword ? <EyeOff size={16} aria-hidden /> : <Eye size={16} aria-hidden />}
-                  </ActionIcon>
-                }
-              />
-            </Box>
+      <Box data-tutorial="phone">
+        <TextInput
+          label="Numri i celularit"
+          placeholder="69 123 4567"
+          type="tel"
+          inputMode="numeric"
+          autoComplete="tel-national"
+          leftSection={<Text size="sm" c="dimmed" fw={500}>+355</Text>}
+          leftSectionWidth={52}
+          {...employerForm.getInputProps('phone')}
+          onChange={(e) => employerForm.setFieldValue('phone', cleanAlbanianPhoneInput(e.target.value))}
+          required
+        />
+      </Box>
 
-            <Box data-tutorial="phone">
-              <TextInput
-                placeholder="69 123 4567"
-                leftSection={<Text size="sm" c="dimmed" fw={500}>+355</Text>}
-                leftSectionWidth={52}
-                {...employerForm.getInputProps('phone')}
-                onChange={(e) => employerForm.setFieldValue('phone', cleanAlbanianPhoneInput(e.target.value))}
-              />
-            </Box>
-          </Stack>
-        );
-      case 1:
-        return (
-          <Stack gap="md">
-            <Box>
-              <Title order={3} mb="xs">Informacioni i Kompanisë</Title>
-              <Text size="sm" c="dimmed">Rreth kompanisë që përfaqësoni</Text>
-            </Box>
+      <Box data-tutorial="password">
+        <TextInput
+          label="Fjalëkalimi"
+          placeholder="Min. 8 karaktere, 1 e madhe, 1 e vogël, 1 numër"
+          type={showPassword ? "text" : "password"}
+          autoComplete="new-password"
+          {...employerForm.getInputProps('password')}
+          required
+          rightSection={
+            <ActionIcon variant="subtle" color="gray" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "Fshih fjalëkalimin" : "Shfaq fjalëkalimin"}>
+              {showPassword ? <EyeOff size={16} aria-hidden /> : <Eye size={16} aria-hidden />}
+            </ActionIcon>
+          }
+        />
+      </Box>
 
-            <Box data-tutorial="companyName">
-              <InputWithCounter
-                placeholder="Emri i Kompanisë *"
-                value={employerForm.values.companyName}
-                onChange={(e) => employerForm.setFieldValue('companyName', e.target.value)}
-                maxLength={100}
-                minLength={2}
-                error={employerForm.errors.companyName}
-                required
-              />
-            </Box>
+      {/* QA Round 2 (D3): choose how to receive the code — compact single
+          row. Only shown when SMS (Twilio) is configured. */}
+      {smsEnabled && (
+        <Group justify="space-between" wrap="nowrap" gap="sm">
+          <Text size="sm" c="dimmed">Merr kodin me:</Text>
+          <SegmentedControl
+            size="xs"
+            value={verificationMethod}
+            onChange={(v) => setVerificationMethod(v as 'email' | 'sms')}
+            data={[
+              { label: 'Email', value: 'email' },
+              { label: 'SMS', value: 'sms', disabled: !employerForm.values.phone?.trim() },
+            ]}
+          />
+        </Group>
+      )}
 
-            <div data-tutorial="companyInfo">
-              <Select
-                placeholder="Sa punonjës keni? *"
-                {...employerForm.getInputProps('companySize')}
-                data={companySizes}
-                required
-              />
-              <Select
-                placeholder="Në cilën industri vepron kompania? *"
-                {...employerForm.getInputProps('industry')}
-                data={industries}
-                required
-                mt="md"
-              />
-            </div>
+      <Paper p="sm" radius="md" bg="blue.0" data-testid="employer-signup-later-note">
+        <Group gap="xs" wrap="nowrap" align="flex-start">
+          <FileText size={16} className="mt-0.5 shrink-0 text-blue-700" aria-hidden />
+          <Text size="xs" c="blue.9">
+            Qytetin, industrinë dhe përshkrimin e kompanisë i plotësoni pas regjistrimit, te paneli — duhen para punës së parë.
+          </Text>
+        </Group>
+      </Paper>
 
-            <SimpleGrid cols={2} spacing="md" data-tutorial="location">
-              <Select
-                placeholder="Qyteti *"
-                {...employerForm.getInputProps('city')}
-                data={cities}
-                searchable
-                nothingFoundMessage="Qyteti nuk u gjet"
-                required
-              />
-              <TextInput
-                placeholder="Website (opsional)"
-                {...employerForm.getInputProps('website')}
-              />
-            </SimpleGrid>
-
-            <Box data-tutorial="description">
-              <TextAreaWithCounter
-                placeholder="Përshkrimi i kompanisë..."
-                value={employerForm.values.description}
-                onChange={(e) => employerForm.setFieldValue('description', e.target.value)}
-                maxLength={COMPANY_DESCRIPTION_LIMITS.max}
-                minLength={COMPANY_DESCRIPTION_LIMITS.min}
-                showMinLength={true}
-                rows={3}
-                error={employerForm.errors.description}
-              />
-            </Box>
-          </Stack>
-        );
-      case 2:
-        return (
-          <Stack gap="md" data-tutorial="confirmation">
-            <Box>
-              <Title order={3} mb="xs">Konfirmimi i Të Dhënave</Title>
-              <Text size="sm" c="dimmed">Shqyrtoni informacionin tuaj para se të vazhdoni</Text>
-            </Box>
-
-            <Paper p="md" withBorder>
-              <Stack gap="xs">
-                <Text size="sm" fw={600}>Informacioni Personal</Text>
-                <Text size="sm">
-                  <strong>Emri:</strong> {employerForm.values.firstName} {employerForm.values.lastName}
-                </Text>
-                <Text size="sm">
-                  <strong>Email:</strong> {employerForm.values.email}
-                </Text>
-                {employerForm.values.phone && (
-                  <Text size="sm">
-                    <strong>Telefoni:</strong> +355{employerForm.values.phone}
-                  </Text>
-                )}
-              </Stack>
-            </Paper>
-
-            <Paper p="md" withBorder>
-              <Stack gap="xs">
-                <Text size="sm" fw={600}>Kompania</Text>
-                <Text size="sm">
-                  <strong>Emri:</strong> {employerForm.values.companyName}
-                </Text>
-                <Text size="sm">
-                  <strong>Madhësia:</strong> {employerForm.values.companySize} punonjës
-                </Text>
-                <Text size="sm">
-                  <strong>Industria:</strong> {employerForm.values.industry}
-                </Text>
-                <Text size="sm">
-                  <strong>Vendndodhja:</strong> {employerForm.values.city}
-                </Text>
-                {employerForm.values.website && (
-                  <Text size="sm">
-                    <strong>Website:</strong> {employerForm.values.website}
-                  </Text>
-                )}
-              </Stack>
-            </Paper>
-
-            {/* QA Round 2 (D3): choose how to receive the code — compact single
-                row. Only shown when SMS (Twilio) is configured. */}
-            {smsEnabled && (
-              <Group justify="space-between" wrap="nowrap" gap="sm">
-                <Text size="sm" c="dimmed">Merr kodin me:</Text>
-                <SegmentedControl
-                  size="xs"
-                  value={verificationMethod}
-                  onChange={(v) => setVerificationMethod(v as 'email' | 'sms')}
-                  data={[
-                    { label: 'Email', value: 'email' },
-                    { label: 'SMS', value: 'sms', disabled: !employerForm.values.phone?.trim() },
-                  ]}
-                />
-              </Group>
-            )}
-
-            <Text size="xs" c="dimmed">
-              Duke klikuar "Krijo Llogarinë", ju pranoni Kushtet e Shërbimit dhe Politikën e Privatësisë së advance.al
-            </Text>
-          </Stack>
-        );
-      default:
-        return null;
-    }
-  };
+      <Text size="xs" c="dimmed">
+        Duke klikuar "Krijo Llogarinë", ju pranoni Kushtet e Shërbimit dhe Politikën e Privatësisë së advance.al
+      </Text>
+    </Stack>
+  );
 
   return (
     <Box style={{ minHeight: '100vh' }}>
@@ -1294,12 +982,7 @@ const EmployersPage = () => {
           <Grid.Col span={{ base: 12, md: 5 }}>
             {/* Left: Mascot Image */}
             <div className="hidden md:flex md:items-center md:justify-center md:min-h-full" style={{ position: 'sticky', top: 100 }}>
-              <img
-                src="/3d_assets/arrow.png"
-                alt="Gjeni kandidatin ideal për ekipin tuaj"
-                className="w-full max-w-[520px] object-contain"
-                loading="eager"
-              />
+              <PeopleArrow className="w-full max-w-[520px] h-auto" />
             </div>
           </Grid.Col>
 
@@ -1344,82 +1027,25 @@ const EmployersPage = () => {
                   </Box>
                 </Group>
 
-                {/* Step Indicator - Inline on Desktop - NO TEXT WRAPPING EVER */}
-                <div className="flex flex-col md:flex-row md:justify-center gap-2 md:gap-2 lg:gap-3 mb-8">
-                  {steps.map((step, index) => {
-                    const Icon = step.icon;
-                    const isActive = index === currentStep;
-                    const isCompleted = index < currentStep;
+                {/* Short signup — one step, then the emailed code */}
+                <form
+                  noValidate
+                  data-tutorial="confirmation"
+                  onSubmit={(e) => { e.preventDefault(); handleEmployerSubmit(); }}
+                >
+                  {renderSignupFields()}
 
-                    return (
-                      <div
-                        key={index}
-                        onClick={() => currentStep > index && setCurrentStep(index)}
-                        className={`flex items-center gap-1.5 md:gap-2 px-2 md:px-3 py-2 rounded-lg transition-all cursor-pointer flex-shrink-0 ${
-                          isActive
-                            ? 'bg-blue-50 border-2 border-blue-500'
-                            : isCompleted
-                            ? 'bg-green-50 border-2 border-green-500'
-                            : 'bg-gray-50 border-2 border-gray-200'
-                        } ${currentStep > index ? 'hover:bg-blue-100' : 'cursor-default'}`}
-                      >
-                        <div className={`flex items-center justify-center w-5 h-5 md:w-6 md:h-6 rounded-full flex-shrink-0 ${
-                          isActive
-                            ? 'bg-blue-500'
-                            : isCompleted
-                            ? 'bg-green-500'
-                            : 'bg-gray-300'
-                        }`}>
-                          {isCompleted ? (
-                            <CheckCircle className="w-3 h-3 md:w-4 md:h-4 text-white" />
-                          ) : (
-                            <Icon className="w-3 h-3 md:w-4 md:h-4 text-white" />
-                          )}
-                        </div>
-                        <span className={`text-xs md:text-sm font-medium whitespace-nowrap ${
-                          isActive ? 'text-blue-700' : isCompleted ? 'text-green-700' : 'text-gray-500'
-                        }`}>
-                          {step.label}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Step Content */}
-                {renderStepContent()}
-
-                {/* Navigation Buttons */}
-                <Group justify="space-between" mt="xl">
                   <Button
-                    variant="subtle"
-                    leftSection={<ArrowLeft size={16} />}
-                    onClick={handlePrevStep}
-                    disabled={currentStep === 0}
+                    type="submit"
+                    fullWidth
+                    mt="xl"
+                    size="md"
+                    rightSection={<CheckCircle size={16} />}
+                    loading={loading}
                   >
-                    Kthehu Prapa
+                    {loading ? 'Duke dërguar kodin...' : 'Krijo Llogarinë'}
                   </Button>
-
-                  <Group>
-                    {currentStep < steps.length - 1 ? (
-                      <Button
-                        rightSection={<ArrowRight size={16} />}
-                        onClick={handleNextStep}
-                      >
-                        Vazhdo
-                      </Button>
-                    ) : (
-                      <Button
-                        rightSection={<CheckCircle size={16} />}
-                        onClick={handleEmployerSubmit}
-                        loading={loading}
-                        color="green"
-                      >
-                        {loading ? 'Duke krijuar...' : 'Krijo Llogarinë'}
-                      </Button>
-                    )}
-                  </Group>
-                </Group>
+                </form>
 
                 <Center mt="lg">
                   <Text size="sm" c="dimmed" ta="center">
@@ -1557,10 +1183,13 @@ const EmployersPage = () => {
             Kemi dërguar një kod 6-shifror {verificationMethod === 'sms' ? 'me SMS' : 'në'}{' '}
             <Text span fw={600} c="blue">{verificationMethod === 'sms' ? normalizeAlbanianPhone(employerForm.values.phone) : verificationEmail}</Text>
           </Text>
+          {/* md + small gap: 6 boxes fit a 375px-wide modal (lg overflowed it) */}
           <PinInput
             length={6}
             type="number"
-            size="lg"
+            size="md"
+            gap={6}
+            aria-label="Kodi i verifikimit"
             value={verificationCode}
             onChange={setVerificationCode}
             onComplete={handleVerifyCode}

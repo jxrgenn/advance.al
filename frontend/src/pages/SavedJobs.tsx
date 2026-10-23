@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import Navigation from "@/components/Navigation";
+import SEO from "@/components/SEO";
 import Footer from "@/components/Footer";
 import JobCard from "@/components/JobCard";
 import { Button } from "@/components/ui/button";
@@ -180,6 +181,7 @@ const SavedJobs = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="Punët e ruajtura" path="/saved-jobs" noindex />
       <Navigation />
 
       <div className="container py-8">

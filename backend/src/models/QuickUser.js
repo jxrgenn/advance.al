@@ -4,6 +4,7 @@ import { escapeRegex } from '../utils/sanitize.js';
 import { emailFormatValidator } from '../lib/emailFormat.js';
 import { JOB_CATEGORIES } from '../constants/jobCategories.js';
 import { startOfAlbanianDay, endOfAlbanianDay } from '../lib/albanianDate.js';
+import { normalizeAlbanianPhone } from '../lib/phonePolicy.js';
 
 const { Schema } = mongoose;
 
@@ -22,34 +23,39 @@ export const alertGapMsFor = (frequency) =>
 // How many announced job ids each subscriber remembers (exactly-once per job
 // across fan-out retries) and how many queued matches a digest may hold.
 const NOTIFIED_JOB_IDS_KEEP = 200;
+// Query fragment: subscriber has an email address (alert emails need one).
+export const HAS_EMAIL = { $type: 'string', $ne: '' };
 const PENDING_ALERTS_KEEP = 50;
 // A job whose alert email was permanently rejected this many times for one
 // subscriber is not retried again.
 export const MAX_ALERT_DELIVERY_ATTEMPTS = 3;
 
+// CV-first quick profile (owner decision 2026-10-22): the name comes from the
+// CV or is optional; the contact is an email OR a phone (at least one — the
+// route enforces it). Only subscribers WITH an email can receive job-alert
+// emails: every email path filters on HAS_EMAIL / checks `email`.
 const quickUserSchema = new Schema({
   firstName: {
     type: String,
-    required: true,
     maxlength: 50,
     trim: true
   },
   lastName: {
     type: String,
-    required: true,
     maxlength: 50,
     trim: true
   },
+  // Unique only when present — see the partial index below (a plain
+  // `unique: true` index treats every missing email as the same null value).
   email: {
     type: String,
-    required: true,
-    unique: true,
     lowercase: true,
     trim: true,
     validate: { validator: emailFormatValidator, message: 'Email i pavlefshëm' }
   },
   phone: {
     type: String,
+    set: normalizeAlbanianPhone,
     match: [/^\+\d{8,}$/, 'Numri i telefonit duhet të ketë të paktën 8 shifra']
   },
   location: {
@@ -210,7 +216,14 @@ const quickUserSchema = new Schema({
 });
 
 // Indexes for performance
-// quickUserSchema.index({ email: 1 }); // Removed: email already has unique: true
+// One subscription per email; subscribers without an email (phone-only) are
+// not indexed. Replaces the old `email_1` unique index, which
+// lib/dropLegacyIndexes.js removes from deployed databases.
+quickUserSchema.index(
+  { email: 1 },
+  { unique: true, partialFilterExpression: { email: { $type: 'string' } }, name: 'email_unique_if_present' }
+);
+quickUserSchema.index({ phone: 1 }, { sparse: true });
 quickUserSchema.index({ interests: 1 });
 quickUserSchema.index({ location: 1 });
 quickUserSchema.index({ isActive: 1 });
@@ -223,9 +236,9 @@ quickUserSchema.index({ convertedToFullUser: 1 });
 quickUserSchema.index({ location: 1, interests: 1, isActive: 1 });
 quickUserSchema.index({ isActive: 1, lastNotifiedAt: 1 });
 
-// Virtual for full name
+// Virtual for full name ('' when the subscriber gave no name)
 quickUserSchema.virtual('fullName').get(function() {
-  return `${this.firstName} ${this.lastName}`;
+  return [this.firstName, this.lastName].filter(Boolean).join(' ');
 });
 
 // Virtual for all interests (including custom)
@@ -513,6 +526,8 @@ quickUserSchema.statics.findMatchesForJob = function(job) {
   const query = {
     isActive: true,
     convertedToFullUser: false,
+    // Alerts are emails: a phone-only subscriber can't receive one.
+    email: HAS_EMAIL,
 
     // Keyword path is a FALLBACK only: skip users who already have a completed
     // embedding — those are handled by the semantic path in

@@ -44,7 +44,8 @@ function seekerBody(email, extra = {}) {
 function employerBody(email, extra = {}) {
   return {
     email, password: PASSWORD, userType: 'employer',
-    firstName: 'Punë', lastName: 'Dhënës', city: 'Tiranë',
+    // Mobile is required for employers since the short signup (2026-10-22).
+    firstName: 'Punë', lastName: 'Dhënës', phone: '+355691234567', city: 'Tiranë',
     companyName: 'Test Sh.p.k', industry: 'Teknologji', companySize: '1-10',
     description: 'Përshkrim kompanie. '.repeat(25), // 500 chars — within 400-1000
     ...extra,

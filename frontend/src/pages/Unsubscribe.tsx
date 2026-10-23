@@ -1,4 +1,5 @@
 import Navigation from "@/components/Navigation";
+import SEO from "@/components/SEO";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSearchParams, Link } from "react-router-dom";
 import { useState } from "react";
@@ -49,6 +50,7 @@ const Unsubscribe = () => {
 
   return (
     <>
+      <SEO title="Çregjistrohu nga njoftimet" path="/unsubscribe" noindex />
       <Navigation />
       <div className="flex min-h-[calc(100vh-200px)] items-center justify-center bg-background px-4">
         <Card className="w-full max-w-md">

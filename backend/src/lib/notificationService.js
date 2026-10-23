@@ -53,8 +53,11 @@ class NotificationService {
     // Extract company name from populated employerId
     const companyName = job.employerId?.profile?.employerProfile?.companyName || 'Kompani';
 
-    // Sanitize user-supplied data for HTML templates
-    const safeFirstName = escapeHtml(user.firstName);
+    // Sanitize user-supplied data for HTML templates. Quick profiles may have
+    // no name (CV-first / "Nuk kam CV") — the greeting then has none.
+    const safeFirstName = escapeHtml(user.firstName || '');
+    const greetingName = user.firstName ? ` ${user.firstName}` : '';
+    const safeGreetingName = safeFirstName ? ` ${safeFirstName}` : '';
     const safeJobTitle = escapeHtml(job.title);
     const safeCompanyName = escapeHtml(companyName);
     const safeCity = escapeHtml(job.location?.city);
@@ -67,7 +70,7 @@ class NotificationService {
     const subject = safeSubject(`Punë e re: ${job.title || ''} në ${job.location?.city || ''}`);
 
     const textContent = `
-Përshëndetje ${user.firstName},
+Përshëndetje${greetingName},
 
 Një punë e re që përputhet me interesat tuaja është publikuar:
 
@@ -100,7 +103,7 @@ advance.al - Platforma #1 e Punës në Shqipëri
   <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
       <h1 style="margin: 0;">🎯 Punë e re për ju!</h1>
-      <p style="margin: 10px 0 0 0;">Përshëndetje ${safeFirstName}, gjenim një mundësi të shkëlqyer!</p>
+      <p style="margin: 10px 0 0 0;">Përshëndetje${safeGreetingName}, gjenim një mundësi të shkëlqyer!</p>
     </div>
 
     <div style="background: #fff; padding: 30px; border: 1px solid #e0e0e0;">
@@ -407,6 +410,11 @@ advance.al - Platforma #1 e Punës në Shqipëri
       // Guard: user has been deactivated since match-time → no send.
       if (user.isActive === false) {
         return { success: true, sent: false, reason: 'inactive', userId: user._id };
+      }
+      // Phone-only quick profile: alerts are emails — nothing to send or
+      // queue (the matchers already skip these; defense in depth).
+      if (!user.email) {
+        return { success: true, sent: false, reason: 'no-email', userId: user._id };
       }
 
       claim = await QuickUser.claimJobAlertSlot(user._id, job._id);
@@ -726,6 +734,9 @@ advance.al - Platforma #1 e Punës në Shqipëri
         }
         if (qu.isActive === false) {
           return { success: true, matchCount: 0, message: 'Subscriber is not active' };
+        }
+        if (!qu.email) {
+          return { success: true, matchCount: 0, message: 'Subscriber has no email' };
         }
         quickUser = qu;
         userVector = qu.embedding.vector;

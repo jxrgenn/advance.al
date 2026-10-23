@@ -369,6 +369,14 @@ router.post('/test-welcome-email', authenticate, requireAdmin, async (req, res) 
       });
     }
 
+    // Quick profiles can be phone-only — nothing to send then.
+    if (!quickUser.email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ky përdorues i profilit të shpejtë nuk ka email'
+      });
+    }
+
     // Send welcome email
     const result = await notificationService.sendWelcomeEmail(quickUser);
 
@@ -531,6 +539,14 @@ router.post('/manual-notify', authenticate, requireAdmin, [
     }
     if (!isLiveJob(job)) {
       return res.status(409).json({ success: false, message: NOT_LIVE_MESSAGE });
+    }
+
+    // Quick profiles can be phone-only — job alerts are emails.
+    if (!quickUser.email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ky përdorues i profilit të shpejtë nuk ka email — njoftimet dërgohen vetëm me email'
+      });
     }
 
     // Check if user is eligible for notifications

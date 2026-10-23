@@ -143,8 +143,9 @@ router.get('/', optionalAuth, async (req, res) => {
       description: company.profile.employerProfile.description,
       website: company.profile.employerProfile.website,
       logo: company.profile.employerProfile.logo,
-      city: company.profile.location.city,
-      region: company.profile.location.region,
+      // Employers from the short signup may not have a city yet.
+      city: company.profile.location?.city,
+      region: company.profile.location?.region,
       activeJobs: company.activeJobsCount,
       verified: company.profile.employerProfile.verified,
       joinedAt: company.createdAt
@@ -251,7 +252,7 @@ router.get('/:id', validateObjectId('id'), optionalAuth, async (req, res) => {
       description: company.profile.employerProfile.description,
       website: company.profile.employerProfile.website,
       logo: company.profile.employerProfile.logo,
-      location: company.profile.location,
+      location: company.profile.location || {},
       verified: company.profile.employerProfile.verified,
       joinedAt: company.createdAt,
       stats,

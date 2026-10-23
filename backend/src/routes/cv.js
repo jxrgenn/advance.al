@@ -45,7 +45,7 @@ const cvGenerateLimiter = rateLimit({
   requestWasSuccessful: (req, res) => res.statusCode < 400 || req.cvCompletionReceived === true,
   message: {
     success: false,
-    message: `Keni arritur limitin e gjenerimit të CV (${CV_HOURLY_CAP}/orë). Provoni përsëri pas 1 ore.`
+    message: `Keni arritur limitin e krijimit të CV-ve (${CV_HOURLY_CAP}/orë). Provoni përsëri pas 1 ore.`
   }
 });
 
@@ -75,7 +75,7 @@ router.post('/generate', authenticate, requireJobSeeker, cvGenerateLimiter, asyn
     if (!process.env.OPENAI_API_KEY) {
       return res.status(503).json({
         success: false,
-        message: 'Gjenerimi i CV-së me AI nuk është i disponueshëm për momentin'
+        message: 'Krijimi i CV-së me AI nuk është i disponueshëm për momentin'
       });
     }
 
@@ -115,7 +115,7 @@ router.post('/generate', authenticate, requireJobSeeker, cvGenerateLimiter, asyn
         logger.info('cv/generate daily cap hit', { userId: String(req.user._id), count, cap: CV_DAILY_CAP });
         return res.status(429).json({
           success: false,
-          message: `Limit ditor i gjenerimeve të CV-së është arritur (${CV_DAILY_CAP}/ditë). Provoni nesër.`,
+          message: `Limiti ditor i krijimit të CV-ve është arritur (${CV_DAILY_CAP}/ditë). Provoni nesër.`,
           data: { remaining, cap: CV_DAILY_CAP },
         });
       }
@@ -251,7 +251,7 @@ router.post('/generate', authenticate, requireJobSeeker, cvGenerateLimiter, asyn
     if (error instanceof CVExtractionError && error.reason === 'truncated') {
       return res.status(422).json({
         success: false,
-        message: 'CV-ja doli shumë e gjatë për t\'u gjeneruar. Shkurtoni tekstin dhe provoni përsëri.'
+        message: 'CV-ja doli shumë e gjatë për t\'u krijuar. Shkurtoni tekstin dhe provoni përsëri.'
       });
     }
     // #60: bounded AI calls answer with a clear status instead of the socket
@@ -259,7 +259,7 @@ router.post('/generate', authenticate, requireJobSeeker, cvGenerateLimiter, asyn
     if (error instanceof CVExtractionError && error.reason === 'timeout') {
       return res.status(504).json({
         success: false,
-        message: 'Gjenerimi i CV-së po zgjat më shumë se zakonisht. Provoni përsëri pas pak minutash.'
+        message: 'Krijimi i CV-së po zgjat më shumë se zakonisht. Provoni përsëri pas pak minutash.'
       });
     }
     if (error instanceof CVExtractionError && (error.reason === 'unavailable' || error.reason === 'not_configured')) {
@@ -270,7 +270,7 @@ router.post('/generate', authenticate, requireJobSeeker, cvGenerateLimiter, asyn
     }
     res.status(500).json({
       success: false,
-      message: 'Gabim në gjenerimin e CV'
+      message: 'Gabim në krijimin e CV-së'
     });
   }
 });
@@ -292,7 +292,7 @@ router.post('/use-as-profile', authenticate, requireJobSeeker, useAsProfileLimit
     if (!pdfFileId) {
       return res.status(404).json({
         success: false,
-        message: 'Nuk keni një CV të gjeneruar me AI. Gjeneroni një CV fillimisht.'
+        message: 'Nuk keni një CV të krijuar me AI. Krijoni një CV fillimisht.'
       });
     }
 
@@ -302,7 +302,7 @@ router.post('/use-as-profile', authenticate, requireJobSeeker, useAsProfileLimit
     if (fileId !== undefined && String(fileId) !== String(pdfFileId)) {
       return res.status(409).json({
         success: false,
-        message: 'Kjo CV është zëvendësuar nga një gjenerim më i ri. Rifreskoni faqen dhe provoni përsëri.'
+        message: 'Kjo CV është zëvendësuar nga një CV më e re. Rifreskoni faqen dhe provoni përsëri.'
       });
     }
 
@@ -310,7 +310,7 @@ router.post('/use-as-profile', authenticate, requireJobSeeker, useAsProfileLimit
     if (!file || !file.fileData) {
       return res.status(404).json({
         success: false,
-        message: 'Nuk keni një CV të gjeneruar me AI. Gjeneroni një CV fillimisht.'
+        message: 'Nuk keni një CV të krijuar me AI. Krijoni një CV fillimisht.'
       });
     }
     const pdfBuffer = Buffer.isBuffer(file.fileData) ? file.fileData : Buffer.from(file.fileData);
@@ -338,7 +338,7 @@ router.post('/use-as-profile', authenticate, requireJobSeeker, useAsProfileLimit
 
     return res.json({
       success: true,
-      message: 'CV-ja e gjeneruar u vendos si CV-ja juaj në profil',
+      message: 'CV-ja e krijuar me AI u vendos si CV-ja juaj në profil',
       data: { resumeUrl, resumeType: 'pdf', replacedExisting: !!previousResumeUrl }
     });
   } catch (error) {

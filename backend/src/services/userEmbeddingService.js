@@ -1,4 +1,4 @@
-import QuickUser from '../models/QuickUser.js';
+import QuickUser, { HAS_EMAIL } from '../models/QuickUser.js';
 import User from '../models/User.js';
 import Job from '../models/Job.js';
 import jobEmbeddingService from './jobEmbeddingService.js';
@@ -648,6 +648,7 @@ class UserEmbeddingService {
     const quickUserQuery = {
       isActive: true,
       convertedToFullUser: false,
+      email: HAS_EMAIL, // alerts are emails — phone-only subscribers can't get one
       'embedding.status': 'completed',
     };
     if (!jobRemote && cityRegex) {

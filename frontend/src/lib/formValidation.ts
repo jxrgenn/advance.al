@@ -410,10 +410,13 @@ export const jobSeekerSignupRules = {
       message: "Qyteti është i detyrueshëm"
     }
   },
+  // CV-first quick profile (owner decision 2026-10-22): the name is optional
+  // and the contact is an email OR a mobile (at least one — see
+  // quickProfileContactProblem). Mirrors backend routes/quickusers.js.
   quickForm: {
-    firstName: profileValidationRules.personal.firstName,
-    lastName: profileValidationRules.personal.lastName,
-    email: profileValidationRules.settings.email,
+    firstName: { ...profileValidationRules.personal.firstName, required: false },
+    lastName: { ...profileValidationRules.personal.lastName, required: false },
+    email: { ...profileValidationRules.settings.email, required: false },
     phone: {
       required: false,
       custom: (value: string) => {
@@ -429,7 +432,39 @@ export const jobSeekerSignupRules = {
  * Common validation rules for Employer signup
  */
 export const employerSignupRules = {
-  // Step 0: Personal Info (matches UI step 0)
+  // Short employer signup (owner decision 2026-10-22): first name, last name,
+  // company name, email, mobile, password — ONE step. City / industry /
+  // description are asked in the dashboard settings and required before the
+  // first job post (getEmployerProfileGaps). Mirrors backend routes/auth.js.
+  account: {
+    firstName: profileValidationRules.personal.firstName,
+    lastName: profileValidationRules.personal.lastName,
+    companyName: {
+      required: true,
+      minLength: 2,
+      maxLength: 100,
+      message: "Emri i kompanisë duhet të jetë midis 2 dhe 100 karakteresh"
+    },
+    email: profileValidationRules.settings.email,
+    phone: {
+      required: true,
+      custom: (value: string) => isValidAlbanianPhone(value),
+      message: "Numri i celularit është i detyrueshëm — " + ALBANIAN_PHONE_MESSAGE
+    },
+    password: {
+      required: true,
+      minLength: 8,
+      custom: (value: string) => {
+        if (!value) return true;
+        if (!/[A-Z]/.test(value)) return false;
+        if (!/[a-z]/.test(value)) return false;
+        if (!/[0-9]/.test(value)) return false;
+        return true;
+      },
+      message: "Fjalëkalimi duhet të ketë 8+ karaktere, 1 shkronjë të madhe, 1 të vogël, 1 numër"
+    }
+  },
+  // Legacy multi-step rules (kept for reference by older callers).
   step0: {
     firstName: profileValidationRules.personal.firstName,
     lastName: profileValidationRules.personal.lastName,
@@ -574,14 +609,44 @@ export const employerDashboardSettingsRules = {
     required: true,
     message: "Industria është e detyrueshme"
   },
-  companySize: {
-    required: true,
-    message: "Madhësia e kompanisë është e detyrueshme"
-  },
+  // Optional — not asked at signup and not needed to publish.
+  companySize: {},
   city: {
     required: true,
     message: "Qyteti është i detyrueshëm"
   }
+};
+
+/**
+ * Company-profile completeness — what an employer must still fill in before
+ * the FIRST job post (short signup, owner decision 2026-10-22). Same rule as
+ * the server gate on POST /api/jobs (backend src/lib/companyProfile.js
+ * getEmployerProfileGaps) — keep both in step.
+ */
+export type EmployerProfileGap = 'city' | 'industry' | 'description';
+export const EMPLOYER_PROFILE_INCOMPLETE_CODE = 'EMPLOYER_PROFILE_INCOMPLETE';
+export const EMPLOYER_SETTINGS_PATH = '/employer-dashboard?tab=settings';
+export const EMPLOYER_PROFILE_GAP_LABELS: Record<EmployerProfileGap, string> = {
+  city: 'Qyteti',
+  industry: 'Industria',
+  description: `Përshkrimi i kompanisë (${COMPANY_DESCRIPTION_LIMITS.min}–${COMPANY_DESCRIPTION_LIMITS.max} karaktere)`,
+};
+
+export const getEmployerProfileGaps = (user: any): EmployerProfileGap[] => {
+  const gaps: EmployerProfileGap[] = [];
+  const filled = (v: unknown) => typeof v === 'string' && v.trim() !== '';
+  const ep = user?.profile?.employerProfile || {};
+  if (!filled(user?.profile?.location?.city)) gaps.push('city');
+  if (!filled(ep.industry)) gaps.push('industry');
+  const len = typeof ep.description === 'string' ? ep.description.trim().length : 0;
+  if (len < COMPANY_DESCRIPTION_LIMITS.min || len > COMPANY_DESCRIPTION_LIMITS.max) gaps.push('description');
+  return gaps;
+};
+
+/** Quick profile: at least one way to reach the visitor. Returns the Albanian problem or null. */
+export const quickProfileContactProblem = (email: string, phone: string): string | null => {
+  if (!email?.trim() && !phone?.trim()) return 'Shkruani email-in ose numrin e celularit — të paktën njërin.';
+  return null;
 };
 
 /**

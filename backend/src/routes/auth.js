@@ -454,7 +454,14 @@ const registerValidation = [
   // reject must be rejected HERE: /register only runs the schema validators
   // after the user has typed the emailed code, where a mismatch used to
   // surface as a 500 (O-55 class).
+  //
+  // Short employer signup (owner decision 2026-10-22): an employer gives only
+  // first/last name, company name, email, mobile and password. City, industry,
+  // size, description and website come later from the dashboard settings and
+  // are required before the first job post (routes/jobs.js). They are still
+  // validated here when an (older) client sends them.
   body('city')
+    .if((value, { req }) => req.body?.userType !== 'employer' || (value !== undefined && value !== null && value !== ''))
     .isString()
     .withMessage('Qyteti është i detyrueshëm')
     .bail()
@@ -463,7 +470,18 @@ const registerValidation = [
     .withMessage('Qyteti është i detyrueshëm')
     .isLength({ max: 50 })
     .withMessage('Qyteti nuk mund të ketë më shumë se 50 karaktere'),
+  // Employers: the company name is required (2-100 after trimming).
   body('companyName')
+    .if(body('userType').equals('employer'))
+    .exists({ values: 'falsy' }).withMessage('Emri i kompanisë është i detyrueshëm').bail()
+    .isString().withMessage('Emri i kompanisë nuk është i vlefshëm').bail()
+    .customSanitizer(v => stripHtml(v).trim())
+    .isLength({ min: 2 })
+    .withMessage('Emri i kompanisë duhet të ketë të paktën 2 karaktere')
+    .isLength({ max: 100 })
+    .withMessage('Emri i kompanisë nuk mund të ketë më shumë se 100 karaktere'),
+  body('companyName')
+    .if(body('userType').not().equals('employer'))
     .optional({ checkFalsy: true })
     .isString().withMessage('Emri i kompanisë nuk mund të ketë më shumë se 100 karaktere').bail()
     .trim()
@@ -486,14 +504,23 @@ const registerValidation = [
     // 140: only http(s) — "ftp://x" used to be stored as "https://ftp://x".
     .isURL({ protocols: ['http', 'https'] })
     .withMessage('Faqja e internetit duhet të jetë një adresë e vlefshme (p.sh. kompania.al)'),
+  // Employers must give a mobile number (short signup keeps it: it is how the
+  // team reaches the company during verification). Optional for jobseekers.
+  body('phone')
+    .if(body('userType').equals('employer'))
+    .exists({ values: 'falsy' })
+    .withMessage('Numri i celularit është i detyrueshëm'),
   body('phone')
     .optional({ checkFalsy: true })
+    .isString().withMessage(ALBANIAN_PHONE_MESSAGE).bail()
     .custom(v => isValidAlbanianPhone(v))
     .withMessage(ALBANIAN_PHONE_MESSAGE),
-  // Employer-only: company description is required at signup. Same limits as
-  // the dashboard settings and PUT /users/profile (lib/companyProfile.js).
+  // Employer company description: optional at signup (dashboard settings),
+  // but when sent it must meet the same 50-1000 rule as the dashboard and
+  // PUT /users/profile (lib/companyProfile.js).
   body('description')
     .if(body('userType').equals('employer'))
+    .optional({ checkFalsy: true })
     .isString().withMessage(COMPANY_DESCRIPTION_MESSAGE).bail()
     .trim()
     .isLength({ min: COMPANY_DESCRIPTION_MIN, max: COMPANY_DESCRIPTION_MAX })
@@ -580,14 +607,10 @@ router.post('/initiate-registration', authLimiter, initiateRegistrationByEmailLi
       });
     }
 
-    // Employer-specific validation
-    if (userType === 'employer') {
-      if (!companyName || !industry || !companySize) {
-        return res.status(400).json({
-          success: false,
-          message: 'Emri i kompanisë, industria dhe madhësia janë të detyrueshme për punëdhënësit'
-        });
-      }
+    // Employer-specific validation. Company name + mobile are required by the
+    // validators above; size is optional (dashboard settings) but must be one
+    // of the schema values when an older client still sends it.
+    if (userType === 'employer' && companySize) {
       const validSizes = ['1-10', '11-50', '51-200', '201-500', '501+'];
       if (!validSizes.includes(companySize)) {
         return res.status(400).json({
@@ -618,9 +641,11 @@ router.post('/initiate-registration', authLimiter, initiateRegistrationByEmailLi
     const passwordHash = await bcrypt.hash(password, USER_PASSWORD_BCRYPT_ROUNDS);
 
     // Cache registration data with 10-minute TTL. A fresh code starts a
-    // fresh wrong-attempt budget.
+    // fresh wrong-attempt budget. An employer's city is optional (short
+    // signup) — cached only when given.
+    const safeCity = typeof city === 'string' && city.trim() ? city.trim() : undefined;
     await setPendingRegistration(email, {
-      data: { email, passwordHash, userType, firstName, lastName, city, phone, companyName: safeCompanyName, industry: safeIndustry, companySize, description: safeDescription, website: normalizedWebsite },
+      data: { email, passwordHash, userType, firstName, lastName, city: safeCity, phone, companyName: safeCompanyName, industry: safeIndustry || undefined, companySize: companySize || undefined, description: safeDescription || undefined, website: normalizedWebsite },
       hashedCode
     });
     await resetVerificationAttempts(email);
@@ -747,8 +772,12 @@ router.post('/register', authLimiter, async (req, res) => {
 
     // O-55: the region comes from the Location table (Kamëz → Tiranë,
     // Krujë → Durrës, ...). A city typed freely that isn't a known Location
-    // keeps the previous behaviour (region = city).
-    const knownLocation = await Location.findOne({ city: data.city }).select('region').lean();
+    // keeps the previous behaviour (region = city). Employers registered
+    // through the short signup have no city yet (dashboard settings).
+    const hasCity = typeof data.city === 'string' && data.city.trim() !== '';
+    const knownLocation = hasCity
+      ? await Location.findOne({ city: data.city }).select('region').lean()
+      : null;
     const region = knownLocation?.region || data.city;
 
     const userData = {
@@ -766,7 +795,7 @@ router.post('/register', authLimiter, async (req, res) => {
       profile: {
         firstName: data.firstName,
         lastName: data.lastName,
-        location: { city: data.city, region }
+        ...(hasCity && { location: { city: data.city, region } })
       }
     };
 
@@ -775,8 +804,8 @@ router.post('/register', authLimiter, async (req, res) => {
     if (data.userType === 'employer') {
       userData.profile.employerProfile = {
         companyName: data.companyName,
-        industry: data.industry,
-        companySize: data.companySize,
+        ...(data.industry && { industry: data.industry }),
+        ...(data.companySize && { companySize: data.companySize }),
         ...(data.description && { description: data.description }),
         ...(data.website && { website: data.website }),
         // Signup collects no company phone/WhatsApp, so those channels start

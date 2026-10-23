@@ -31,14 +31,16 @@ import {
   FileText,
   Upload,
   MousePointerClick,
-  ArrowRight
+  ArrowRight,
+  Sparkles
 } from "lucide-react";
+import { AiConnectedSystem } from "@/components/illustrations/AiConnectedSystem";
 
 /* ─── Data ─── */
 const aiFeatures = [
   { icon: Brain, title: 'Përputhje Inteligjente', desc: 'Analizon profilin, aftësitë, dhe përvojën tuaj — gjen punë që vërtet ju përshtaten, jo vetëm fjalë kyçe.', step: 'Regjistrim' },
   { icon: Upload, title: 'Analizimi i CV-së', desc: 'Ngarkoni CV-në dhe sistemi e lexon, e kupton, e përdor për t\'ju gjetur punë më të përshtatshme.', step: 'Analizë' },
-  { icon: FileText, title: 'CV e Gjeneruar me AI', desc: 'Shkruani lirshëm për veten në çdo gjuhë — AI krijon CV profesionale të formatuar automatikisht.', step: 'Gjenerim' },
+  { icon: FileText, title: 'CV e Krijuar me AI', desc: 'Shkruani lirshëm për veten në çdo gjuhë — AI krijon CV profesionale të formatuar automatikisht.', step: 'Krijim' },
   { icon: Bell, title: 'Njoftime Automatike', desc: 'Sapo postohet punë e re që përputhet me profilin tuaj, merrni email menjëherë.', step: 'Njoftim' },
   { icon: MousePointerClick, title: 'Aplikim me 1 Klik', desc: 'Plotësoni profilin njëherë, aplikoni kudo me vetëm një klik. Pa formularë, pa përsëritje.', step: 'Aplikim' },
   { icon: Shield, title: 'Kompani të Verifikuara', desc: 'Çdo punëdhënës kontrollohet nga ekipi ynë para se të postojë. Aplikoni me siguri.', step: 'Siguri' },
@@ -73,6 +75,102 @@ const scenarios = [
     result: 'Kandidati i duhur, pa agjenci, pa pritje të gjatë.',
   },
 ];
+
+/* ─── AI CV callout ─── */
+// Client feedback: the AI-CV call to action must be far more visible and sit
+// BEFORE the "three ways to use advance.al" cards. The right half shows what
+// actually happens — free text in, a structured CV out.
+const AI_CV_DEMO_ROWS = [
+  { label: 'Përvoja', value: 'Recepsioniste, hotel në Durrës (3 vjet)' },
+  { label: 'Gjuhët', value: 'Anglisht, italisht' },
+  { label: 'Aftësitë', value: 'Sisteme rezervimi, shërbim ndaj klientit' },
+];
+
+const AiCvCallout = () => (
+  <section className="py-10 md:py-14" aria-labelledby="ai-cv-callout-title">
+    <div className="container mx-auto px-4">
+      <div className="relative max-w-6xl mx-auto overflow-hidden rounded-3xl bg-primary text-primary-foreground shadow-[0_32px_64px_-28px_hsl(220_85%_25%/0.65)]">
+        <div aria-hidden="true" className="pointer-events-none absolute -top-48 -right-32 h-[460px] w-[460px] rounded-full bg-blue-500/35 blur-3xl" />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 opacity-[0.07]"
+          style={{
+            backgroundImage: 'linear-gradient(to right, #fff 1px, transparent 1px), linear-gradient(to bottom, #fff 1px, transparent 1px)',
+            backgroundSize: '32px 32px',
+          }}
+        />
+        <div className="relative grid gap-10 p-6 sm:p-10 md:p-12 lg:grid-cols-[1.05fr_1fr] lg:items-center">
+          <div>
+            <ul className="flex flex-wrap gap-2 mb-5">
+              {['Shkrim i lirë', 'Në çdo gjuhë', 'Falas'].map((t) => (
+                <li key={t} className="rounded-full border border-white/25 bg-white/10 px-3 py-1 text-sm font-medium text-blue-50">
+                  {t}
+                </li>
+              ))}
+            </ul>
+            <h2 id="ai-cv-callout-title" className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-[1.08]">
+              Krijo CV-në me AI
+            </h2>
+            <p className="mt-4 text-base md:text-lg text-blue-100 leading-relaxed max-w-xl">
+              Shkruani lirshëm për veten, përvojën dhe aftësitë tuaja, në çdo gjuhë. AI e kthen tekstin
+              në një CV profesionale, të formatuar dhe gati për t'u dërguar.
+            </p>
+            <Button
+              size="lg"
+              asChild
+              className="mt-7 h-14 w-full sm:w-auto px-8 text-base md:text-lg font-semibold bg-white text-primary hover:bg-blue-50 shadow-lg focus-visible:ring-white focus-visible:ring-offset-primary"
+            >
+              <Link to="/jobseekers#ai-cv-section">
+                <Sparkles className="mr-2 h-5 w-5" aria-hidden="true" />
+                Krijo CV-në tani
+                <ArrowRight className="ml-2 h-5 w-5" aria-hidden="true" />
+              </Link>
+            </Button>
+          </div>
+
+          {/* Illustration of the flow: free text → AI → structured CV */}
+          <div aria-hidden="true" className="relative">
+            <div className="max-w-md rounded-2xl border border-white/15 bg-white/10 p-4 sm:p-5">
+              <p className="text-xs font-semibold text-blue-200 mb-2">Ju shkruani</p>
+              <p className="text-sm sm:text-base text-white/95 leading-relaxed">
+                “Kam 3 vjet që punoj si recepsioniste në një hotel në Durrës. Flas anglisht dhe italisht dhe
+                di të punoj me sistemet e rezervimeve.”
+              </p>
+            </div>
+            <div className="flex items-center gap-3 py-3 pl-6 text-blue-100">
+              <span className="h-9 w-px bg-white/30" />
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">
+                <Sparkles className="h-3.5 w-3.5" />
+                AI krijon CV-në
+              </span>
+            </div>
+            <div className="max-w-md sm:ml-auto rounded-2xl bg-white p-5 text-foreground shadow-2xl">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-primary">EH</div>
+                <div>
+                  <p className="font-bold leading-tight">Elira Hoxha</p>
+                  <p className="text-sm text-muted-foreground">Recepsioniste</p>
+                </div>
+              </div>
+              <div className="my-4 h-px bg-border" />
+              <dl className="space-y-2.5">
+                {AI_CV_DEMO_ROWS.map((row) => (
+                  <div key={row.label} className="flex items-start gap-2.5">
+                    <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                    <div className="text-sm leading-snug">
+                      <dt className="inline font-semibold">{row.label}: </dt>
+                      <dd className="inline text-muted-foreground">{row.value}</dd>
+                    </div>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+);
 
 /* ─── Showcase ─── */
 const FeatureShowcase = () => {
@@ -366,12 +464,7 @@ const AboutUs = () => {
           <div className="grid md:grid-cols-2 gap-12 items-center">
             {/* Left side - Image */}
             <div className="flex justify-center items-center">
-              <img
-                src="/3d_assets/ai_stuff.png"
-                alt="Job matching success - Connecting job seekers with employers"
-                className="w-full max-w-[500px] object-contain"
-                loading="eager"
-              />
+              <AiConnectedSystem className="w-full max-w-[500px] h-auto rounded-[6.15%] shadow-[0_30px_60px_-30px_rgba(5,18,47,0.7)]" />
             </div>
 
             {/* Right side - Title + Pse advance.al? */}
@@ -418,6 +511,9 @@ const AboutUs = () => {
         </div>
       </section>
 
+      {/* AI CV call to action — moved here, before the three ways (client request) */}
+      <AiCvCallout />
+
       {/* How It Works - Different Ways to Use Platform */}
       <section className="py-16 bg-gradient-to-br from-blue-50/50 to-background">
         <div className="container mx-auto px-4">
@@ -457,7 +553,7 @@ const AboutUs = () => {
                   </div>
                   <div className="flex items-start space-x-2">
                     <Lightbulb className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                    <span className="text-sm font-medium">Gjenero CV me AI automatikisht</span>
+                    <span className="text-sm font-medium">Krijo CV me AI automatikisht</span>
                   </div>
                 </div>
               </CardContent>
@@ -531,40 +627,6 @@ const AboutUs = () => {
             </Link>
           </div>
 
-          {/* AI CV Generation CTA */}
-          <div className="mt-12 max-w-5xl mx-auto">
-            <Card className="overflow-hidden border-2 border-primary/20 hover:border-primary/40 transition-all duration-300">
-              <CardContent className="p-0">
-                <div className="flex flex-col md:flex-row items-center">
-                  {/* Left side - Icon & Info */}
-                  <div className="bg-gradient-to-br from-primary/10 to-primary/5 p-8 md:w-2/5 flex flex-col items-center justify-center text-center">
-                    <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
-                      <Lightbulb className="h-12 w-12 text-primary" />
-                    </div>
-                    <h3 className="text-2xl font-bold mb-2">Gjenero CV me AI</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Shkrim i lirë &bull; Çdo gjuhë &bull; Automatik
-                    </p>
-                  </div>
-
-                  {/* Right side - Description & CTA */}
-                  <div className="p-8 md:w-3/5">
-                    <p className="text-muted-foreground mb-6 leading-relaxed">
-                      Krijoni një CV profesionale në sekonda duke shkruar thjesht për veten,
-                      eksperiencën dhe aftësitë tuaja në mënyrë të natyrshme. IA jonë
-                      analizon tekstin dhe krijon një CV të formatuar dhe të optimizuar automatikisht.
-                    </p>
-                    <Button size="lg" className="w-full md:w-auto" asChild>
-                      <Link to="/jobseekers#ai-cv-section">
-                        <Lightbulb className="mr-2 h-5 w-5" />
-                        Provo Gjenerimin e CV-së
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
         </div>
       </section>
 
@@ -625,8 +687,10 @@ const AboutUs = () => {
       <RotatingContact />
 
       {/* Call to Action */}
-      <section className="py-16 bg-primary text-primary-foreground">
-        <div className="container mx-auto px-4 text-center">
+      <section className="relative overflow-hidden py-16 md:py-20 text-primary-foreground bg-[linear-gradient(135deg,#0A2E76_0%,#1E40AF_55%,#2563EB_100%)]">
+        <div aria-hidden="true" className="pointer-events-none absolute -top-40 left-1/2 h-[380px] w-[820px] -translate-x-1/2 rounded-full bg-white/10 blur-3xl" />
+        <div aria-hidden="true" className="pointer-events-none absolute -bottom-44 -right-24 h-[380px] w-[380px] rounded-full bg-sky-400/20 blur-3xl" />
+        <div className="relative container mx-auto px-4 text-center">
           <h2 className="text-3xl md:text-4xl font-bold mb-4">
             Gati të Filloni?
           </h2>

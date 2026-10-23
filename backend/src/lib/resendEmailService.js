@@ -437,11 +437,17 @@ advance.al - Platforma e Punës në Shqipëri
     if (!this.enabled) {
       return { success: false, message: 'Email service disabled' };
     }
+    // Quick profiles may be phone-only (no email to welcome).
+    if (!user?.email) {
+      return { success: false, message: 'Quick user has no email' };
+    }
 
     try {
-      // Sanitize user-supplied data
-      const safeFirstName = escapeHtml(user.firstName);
-      const safeLastName = escapeHtml(user.lastName);
+      // Sanitize user-supplied data. The name is optional on the quick
+      // profile (CV-first / "Nuk kam CV") — greet without it.
+      const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ');
+      const safeFirstName = escapeHtml(user.firstName || '');
+      const safeFullName = escapeHtml(fullName);
       const safeEmail = escapeHtml(user.email);
       const safeLocation = escapeHtml(user.location);
       const safeInterests = user.interests ? user.interests.map(i => escapeHtml(i)).join(', ') : '';
@@ -467,7 +473,7 @@ advance.al - Platforma e Punës në Shqipëri
 
         <!-- Main Content -->
         <div style="background: #f9fafb; border-radius: 8px; padding: 30px; margin: 20px 0;">
-            <h2 style="color: #1f2937; margin-top: 0; font-size: 24px;">🎉 Mirë se vini ${safeFirstName}!</h2>
+            <h2 style="color: #1f2937; margin-top: 0; font-size: 24px;">🎉 Mirë se vini${safeFirstName ? ` ${safeFirstName}` : ''}!</h2>
 
             <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 20px 0;">
                 Regjistrimi juaj për njoftimet e punës në advance.al u krye me sukses! Do të merrni email për punë të reja që përputhen me interesat tuaja.
@@ -476,7 +482,7 @@ advance.al - Platforma e Punës në Shqipëri
             <!-- User Info -->
             <div style="background: #ffffff; border-radius: 8px; padding: 20px; margin: 25px 0; border-left: 4px solid #10b981;">
                 <h3 style="color: #1f2937; margin-top: 0;">📋 Detajet e Regjistrimit</h3>
-                <p style="margin: 8px 0; color: #4b5563;"><strong>Emri:</strong> ${safeFirstName} ${safeLastName}</p>
+                ${safeFullName ? `<p style="margin: 8px 0; color: #4b5563;"><strong>Emri:</strong> ${safeFullName}</p>` : ''}
                 <p style="margin: 8px 0; color: #4b5563;"><strong>Email:</strong> ${safeEmail}</p>
                 <p style="margin: 8px 0; color: #4b5563;"><strong>Qyteti:</strong> ${safeLocation}</p>
                 <p style="margin: 8px 0; color: #4b5563;"><strong>Interesat:</strong> ${safeInterests}</p>
@@ -531,13 +537,12 @@ advance.al - Platforma e Punës në Shqipëri
       const textContent = `
 Mirë se vini në advance.al! 🎉
 
-Përshëndetje ${user.firstName},
+Përshëndetje${user.firstName ? ` ${user.firstName}` : ''},
 
 Regjistrimi juaj për njoftimet e punës në advance.al u krye me sukses!
 
 Detajet e Regjistrimit:
-- Emri: ${user.firstName} ${user.lastName}
-- Email: ${user.email}
+${fullName ? `- Emri: ${fullName}\n` : ''}- Email: ${user.email}
 - Qyteti: ${user.location}
 - Interesat: ${user.interests.join(', ')}
 ${user.customInterests && user.customInterests.length > 0 ? `- Interesat e tjera: ${user.customInterests.join(', ')}` : ''}
@@ -1229,9 +1234,16 @@ advance.al - Platforma e Punës në Shqipëri`;
                 <p style="margin: 8px 0; color: #4b5563;"><strong>Kompania:</strong> ${safeCompanyName}</p>
                 <p style="margin: 8px 0; color: #4b5563;"><strong>Lloji:</strong> Punëdhënës</p>
             </div>
+            <div style="background: #eff6ff; border: 1px solid #93c5fd; border-radius: 8px; padding: 15px; margin: 25px 0;">
+                <p style="color: #1e3a8a; margin: 0 0 10px 0; font-size: 14px; font-weight: 500;">
+                    📝 <strong>Hapi i parë:</strong> Plotësoni profilin e kompanisë — qytetin, industrinë dhe një përshkrim të shkurtër. Pa to nuk mund të publikoni punën e parë.
+                </p>
+                <a href="https://advance.al/employer-dashboard?tab=settings"
+                   style="display: inline-block; background: #2563eb; color: #ffffff; padding: 10px 18px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px;">Plotëso profilin e kompanisë</a>
+            </div>
             <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 15px; margin: 25px 0;">
                 <p style="color: #92400e; margin: 0; font-size: 14px; font-weight: 500;">
-                    ⏳ <strong>Hapi tjetër:</strong> Llogaria juaj do të verifikohet nga administratori ynë. Do të merrni njoftim me email kur të aprovohet.
+                    ⏳ <strong>Më pas:</strong> Llogaria juaj do të verifikohet nga administratori ynë. Do të merrni njoftim me email kur të aprovohet.
                 </p>
             </div>
             <h3 style="color: #1f2937;">🚀 Pasi të aprovohet llogaria:</h3>
@@ -1261,7 +1273,10 @@ Detajet e Llogarisë:
 - Email: ${user.email}
 - Kompania: ${user.profile?.employerProfile?.companyName || ''}
 
-Hapi tjetër: Llogaria juaj do të verifikohet nga administratori. Do të merrni njoftim kur të aprovohet.
+Hapi i parë: Plotësoni profilin e kompanisë (qyteti, industria, përshkrimi) — pa to nuk mund të publikoni punën e parë:
+https://advance.al/employer-dashboard?tab=settings
+
+Më pas: Llogaria juaj do të verifikohet nga administratori. Do të merrni njoftim kur të aprovohet.
 
 --
 advance.al - Platforma e Punës në Shqipëri`;

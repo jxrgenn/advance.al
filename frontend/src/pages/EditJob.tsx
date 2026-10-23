@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Navigation from "@/components/Navigation";
+import SEO from "@/components/SEO";
 import {
   Container,
   Title,
@@ -712,7 +713,7 @@ const EditJob = () => {
 
             {/* Tags */}
             <Box>
-              <Text fw={500} mb="xs">Tags (Opsionale)</Text>
+              <Text fw={500} mb="xs">Etiketa (opsionale)</Text>
               <Text size="sm" c="dimmed" mb="md">Fjalë kyçe për t'u ndihmuar kandidatëve të gjejnë punën</Text>
               {tags.map((tag, index) => (
                 <Group key={index} mb="xs">
@@ -866,6 +867,7 @@ const EditJob = () => {
   if (loadingJob) {
     return (
       <Box style={{ minHeight: '100vh' }}>
+        <SEO title="Ndrysho punën" path="/edit-job" noindex />
         <Navigation />
         <Container size="lg" pt={90} pb="xl">
           <Center py={80}>
@@ -882,6 +884,7 @@ const EditJob = () => {
 
   return (
     <Box style={{ minHeight: '100vh' }}>
+      <SEO title="Ndrysho punën" path="/edit-job" noindex />
       <Navigation />
 
       <Container size="lg" pt={90} pb="xl">

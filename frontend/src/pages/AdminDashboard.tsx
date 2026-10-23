@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
+import SEO from "@/components/SEO";
 import BusinessDashboard from "@/pages/BusinessDashboard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -110,6 +111,7 @@ const AdminPaymentOrdersView = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [action, setAction] = useState<AdminOrderAction>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [amountEur, setAmountEur] = useState('');
   const [working, setWorking] = useState(false);
@@ -162,6 +164,7 @@ const AdminPaymentOrdersView = () => {
       amountCents = Math.round(n * 100);
     }
     setWorking(true);
+    setActionError(null);
     try {
       if (action.kind === 'refund') {
         const r = await adminApi.refundOrder(action.order.orderId, reason.trim(), amountCents);
@@ -178,7 +181,10 @@ const AdminPaymentOrdersView = () => {
       setAmountEur('');
       await fetchOrders();
     } catch (err: unknown) {
-      toast({ title: 'Gabim', description: err instanceof Error ? err.message : 'Veprimi dështoi', variant: 'destructive' });
+      // Keep the dialog open and say why, inside it (e.g. Stripe unreachable → 502).
+      const message = err instanceof Error && err.message ? err.message : 'Veprimi dështoi. Provoni përsëri.';
+      setActionError(message);
+      toast({ title: 'Gabim', description: message, variant: 'destructive' });
     } finally {
       setWorking(false);
     }
@@ -249,7 +255,7 @@ const AdminPaymentOrdersView = () => {
                     </td>
                     <td className="py-2 pr-3 max-w-[200px]">
                       <div className="truncate">{o.job?.title || '—'}</div>
-                      {o.job && <div className="text-xs text-muted-foreground">{o.job.isDeleted ? 'e fshirë' : o.job.status}</div>}
+                      {o.job && <div className="text-xs text-muted-foreground">{o.job.isDeleted ? 'e fshirë' : jobStatusLabel(o.job.status)}</div>}
                     </td>
                     <td className="py-2 pr-3 text-xs">{o.tier === 'promoted' ? 'I promovuar' : 'Standart'}</td>
                     <td className="py-2 pr-3 text-right whitespace-nowrap">
@@ -274,12 +280,12 @@ const AdminPaymentOrdersView = () => {
                     <td className="py-2 pr-3">
                       <div className="flex flex-col gap-1">
                         {canRefund(o) && (
-                          <Button size="sm" variant="outline" onClick={() => { setAction({ kind: 'refund', order: o }); setReason(''); setAmountEur(''); }}>
+                          <Button size="sm" variant="outline" onClick={() => { setAction({ kind: 'refund', order: o }); setReason(''); setAmountEur(''); setActionError(null); }}>
                             {o.provider === 'stripe' ? 'Rimburso' : 'Regjistro rimbursim'}
                           </Button>
                         )}
                         {o.needsRefund && (
-                          <Button size="sm" variant="ghost" onClick={() => { setAction({ kind: 'resolve', order: o }); setReason(''); }}>
+                          <Button size="sm" variant="ghost" onClick={() => { setAction({ kind: 'resolve', order: o }); setReason(''); setActionError(null); }}>
                             Zgjidh pa rimbursim
                           </Button>
                         )}
@@ -301,7 +307,7 @@ const AdminPaymentOrdersView = () => {
         </div>
       )}
 
-      <Dialog open={!!action} onOpenChange={(o) => { if (!o && !working) setAction(null); }}>
+      <Dialog open={!!action} onOpenChange={(o) => { if (!o && !working) { setAction(null); setActionError(null); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
@@ -329,8 +335,14 @@ const AdminPaymentOrdersView = () => {
             placeholder="Arsye (min 5 karaktere) — p.sh. 'Klienti anuloi brenda 24 orëve, ticket #123'"
             className="min-h-[90px] text-sm"
           />
+          {actionError && (
+            <div role="alert" className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800" data-testid="order-action-error">
+              <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
+              <span>{actionError}</span>
+            </div>
+          )}
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setAction(null)} disabled={working}>Anulo</Button>
+            <Button variant="outline" onClick={() => { setAction(null); setActionError(null); }} disabled={working}>Anulo</Button>
             <Button onClick={submitAction} disabled={working || reason.trim().length < 5} variant={action?.kind === 'refund' ? 'destructive' : 'default'}>
               {working ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Konfirmo
@@ -1626,6 +1638,7 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="Paneli i administratorit" path="/admin" noindex />
       <Navigation />
 
       <div className="container py-8">
@@ -1898,9 +1911,9 @@ const AdminDashboard = () => {
                   ) : (
                     <div className="space-y-6">
                       {pendingEmployers.map((employer) => (
-                        <div key={employer.id} className="border rounded-lg p-6 bg-card">
-                          <div className="flex justify-between items-start mb-4">
-                            <div className="flex-1">
+                        <div key={employer.id} className="border rounded-lg p-4 sm:p-6 bg-card">
+                          <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-start mb-4">
+                            <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-3 mb-2">
                                 <h3 className="text-lg font-semibold">
                                   {employer.profile.employerProfile?.companyName || 'N/A'}
@@ -1909,7 +1922,19 @@ const AdminDashboard = () => {
                                   <Clock className="h-3 w-3 mr-1" />
                                   Në pritje
                                 </Badge>
+                                {/* Short signup (2026-10-22): city / industry / description come
+                                    later from the dashboard — the server lists what is missing. */}
+                                {((employer as any).profileGaps?.length ?? 0) > 0 && (
+                                  <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800" data-testid="admin-profile-incomplete">
+                                    Profil i paplotë
+                                  </Badge>
+                                )}
                               </div>
+                              {((employer as any).profileGaps?.length ?? 0) > 0 && (
+                                <p className="mb-2 text-xs text-amber-800">
+                                  Mungon: {(employer as any).profileGaps.map((g: string) => ({ city: 'qyteti', industry: 'industria', description: 'përshkrimi' } as Record<string, string>)[g] || g).join(', ')} — kompania nuk mund të publikojë punë pa to.
+                                </p>
+                              )}
 
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-muted-foreground">
                                 <div className="flex items-center gap-2">
@@ -1918,7 +1943,9 @@ const AdminDashboard = () => {
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <MapPin className="h-4 w-4" />
-                                  {employer.profile.location.city}, {employer.profile.location.region}
+                                  {employer.profile.location?.city
+                                    ? `${employer.profile.location.city}${employer.profile.location.region ? `, ${employer.profile.location.region}` : ''}`
+                                    : 'Qyteti nuk është dhënë'}
                                 </div>
                                 {employer.profile.phone && (
                                   <div className="flex items-center gap-2">
@@ -1928,7 +1955,7 @@ const AdminDashboard = () => {
                                 )}
                                 <div className="flex items-center gap-2">
                                   <Building className="h-4 w-4" />
-                                  {employer.profile.employerProfile?.companySize || 'N/A'} punonjës
+                                  {employer.profile.employerProfile?.companySize ? `${employer.profile.employerProfile.companySize} punonjës` : 'Madhësia nuk është dhënë'}
                                 </div>
                               </div>
 
@@ -1965,7 +1992,7 @@ const AdminDashboard = () => {
                               )}
                             </div>
 
-                            <div className="flex gap-3 ml-6">
+                            <div className="flex flex-wrap gap-3 sm:ml-6 sm:flex-nowrap sm:flex-shrink-0">
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -2677,7 +2704,7 @@ const AdminDashboard = () => {
                             </div>
                             <div className="flex items-center gap-1">
                               <MapPin className="h-4 w-4" />
-                              {user.profile.location.city}
+                              {user.profile.location?.city || '—'}
                             </div>
                             <div className="flex items-center gap-1">
                               <Calendar className="h-4 w-4" />
@@ -2724,9 +2751,9 @@ const AdminDashboard = () => {
                               {user.profile.employerProfile.companyName}
                             </div>
                             <span>•</span>
-                            <span>{user.profile.employerProfile.industry}</span>
+                            <span>{user.profile.employerProfile.industry || 'Industria —'}</span>
                             <span>•</span>
-                            <span>{user.profile.employerProfile.companySize} punonjës</span>
+                            <span>{user.profile.employerProfile.companySize ? `${user.profile.employerProfile.companySize} punonjës` : 'Madhësia —'}</span>
                           </div>
                         )}
                         {user.userType === 'jobseeker' && user.profile.jobSeekerProfile && (
@@ -3229,7 +3256,7 @@ const AdminDashboard = () => {
                                 <Mail className="h-4 w-4" />
                                 <span>{user.email}</span>
                                 <MapPin className="h-4 w-4 ml-4" />
-                                <span>{user.profile.location.city}</span>
+                                <span>{user.profile.location?.city || '—'}</span>
                               </div>
                             </div>
                             <div className="flex gap-2">
@@ -3693,8 +3720,8 @@ const AdminDashboard = () => {
                 <div className="space-y-2">
                   <h3 className="font-semibold text-lg">Vendndodhja</h3>
                   <div className="space-y-1 text-sm">
-                    <p><strong>Qyteti:</strong> {selectedUserForDetails.profile.location.city}</p>
-                    <p><strong>Rajoni:</strong> {selectedUserForDetails.profile.location.region}</p>
+                    <p><strong>Qyteti:</strong> {selectedUserForDetails.profile.location?.city || 'Nuk është dhënë'}</p>
+                    <p><strong>Rajoni:</strong> {selectedUserForDetails.profile.location?.region || 'Nuk është dhënë'}</p>
                   </div>
                 </div>
               </div>
@@ -3705,8 +3732,8 @@ const AdminDashboard = () => {
                   <h3 className="font-semibold text-lg">Profili i Punëdhënësit</h3>
                   <div className="space-y-1 text-sm">
                     <p><strong>Kompania:</strong> {selectedUserForDetails.profile.employerProfile.companyName}</p>
-                    <p><strong>Industria:</strong> {selectedUserForDetails.profile.employerProfile.industry}</p>
-                    <p><strong>Madhësia:</strong> {selectedUserForDetails.profile.employerProfile.companySize}</p>
+                    <p><strong>Industria:</strong> {selectedUserForDetails.profile.employerProfile.industry || 'Nuk është dhënë'}</p>
+                    <p><strong>Madhësia:</strong> {selectedUserForDetails.profile.employerProfile.companySize || 'Nuk është dhënë'}</p>
                     <p><strong>Uebsajti:</strong> {selectedUserForDetails.profile.employerProfile.website || 'Nuk është dhënë'}</p>
                     <p><strong>Përshkrimi:</strong> {selectedUserForDetails.profile.employerProfile.description || 'Nuk është dhënë'}</p>
                     <p><strong>Verifikuar:</strong> {selectedUserForDetails.profile.employerProfile.verified ? 'Po' : 'Jo'}</p>

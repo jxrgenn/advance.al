@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import Navigation from "@/components/Navigation";
+import SEO from "@/components/SEO";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,6 +51,7 @@ const ForgotPassword = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="Harruat fjalëkalimin" path="/forgot-password" noindex />
       <Navigation />
 
       <div className="container flex items-center justify-center min-h-[calc(100vh-4rem)] py-12 pt-12">

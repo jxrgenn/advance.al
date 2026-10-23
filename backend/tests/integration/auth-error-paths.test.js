@@ -50,6 +50,7 @@ describe('auth.js — error / edge branches', () => {
           password: 'StrongP@ss1',
           firstName: 'Bad',
           lastName: 'Size',
+          phone: '+355691112233',
           city: 'Tiranë',
           userType: 'employer',
           companyName: 'Co',

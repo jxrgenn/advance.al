@@ -245,6 +245,11 @@ const jobSeekerProfileSchema = new Schema({
 });
 
 // Employer Profile Schema
+// Signup collects only the company NAME (owner decision 2026-10-22: short
+// employer signup). Size and industry — like the city and the description —
+// are filled in later in the dashboard settings; city + industry +
+// description are required before the first job post (POST /api/jobs, see
+// lib/companyProfile.js getEmployerProfileGaps), not by the schema.
 const employerProfileSchema = new Schema({
   companyName: {
     type: String,
@@ -253,12 +258,10 @@ const employerProfileSchema = new Schema({
   },
   companySize: {
     type: String,
-    enum: ['1-10', '11-50', '51-200', '201-500', '501+'],
-    required: true
+    enum: ['1-10', '11-50', '51-200', '201-500', '501+']
   },
   industry: {
     type: String,
-    required: true,
     maxlength: 50
   },
   description: {
@@ -449,10 +452,12 @@ const userSchema = new Schema({
       set: normalizeAlbanianPhone,
       match: [/^\+\d{8,}$/, 'Numri i telefonit duhet të ketë të paktën 8 shifra']
     },
+    // Employers sign up without a city (short signup) and add it in the
+    // dashboard settings; everyone else gives it at signup.
     location: {
       city: {
         type: String,
-        required: true,
+        required: function() { return this.userType !== 'employer'; },
         maxlength: 50
       },
       region: {

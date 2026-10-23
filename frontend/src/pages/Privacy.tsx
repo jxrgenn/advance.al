@@ -179,7 +179,7 @@ const Privacy = () => {
               <div>
                 <h4 className="font-semibold text-foreground mb-2">Pëlqimi (Neni 6 i Ligjit Nr. 9887)</h4>
                 <ul className="list-disc list-inside space-y-1 ml-2">
-                  <li>Gjenerimi i CV-së me inteligjencë artificiale</li>
+                  <li>Krijimi i CV-së me inteligjencë artificiale</li>
                   <li>Përpunimi i CV-së për nxjerrjen e të dhënave (CV parsing)</li>
                   <li>Krijimi i vektorëve semantikë për përputhjen e punëve</li>
                   <li>Dërgimi i njoftimeve me email për punë të reja</li>
@@ -235,7 +235,7 @@ const Privacy = () => {
                   për të sugjeruar kandidatë relevantë bazuar në kërkesat e punës dhe profilin e punëkërkuesit.
                 </li>
                 <li>
-                  <span className="font-medium text-foreground">Gjenerimi i CV me AI:</span> Kur përdorni funksionin e gjenerimit
+                  <span className="font-medium text-foreground">Krijimi i CV-së me AI:</span> Kur përdorni funksionin e krijimit
                   të CV-së, të dhënat tuaja përpunohen nga inteligjenca artificiale për të krijuar një CV profesionale.
                 </li>
                 <li>
@@ -277,9 +277,9 @@ const Privacy = () => {
               </p>
 
               <div>
-                <h4 className="font-semibold text-foreground mb-2">Gjenerimi i CV-së</h4>
+                <h4 className="font-semibold text-foreground mb-2">Krijimi i CV-së me AI</h4>
                 <p className="ml-2 text-sm">
-                  Kur kërkoni gjenerimin e një CV-je, të dhënat e profilit tuaj (emri, eksperienca, arsimimi, aftësitë)
+                  Kur kërkoni krijimin e një CV-je me AI, të dhënat e profilit tuaj (emri, eksperienca, arsimimi, aftësitë)
                   dërgohen tek OpenAI (modeli GPT-4o-mini) për të krijuar një dokument CV të formatuar profesionalisht.
                   Të dhënat përdoren vetëm për këtë qëllim dhe nuk ruhen nga OpenAI për trajnim të modeleve.
                 </p>
@@ -314,7 +314,7 @@ const Privacy = () => {
 
               <p className="text-sm">
                 <span className="font-medium text-foreground">E drejta e ç'aktivizimit:</span> Ju mund të zgjidhni
-                të mos përdorni shërbimet e AI duke mos përdorur funksionin e gjenerimit të CV-së dhe duke plotësuar
+                të mos përdorni shërbimet e AI duke mos përdorur funksionin e krijimit të CV-së me AI dhe duke plotësuar
                 profilin tuaj manualisht. Për çaktivizimin e vektorëve semantikë, na kontaktoni në privacy@advance.al.
               </p>
             </CardContent>
@@ -337,7 +337,7 @@ const Privacy = () => {
               <div className="space-y-3">
                 <div className="bg-muted/50 p-3 rounded-lg">
                   <p className="font-medium text-foreground text-sm">OpenAI (SHBA)</p>
-                  <p className="text-xs">Gjenerimi i CV-ve, analiza e CV-ve, krijimi i vektorëve semantikë</p>
+                  <p className="text-xs">Krijimi i CV-ve me AI, analiza e CV-ve, krijimi i vektorëve semantikë</p>
                 </div>
                 <div className="bg-muted/50 p-3 rounded-lg">
                   <p className="font-medium text-foreground text-sm">MongoDB Atlas (AWS EU)</p>

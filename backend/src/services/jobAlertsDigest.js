@@ -29,7 +29,7 @@
 
 import User from '../models/User.js';
 import Job from '../models/Job.js';
-import QuickUser, { QUICKUSER_ALERT_GAP_MS } from '../models/QuickUser.js';
+import QuickUser, { QUICKUSER_ALERT_GAP_MS, HAS_EMAIL } from '../models/QuickUser.js';
 import notificationService from '../lib/notificationService.js';
 import logger from '../config/logger.js';
 
@@ -237,6 +237,7 @@ export async function flushQuickUserDigests({ now = new Date() } = {}) {
   const candidates = await QuickUser.find({
     isActive: true,
     convertedToFullUser: { $ne: true },
+    email: HAS_EMAIL, // a digest is an email
     'pendingJobAlerts.0': { $exists: true },
     $or: gapPassed,
   }).limit(MAX_PER_FLUSH);

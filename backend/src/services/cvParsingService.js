@@ -1,10 +1,14 @@
-import { createOpenAIClient } from '../lib/openaiClient.js';
+import { createOpenAIClient, isOpenAIConfigured } from '../lib/openaiClient.js';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import mammoth from 'mammoth';
+import validator from 'validator';
 import { QuickUser } from '../models/index.js';
 import logger from '../config/logger.js';
 import { fireEmbedding } from './embeddingTrigger.js';
 import { JOB_CATEGORIES } from '../constants/jobCategories.js';
+import { isEmailFormat } from '../lib/emailFormat.js';
+import { normalizeAlbanianPhone, isValidAlbanianPhone } from '../lib/phonePolicy.js';
+import { stripHtml, normalizeOneLine, escapeRegex } from '../utils/sanitize.js';
 
 // Lazy-init to avoid throwing at import time when API key is not yet set.
 // `_clientOverride` is a test-only injection hook; production code never sets it.
@@ -24,6 +28,20 @@ function getOpenAI() {
 }
 /** Test-only hook to inject a stub/snapshot client. Pass null to reset. */
 export function _setOpenAIClient(client) { _clientOverride = client; }
+
+// The quick-profile preview is interactive (the visitor waits on the upload
+// screen): one short attempt, no retries — on a timeout the confirm step
+// still opens with what the pattern pass found. Bounded well below the
+// route's socket timeout (server.js LONG_RUNNING_ROUTES).
+let quickProfileOpenai;
+function getQuickProfileOpenAI() {
+  if (_clientOverride) return _clientOverride;
+  if (!isOpenAIConfigured()) return null;
+  if (!quickProfileOpenai) {
+    quickProfileOpenai = createOpenAIClient({ timeout: parseInt(process.env.OPENAI_QUICK_CV_TIMEOUT_MS || '20000', 10), maxRetries: 0 });
+  }
+  return quickProfileOpenai;
+}
 
 /**
  * Extract text from a PDF buffer using pdfjs-dist.
@@ -193,6 +211,204 @@ export async function parseQuickUserCV(quickUserId, fileBuffer, opts = {}) {
     });
     return null;
   }
+}
+
+// ─── Quick-profile CV preview ─────────────────────────────────────────────
+// CV-first quick profile (owner decision 2026-10-22): the visitor uploads a
+// CV, we read the contact details + profession out of it, and the quick
+// profile's CONFIRM step shows them pre-filled and editable. Nothing is
+// stored here — only POST /api/quickusers (after the user confirms) creates
+// the subscription, so an email found in a CV is never subscribed on its own.
+//
+// Contact details are found by PATTERN first (email, Albanian mobile, a known
+// city near the top of the CV), so an unavailable or failing AI call still
+// pre-fills what it can. The AI adds the name, title, city and industries;
+// an AI email / phone is only used when it literally appears in the CV text
+// (no fabricated contacts).
+
+const PATTERN_SCAN_CHARS = 20000;   // contact details live near the top
+const CITY_SCAN_CHARS = 1500;       // a city in the header, not a past employer's
+const QUICK_PROFILE_INDUSTRIES = JOB_CATEGORIES.filter(c => c !== 'Tjetër');
+
+// "Tiranë" ~ "Tirane" ~ "TIRANA": lower-case, ë→e, ç→c (and any other mark).
+const foldText = (str) => String(str).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+// Albanian city names in the definite form, as CVs often write them:
+// Tiranë→Tirana, Shkodër→Shkodra, Durrës→Durrësi, Kamëz→Kamza, Fier→Fieri.
+function cityVariants(foldedCity) {
+  const v = new Set([foldedCity]);
+  if (foldedCity.endsWith('er')) v.add(`${foldedCity.slice(0, -2)}ra`);
+  if (foldedCity.endsWith('e')) v.add(`${foldedCity.slice(0, -1)}a`);
+  if (/[^aeiouy]$/.test(foldedCity)) { v.add(`${foldedCity}i`); v.add(`${foldedCity}a`); }
+  if (/ez$/.test(foldedCity)) v.add(`${foldedCity.slice(0, -2)}za`);
+  return [...v];
+}
+
+/** Map free text ("Tirana", "durres") to a canonical Location city, or null. */
+export function canonicalCity(input, cities = []) {
+  if (typeof input !== 'string' || !input.trim()) return null;
+  const folded = foldText(input.trim());
+  for (const city of cities) {
+    if (cityVariants(foldText(city)).includes(folded)) return city;
+  }
+  return null;
+}
+
+function findEmailInText(text) {
+  for (const raw of text.split(/[\s,;<>()[\]"'|]+/)) {
+    if (!raw.includes('@')) continue;
+    const token = raw.replace(/^(mailto:)/i, '').replace(/[.:]+$/, '');
+    if (token.length <= 254 && isEmailFormat(token) && validator.isEmail(token)) return token.toLowerCase();
+  }
+  return null;
+}
+
+// +355 69 123 4567 · 00355691234567 · +355 (0)69… · 069 123 4567 · 69-123-4567
+const AL_MOBILE_RE = /(?:(?:\+|00)\s?355[\s.\-]?(?:\(0\)[\s.\-]?)?|0)?6[5-9](?:[\s.\-]?\d){7}/g;
+function findPhoneInText(text) {
+  AL_MOBILE_RE.lastIndex = 0;
+  let m;
+  while ((m = AL_MOBILE_RE.exec(text)) !== null) {
+    const before = text[m.index - 1];
+    const after = text[m.index + m[0].length];
+    if ((before && /\d/.test(before)) || (after && /\d/.test(after))) continue; // part of a longer number
+    const normalized = normalizeAlbanianPhone(m[0].replace('(0)', ''));
+    if (isValidAlbanianPhone(normalized)) return normalized;
+  }
+  return null;
+}
+
+function findCityInText(text, cities) {
+  const head = foldText(text.slice(0, CITY_SCAN_CHARS));
+  let best = null;
+  for (const city of cities) {
+    for (const variant of cityVariants(foldText(city))) {
+      const re = new RegExp(`(?:^|[^a-z])${escapeRegex(variant)}(?:$|[^a-z])`);
+      const m = re.exec(head);
+      if (m && (best === null || m.index < best.index)) best = { city, index: m.index };
+    }
+  }
+  return best ? best.city : null;
+}
+
+/** Contact details by pattern only (no AI). Exported for tests. */
+export function extractContactByPattern(text, cities = []) {
+  const scan = String(text || '').slice(0, PATTERN_SCAN_CHARS);
+  return {
+    email: findEmailInText(scan),
+    phone: findPhoneInText(scan),
+    city: findCityInText(scan, cities),
+  };
+}
+
+const cleanName = (v) => {
+  if (typeof v !== 'string') return null;
+  const n = normalizeOneLine(stripHtml(v)).trim();
+  // A name: 2-50 chars, letters (any script) with spaces / ' / - / . only.
+  return n.length >= 2 && n.length <= 50 && /^[\p{L}][\p{L}\s'’.-]*$/u.test(n) ? n : null;
+};
+
+async function parseQuickProfileWithAI(client, cvText) {
+  const completion = await client.chat.completions.create({
+    model: 'gpt-4o-mini',
+    temperature: 0,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        // [quick-profile] marks this prompt (the QA sandbox stub keys on it).
+        content: `[quick-profile] You read the header and contact section of a CV/resume for an Albanian job platform. Return a JSON object with exactly these fields:
+- "firstName": the candidate's first name (string or "")
+- "lastName": the candidate's last name (string or "")
+- "email": the candidate's own email address exactly as written in the CV (string or "")
+- "phone": the candidate's own phone number exactly as written in the CV (string or "")
+- "city": the city where the candidate lives, from the contact/address section (string or ""). Not a past employer's or school's city.
+- "title": the candidate's current or most recent job title / profession (string, max 100 chars, or "")
+- "industries": up to 3 of these exact Albanian categories that fit the candidate's profession: ${QUICK_PROFILE_INDUSTRIES.join(', ')}
+
+Only extract what is written in the CV. Never invent contact details. Use "" when a field is missing.`
+      },
+      { role: 'user', content: `CV:\n\n${cvText.slice(0, 6000)}` }
+    ]
+  });
+  return JSON.parse(completion.choices[0].message.content);
+}
+
+/**
+ * Read a CV (PDF / DOCX buffer) for the quick-profile confirm step.
+ * Never writes to the database.
+ *
+ * @param {Buffer} fileBuffer
+ * @param {{ cities?: string[], useAI?: boolean }} [opts]
+ *   cities — canonical Location cities (the city is only returned when it is one of them)
+ *   useAI  — false skips the AI call (e.g. the daily AI budget is spent)
+ * @returns {Promise<{ status: 'completed'|'partial'|'failed', reason?: string,
+ *   fields: { firstName?, lastName?, email?, phone?, city?, title?, interests: string[] } }>}
+ *   completed = the AI read the CV; partial = only some details were found
+ *   by pattern; failed = nothing usable (unreadable / scanned / empty file).
+ */
+export async function extractQuickProfileFromCV(fileBuffer, { cities = [], useAI = true } = {}) {
+  let text;
+  try {
+    text = await extractTextFromCV(fileBuffer);
+  } catch (error) {
+    logger.warn('Quick-profile CV: text extraction failed', { error: error.message });
+    return { status: 'failed', reason: 'unreadable', fields: { interests: [] } };
+  }
+  if (!text || text.trim().length < 20) {
+    return { status: 'failed', reason: 'no_text', fields: { interests: [] } };
+  }
+
+  const byPattern = extractContactByPattern(text, cities);
+  const fields = { interests: [] };
+  if (byPattern.email) fields.email = byPattern.email;
+  if (byPattern.phone) fields.phone = byPattern.phone;
+  if (byPattern.city) fields.city = byPattern.city;
+
+  const client = useAI ? getQuickProfileOpenAI() : null;
+  let aiOk = false;
+  let reason;
+  if (client) {
+    try {
+      const ai = await parseQuickProfileWithAI(client, text);
+      aiOk = true;
+      const firstName = cleanName(ai?.firstName);
+      const lastName = cleanName(ai?.lastName);
+      if (firstName) fields.firstName = firstName;
+      if (lastName) fields.lastName = lastName;
+      const foldedText = foldText(text);
+      // AI contacts only when they are really in the CV (anti-fabrication).
+      if (!fields.email && typeof ai?.email === 'string') {
+        const e = ai.email.trim().toLowerCase();
+        if (isEmailFormat(e) && validator.isEmail(e) && foldedText.includes(foldText(e))) fields.email = e;
+      }
+      if (!fields.phone && typeof ai?.phone === 'string' && isValidAlbanianPhone(ai.phone)) {
+        const digits = text.replace(/\D/g, '');
+        const national = normalizeAlbanianPhone(ai.phone).slice(4); // 9 digits after +355
+        if (digits.includes(national)) fields.phone = normalizeAlbanianPhone(ai.phone);
+      }
+      const aiCity = canonicalCity(ai?.city, cities);
+      if (aiCity) fields.city = aiCity;
+      if (typeof ai?.title === 'string') {
+        const title = normalizeOneLine(stripHtml(ai.title)).trim().slice(0, 100);
+        if (title) fields.title = title;
+      }
+      if (Array.isArray(ai?.industries)) {
+        fields.interests = [...new Set(ai.industries.filter(i => typeof i === 'string' && QUICK_PROFILE_INDUSTRIES.includes(i)))].slice(0, 3);
+      }
+    } catch (error) {
+      reason = 'ai_failed';
+      logger.warn('Quick-profile CV: AI read failed — pattern results only', { error: error.message });
+    }
+  } else {
+    reason = 'ai_unavailable';
+  }
+
+  const found = ['firstName', 'lastName', 'email', 'phone', 'city', 'title'].filter(k => fields[k]).length
+    + fields.interests.length;
+  if (aiOk) return { status: 'completed', fields };
+  if (found > 0) return { status: 'partial', reason, fields };
+  return { status: 'failed', reason: reason || 'nothing_found', fields };
 }
 
 /**
@@ -481,6 +697,8 @@ export async function parseUserProfileCV(fileBuffer) {
 // Exported for testing — pure functions with no I/O
 export const _internal = {
   extractTextFromCV,
+  foldText,
+  cityVariants,
   extractTextFromPDF,
   extractTextFromDOCX,
   calculateExperienceFromHistory,
@@ -492,4 +710,4 @@ export const _internal = {
   DATE_REGEX,
 };
 
-export default { parseQuickUserCV, parseUserProfileCV };
+export default { parseQuickUserCV, parseUserProfileCV, extractQuickProfileFromCV };

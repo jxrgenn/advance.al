@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { body, validationResult } from 'express-validator';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
-import { QuickUser } from '../models/index.js';
+import { QuickUser, Location } from '../models/index.js';
 import notificationService from '../lib/notificationService.js';
 import resendEmailService from '../lib/resendEmailService.js';
 import userEmbeddingService from '../services/userEmbeddingService.js';
@@ -13,9 +13,10 @@ import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { findUnsafeKey, UNSAFE_KEY_MESSAGE } from '../middleware/rejectMongoOperators.js';
 import { uploadToCloudinary } from '../config/cloudinary.js';
 import { toStoredCloudinaryUrl, newResumePublicId } from '../lib/resumeStorage.js';
-import { parseQuickUserCV } from '../services/cvParsingService.js';
+import { parseQuickUserCV, extractQuickProfileFromCV, canonicalCity } from '../services/cvParsingService.js';
 import { stripHtml, validateObjectId } from '../utils/sanitize.js';
-import { isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE } from '../lib/phonePolicy.js';
+import { isValidAlbanianPhone, normalizeAlbanianPhone, ALBANIAN_PHONE_MESSAGE } from '../lib/phonePolicy.js';
+import { incrementAndCheck, refund } from '../lib/dailyQuota.js';
 import logger from '../config/logger.js';
 import { JOB_CATEGORIES } from '../constants/jobCategories.js';
 import { notifyDiscord, deriveRequestSignals } from '../services/discordNotifier.js';
@@ -99,25 +100,41 @@ const quickUserLimiter = rateLimit({
 // (multer's bracket parsing), which made .trim() throw "Cannot convert object
 // to primitive value" → 500. JSON objects were stringified to
 // "[object Object]" and accepted.
+//
+// CV-first quick profile (owner decision 2026-10-22): the name is optional
+// (it comes from the CV, or is left out on the "Nuk kam CV" path) and the
+// contact is an email OR a mobile number — at least one. Only an email gets
+// job-alert emails. City + interests stay required: alerts match on them.
+const CONTACT_REQUIRED_MESSAGE = 'Shkruani email-in ose numrin e celularit — të paktën njërin.';
 const quickUserValidation = [
   body('firstName')
+    .optional({ values: 'falsy' })
     .isString().withMessage('Emri duhet të ketë midis 2-50 karaktere').bail()
     .trim()
     .customSanitizer(v => stripHtml(v))
     .isLength({ min: 2, max: 50 })
     .withMessage('Emri duhet të ketë midis 2-50 karaktere'),
   body('lastName')
+    .optional({ values: 'falsy' })
     .isString().withMessage('Mbiemri duhet të ketë midis 2-50 karaktere').bail()
     .trim()
     .customSanitizer(v => stripHtml(v))
     .isLength({ min: 2, max: 50 })
     .withMessage('Mbiemri duhet të ketë midis 2-50 karaktere'),
   body('email')
+    .optional({ values: 'falsy' })
     .isString().withMessage('Email i pavlefshëm').bail()
     .trim()
     .isEmail()
     .normalizeEmail()
     .withMessage('Email i pavlefshëm'),
+  // At least one way to reach the subscriber. Checked on the RAW values; the
+  // email / phone chains above and below validate their format.
+  body('contact').custom((_, { req }) => {
+    const has = (v) => typeof v === 'string' ? v.trim() !== '' : (v !== undefined && v !== null && v !== '');
+    if (!has(req.body?.email) && !has(req.body?.phone)) throw new Error(CONTACT_REQUIRED_MESSAGE);
+    return true;
+  }),
   body('location')
     .isString().withMessage('Qyteti duhet të ketë midis 2-50 karaktere').bail()
     .trim()
@@ -245,28 +262,51 @@ router.post('/', quickUserLimiter, handleMultipart, quickUserValidation, handleV
     const {
       firstName,
       lastName,
-      email,
       phone,
-      location,
       interests,
       customInterests = [],
       preferences = {}
     } = req.body;
+    // Optional fields arrive as '' from forms — treat as absent.
+    const email = typeof req.body.email === 'string' && req.body.email ? req.body.email : undefined;
+    const normalizedPhone = typeof phone === 'string' && phone.trim() ? normalizeAlbanianPhone(phone) : undefined;
 
-    // Check if user already exists with this email
-    const existingUser = await QuickUser.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'Një përdorues me këtë email tashmë ekziston në sistemin e njoftimeve'
-      });
+    if (email) {
+      // Check if user already exists with this email
+      const existingUser = await QuickUser.findOne({ email });
+      if (existingUser) {
+        return res.status(400).json({
+          success: false,
+          message: 'Një përdorues me këtë email tashmë ekziston në sistemin e njoftimeve'
+        });
+      }
+    } else {
+      // Phone-only profile ("Nuk kam CV" without an email): one per number.
+      const existingByPhone = await QuickUser.findOne({ phone: normalizedPhone });
+      if (existingByPhone) {
+        return res.status(400).json({
+          success: false,
+          message: 'Ky numër celulari është regjistruar tashmë në profilin e shpejtë'
+        });
+      }
     }
 
-    // Prepare user data
+    // Job alerts compare the city EXACTLY with the job's city: store the
+    // canonical Location name when the input is a known city in another
+    // spelling ("Tirana", "durres"); anything else is kept as typed.
+    let location = req.body.location;
+    try {
+      const cities = (await Location.find({ isActive: true }).select('city').lean()).map(l => l.city);
+      location = canonicalCity(location, cities) || location;
+    } catch (err) {
+      logger.warn('QuickUser city canonicalisation skipped', { error: err.message });
+    }
+
+    // Prepare user data (name / email / phone only when given)
     const userData = {
-      firstName,
-      lastName,
-      email,
+      ...(firstName && { firstName }),
+      ...(lastName && { lastName }),
+      ...(email && { email }),
       location,
       interests,
       customInterests,
@@ -282,9 +322,9 @@ router.post('/', quickUserLimiter, handleMultipart, quickUserValidation, handleV
       userAgent: req.get('User-Agent')
     };
 
-    // Add phone if provided
-    if (phone) {
-      userData.phone = phone;
+    // Add phone if provided (stored as +355XXXXXXXXX)
+    if (normalizedPhone) {
+      userData.phone = normalizedPhone;
     }
 
     // Create quick user
@@ -332,10 +372,12 @@ router.post('/', quickUserLimiter, handleMultipart, quickUserValidation, handleV
 
     // Send welcome email, parse CV, then generate embedding (async, non-blocking)
     setImmediate(async () => {
-      try {
-        await resendEmailService.sendQuickUserWelcomeEmail(quickUser);
-      } catch (error) {
-        logger.error('Error sending welcome email:', error.message);
+      if (quickUser.email) {
+        try {
+          await resendEmailService.sendQuickUserWelcomeEmail(quickUser);
+        } catch (error) {
+          logger.error('Error sending welcome email:', error.message);
+        }
       }
 
       // Parse CV first (if uploaded) — so embedding can include parsed data.
@@ -349,6 +391,9 @@ router.post('/', quickUserLimiter, handleMultipart, quickUserValidation, handleV
         }
       }
 
+      // Matching only serves job-alert EMAILS — a phone-only profile has no
+      // use for an embedding (and no inbox for the matching-jobs email).
+      if (!quickUser.email) return;
       try {
         await userEmbeddingService.generateQuickUserEmbedding(quickUser._id);
         // After embedding is ready, find and notify about matching existing jobs
@@ -362,8 +407,8 @@ router.post('/', quickUserLimiter, handleMultipart, quickUserValidation, handleV
       channel: 'signups',
       title: '⚡ New quickuser (anonymous interest)',
       fields: [
-        { name: 'Email', value: quickUser.email, inline: true },
-        { name: 'Name', value: `${quickUser.firstName} ${quickUser.lastName || ''}`.trim() || '—', inline: true },
+        { name: 'Email', value: quickUser.email || '— (vetëm celular)', inline: true },
+        { name: 'Name', value: quickUser.fullName || '—', inline: true },
         { name: 'City', value: quickUser.location || '—', inline: true }, // QuickUser.location is a plain city string
         { name: 'Interests', value: (quickUser.allInterests || []).slice(0, 5).join(', ') || '—', inline: false },
         { name: 'Resume', value: pdfBuffer ? 'attached' : 'none', inline: true },
@@ -374,12 +419,17 @@ router.post('/', quickUserLimiter, handleMultipart, quickUserValidation, handleV
 
     res.status(201).json({
       success: true,
-      message: 'Regjistrimi për njoftimet u krye me sukses! Do të merrni email për punë të reja që përputhen me interesat tuaja.',
+      message: quickUser.email
+        ? 'Regjistrimi për njoftimet u krye me sukses! Do të merrni email për punë të reja që përputhen me interesat tuaja.'
+        : 'Profili i shpejtë u ruajt. Pa email nuk mund t\'ju dërgojmë njoftime për punë të reja — regjistrohuni me email kur të doni t\'i merrni.',
       data: {
         id: quickUser._id,
         firstName: quickUser.firstName,
         lastName: quickUser.lastName,
         email: quickUser.email,
+        phone: quickUser.phone,
+        // Job alerts are emails: false for a phone-only profile.
+        emailAlerts: !!quickUser.email,
         location: quickUser.location,
         interests: quickUser.allInterests,
         preferences: quickUser.preferences,
@@ -393,6 +443,122 @@ router.post('/', quickUserLimiter, handleMultipart, quickUserValidation, handleV
     res.status(500).json({
       success: false,
       message: 'Gabim në regjistrimin për njoftimet'
+    });
+  }
+});
+
+// ── CV-first quick profile: read a CV for the confirm step ────────────────
+// POST /api/quickusers/parse-cv  (multipart: resume)
+// Reads name, contact, city and profession out of the CV and returns them to
+// pre-fill the CONFIRM step. Stores NOTHING (no QuickUser, no file): the
+// subscription is only created when the visitor confirms (POST /api/quickusers,
+// which re-sends the file). A CV that can't be read returns status 'failed'
+// (200) and the page falls back to the manual form.
+//
+// Anti-abuse: memory-only upload (5 MB, PDF/DOCX/DOC by mimetype AND magic
+// bytes), the operator guard on the multipart body, a 15-minute per-IP limit,
+// and a daily AI budget per IP and overall — past it the CV is still read by
+// pattern (email / phone / city), just without the AI.
+const CV_PREVIEW_AI_PER_IP_PER_DAY = parseInt(process.env.QUICK_CV_AI_PER_IP_PER_DAY || '20', 10);
+const CV_PREVIEW_AI_PER_DAY = parseInt(process.env.QUICK_CV_AI_PER_DAY || '1000', 10);
+
+const cvPreviewLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: process.env.NODE_ENV === 'development' ? 10000 : 10,
+  skip: () => process.env.NODE_ENV !== 'production' && process.env.SKIP_RATE_LIMIT === 'true',
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Shumë CV të ngarkuara për pak kohë. Provoni përsëri pas 15 minutash ose plotësoni profilin pa CV.',
+  },
+});
+
+const CV_PREVIEW_TYPE_MESSAGE = 'Vetëm skedarët PDF dhe Word (DOCX) janë të lejuar';
+const cvPreviewUpload = multer({
+  storage: multer.memoryStorage(), // never written to disk — the preview stores nothing
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword'
+    ];
+    if (allowedTypes.includes(file.mimetype)) cb(null, true);
+    else cb(new Error(CV_PREVIEW_TYPE_MESSAGE), false);
+  },
+  limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 10 }
+});
+
+const PREVIEW_MESSAGES = {
+  completed: 'E lexuam CV-në. Kontrolloni të dhënat dhe konfirmoni.',
+  partial: 'E lexuam vetëm një pjesë të CV-së. Plotësoni fushat që mungojnë dhe konfirmoni.',
+  failed: 'Nuk arritëm ta lexojmë CV-në (p.sh. është skanuar si foto). Plotësoni fushat më poshtë — CV-ja do të ruhet bashkë me profilin.',
+};
+
+router.post('/parse-cv', cvPreviewLimiter, (req, res, next) => {
+  if (!req.is('multipart/form-data')) {
+    return res.status(400).json({ success: false, message: 'Ngarkoni CV-në si skedar (PDF ose DOCX, deri në 5MB).' });
+  }
+  cvPreviewUpload.single('resume')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ success: false, message: 'Skedari është shumë i madh. Madhësia maksimale është 5MB' });
+      }
+      if (err.message === CV_PREVIEW_TYPE_MESSAGE) {
+        return res.status(400).json({ success: false, message: err.message });
+      }
+      return res.status(400).json({ success: false, message: 'Gabim në ngarkimin e skedarit' });
+    }
+    // O-68: multipart bodies are parsed after the global operator guard.
+    if (findUnsafeKey(req.body) !== null) {
+      return res.status(400).json({ success: false, message: UNSAFE_KEY_MESSAGE });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    if (!req.file?.buffer) {
+      return res.status(400).json({ success: false, message: 'Ngarkoni CV-në (PDF ose DOCX, deri në 5MB).' });
+    }
+    if (!validateResumeMagicBytes(req.file.buffer)) {
+      return res.status(400).json({ success: false, message: 'Skedari nuk është një PDF ose Word i vlefshëm.' });
+    }
+
+    // Daily AI budget (reserve now, give back if the AI was never needed).
+    const ipKey = `qu-cv-preview:${ipKeyGenerator(req.ip)}`;
+    const globalKey = 'qu-cv-preview:all';
+    const perIp = await incrementAndCheck(ipKey, CV_PREVIEW_AI_PER_IP_PER_DAY);
+    const overall = await incrementAndCheck(globalKey, CV_PREVIEW_AI_PER_DAY);
+    const useAI = perIp.allowed && overall.allowed;
+
+    const cities = (await Location.find({ isActive: true }).select('city').lean()).map(l => l.city);
+    const result = await extractQuickProfileFromCV(req.file.buffer, { cities, useAI });
+
+    if (result.reason === 'unreadable' || result.reason === 'no_text' || !useAI) {
+      await refund(ipKey);
+      await refund(globalKey);
+    }
+
+    logger.info('Quick-profile CV preview', {
+      status: result.status,
+      reason: result.reason,
+      found: Object.keys(result.fields).filter(k => k !== 'interests' && result.fields[k]),
+      interests: result.fields.interests.length,
+    });
+
+    res.json({
+      success: true,
+      message: PREVIEW_MESSAGES[result.status],
+      data: {
+        status: result.status,
+        fields: result.fields,
+      }
+    });
+  } catch (error) {
+    logger.error('Quick-profile CV preview error:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'CV-ja nuk u lexua dot. Plotësoni profilin pa CV ose provoni përsëri.'
     });
   }
 });

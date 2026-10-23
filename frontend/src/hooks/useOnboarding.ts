@@ -17,7 +17,7 @@ export function useOnboarding() {
 
   // Determine variant — only for authenticated jobseekers
   useEffect(() => {
-    // Not authenticated → nothing (guest banners handled by QuickUserBanner)
+    // Not authenticated → nothing (guest promos are the JobListPromo cards in the job list)
     if (!isAuthenticated) {
       setVariant(null);
       return;

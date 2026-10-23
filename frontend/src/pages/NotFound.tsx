@@ -1,10 +1,12 @@
 import { Link } from "react-router-dom";
 import Navigation from "@/components/Navigation";
+import SEO from "@/components/SEO";
 import Footer from "@/components/Footer";
 
 const NotFound = () => {
   return (
     <>
+      <SEO title="Faqja nuk u gjet" noindex />
       <Navigation />
       <div className="flex min-h-[calc(100vh-200px)] items-center justify-center bg-background">
         <div className="text-center">

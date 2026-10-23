@@ -162,7 +162,8 @@ bulkNotificationSchema.methods.getTargetUsers = async function() {
     case 'quick_users': {
       // QuickUser is a separate collection
       const QuickUser = mongoose.model('QuickUser');
-      return QuickUser.find({ isActive: true }).select('_id email firstName lastName').lean();
+      // Bulk notifications are emails: phone-only quick profiles are skipped.
+      return QuickUser.find({ isActive: true, email: { $type: 'string', $ne: '' } }).select('_id email firstName lastName').lean();
     }
     case 'all':
     default:

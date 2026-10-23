@@ -167,7 +167,8 @@ const CompanyProfile = () => {
                   )}
                 </div>
                 <p className="text-base md:text-xl text-muted-foreground mb-3 md:mb-4">
-                  {company.industry} | {company.companySize}
+                  {/* Short-signup companies may not have industry / size yet. */}
+                  {[company.industry, company.companySize && `${company.companySize} punonjës`].filter(Boolean).join(' | ')}
                 </p>
                 <Button size="lg" className="w-full md:w-auto" onClick={() => document.getElementById('company-jobs')?.scrollIntoView({ behavior: 'smooth' })}>
                   Shiko pozicionet e lira
@@ -189,7 +190,7 @@ const CompanyProfile = () => {
                   <div>
                     <h3 className="text-sm font-semibold mb-2">VEPRIMTARIA</h3>
                     <p className="text-sm text-muted-foreground">
-                      {company.industry} | Konstruksion
+                      {company.industry || '—'}
                     </p>
                   </div>
 
@@ -199,7 +200,7 @@ const CompanyProfile = () => {
                   <div>
                     <h3 className="text-sm font-semibold mb-2">VENDODHJA</h3>
                     <p className="text-sm text-muted-foreground">
-                      {company.location.region || company.location.city}
+                      {company.location?.region || company.location?.city || '—'}
                     </p>
                   </div>
 
@@ -256,7 +257,7 @@ const CompanyProfile = () => {
                     <div className="flex items-center gap-2 text-xs">
                       <Users className="h-4 w-4" />
                       <span className="font-medium">Madhësia:</span>
-                      <span>{company.companySize}</span>
+                      <span>{company.companySize ? `${company.companySize} punonjës` : '—'}</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs">
                       <Calendar className="h-4 w-4" />

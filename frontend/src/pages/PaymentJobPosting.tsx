@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import Navigation from "@/components/Navigation";
+import SEO from "@/components/SEO";
 import Footer from "@/components/Footer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -199,6 +200,7 @@ const PaymentJobPosting = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
+        <SEO title="Pagesa e postimit" path="/payment/job" noindex />
         <Navigation />
         <div className="container py-12 flex items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -213,6 +215,7 @@ const PaymentJobPosting = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <SEO title="Pagesa e postimit" path="/payment/job" noindex />
       <Navigation />
       <main className="flex-1 container py-8">
         <div className="max-w-3xl mx-auto">

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Navigation from "@/components/Navigation";
+import SEO from "@/components/SEO";
 import Footer from "@/components/Footer";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -95,6 +96,7 @@ const PaymentSuccess = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <SEO title="Pagesa u krye" path="/payment/success" noindex />
       <Navigation />
       <main className="flex-1 container py-12">
         <div className="max-w-xl mx-auto">

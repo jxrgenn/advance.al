@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import Navigation from "@/components/Navigation";
+import SEO from "@/components/SEO";
 import { AlertTriangle, Eye, FileText, Clock, CheckCircle, XCircle, Search, Filter, RotateCcw, ArrowLeft } from "lucide-react";
 import { reportsApi, Report, ReportAction } from "@/lib/api";
 import { formatAlbanianDate, formatAlbanianDateTime } from "@/lib/albanianDate";
@@ -298,6 +299,7 @@ const AdminReports = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="Raportimet e përdoruesve" path="/admin/reports" noindex />
       <Navigation />
 
       <div className="container py-8">
