@@ -5,9 +5,27 @@
  */
 
 import { jest, expect } from '@jest/globals';
+import { Server as TlsServer } from 'node:tls';
+import supertest from 'supertest';
 
 // Increase test timeout for database operations
 jest.setTimeout(30000);
+
+// supertest starts each request's server with listen(0), which binds the IPv6
+// wildcard [::], and then always sends the request to 127.0.0.1:<port>. On a
+// dev Mac the OS can hand out a port that another program (VS Code helpers)
+// already holds on 127.0.0.1 — the request then reaches THAT program, which
+// answers 401: random mid-test 401s that never show in our request log.
+// Our server is the only one on [::]:<port>, so talk to it over ::1. (Binding
+// 127.0.0.1 instead is not possible here: listen with a host binds async and
+// supertest reads the port synchronously.) Same contract as supertest 7.x.
+supertest.Test.prototype.serverAddress = function serverAddress(app, path) {
+  if (!app.address()) this._server = app.listen(0);
+  const { address, port } = app.address();
+  const host = address === '::' ? '[::1]' : '127.0.0.1';
+  const protocol = app instanceof TlsServer ? 'https' : 'http';
+  return `${protocol}://${host}:${port}${path}`;
+};
 
 // Custom matchers (optional - add custom Jest matchers here)
 expect.extend({
