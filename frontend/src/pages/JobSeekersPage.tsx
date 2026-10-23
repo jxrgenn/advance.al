@@ -624,6 +624,17 @@ CERTIFIKATA (opsionale)
         setResumeFile(null);
         setCvRead(null);
         setQuickMode('cv');
+        notifications.show({
+          title: emailAlerts ? 'Njoftimet u aktivizuan' : 'Profili u ruajt',
+          message: emailAlerts ? `Do t'ju njoftojmë në ${email}.` : 'Pa email nuk dërgojmë njoftime për punë.',
+          color: emailAlerts ? 'green' : 'yellow',
+        });
+        // The confirm step is taller than the result panel, so on a phone the
+        // panel would render above the viewport — bring it into view.
+        setTimeout(() => {
+          document.querySelector('[data-testid="quick-profile-done"]')
+            ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
       }
     } catch (error: any) {
       const fieldErrors: string[] = Array.isArray(error?.response?.errors)
@@ -1982,6 +1993,7 @@ CERTIFIKATA (opsionale)
             size="md"
             gap={6}
             aria-label="Kodi i verifikimit"
+            getInputProps={(index) => ({ 'aria-label': `Shifra ${index + 1} nga 6 e kodit të verifikimit` })}
             value={verificationCode}
             onChange={setVerificationCode}
             onComplete={handleVerifyCode}

@@ -99,7 +99,7 @@ export function CVCreatorSection() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4, duration: 0.6 }}
             >
-              Përshkruani në mënyrë të natyrshme aftësitë tuaja dhe IA do të krijojë CV tuaj profesionale në pak minuta.
+              Përshkruani në mënyrë të natyrshme aftësitë tuaja dhe AI do të krijojë CV-në tuaj profesionale në pak minuta.
             </motion.p>
             
             <motion.div 
@@ -116,7 +116,7 @@ export function CVCreatorSection() {
                 >
                   <Link to="/jobseekers#ai-cv-section" className="relative z-10 flex items-center">
                     <FileText className="mr-2 h-4 w-4 md:h-5 md:w-5 group-hover:rotate-12 transition-transform duration-300" />
-                    Krijo CV me IA
+                    Krijo CV me AI
                     <ArrowRight className="ml-2 h-4 w-4 md:h-5 md:w-5 group-hover:translate-x-1 transition-transform duration-300" />
                   </Link>
                 </Button>
@@ -152,7 +152,7 @@ export function CVCreatorSection() {
                   whileHover={{ scale: 1.05 }}
                 >
                   <Sparkles className="w-3.5 h-3.5 text-primary" />
-                  <span className="text-xs md:text-sm font-semibold text-foreground">AI Powered</span>
+                  <span className="text-xs md:text-sm font-semibold text-foreground">Me AI</span>
                 </motion.div>
               </div>
             </motion.div>

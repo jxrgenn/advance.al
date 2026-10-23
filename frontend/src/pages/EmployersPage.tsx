@@ -1190,6 +1190,7 @@ const EmployersPage = () => {
             size="md"
             gap={6}
             aria-label="Kodi i verifikimit"
+            getInputProps={(index) => ({ 'aria-label': `Shifra ${index + 1} nga 6 e kodit të verifikimit` })}
             value={verificationCode}
             onChange={setVerificationCode}
             onComplete={handleVerifyCode}

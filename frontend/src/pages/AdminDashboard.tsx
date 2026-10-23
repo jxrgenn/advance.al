@@ -102,7 +102,7 @@ const ORDER_STATUS_LABEL: Record<string, { label: string; color: string }> = {
   disputed: { label: 'Kontestim', color: 'bg-red-100 text-red-800 border-red-200' },
 };
 
-const AdminPaymentOrdersView = () => {
+const AdminPaymentOrdersView = ({ onMoneyChanged }: { onMoneyChanged?: () => void }) => {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<import("@/lib/api").AdminPaymentOrder[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -180,6 +180,7 @@ const AdminPaymentOrdersView = () => {
       setReason('');
       setAmountEur('');
       await fetchOrders();
+      onMoneyChanged?.();
     } catch (err: unknown) {
       // Keep the dialog open and say why, inside it (e.g. Stripe unreachable → 502).
       const message = err instanceof Error && err.message ? err.message : 'Veprimi dështoi. Provoni përsëri.';
@@ -354,7 +355,8 @@ const AdminPaymentOrdersView = () => {
   );
 };
 
-const AdminPaymentsPanel = () => {
+// onMoneyChanged: refunds / manual accepts change the dashboard revenue card.
+const AdminPaymentsPanel = ({ onMoneyChanged }: { onMoneyChanged?: () => void }) => {
   const [view, setView] = useState<'orders' | 'jobs'>('orders');
   return (
     <Card>
@@ -367,13 +369,13 @@ const AdminPaymentsPanel = () => {
           <Button size="sm" variant={view === 'orders' ? 'default' : 'outline'} onClick={() => setView('orders')}>Porositë</Button>
           <Button size="sm" variant={view === 'jobs' ? 'default' : 'outline'} onClick={() => setView('jobs')}>Punët</Button>
         </div>
-        {view === 'orders' ? <AdminPaymentOrdersView /> : <AdminPaymentJobsView />}
+        {view === 'orders' ? <AdminPaymentOrdersView onMoneyChanged={onMoneyChanged} /> : <AdminPaymentJobsView onMoneyChanged={onMoneyChanged} />}
       </CardContent>
     </Card>
   );
 };
 
-const AdminPaymentJobsView = () => {
+const AdminPaymentJobsView = ({ onMoneyChanged }: { onMoneyChanged?: () => void }) => {
   const [loading, setLoading] = useState(true);
   const [payments, setPayments] = useState<import("@/lib/api").AdminPayment[]>([]);
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending_payment' | 'paid' | 'failed'>('all');
@@ -456,6 +458,7 @@ const AdminPaymentJobsView = () => {
         setAcceptModalJobId(null);
         setAcceptReason('');
         await fetchPayments();
+        onMoneyChanged?.();
       } else {
         toast({ title: 'Gabim', description: r.message || 'Miratimi dështoi', variant: 'destructive' });
       }
@@ -1456,6 +1459,8 @@ const AdminDashboard = () => {
         loadNewUsers(newUsersPagination.currentPage);
         // Also reload suspended users list so they appear/disappear from the correct tab
         loadSuspendedUsers();
+        // The "all users" list (search) shows the same user — keep it current.
+        if (allUsersModal) loadAllUsers(allUsersPagination.currentPage, allUsersFilter, allUsersSearch);
       }
     } catch (error: any) {
       console.error('Error managing user:', error);
@@ -2265,7 +2270,7 @@ const AdminDashboard = () => {
 
             {/* QA-G5: Payments Tab */}
             <TabsContent value="payments" className="space-y-6">
-              <AdminPaymentsPanel />
+              <AdminPaymentsPanel onMoneyChanged={loadDashboardStats} />
             </TabsContent>
           </Tabs>
         </div>

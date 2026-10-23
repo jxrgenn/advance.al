@@ -207,7 +207,7 @@ const BusinessDashboard: React.FC = () => {
             )}
             <div className="text-xs text-muted-foreground space-y-0.5">
               <p>Postim aktiv për {LISTING_DURATION_DAYS} ditë</p>
-              <p>Shfaqe në listën e punëve</p>
+              <p>Shfaqje në listën e punëve</p>
               <p>Aplikime të pakufizuara</p>
               <p>Menaxhim aplikimesh</p>
             </div>

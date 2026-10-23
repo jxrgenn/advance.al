@@ -261,7 +261,7 @@ export function Companies() {
                 </div>
                 <div>
                   <p className="text-base md:text-lg font-medium">
-                    E kandidatëve do të aplikonin për punë të një kompani me markë të konsoliduar, e regjjistruar dhe të verifikuar.
+                    Shumica e kandidatëve do të aplikonin për punë në një kompani me markë të konsoliduar, të regjistruar dhe të verifikuar.
                   </p>
                   <p className="text-base md:text-lg mt-2 font-medium">
                     Regjistrohu si kompani, rrit besueshmërinë.
