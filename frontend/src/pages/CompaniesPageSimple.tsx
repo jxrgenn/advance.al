@@ -262,7 +262,7 @@ const CompaniesPageSimple = () => {
                         {company.logo ? (
                           <img
                             src={company.logo}
-                            alt={`${company.name} logo`}
+                            alt={`Logo e ${company.name}`}
                             className="max-w-full max-h-full object-contain rounded-lg"
                             onError={(e) => {
                               // Fallback to Building icon if image fails to load

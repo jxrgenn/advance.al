@@ -137,7 +137,7 @@ const PremiumJobsCarousel = ({ jobs }: PremiumJobsCarouselProps) => {
                             {job.employerId?.profile?.employerProfile?.logo ? (
                               <img
                                 src={optimizedCloudinaryUrl(job.employerId.profile.employerProfile.logo, { width: 128 })}
-                                alt={`${job.employerId.profile.employerProfile.companyName} logo`}
+                                alt={`Logo e ${job.employerId.profile.employerProfile.companyName}`}
                                 className={`max-w-full max-h-full object-contain rounded transition-all duration-300 ease-out ${isStuck ? 'p-1' : 'p-2'}`}
                                 loading="lazy"
                                 decoding="async"

@@ -225,7 +225,7 @@ const Navigation = () => {
         <Link to="/" className="flex items-center">
           <img
             src={logo}
-            alt="Logo"
+            alt="advance.al"
             className="h-12 w-12 object-contain"
           />
         </Link>
@@ -280,7 +280,7 @@ const Navigation = () => {
           <Button
             variant="ghost"
             size="sm"
-            className="md:hidden"
+            className="h-11 w-11 p-0 md:hidden"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             aria-label={mobileMenuOpen ? 'Mbyll menunë' : 'Hap menunë'}
             aria-expanded={mobileMenuOpen}
@@ -417,7 +417,7 @@ loadNotifications();
                           ? user?.profile?.jobSeekerProfile?.profilePhoto
                           : (typeof user?.profile?.employerProfile?.logo === 'string' ? user?.profile?.employerProfile?.logo : undefined),
                         { width: 64 }
-                      )} alt="Profile" />
+                      )} alt="Foto e profilit" />
                       <AvatarFallback className="text-sm">
                         {getUserInitials(user?.profile?.firstName || '', user?.profile?.lastName || '')}
                       </AvatarFallback>

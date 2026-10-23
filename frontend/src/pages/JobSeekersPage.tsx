@@ -1116,7 +1116,7 @@ CERTIFIKATA (opsionale)
           <div className="hidden md:flex justify-end items-center">
             <img
               src="/3d_assets/ideal_career1.png"
-              alt="Career Planning - Find your ideal career path"
+              alt="Planifikoni karrierën – gjeni rrugën tuaj ideale"
               className="w-full max-w-[160px] object-contain"
               loading="eager"
             />
@@ -1679,6 +1679,11 @@ CERTIFIKATA (opsionale)
                         fullWidth
                         mt="xs"
                         color="blue"
+                        styles={{
+                          // Long label must wrap on narrow phones instead of being clipped.
+                          root: { height: 'auto', minHeight: 42, paddingBlock: 8 },
+                          label: { whiteSpace: 'normal', textAlign: 'center', lineHeight: 1.3 },
+                        }}
                       >
                         {quickMode === 'confirm' ? 'Konfirmo dhe aktivizo njoftimet' : 'Aktivizo njoftimet'}
                       </Button>
@@ -1721,14 +1726,14 @@ CERTIFIKATA (opsionale)
                   <Box>
                     <Title order={3}>Krijo CV me AI</Title>
                     <Text c="dimmed" size="sm">
-                      Shkruani informacionet tuaja në mënyrë të natyrshme dhe IA krijon një CV profesionale
+                      Shkruani informacionet tuaja në mënyrë të natyrshme dhe AI krijon një CV profesionale
                     </Text>
                   </Box>
                 </Group>
                 <div className="hidden md:flex justify-end items-center">
                   <img
                     src="/3d_assets/generating_cv1.png"
-                    alt="AI-powered CV generation"
+                    alt="Krijim CV-je me AI"
                     className="w-full max-w-[110px] object-contain"
                     loading="lazy"
                   />

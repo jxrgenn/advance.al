@@ -236,6 +236,12 @@ All colors MUST be HSL.
   html[style*="padding-right"] {
     padding-right: 0 !important;
   }
+
+  /* The floating robot / scroll-to-top dock sits above dialogs (z-[9998]) and
+     covered modal content on phones; hide it while a modal has locked scroll. */
+  body[data-scroll-locked] .floating-dock {
+    display: none;
+  }
 }
 
 @layer utilities {

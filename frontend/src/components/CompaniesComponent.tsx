@@ -297,7 +297,7 @@ export function Companies() {
               </motion.div>
               <motion.img
                 src="/3d_assets/elite.png"
-                alt="Elite companies - diverse team"
+                alt="Ekip i larmishëm profesionistësh"
                 className="w-full h-auto relative z-10"
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ 

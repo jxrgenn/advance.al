@@ -1884,15 +1884,15 @@ const EmployerDashboard = () => {
                             data-tutorial={index === 0 ? "view-applications" : undefined}
                           >
                             <Users className="h-3 w-3 sm:h-4 sm:w-4" />
-                            <span className="sr-only sm:not-sr-only sm:ml-1 hidden sm:inline">Kandidatë</span>
+                            <span className="sr-only sm:not-sr-only sm:ml-1">Kandidatë</span>
                           </Button>
                           <Button size="sm" variant="outline" onClick={() => window.open(`/jobs/${(job as any).slug || job._id}`, '_blank')} className="h-8 w-8 sm:h-9 sm:w-auto sm:px-3">
                             <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
-                            <span className="sr-only sm:not-sr-only sm:ml-1 hidden sm:inline">Shiko</span>
+                            <span className="sr-only sm:not-sr-only sm:ml-1">Shiko</span>
                           </Button>
                           <Button size="sm" variant="outline" onClick={() => handleJobAction('edituar', job._id)} className="h-8 w-8 sm:h-9 sm:w-auto sm:px-3">
                             <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
-                            <span className="sr-only sm:not-sr-only sm:ml-1 hidden sm:inline">Edito</span>
+                            <span className="sr-only sm:not-sr-only sm:ml-1">Edito</span>
                           </Button>
                           <Button
                             size="sm"
@@ -1902,7 +1902,7 @@ const EmployerDashboard = () => {
                             data-tutorial={index === 0 ? "candidate-matching" : undefined}
                           >
                             <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
-                            <span className="sr-only sm:not-sr-only sm:ml-1 hidden sm:inline">Fshi</span>
+                            <span className="sr-only sm:not-sr-only sm:ml-1">Fshi</span>
                           </Button>
                         </div>
                       </div>
@@ -2131,7 +2131,7 @@ const EmployerDashboard = () => {
                               className="h-8 w-8 sm:h-9 sm:w-auto sm:px-3"
                             >
                               <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
-                              <span className="sr-only sm:not-sr-only sm:ml-1 hidden sm:inline text-xs">Detajet</span>
+                              <span className="sr-only sm:not-sr-only sm:ml-1 text-xs">Detajet</span>
                             </Button>
                           </div>
                         </div>
@@ -2337,7 +2337,7 @@ const EmployerDashboard = () => {
                     <div className="flex items-center gap-4 mt-2">
                       <div className="h-16 w-16 rounded-lg bg-muted flex items-center justify-center overflow-hidden border">
                         {user?.profile?.employerProfile?.logo ? (
-                          <img src={typeof user.profile.employerProfile.logo === 'string' ? user.profile.employerProfile.logo : ''} alt="Logo" className="h-full w-full object-contain" />
+                          <img src={typeof user.profile.employerProfile.logo === 'string' ? user.profile.employerProfile.logo : ''} alt="Logo e kompanisë" className="h-full w-full object-contain" />
                         ) : (
                           <Building className="h-6 w-6 text-muted-foreground" />
                         )}

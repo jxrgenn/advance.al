@@ -15,7 +15,7 @@ const RotatingContact: React.FC<{ className?: string }> = ({ className = '' }) =
             <div className="w-28 h-28 sm:w-36 sm:h-36 md:w-44 md:h-44 rounded-full overflow-hidden bg-white mb-4 sm:mb-6">
               <img
                 src="/logo_V2.png"
-                alt="Advance.al logo"
+                alt="Logo e advance.al"
                 className="w-full h-full object-cover"
                 style={{ transform: 'scale(1.35)' }}
               />

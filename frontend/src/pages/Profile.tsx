@@ -1823,7 +1823,7 @@ const Profile = () => {
               <CardContent className="p-6 text-center">
                 <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 overflow-hidden">
                   {user?.profile?.jobSeekerProfile?.profilePhoto ? (
-                    <img src={user.profile.jobSeekerProfile.profilePhoto} alt="Profile" className="h-full w-full object-cover" />
+                    <img src={user.profile.jobSeekerProfile.profilePhoto} alt="Foto e profilit" className="h-full w-full object-cover" />
                   ) : (
                     <User className="h-12 w-12 text-primary" />
                   )}
@@ -2554,7 +2554,7 @@ const Profile = () => {
                     <div className="flex items-center gap-4">
                       <div className="h-20 w-20 rounded-full bg-muted flex items-center justify-center overflow-hidden">
                         {user?.profile?.jobSeekerProfile?.profilePhoto ? (
-                          <img src={user.profile.jobSeekerProfile.profilePhoto} alt="Profile" className="h-full w-full object-cover" />
+                          <img src={user.profile.jobSeekerProfile.profilePhoto} alt="Foto e profilit" className="h-full w-full object-cover" />
                         ) : (
                           <User className="h-8 w-8 text-muted-foreground" />
                         )}

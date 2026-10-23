@@ -817,6 +817,10 @@ async function retireOtherOpenOrders(order) {
 
 /** Daily RevenueAnalytics: atomic $inc of the money actually charged. */
 export async function recordRevenue(order, { sign = 1, countJob = true } = {}) {
+  // Every change to collected revenue (activation, partial/full refund, lost
+  // dispute) passes through here after the order is written, so the cached
+  // admin dashboard total is dropped first — even if the analytics write fails.
+  cacheDelete('admin:dashboard').catch(() => {});
   const amountEur = (sign * (order.amountCents || 0)) / 100;
   let today;
   try {

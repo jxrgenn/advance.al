@@ -1942,7 +1942,7 @@ const AdminDashboard = () => {
                               )}
 
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-muted-foreground">
-                                <div className="flex items-center gap-2">
+                                <div className="flex min-w-0 items-center gap-2 break-anywhere">
                                   <Mail className="h-4 w-4" />
                                   {employer.email}
                                 </div>
@@ -2305,10 +2305,10 @@ const AdminDashboard = () => {
                   {allJobs.map((job) => (
                     <div key={job._id} className="border rounded-lg p-4 space-y-3">
                       {/* Job Header */}
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 space-y-1">
                           <h3 className="font-semibold text-lg"><a href={`/jobs/${(job as any).slug || job._id}`} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">{job.title}</a></h3>
-                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-x-4 gap-y-1 text-sm text-muted-foreground flex-wrap">
                             <div className="flex items-center gap-1">
                               <Building className="h-4 w-4" />
                               {job.employerId?.profile?.employerProfile?.companyName || 'N/A'}
@@ -2457,10 +2457,10 @@ const AdminDashboard = () => {
                   {reportedJobs.map((job) => (
                     <div key={job._id} className="border border-red-200 rounded-lg p-4 space-y-3 bg-red-50">
                       {/* Job Header */}
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 space-y-1">
                           <h3 className="font-semibold text-lg"><a href={`/jobs/${(job as any).slug || job._id}`} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">{job.title}</a></h3>
-                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-x-4 gap-y-1 text-sm text-muted-foreground flex-wrap">
                             <div className="flex items-center gap-1">
                               <Building className="h-4 w-4" />
                               {job.employerId?.profile?.employerProfile?.companyName || 'N/A'}
@@ -2577,10 +2577,10 @@ const AdminDashboard = () => {
                   {expiringJobs.map((job) => (
                     <div key={job._id} className="border border-orange-200 rounded-lg p-4 space-y-3 bg-orange-50">
                       {/* Job Header */}
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 space-y-1">
                           <h3 className="font-semibold text-lg"><a href={`/jobs/${(job as any).slug || job._id}`} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 hover:underline">{job.title}</a></h3>
-                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-x-4 gap-y-1 text-sm text-muted-foreground flex-wrap">
                             <div className="flex items-center gap-1">
                               <Building className="h-4 w-4" />
                               {job.employerId?.profile?.employerProfile?.companyName || 'N/A'}
@@ -2699,11 +2699,11 @@ const AdminDashboard = () => {
                   {newUsers.map((user) => (
                     <div key={user._id} className="border border-blue-200 rounded-lg p-4 space-y-3 bg-blue-50">
                       {/* User Header */}
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 space-y-1">
                           <h3 className="font-semibold text-lg">{user.profile.firstName} {user.profile.lastName}</h3>
-                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                            <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-x-4 gap-y-1 text-sm text-muted-foreground flex-wrap">
+                            <div className="flex min-w-0 items-center gap-1 break-anywhere">
                               <Mail className="h-4 w-4" />
                               {user.email}
                             </div>
@@ -2901,8 +2901,8 @@ const AdminDashboard = () => {
           </DialogHeader>
           <div className="space-y-4">
             {/* Filters */}
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="min-w-0 flex-1 basis-full sm:basis-0">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -2922,7 +2922,7 @@ const AdminDashboard = () => {
                 setAllUsersFilter(val);
                 loadAllUsers(1, val, allUsersSearch);
               }}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="flex-1 sm:w-[180px] sm:flex-none">
                   <SelectValue placeholder="Filtro tipin" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2957,11 +2957,11 @@ const AdminDashboard = () => {
                 <div className="space-y-3">
                   {allUsers.map((user) => (
                     <div key={user._id} className="border rounded-lg p-4 space-y-3 bg-card hover:bg-accent/50 transition-colors">
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 space-y-1">
                           <h3 className="font-semibold text-lg">{user.profile.firstName} {user.profile.lastName}</h3>
-                          <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
-                            <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-x-4 gap-y-1 text-sm text-muted-foreground flex-wrap">
+                            <div className="flex min-w-0 items-center gap-1 break-anywhere">
                               <Mail className="h-4 w-4" />
                               {user.email}
                             </div>
