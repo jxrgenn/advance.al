@@ -1,7 +1,7 @@
 # advance.al - DEVELOPMENT STATUS & ROADMAP
 
 **Date:** September 25-28, 2025
-**Last Updated:** May 15, 2026 — PR-L Phases A+B shipped locally (awaiting user review + commit). Phase A: additive head tags in `frontend/index.html` (sq lang, canonical, robots, geo.region AL, og:locale sq_AL, JSON-LD Organization + WebSite/SearchAction). Phase B: `react-helmet-async@3.0.0` + `<SEO>` component (`frontend/src/components/SEO.tsx`) emitting per-page title/description/canonical/OG/Twitter/JSON-LD on 7 pages (Index for both / and /jobs, JobDetail with full `JobPosting` schema for Google for Jobs eligibility, AboutUs, EmployersPage, JobSeekersPage, Privacy, Terms). Backend `GET /api/jobs/:id` accepts ObjectId OR slug (dual-lookup via 24-char hex regex; existing ObjectId behavior unchanged). 9 frontend Link/navigate sites updated to prefer `slug || _id` (JobCard, PremiumJobsCarousel, RecentlyViewedJobs, SimilarJobs, ApplicationStatusTimeline, Navigation, EmployerDashboard x2, CompanyProfile). 3 new integration tests cover slug-lookup, 404-on-nonexistent-slug, and soft-deleted-not-matched-by-slug. 33/33 tests in `jobs.test.js` green. Frontend build clean (4.11s). Phase C (Vercel bot-prerender function for GEO crawlers — GPTBot/ClaudeBot/PerplexityBot get fully-rendered HTML with injected JSON-LD; humans untouched) planned for post-launch +2-3 days. May 14, 2026 — PR-G: QuickUser matching partitioned (semantic for embedded users, keyword fallback only for the rest). PR-F: parse-resume regen trigger + smart notification cap + per-jobseeker 2h digest queue. May 8, 2026 (Phase 28 — coverage push: 7 new tests for setTimeout batch-delay + upload 503 + email misc; istanbul ignores added for genuinely-unreachable production-only code with WHY justifications; cov7 measurement still pending due to teardown hang)
+**Last Updated:** October 23, 2026 — Pre-launch audit sprint: all fixes, the Stripe payments rebuild and the client feedback are on branch `design/client-feedback` (@ 1b010b3), awaiting owner sign-off; see "Pre-Launch Full Audit & Fix Sprint" at the end of this file. Earlier: May 15, 2026 — PR-L Phases A+B shipped locally (awaiting user review + commit). Phase A: additive head tags in `frontend/index.html` (sq lang, canonical, robots, geo.region AL, og:locale sq_AL, JSON-LD Organization + WebSite/SearchAction). Phase B: `react-helmet-async@3.0.0` + `<SEO>` component (`frontend/src/components/SEO.tsx`) emitting per-page title/description/canonical/OG/Twitter/JSON-LD on 7 pages (Index for both / and /jobs, JobDetail with full `JobPosting` schema for Google for Jobs eligibility, AboutUs, EmployersPage, JobSeekersPage, Privacy, Terms). Backend `GET /api/jobs/:id` accepts ObjectId OR slug (dual-lookup via 24-char hex regex; existing ObjectId behavior unchanged). 9 frontend Link/navigate sites updated to prefer `slug || _id` (JobCard, PremiumJobsCarousel, RecentlyViewedJobs, SimilarJobs, ApplicationStatusTimeline, Navigation, EmployerDashboard x2, CompanyProfile). 3 new integration tests cover slug-lookup, 404-on-nonexistent-slug, and soft-deleted-not-matched-by-slug. 33/33 tests in `jobs.test.js` green. Frontend build clean (4.11s). Phase C (Vercel bot-prerender function for GEO crawlers — GPTBot/ClaudeBot/PerplexityBot get fully-rendered HTML with injected JSON-LD; humans untouched) planned for post-launch +2-3 days. May 14, 2026 — PR-G: QuickUser matching partitioned (semantic for embedded users, keyword fallback only for the rest). PR-F: parse-resume regen trigger + smart notification cap + per-jobseeker 2h digest queue. May 8, 2026 (Phase 28 — coverage push: 7 new tests for setTimeout batch-delay + upload 503 + email misc; istanbul ignores added for genuinely-unreachable production-only code with WHY justifications; cov7 measurement still pending due to teardown hang)
 **Platform:** Premier Job Marketplace for Albania
 **CURRENT STATUS:** 🟢 **DEPLOY-READY. Phase 23 overnight suite now 799/799 GREEN (chromium-desktop). 4 additional production bugs found and fixed during full-coverage Tier 3: (1) verification code in-memory fallback never hit when Redis disabled — codes silently dropped; (2) employer registration `companyName`/`industry`/`description` not sanitized — stored XSS; (3) `User.addRefreshToken` had no FIFO cap, concurrent logins exceeded 5-token limit; (4) `/stats/public` 5-min in-memory cache served stale data with no test-mode bypass. All four shipped clean. 8 prior bugs from Phase 24 still in. Frontend + backend builds clean.**
 **Phase:** Phases 0-25 complete. Phase 25 (Tier 3) brought Phase 23 overnight to 799/799. Remaining out-of-scope items require external infrastructure or manual judgment (see `MANUAL_QA_CHECKLIST.md`).
@@ -4454,7 +4454,7 @@ remaining forms (signup, PostJob, dashboard) once the pilot is approved.
 
 ---
 
-## 🔴 Pre-Launch Full Audit & Fix Sprint (started 2026-10-01) — IN PROGRESS
+## 🟡 Pre-Launch Full Audit & Fix Sprint (started 2026-10-01) — FIXES COMPLETE, AWAITING OWNER SIGN-OFF
 
 Owner request: test literally everything (every flow, button, edge case), find
 what's broken/slow, fix it all, no regressions, no features removed.
@@ -4505,3 +4505,65 @@ Found by the deep-logic code readers, both reproduced live before fixing.
   old schema). 74 related suites: 803 pass; `quickusers-cv-pipeline` 3 failures are
   pre-existing (identical on the old code; stub vector 1024 vs 1536), and one timing-budget
   flake in performance-baselines passes on rerun.
+
+### ✅ Fix waves + Stripe payments + client feedback (2026-10-02 → 2026-10-23) — branch `design/client-feedback`, AWAITING OWNER SIGN-OFF
+Final candidate `1b010b3` (main + 23 commits, 354 files). Not merged to main, not deployed.
+- **Wave 1** (`abf2f83`): salary units (stored annual, shown monthly), diacritic-insensitive
+  search, job visibility, auth/session (tokenVersion invalidation, refresh), NoSQL operator
+  guard, apply with CV, Cloudinary private URLs + ownership checks, admin fixes.
+- **Payments rebuild** (`4d48a16`, `b542757`, `4fca41e`, `712f0ef`): Stripe-only order-based
+  checkout (Paysera code kept, disabled); fixed 35 € / 49 € per 21-day listing; paid renewal;
+  signed webhook (7 events), objects from other Stripe integrations answered 200 and ignored;
+  refunds + disputes; admin manual accept + refund; employer sanctions retire open checkouts
+  and flag paid listings for refund review; the dev-fake provider cannot run in production and
+  test keys are refused there. Real Stripe sandbox run: 52/53 E2E + stripe-real 8/8. It found
+  that API 2026-09-30 rejects `payment_method_types`, so payment methods are now chosen in
+  the Stripe Dashboard.
+- **Wave 2** (`5dc4f95`, `ef636bf`): profile, uploads, notifications/digests/fan-out claims,
+  applications/matching, platform (logger, timeouts, rate limits 2000/15 min per user and
+  1000/15 min per IP, scheduler, slugs, CI on mongod 7.0.24), lazy email transport (no network
+  at boot), saved jobs resolve old slugs. The half-built application messaging API is removed
+  (no screen used it).
+- **Client feedback** (`3da3452`):
+  - original code-SVG illustrations replace the stock/watermarked images;
+  - "Gjenero" → "Krijo";
+  - a promo card after every 6 jobs in the list;
+  - employer signup cut to 6 fields, with a dashboard "Plotëso profilin e kompanisë" card and
+    a server gate `EMPLOYER_PROFILE_INCOMPLETE` on every job post;
+  - CV-first quick profile: `POST /api/quickusers/parse-cv` stores nothing, then a confirm step,
+    with a "Nuk kam CV" fallback; the QuickUser email index is now partial.
+- **Release-walk follow-ups** (`fe80c66`, `7f5cd7f`):
+  - quick-profile success panel visible on phones;
+  - admin revenue card and user list refresh without a reload;
+  - copy, aria labels, Albanian image alt texts;
+  - admin dialogs fit at 375 px (fixed in the shared DialogContent column);
+  - the dashboard cache is cleared on every revenue change. Partial refunds used to show a
+    stale total for 5 min in production.
+- **Test harness** (`1b010b3`): supertest now sends requests to `[::1]`. On macOS a VS Code
+  helper holding `127.0.0.1:<port>` answered some test requests with 401, causing random
+  mid-test failures. Guard: `tests/unit/supertest-address.test.js`.
+
+**Verification:**
+- Full backend suite on `1b010b3`: 4251 pass, 0 fail, 11 skipped (sharded, 25 files per process).
+- Frontend: `vite build` OK; `tsc` errors down from 90 to 30.
+- Browser release walk: all roles at 1280 + 375, including real Stripe test-mode pay + refund
+  with webhooks answering 200. Follow-up live checks: 29/29.
+
+**Before merge (owner):** test script + decisions on the owner page
+(https://claude.ai/artifact/Eo1RHhQRa8ZK8Q2NFLbzDr).
+
+**Launch day (in this order):**
+1. Client's Stripe account:
+   - payment methods: Cards + Apple/Google Pay;
+   - branding;
+   - statement descriptor `ADVANCE.AL`;
+   - webhook `https://api.advance.al/api/payments/stripe/webhook` with the 7 events.
+2. Render env, BEFORE the push: remove `PAYSERA_ALLOW_FAKE_SUCCESS`, `ENABLE_MOCK_PAYMENTS`,
+   `PAYMENTS_ALLOW_FAKE`, `RATE_LIMIT_MAX_REQUESTS`. Set `STRIPE_SECRET_KEY` (live),
+   `STRIPE_WEBHOOK_SECRET` (the signing secret from step 1), `ALERT_EMAIL_TO`, `HEALTHZ_TOKEN`.
+3. Fast-forward `main` and push. That single push deploys both: Vercel (git integration) and
+   Render (auto-deploy). If Render shows no new deploy, use "Manual Deploy"; its auto-deploy
+   got stuck once on 2026-04-30.
+4. Admin config: `payment_enabled` on.
+5. `/healthz/payments` reports healthy + live.
+6. One real 35 € payment + refund. Payments are not proven until it succeeds.
