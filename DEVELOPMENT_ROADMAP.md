@@ -4576,9 +4576,14 @@ Final candidate `1b010b3` (main + 23 commits, 354 files). Not merged to main, no
 - **Render did NOT auto-deploy.** ~55 min later `api.advance.al/healthz/payments` was still 404 (old code).
   - GitHub "QA Tests" is red: about 90 failures, mostly the upload/Cloudinary-dependent suites. CI
     has no Cloudinary secrets, an open owner question.
-  - Render is likely set to deploy only after CI passes, or its auto-deploy is off.
-  - → Owner: Render → advance-al → "Manual Deploy → Deploy latest commit". Optionally set Auto-Deploy
-    to "On Commit".
+  - **2026-10-24 finding:** the live backend has not been redeployed since about 2026-05-21. Production
+    `GET /api/configuration/public` lacks the `smsEnabled` field that 5a8a127 added that day.
+    - So the 2026-10-05 hotfix is NOT live: the TTL index that deletes idle accounts and the email-regex
+      ReDoS are still active in production.
+    - QA Tests has never passed, yet Render deployed in May, so Render is not waiting for CI. Its
+      auto-deploy is off or disconnected from the repo.
+  - → Owner: Render → advance-al → "Manual Deploy → Deploy latest commit". Then Settings → check the
+    connected repo/branch (`jxrgenn/advance.al`, `main`) and set Auto-Deploy to "On Commit".
 - Production config still holds the OLD prices `pricing_standard_posting` 28 / `pricing_promoted_posting` 45
   (public /api/configuration/public). The new backend charges what config says → owner: Admin → set 35 / 49.
 - Privacy/Terms now name Render (not Railway) as the backend host.
