@@ -10,7 +10,7 @@ of Phase 28 (test-suite genuineness sprint).
 |---|---|---|---|
 | MongoDB | yes | mongodb-memory-server (local in-process) | ✅ Real-ish (in-memory) |
 | OpenAI (gpt-4o-mini, embeddings) | yes | snapshot-replay (real responses cached) | ✅ Real on first capture, replay thereafter |
-| Cloudinary | yes | real upload + cleanup (free tier) | ✅ Real every CI run |
+| Cloudinary | yes | LOCAL runs: real upload + cleanup against the dev cloud (`.env.test`). GitHub CI: placeholder creds + `CLOUDINARY_PLACEHOLDER=true`, so the SDK-mocked upload tests run and the real-account tests skip (`tests/helpers/cloudinary.helper.js`) | ⚠️ Real path verified locally only (CI has no Cloudinary secret) |
 | Resend (email) | yes | offline mock + 1 live smoke (workflow_dispatch) | ⚠️ Partial |
 | Upstash Redis | yes | gracefully degrades to in-memory | ⚠️ Real path uncovered in CI |
 | Sentry | yes | not exercised | ⚠️ Production-only |

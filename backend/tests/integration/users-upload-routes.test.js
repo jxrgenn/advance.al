@@ -1,7 +1,8 @@
 /**
  * Phase 28 — coverage push for routes/users.js upload routes.
  *
- * Targets the local-storage fallback paths (Cloudinary unconfigured in tests):
+ * Targets the local-storage fallback paths (this file removes the Cloudinary
+ * env before loading the app, whatever .env.test or CI provide):
  *   - POST /upload-resume: success with valid PDF magic bytes
  *   - POST /upload-resume: rejects when no file
  *   - POST /upload-resume: rejects on bad magic bytes (mimetype-spoofed file)
@@ -14,12 +15,19 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/glob
 import fs from 'fs';
 import path from 'path';
 import request from 'supertest';
-import app from '../../server.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
 import { seedLocations } from '../fixtures/locations.fixture.js';
 import { createJobseeker, createVerifiedEmployer } from '../factories/user.factory.js';
 import { createAuthHeaders } from '../helpers/auth.helper.js';
 import User from '../../src/models/User.js';
+
+// The upload routes choose multer storage when routes/users.js is evaluated,
+// so Cloudinary has to be absent BEFORE the app is imported (static imports
+// are hoisted, hence the dynamic import). Restored in afterAll.
+const CLOUDINARY_KEYS = ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'];
+const savedCloudinary = Object.fromEntries(CLOUDINARY_KEYS.map((k) => [k, process.env[k]]));
+for (const k of CLOUDINARY_KEYS) delete process.env[k];
+const { default: app } = await import('../../server.js');
 
 // Minimal "valid" PDF: %PDF-1.4 header + structural minimum
 const VALID_PDF = Buffer.concat([
@@ -71,6 +79,7 @@ describe('users.js — upload routes (local-fallback path)', () => {
 
   afterAll(async () => {
     await closeTestDB();
+    for (const k of CLOUDINARY_KEYS) if (savedCloudinary[k] !== undefined) process.env[k] = savedCloudinary[k];
   });
 
   describe('POST /upload-resume', () => {

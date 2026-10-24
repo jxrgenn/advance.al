@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
+import { hasRealCloudinary } from '../helpers/cloudinary.helper.js';
 import request from 'supertest';
 import app from '../../server.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
@@ -97,7 +98,7 @@ describe('users.js — POST /parse-resume', () => {
     expect(r.body.message).toMatch(/PDF|Word/i);
   });
 
-  it('uploads + parses + returns resumeUrl (parse may fail gracefully on minimal PDF)', async () => {
+  (hasRealCloudinary() ? it : it.skip)('uploads + parses + returns resumeUrl (parse may fail gracefully on minimal PDF)', async () => {
     _setOpenAIClient(makeStubAI());
     const { user } = await createJobseeker({ email: 'pr-success@example.com' });
 

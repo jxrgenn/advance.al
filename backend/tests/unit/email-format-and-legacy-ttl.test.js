@@ -96,7 +96,8 @@ describe('legacy refreshTokens TTL index', () => {
   beforeAll(async () => {
     if (mongoose.connection.readyState !== 0) await mongoose.disconnect();
     mongod = await MongoMemoryServer.create({
-      binary: { version: '6.0.0' },
+      // Same mongod as tests/setup/testDb.js (O-79): 6.0.0 needs OpenSSL 1.1, absent on ubuntu-latest.
+      binary: { version: process.env.MONGOMS_VERSION || '7.0.24' },
       instance: { args: ['--setParameter', 'ttlMonitorSleepSecs=1'] },
     });
     await mongoose.connect(mongod.getUri());

@@ -20,6 +20,7 @@
 import fs from 'fs';
 import path from 'path';
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
+import { hasRealCloudinary } from '../helpers/cloudinary.helper.js';
 import request from 'supertest';
 import app from '../../server.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
@@ -105,7 +106,7 @@ describe('POST /api/applications/apply — application CV, answers, employer sta
       }
     });
 
-    it('Cloudinary: CV stored authenticated as resume-<owner>-<ms>; addressed employer signs + downloads it, another employer → 403', async () => {
+    (hasRealCloudinary() ? it : it.skip)('Cloudinary: CV stored authenticated as resume-<owner>-<ms>; addressed employer signs + downloads it, another employer → 403', async () => {
       const js = await seeker('o42-cloud@example.com');
       const { user: empA } = await createVerifiedEmployer({ email: 'o42-emp-a@example.com' });
       const { user: empB } = await createVerifiedEmployer({ email: 'o42-emp-b@example.com' });

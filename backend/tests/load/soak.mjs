@@ -37,7 +37,7 @@ let stop = false;
 
 async function setup() {
   console.log(`[setup] soak ${DURATION_MIN}min @ ${CONCURRENCY} clients, sample every ${SAMPLE_S}s`);
-  mongoServer = await MongoMemoryServer.create({ binary: { version: '6.0.0' } });
+  mongoServer = await MongoMemoryServer.create({ binary: { version: process.env.MONGOMS_VERSION || '7.0.24' } });
   await mongoose.connect(mongoServer.getUri());
   console.log('[setup] mongo connected');
 

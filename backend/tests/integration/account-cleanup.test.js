@@ -68,7 +68,8 @@ describe('accountCleanup.purgeDeletedAccounts (replSet — supports transactions
     }
     replSet = await MongoMemoryReplSet.create({
       replSet: { count: 1, storageEngine: 'wiredTiger' },
-      binary: { version: '6.0.0' },
+      // Same mongod as tests/setup/testDb.js (O-79): 6.0.0 needs OpenSSL 1.1, absent on ubuntu-latest.
+      binary: { version: process.env.MONGOMS_VERSION || '7.0.24' },
     });
     await mongoose.connect(replSet.getUri());
   }, 120000);

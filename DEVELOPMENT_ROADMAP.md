@@ -4587,3 +4587,24 @@ Final candidate `1b010b3` (main + 23 commits, 354 files). Not merged to main, no
 - Production config still holds the OLD prices `pricing_standard_posting` 28 / `pricing_promoted_posting` 45
   (public /api/configuration/public). The new backend charges what config says → owner: Admin → set 35 / 49.
 - Privacy/Terms now name Render (not Railway) as the backend host.
+
+### 🧪 CI repair — 2026-10-25 (QA Tests backend job)
+- Root cause of the ~90 backend failures, reproduced in a clean clone with exactly the CI env
+  (no `.env*` files): 15 files, all upload/Cloudinary or mongod-version related.
+  - CI now sets placeholder `CLOUDINARY_*` + `CLOUDINARY_PLACEHOLDER=true`: the upload routes boot in
+    "Cloudinary configured" mode (what the SDK-mocked tests expect) and
+    `tests/helpers/cloudinary.helper.js` skips the 6 tests that need the real dev cloud.
+    Those still run locally against `.env.test` (verified 2026-10-25: 61/61, 0 skipped).
+  - `users-upload-routes.test.js` now strips the Cloudinary env before importing the app, so it
+    really tests the disk fallback whatever the env (it was silently testing Cloudinary mode locally).
+  - Two more test files pinned mongod 6.0.0 (needs libcrypto 1.1, absent on ubuntu-latest) → 7.0.24,
+    plus `tests/load/load.mjs` / `soak.mjs`.
+- **Product bug found by this:** on disk storage (dev without Cloudinary) the PDF/DOCX magic-byte
+  check was skipped (it only read `req.file.buffer`), so a renamed `.exe` was accepted as a CV in
+  `/users/upload-resume`, `/users/parse-resume` and the QuickUser signup. Now reads the saved file
+  and deletes it on rejection. Production uses memory storage, so it was not exploitable there.
+- Clean-clone CI-mode result for the 15 files: 193 passed, 15 skipped, 0 failed.
+- Removed `.github/workflows/test.yml` (Node 18/20 "Test Suite", failed every night until GitHub
+  disabled its schedule; fully superseded by `qa-tests.yml`).
+- Removed the `istanbul ignore` claims that tests "always have Cloudinary configured" (no longer true).
+- E2E job: separate work in progress (see next entry).

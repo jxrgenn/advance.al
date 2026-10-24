@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
+import { hasRealCloudinary } from '../helpers/cloudinary.helper.js';
 import request from 'supertest';
 import app from '../../server.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
@@ -38,7 +39,7 @@ describe('quickusers.js — multipart signup path', () => {
     await closeTestDB();
   });
 
-  it('signs up a QuickUser with a valid PDF resume (magic-byte + multipart path)', async () => {
+  (hasRealCloudinary() ? it : it.skip)('signs up a QuickUser with a valid PDF resume (magic-byte + multipart path)', async () => {
     const r = await request(app)
       .post('/api/quickusers')
       .field('firstName', 'Multi')

@@ -25,7 +25,7 @@ let port;
 
 async function setup() {
   console.log('[setup] starting in-memory mongo...');
-  mongoServer = await MongoMemoryServer.create({ binary: { version: '6.0.0' } });
+  mongoServer = await MongoMemoryServer.create({ binary: { version: process.env.MONGOMS_VERSION || '7.0.24' } });
   await mongoose.connect(mongoServer.getUri());
   console.log('[setup] mongo connected at', mongoServer.getUri());
 

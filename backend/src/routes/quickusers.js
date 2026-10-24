@@ -251,8 +251,13 @@ router.post('/', quickUserLimiter, handleMultipart, quickUserValidation, handleV
   try {
     // Magic-byte validation BEFORE we touch the DB or Cloudinary.
     // multer only checked the client-supplied mimetype; here we verify the
-    // actual file header bytes match a real PDF / DOCX / DOC.
-    if (req.file?.buffer && !validateResumeMagicBytes(req.file.buffer)) {
+    // actual file header bytes match a real PDF / DOCX / DOC. Without
+    // Cloudinary multer writes to disk (no buffer), so read the saved file.
+    const fileBuffer = req.file
+      ? req.file.buffer || (req.file.path ? fs.readFileSync(req.file.path) : null)
+      : null;
+    if (req.file && !validateResumeMagicBytes(fileBuffer)) {
+      if (req.file.path) fs.unlinkSync(req.file.path);
       return res.status(400).json({
         success: false,
         message: 'Skedari nuk është një PDF ose Word i vlefshëm.'
@@ -367,8 +372,8 @@ router.post('/', quickUserLimiter, handleMultipart, quickUserValidation, handleV
       }
     }
 
-    // Capture the PDF buffer before multer cleans up (needed for CV parsing)
-    const pdfBuffer = req.file?.buffer || null;
+    // Capture the CV bytes before multer cleans up (needed for CV parsing)
+    const pdfBuffer = fileBuffer;
 
     // Send welcome email, parse CV, then generate embedding (async, non-blocking)
     setImmediate(async () => {

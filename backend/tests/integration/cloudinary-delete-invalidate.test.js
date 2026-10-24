@@ -10,12 +10,9 @@
  */
 import { describe, it, expect } from '@jest/globals';
 import { uploadToCloudinary, deleteFromCloudinary } from '../../src/config/cloudinary.js';
+import { hasRealCloudinary } from '../helpers/cloudinary.helper.js';
 
-const isConfigured = !!(
-  process.env.CLOUDINARY_CLOUD_NAME &&
-  process.env.CLOUDINARY_API_KEY &&
-  process.env.CLOUDINARY_API_SECRET
-);
+const isConfigured = hasRealCloudinary();
 const describeIfConfigured = isConfigured ? describe : describe.skip;
 
 describeIfConfigured('deleteFromCloudinary — CDN invalidation (review #2)', () => {

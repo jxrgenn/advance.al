@@ -15,6 +15,7 @@
 
 import { jest, describe, it, expect, beforeAll, afterEach } from '@jest/globals';
 import { uploadToCloudinary, deleteFromCloudinary } from '../../src/config/cloudinary.js';
+import { hasRealCloudinary } from '../helpers/cloudinary.helper.js';
 
 // 1x1 transparent PNG — minimum valid PNG file (67 bytes).
 const TINY_PNG = Buffer.from(
@@ -23,11 +24,7 @@ const TINY_PNG = Buffer.from(
 );
 
 const TEST_FOLDER = 'advance-al-test';
-const isConfigured = !!(
-  process.env.CLOUDINARY_CLOUD_NAME &&
-  process.env.CLOUDINARY_API_KEY &&
-  process.env.CLOUDINARY_API_SECRET
-);
+const isConfigured = hasRealCloudinary();
 
 const describeIfConfigured = isConfigured ? describe : describe.skip;
 

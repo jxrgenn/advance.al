@@ -68,6 +68,14 @@ jobs:
           JWT_REFRESH_SECRET: ci-jwt-refresh-32-characters-minimum-12345
           OPENAI_API_KEY: sk-ci-placeholder-not-real
           RESEND_API_KEY: re_ci_placeholder_not_real
+          # The upload routes pick their storage at boot from these, and the
+          # SDK-mocked upload tests expect the "Cloudinary configured" mode.
+          # CLOUDINARY_PLACEHOLDER makes tests/helpers/cloudinary.helper.js
+          # skip the tests that need the real dev account (they run locally).
+          CLOUDINARY_CLOUD_NAME: ci-placeholder-cloud
+          CLOUDINARY_API_KEY: '000000000000000'
+          CLOUDINARY_API_SECRET: ci-placeholder-not-real
+          CLOUDINARY_PLACEHOLDER: 'true'
         run: |
           cd backend
           node --experimental-vm-modules ../node_modules/jest/bin/jest.js --ci \

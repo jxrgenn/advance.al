@@ -17,6 +17,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach, jest } from '@jest/globals';
+import { hasRealCloudinary } from '../helpers/cloudinary.helper.js';
 import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
 import request from 'supertest';
 import { Document, Packer, Paragraph, TextRun } from 'docx';
@@ -231,7 +232,7 @@ describe('users.js — embedding regen trigger (setImmediate routes)', () => {
     });
   });
 
-  describe('POST /api/users/parse-resume — CV upload trigger', () => {
+  (hasRealCloudinary() ? describe : describe.skip)('POST /api/users/parse-resume — CV upload trigger', () => {
     const ORIGINAL_OPENAI_KEY = process.env.OPENAI_API_KEY;
 
     beforeAll(() => { process.env.OPENAI_API_KEY = 'sk-test-stub'; });

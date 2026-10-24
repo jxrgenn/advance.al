@@ -102,7 +102,7 @@ async function discardUploadedImage(url, req, kind) {
 // Configure multer — use memory storage when Cloudinary is available, disk storage as fallback.
 // In tests Cloudinary is always configured (.env.test), so the diskStorage callbacks below
 // only fire on local dev without Cloudinary credentials.
-/* istanbul ignore next — dev-only disk fallback; tests run with Cloudinary configured */
+// Covered by tests/integration/users-upload-routes.test.js, which boots without Cloudinary.
 const diskStorage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadDir = path.join(process.cwd(), 'uploads', 'resumes');
@@ -251,7 +251,6 @@ const detectResumeFormat = (buffer) => {
 
 // Image upload multer config (for logos and profile photos) — production requires Cloudinary.
 // Same dev-only fallback as diskStorage above.
-/* istanbul ignore next — dev-only disk fallback; tests run with Cloudinary configured */
 const imageDiskStorage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadDir = path.join(process.cwd(), 'uploads', 'images');
@@ -994,8 +993,11 @@ router.post('/upload-resume', authenticate, requireJobSeeker, acceptSingleUpload
     } catch { /* use default multer limit if config unavailable */ }
 
     // Magic-byte validation: mimetype is client-controlled. Verify the actual
-    // bytes are a real PDF / DOCX / DOC before storing or parsing.
-    if (req.file.buffer && !validateResumeMagicBytes(req.file.buffer)) {
+    // bytes are a real PDF / DOCX / DOC before storing or parsing. Without
+    // Cloudinary multer writes to disk (no buffer), so read the saved file.
+    const fileBuffer = req.file.buffer || (req.file.path ? fs.readFileSync(req.file.path) : null);
+    if (!validateResumeMagicBytes(fileBuffer)) {
+      if (req.file.path) fs.unlinkSync(req.file.path);
       return res.status(400).json({
         success: false,
         message: 'Skedari nuk është një PDF ose Word i vlefshëm.'
@@ -1037,7 +1039,7 @@ router.post('/upload-resume', authenticate, requireJobSeeker, acceptSingleUpload
           message: 'Shërbimi i ngarkimit të skedarëve nuk është i disponueshëm momentalisht. Provoni përsëri më vonë.'
         });
       }
-    /* istanbul ignore next — dev-only local fallback; tests have Cloudinary configured at boot, so multer always uses memoryStorage and this else-if never fires */
+    // Dev-only local fallback (users-upload-routes.test.js boots without Cloudinary).
     } else if (!isProduction && req.file.filename) {
       // Local storage only in development (multer already saved the file to disk)
       resumeUrl = `/uploads/resumes/${req.file.filename}`;
@@ -1051,7 +1053,7 @@ router.post('/upload-resume', authenticate, requireJobSeeker, acceptSingleUpload
     // Update user profile with resume URL + detected format. resumeType
     // drives whether the frontend offers the in-browser "Shiko CV" action.
     // Race-free swap that deletes the replaced CV (review #7).
-    const detectedFormat = detectResumeFormat(req.file.buffer);
+    const detectedFormat = detectResumeFormat(fileBuffer);
     try {
       await swapProfileResume(req.user._id, resumeUrl, { resumeType: detectedFormat, expectedUrl: oldResumeUrl });
     } catch (swapError) {
@@ -1281,8 +1283,11 @@ router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter,
     } catch { /* use default multer limit if config unavailable */ }
 
     // Magic-byte validation: mimetype is client-controlled. Verify the actual
-    // bytes are a real PDF / DOCX / DOC before storing or parsing.
-    if (req.file.buffer && !validateResumeMagicBytes(req.file.buffer)) {
+    // bytes are a real PDF / DOCX / DOC before storing or parsing. Without
+    // Cloudinary multer writes to disk (no buffer), so read the saved file.
+    const fileBuffer = req.file.buffer || (req.file.path ? fs.readFileSync(req.file.path) : null);
+    if (!validateResumeMagicBytes(fileBuffer)) {
+      if (req.file.path) fs.unlinkSync(req.file.path);
       return res.status(400).json({
         success: false,
         message: 'Skedari nuk është një PDF ose Word i vlefshëm.'
@@ -1323,7 +1328,7 @@ router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter,
           message: 'Shërbimi i ngarkimit të skedarëve nuk është i disponueshëm momentalisht. Provoni përsëri më vonë.'
         });
       }
-    /* istanbul ignore next — dev-only local fallback; tests have Cloudinary configured at boot */
+    // Dev-only local fallback (users-upload-routes.test.js boots without Cloudinary).
     } else if (!isProduction && req.file.filename) {
       resumeUrl = `/uploads/resumes/${req.file.filename}`;
     } else {
@@ -1335,7 +1340,7 @@ router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter,
 
     // Update user profile with resume URL + detected format (race-free swap
     // that deletes the replaced CV — review #7)
-    const detectedParseFormat = detectResumeFormat(req.file.buffer);
+    const detectedParseFormat = detectResumeFormat(fileBuffer);
     try {
       await swapProfileResume(req.user._id, resumeUrl, { resumeType: detectedParseFormat, expectedUrl: oldResumeUrl });
     } catch (swapError) {
@@ -1346,7 +1351,7 @@ router.post('/parse-resume', authenticate, requireJobSeeker, parseResumeLimiter,
     // --- Step 2: Parse CV with AI ---
     let parsedData = null;
     try {
-      const parseResult = await parseUserProfileCV(req.file.buffer);
+      const parseResult = await parseUserProfileCV(fileBuffer);
       if (parseResult.success) {
         parsedData = parseResult.data;
       } else {
