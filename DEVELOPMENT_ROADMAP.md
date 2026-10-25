@@ -4640,6 +4640,10 @@ Final candidate `1b010b3` (main + 23 commits, 354 files). Not merged to main, no
     (soft 404 / duplicate of "/"), signed-in app screens were indexable, and /companies + /company/:id
     had no content. Now: real 404 + noindex for unknown paths, noindex for app screens, real company
     profile (name, about, open positions) and a companies directory; /companies added to sitemap.xml.
+  - Seen live right after deploy: a real company page answered 404 once — the API fetch failed
+    (cold start / timeout) and the outage was reported as "not found", then CDN-cached. Job pages had
+    the same flaw. Now an API 404 → 404, an API error/timeout → 503 + Retry-After, not cached.
+    Known, accepted: /jobs and /companies lists still render empty (200, short cache) during an outage.
   - `index.html` defaults (description, canonical, robots, og/twitter) are marked `data-rh="true"` so
     react-helmet-async REPLACES them per page. Before, every rendered page carried two canonicals (one
     always "/"), two robots and two descriptions.

@@ -53,6 +53,11 @@ import { PUBLISHED_ARTICLES, ARTICLES_BY_SLUG } from './_lib/articles/index.js';
 const API_BASE = process.env.API_BASE_URL || 'https://api.advance.al/api';
 const FETCH_TIMEOUT_MS = 8000;
 
+// Returned by safeFetch when the API could not answer (timeout, 5xx, network)
+// — as opposed to null, which means the API answered 404. Detail routes must
+// not turn an outage into a 404: Google drops 404 pages, a 503 it retries.
+const API_UNAVAILABLE = Symbol('api-unavailable');
+
 async function safeFetch(url) {
   // AbortController for fetch timeout — Render free tier can be slow to wake.
   const controller = new AbortController();
@@ -64,10 +69,11 @@ async function safeFetch(url) {
       // bot / prerender fetches as job views (routes/jobs.js BOT_UA_RE).
       headers: { Accept: 'application/json', 'User-Agent': 'AdvanceSEOPrerender/1.0 (bot)' },
     });
-    if (!res.ok) return null;
+    if (res.status === 404) return null;
+    if (!res.ok) return API_UNAVAILABLE;
     return await res.json();
   } catch {
-    return null;
+    return API_UNAVAILABLE;
   } finally {
     clearTimeout(timer);
   }
@@ -79,6 +85,7 @@ async function fetchJob(idOrSlug) {
   // tagged with `jobState`); drafts, unpaid, pending and rejected jobs are a
   // 404 → handled as "not found" below.
   const body = await safeFetch(`${API_BASE}/jobs/${encodeURIComponent(idOrSlug)}`);
+  if (body === API_UNAVAILABLE) return API_UNAVAILABLE;
   return body?.data?.job || null;
 }
 
@@ -86,6 +93,7 @@ async function fetchCompany(id) {
   // Public employer profile (status active, not deleted); 404 → null.
   if (!/^[a-f0-9]{24}$/i.test(id)) return null;
   const body = await safeFetch(`${API_BASE}/companies/${id}`);
+  if (body === API_UNAVAILABLE) return API_UNAVAILABLE;
   return body?.data?.company || null;
 }
 
@@ -97,6 +105,24 @@ async function fetchCompanies(limit = 50) {
 async function fetchActiveJobs(limit = 20) {
   const body = await safeFetch(`${API_BASE}/jobs?page=1&limit=${limit}`);
   return body?.data?.jobs || [];
+}
+
+// 503 for a detail page whose data the API could not deliver right now.
+// Not cached, so the next crawl gets a fresh attempt.
+function unavailableResponse(pathname) {
+  return {
+    status: 503,
+    retryAfter: '120',
+    cacheControl: 'no-store',
+    html: buildBotHtml({
+      title: null,
+      description: DEFAULT_DESCRIPTION,
+      canonical: `${SITE_URL}${pathname}`,
+      noindex: true,
+      bodyContent: `    <section><h1>${escapeHtml(SITE_NAME)}</h1><p>Faqja nuk është e disponueshme për momentin. Provoni përsëri pas pak.</p></section>`,
+      jsonLdBlocks: [],
+    }),
+  };
 }
 
 function renderJobBody(job) {
@@ -234,6 +260,7 @@ async function handleRoute(req) {
   if (jobMatch) {
     const idOrSlug = decodeURIComponent(jobMatch[1]);
     const job = await fetchJob(idOrSlug);
+    if (job === API_UNAVAILABLE) return unavailableResponse(pathname);
     if (!job) {
       return {
         status: 404,
@@ -354,6 +381,7 @@ async function handleRoute(req) {
   const companyMatch = pathname.match(/^\/company\/([^/]+)$/);
   if (companyMatch) {
     const company = await fetchCompany(companyMatch[1]);
+    if (company === API_UNAVAILABLE) return unavailableResponse(pathname);
     if (!company) {
       return {
         status: 404,
@@ -490,6 +518,7 @@ export default async function handler(req, res) {
     const out = await handleRoute(req);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', out.cacheControl || 's-maxage=300');
+    if (out.retryAfter) res.setHeader('Retry-After', out.retryAfter);
     // CDN must partition cache by UA — the rewrite that lands here is UA-gated,
     // so the same path serves different bodies to bots vs humans. Without Vary
     // a primed edge node can serve the wrong cached body to the wrong audience.
