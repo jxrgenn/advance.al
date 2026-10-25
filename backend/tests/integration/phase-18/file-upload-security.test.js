@@ -13,11 +13,17 @@
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
 import request from 'supertest';
-import app from '../../../server.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../../setup/testDb.js';
 import { seedLocations } from '../../fixtures/locations.fixture.js';
 import { createJobseeker, createVerifiedEmployer } from '../../factories/user.factory.js';
 import { createAuthHeaders } from '../../helpers/auth.helper.js';
+import { stripCloudinaryEnv } from '../../helpers/cloudinary.helper.js';
+
+// Local-disk storage, whatever .env.test or CI provide: the filename-traversal
+// cases are about what multer's diskStorage writes, and the rejection cases
+// behave the same in both modes. Restored in afterAll.
+const restoreCloudinaryEnv = stripCloudinaryEnv();
+const { default: app } = await import('../../../server.js');
 
 describe('Phase 18 — File Upload Adversarial Security', () => {
   beforeAll(async () => {
@@ -32,6 +38,7 @@ describe('Phase 18 — File Upload Adversarial Security', () => {
 
   afterAll(async () => {
     await closeTestDB();
+    restoreCloudinaryEnv();
   });
 
   // Helper: send a multipart upload with custom buffer + mimetype

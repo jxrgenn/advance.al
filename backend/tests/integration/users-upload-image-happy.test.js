@@ -11,12 +11,17 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/glob
 import fs from 'fs';
 import path from 'path';
 import request from 'supertest';
-import app from '../../server.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
 import { seedLocations } from '../fixtures/locations.fixture.js';
 import { createJobseeker, createVerifiedEmployer } from '../factories/user.factory.js';
 import { createAuthHeaders } from '../helpers/auth.helper.js';
 import User from '../../src/models/User.js';
+import { stripCloudinaryEnv } from '../helpers/cloudinary.helper.js';
+
+// Disk fallback = Cloudinary absent when routes/users.js is evaluated,
+// whatever .env.test or CI provide. Restored in afterAll.
+const restoreCloudinaryEnv = stripCloudinaryEnv();
+const { default: app } = await import('../../server.js');
 
 // Valid 1×1 transparent PNG (magic bytes + minimum chunks)
 const VALID_PNG = Buffer.from([
@@ -54,6 +59,7 @@ describe('users.js — upload image happy paths (local-disk fallback)', () => {
 
   afterAll(async () => {
     await closeTestDB();
+    restoreCloudinaryEnv();
   });
 
   it('POST /upload-profile-photo: valid PNG → 200, profilePhoto URL persisted (local OR cloudinary)', async () => {

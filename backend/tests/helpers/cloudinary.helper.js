@@ -14,3 +14,19 @@ export const hasRealCloudinary = () =>
     process.env.CLOUDINARY_API_KEY &&
     process.env.CLOUDINARY_API_SECRET
   ) && process.env.CLOUDINARY_PLACEHOLDER !== 'true';
+
+const CLOUDINARY_KEYS = ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'];
+
+/**
+ * For tests of the local-disk fallback: the upload routes choose multer
+ * storage when routes/users.js is evaluated, so call this BEFORE importing
+ * the app (dynamic `await import('../../server.js')` — static imports are
+ * hoisted). Returns a function that restores the previous values.
+ */
+export function stripCloudinaryEnv() {
+  const saved = Object.fromEntries(CLOUDINARY_KEYS.map((k) => [k, process.env[k]]));
+  for (const k of CLOUDINARY_KEYS) delete process.env[k];
+  return () => {
+    for (const k of CLOUDINARY_KEYS) if (saved[k] !== undefined) process.env[k] = saved[k];
+  };
+}

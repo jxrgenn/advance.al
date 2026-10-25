@@ -221,10 +221,11 @@ async function sendVerificationCode(user) {
 // In production the limiter ALWAYS runs — even if the env var is misset —
 // to defend against credential stuffing.
 //
-// Note: server.js sets `app.set('trust proxy', true)` so `req.ip` resolves
-// to the leftmost (real-client) X-Forwarded-For entry behind Render's
-// proxy chain. The validate.trustProxy check in express-rate-limit v8
-// would otherwise warn about this configuration choice.
+// Note: server.js trusts only loopback / link-local / private-network hops
+// (`trust proxy: 'loopback, linklocal, uniquelocal'`), so `req.ip` is the
+// address Render's proxy saw and a client-written X-Forwarded-For is
+// ignored. The validate.trustProxy check in express-rate-limit v8 is off
+// because it flags any non-false trust proxy setting.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: process.env.NODE_ENV === 'development' ? 10000 : 15, // 15 attempts per 15 min per IP in prod

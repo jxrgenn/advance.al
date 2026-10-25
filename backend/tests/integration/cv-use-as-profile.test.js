@@ -15,6 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
 import { EMBEDDING_DIMS } from '../../src/utils/embeddingConfig.js';
+import { hasRealCloudinary } from '../helpers/cloudinary.helper.js';
 import request from 'supertest';
 import app from '../../server.js';
 import { connectTestDB, closeTestDB, clearTestDB } from '../setup/testDb.js';
@@ -342,7 +343,8 @@ describe('AI CV — use as profile CV (O-70) + cleanup/quota (O-71)', () => {
     // Real Cloudinary upload: runs where the dev-cloud credentials exist
     // (.env.test); CI's PR-triggered jobs have no Cloudinary secrets (same
     // gating as cloudinary-real.test.js) — it used to fail there (O-79).
-    const itWithCloudinary = CLOUDINARY_KEYS.every((k) => process.env[k]) ? it : it.skip;
+    // CI sets placeholder keys, so presence alone is not enough.
+    const itWithCloudinary = hasRealCloudinary() ? it : it.skip;
     itWithCloudinary('Cloudinary: stored private; an employer with an application signs and downloads the exact PDF', async () => {
       _setOpenAIClient(chatStub(JSON.stringify(STUB_CV)));
       const { user } = await createJobseeker({ email: 'o70-cloud@example.com' });

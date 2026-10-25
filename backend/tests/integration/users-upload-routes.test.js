@@ -20,13 +20,12 @@ import { seedLocations } from '../fixtures/locations.fixture.js';
 import { createJobseeker, createVerifiedEmployer } from '../factories/user.factory.js';
 import { createAuthHeaders } from '../helpers/auth.helper.js';
 import User from '../../src/models/User.js';
+import { stripCloudinaryEnv } from '../helpers/cloudinary.helper.js';
 
 // The upload routes choose multer storage when routes/users.js is evaluated,
 // so Cloudinary has to be absent BEFORE the app is imported (static imports
 // are hoisted, hence the dynamic import). Restored in afterAll.
-const CLOUDINARY_KEYS = ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'];
-const savedCloudinary = Object.fromEntries(CLOUDINARY_KEYS.map((k) => [k, process.env[k]]));
-for (const k of CLOUDINARY_KEYS) delete process.env[k];
+const restoreCloudinaryEnv = stripCloudinaryEnv();
 const { default: app } = await import('../../server.js');
 
 // Minimal "valid" PDF: %PDF-1.4 header + structural minimum
@@ -79,7 +78,7 @@ describe('users.js — upload routes (local-fallback path)', () => {
 
   afterAll(async () => {
     await closeTestDB();
-    for (const k of CLOUDINARY_KEYS) if (savedCloudinary[k] !== undefined) process.env[k] = savedCloudinary[k];
+    restoreCloudinaryEnv();
   });
 
   describe('POST /upload-resume', () => {
