@@ -91,50 +91,6 @@ test.describe('Section H — Employer applicant management', () => {
     expect(['viewed', 'pending']).toContain(app.status);
   });
 
-  test('H.4 send text message to applicant', async ({ page }) => {
-    const r = await fetch(`${API}/applications/${appIds[0]}/message`, {
-      method: 'POST', headers: authHeaders(empToken),
-      body: JSON.stringify({
-        message: '[OVERNIGHT-H] Përshëndetje, ju falënderojmë për aplikimin.',
-        type: 'text',
-      }),
-    });
-    expect(r.status).toBeLessThan(500);
-  });
-
-  test('H.5 send interview_invite message', async ({ page }) => {
-    const r = await fetch(`${API}/applications/${appIds[0]}/message`, {
-      method: 'POST', headers: authHeaders(empToken),
-      body: JSON.stringify({
-        message: '[OVERNIGHT-H] Do dëshiroja t\'ju ftoja për një intervistë.',
-        type: 'interview_invite',
-      }),
-    });
-    expect(r.status).toBeLessThan(500);
-  });
-
-  test('H.6 send offer message', async ({ page }) => {
-    const r = await fetch(`${API}/applications/${appIds[1]}/message`, {
-      method: 'POST', headers: authHeaders(empToken),
-      body: JSON.stringify({
-        message: '[OVERNIGHT-H] Jemi të lumtur t\'ju ofrojmë pozicionin.',
-        type: 'offer',
-      }),
-    });
-    expect(r.status).toBeLessThan(500);
-  });
-
-  test('H.7 send rejection message', async ({ page }) => {
-    const r = await fetch(`${API}/applications/${appIds[2]}/message`, {
-      method: 'POST', headers: authHeaders(empToken),
-      body: JSON.stringify({
-        message: '[OVERNIGHT-H] Pas rishikimit, kemi vendosur të vazhdojmë me kandidatë të tjerë.',
-        type: 'rejection',
-      }),
-    });
-    expect(r.status).toBeLessThan(500);
-  });
-
   test('H.8 status forward: pending → viewed → shortlisted → hired', async ({ page }) => {
     const appId = appIds[3];
     for (const s of ['viewed', 'shortlisted', 'hired']) {
@@ -162,23 +118,6 @@ test.describe('Section H — Employer applicant management', () => {
     });
     // JUSTIFIED: Validator rejection — express-validator returns 400, custom Zod schemas return 422.
     expect([400, 422], 'rejected → hired must be blocked').toContain(r.status);
-  });
-
-  test('H.10 message: blank body rejected', async ({ page }) => {
-    const r = await fetch(`${API}/applications/${appIds[0]}/message`, {
-      method: 'POST', headers: authHeaders(empToken),
-      body: JSON.stringify({ message: '', type: 'text' }),
-    });
-    expect(r.status).toBe(400);
-  });
-
-  test('H.11 message: 5000+ chars rejected', async ({ page }) => {
-    const longMsg = 'a'.repeat(6000);
-    const r = await fetch(`${API}/applications/${appIds[0]}/message`, {
-      method: 'POST', headers: authHeaders(empToken),
-      body: JSON.stringify({ message: longMsg, type: 'text' }),
-    });
-    expect(r.status).toBe(400);
   });
 
   test('H.12 GET /applications/employer/all — full list across employer\'s jobs', async ({ page }) => {

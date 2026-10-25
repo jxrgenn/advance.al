@@ -21,6 +21,7 @@ test.describe('Auth / register employer', () => {
       body: JSON.stringify({
         email, password: 'StrongPass123!',
         userType: 'employer',
+        phone: '+355691234567', // required for employers since the short signup (2026-10-22)
         firstName: 'Emp', lastName: 'Loyer',
         city: 'Tiranë',
         companyName: 'TestCo', industry: 'Teknologji', companySize: '11-50'
@@ -38,6 +39,7 @@ test.describe('Auth / register employer', () => {
         email: `re2-${Date.now()}@example.com`,
         password: 'StrongPass123!',
         userType: 'employer',
+        phone: '+355691234567', // required for employers since the short signup (2026-10-22)
         firstName: 'Emp', lastName: 'Loyer', city: 'Tiranë',
         industry: 'Teknologji', companySize: '11-50'
       })
@@ -53,6 +55,7 @@ test.describe('Auth / register employer', () => {
         email: `re3-${Date.now()}@example.com`,
         password: 'StrongPass123!',
         userType: 'employer',
+        phone: '+355691234567', // required for employers since the short signup (2026-10-22)
         firstName: 'Emp', lastName: 'Loyer', city: 'Tiranë',
         companyName: 'Co', companySize: '11-50'
       })
@@ -69,6 +72,7 @@ test.describe('Auth / register employer', () => {
       body: JSON.stringify({
         email, password: 'StrongPass123!',
         userType: 'employer',
+        phone: '+355691234567', // required for employers since the short signup (2026-10-22)
         firstName: 'Emp', lastName: 'Loyer', city: 'Tiranë',
         companyName: 'RE4 Co', industry: 'Teknologji', companySize: '11-50'
       })
@@ -92,6 +96,7 @@ test.describe('Auth / register employer', () => {
       body: JSON.stringify({
         email, password: 'StrongPass123!',
         userType: 'employer',
+        phone: '+355691234567', // required for employers since the short signup (2026-10-22)
         firstName: 'Emp', lastName: 'Loyer', city: 'Tiranë',
         companyName: 'RE5 Co', industry: 'Teknologji', companySize: '11-50'
       })
@@ -111,6 +116,7 @@ test.describe('Auth / register employer', () => {
         email: `re6-${Date.now()}@example.com`,
         password: 'StrongPass123!',
         userType: 'employer',
+        phone: '+355691234567', // required for employers since the short signup (2026-10-22)
         firstName: 'Emp', lastName: 'Loyer', city: 'Tiranë',
         companyName: 'RE6 Co', industry: 'Teknologji', companySize: 'NOT_VALID'
       })
@@ -126,6 +132,7 @@ test.describe('Auth / register employer', () => {
       body: JSON.stringify({
         email, password: 'StrongPass123!',
         userType: 'employer',
+        phone: '+355691234567', // required for employers since the short signup (2026-10-22)
         firstName: 'Emp', lastName: 'Loyer', city: 'Tiranë',
         companyName: 'RE7 Co', industry: 'Teknologji', companySize: '11-50'
       })
@@ -158,6 +165,7 @@ test.describe('Auth / register employer', () => {
       body: JSON.stringify({
         email, password: 'StrongPass123!',
         userType: 'employer',
+        phone: '+355691234567', // required for employers since the short signup (2026-10-22)
         firstName: 'Emp', lastName: 'Loyer', city: 'Tiranë',
         companyName: 'RE8 Co', industry: 'Teknologji', companySize: '11-50'
       })
@@ -167,6 +175,7 @@ test.describe('Auth / register employer', () => {
       body: JSON.stringify({
         email, password: 'StrongPass123!',
         userType: 'employer',
+        phone: '+355691234567', // required for employers since the short signup (2026-10-22)
         firstName: 'Emp', lastName: 'Loyer', city: 'Tiranë',
         companyName: 'RE8 Co Renamed', industry: 'Teknologji', companySize: '11-50'
       })
@@ -183,6 +192,7 @@ test.describe('Auth / register employer', () => {
         email: `re9-${Date.now()}@example.com`,
         password: 'weak',
         userType: 'employer',
+        phone: '+355691234567', // required for employers since the short signup (2026-10-22)
         firstName: 'Emp', lastName: 'Loyer', city: 'Tiranë',
         companyName: 'Co', industry: 'Teknologji', companySize: '11-50'
       })
@@ -198,6 +208,7 @@ test.describe('Auth / register employer', () => {
       body: JSON.stringify({
         email, password: 'StrongPass123!',
         userType: 'employer',
+        phone: '+355691234567', // required for employers since the short signup (2026-10-22)
         firstName: 'Emp', lastName: 'Loyer', city: 'Tiranë',
         companyName: 'XCo<script>alert(1)</script>',
         industry: 'Teknologji', companySize: '11-50'

@@ -47,12 +47,12 @@ test.describe('Section UJ-PUBLIC — anonymous user flows', () => {
     await expect(page.getByRole('button', { name: /^Kyçu$/i }).first()).toBeVisible({ timeout: 3000 });
   });
 
-  test('P.3 anonymous: click nav "Punëdhenes" → /employers → has employer-targeted CTA', async ({ page }) => {
+  test('P.3 anonymous: click nav "Punëdhënës" → /employers → has employer-targeted CTA', async ({ page }) => {
     await page.goto(FRONTEND);
     await page.waitForLoadState('networkidle').catch(() => {});
     // Mobile: nav links live behind hamburger. navigateViaNavLink falls back
     // to direct navigation if mobile-safari's drawer link isn't clickable.
-    await navigateViaNavLink(page, 'Punëdhenes', '/employers');
+    await navigateViaNavLink(page, 'Punëdhënës', '/employers');
     await page.waitForTimeout(1500);
     expect(page.url()).toContain('/employers');
     const html = await page.content();
@@ -184,7 +184,7 @@ test.describe('Section UJ-PUBLIC — anonymous user flows', () => {
     await expect(card).toBeVisible({ timeout: 8000 });
     await card.click();
     await page.waitForTimeout(2500);
-    expect(page.url()).toMatch(/\/jobs\/[a-f0-9]{24}/);
+    expect(page.url()).toMatch(/\/jobs\/[^/?#]+/);
     await expect(page.getByText('OVERNIGHT-PUB15', { exact: false }).first()).toBeVisible({ timeout: 5000 });
     await expect(page.getByRole('button', { name: /Apliko/ }).first()).toBeVisible({ timeout: 5000 });
   });

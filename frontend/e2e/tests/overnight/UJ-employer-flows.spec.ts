@@ -219,22 +219,6 @@ test.describe('Section UJ-EMPLOYER — logged-in real-UI flows', () => {
     expect((body.data?.applications || []).length, 'employer should see at least 1 applicant').toBeGreaterThan(0);
   });
 
-  test('E.12 employer sends message to applicant → application has the message', async ({ page }) => {
-    const apps = await dbFind('applications', {});
-    expect(apps.length, 'should have at least one application').toBeGreaterThan(0);
-    const appId = apps[0]._id.toString();
-
-    const r = await fetch(`${API}/applications/${appId}/message`, {
-      method: 'POST', headers: authHeaders(empToken),
-      body: JSON.stringify({ message: '[OVERNIGHT-EMP-E12] Test message', type: 'text' }),
-    });
-    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-    expect([200, 201]).toContain(r.status);
-    const after = (await dbFind('applications', { _id: appId }))[0];
-    const msgFound = (after.messages || []).some((m: any) => /OVERNIGHT-EMP-E12/.test(m.message || m.content || ''));
-    expect(msgFound, 'message should be persisted on application').toBe(true);
-  });
-
   test('E.13 employer changes applicant status (viewed) → application.status updates', async ({ page }) => {
     const apps = await dbFind('applications', {});
     const appId = apps[0]._id.toString();

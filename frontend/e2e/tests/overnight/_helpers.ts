@@ -13,7 +13,8 @@ import { Page, expect } from '@playwright/test';
 import { dbUpdate, waitForVerificationCode, dbFind } from '../../real-backend/db-helpers';
 import { API as REAL_API, authHeaders, makeEmployer, makeJobseeker, makeAdmin } from '../../real-backend/factory-helpers';
 
-export const FRONTEND = 'http://localhost:5174';
+// E2E_FRONTEND_URL: run against another port when :5174 is taken locally.
+export const FRONTEND = process.env.E2E_FRONTEND_URL || 'http://localhost:5174';
 export const API = REAL_API;
 export const SIDE = 'http://localhost:3199';
 
@@ -212,7 +213,7 @@ export async function isMobileViewport(page: Page): Promise<boolean> {
  * Open the mobile hamburger menu if the viewport is mobile-sized.
  * No-op on desktop. Idempotent — safe to call multiple times.
  *
- * After this returns true, links 'Punët' / 'Rreth Nesh' / 'Punëdhenes' /
+ * After this returns true, links 'Punët' / 'Rreth Nesh' / 'Punëdhënës' /
  * 'Punëkërkues' that were hidden behind `md:hidden` become visible.
  */
 export async function openMobileMenuIfNeeded(page: Page): Promise<boolean> {

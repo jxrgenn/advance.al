@@ -13,11 +13,19 @@
 
 import { defineConfig, devices } from '@playwright/test';
 
+// Specs that only mean something against a PRODUCTION-mode backend (real CORS
+// allowlist, rate limiters on). The launcher boots the backend in development
+// unless LAUNCHER_NODE_ENV=production; in that mode only these run (CI runs
+// them as a separate step), otherwise they are skipped.
+const PROD_MODE = process.env.LAUNCHER_NODE_ENV === 'production';
+const PROD_MODE_SPECS = ['security/csrf-and-rate-limit-real.spec.ts'];
+
 export default defineConfig({
   // Phase 28: include `e2e/security/` (real adversarial tests) alongside overnight.
   // Both use the same real-backend infrastructure.
   testDir: './e2e',
-  testMatch: ['tests/overnight/**/*.spec.ts', 'security/**/*.spec.ts'],
+  testMatch: PROD_MODE ? PROD_MODE_SPECS : ['tests/overnight/**/*.spec.ts', 'security/**/*.spec.ts'],
+  testIgnore: PROD_MODE ? [] : PROD_MODE_SPECS.map((p) => `**/${p}`),
   fullyParallel: false,
   retries: 1,                   // overnight runs should self-heal flakes once
   workers: 1,

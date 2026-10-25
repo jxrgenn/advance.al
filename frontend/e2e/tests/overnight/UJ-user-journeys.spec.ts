@@ -51,7 +51,7 @@ test.describe('Section UJ — User Journeys', () => {
     // Step 4: Click into the first seeded job
     await jobText.click();
     await page.waitForTimeout(2000);
-    expect(page.url()).toMatch(/\/jobs\/[a-f0-9]{24}/);
+    expect(page.url()).toMatch(/\/jobs\/[^/?#]+/);
 
     // Step 5: Verify job detail rendered with Apliko button
     await expect(page.getByText('Apliko', { exact: false }).first()).toBeVisible({ timeout: 5000 });
@@ -785,7 +785,8 @@ test.describe('Section UJ — User Journeys', () => {
     // On mobile the nav collapses: regular links hide and a hamburger or icon
     // button appears. Verify: (a) Logo present, (b) Hyrje (login) link still
     // accessible (CTA preserved), (c) "Posto Punë" CTA visible.
-    await expect(page.getByRole('link', { name: 'Logo' }).first()).toBeVisible({ timeout: 3000 });
+    // The logo image's alt is "advance.al" (7f5cd7f), which names the home link.
+    await expect(page.getByRole('link', { name: 'advance.al', exact: true }).first()).toBeVisible({ timeout: 3000 });
     await expect(page.getByRole('link', { name: /^Hyrje$/i }).first()).toBeVisible({ timeout: 3000 });
     await expect(page.getByRole('button', { name: /Posto Punë/i }).first()).toBeVisible({ timeout: 3000 });
 

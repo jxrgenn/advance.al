@@ -108,6 +108,8 @@ test.describe('Employer / applicants list', () => {
     const { job } = await setupEmployerWithApps(emp.token, 1);
     const js = await makeJobseeker();
     const r = await fetch(`${API}/applications/job/${job._id}`, { headers: authHeaders(js.token) });
-    expect(r.status).toBe(401);
+    // Authenticated but wrong role → 403 (requireEmployer).
+    expect(r.status).toBe(403);
+    expect((await r.json()).data).toBeUndefined();
   });
 });

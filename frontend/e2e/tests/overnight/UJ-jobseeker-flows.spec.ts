@@ -69,7 +69,7 @@ test.describe('Section UJ-JOBSEEKER — logged-in real-UI flows', () => {
     await page.waitForTimeout(2500);
     await page.getByText('OVERNIGHT-JS', { exact: false }).first().click();
     await page.waitForTimeout(2500);
-    expect(page.url()).toMatch(/\/jobs\/[a-f0-9]{24}/);
+    expect(page.url()).toMatch(/\/jobs\/[^/?#]+/);
     await expect(page.getByRole('button', { name: /Apliko/ }).first()).toBeVisible({ timeout: 5000 });
   });
 
@@ -167,11 +167,11 @@ test.describe('Section UJ-JOBSEEKER — logged-in real-UI flows', () => {
     await page.waitForTimeout(2500);
     await page.getByText('OVERNIGHT-JS', { exact: false }).first().click();
     await page.waitForTimeout(2000);
-    expect(page.url()).toMatch(/\/jobs\/[a-f0-9]{24}/);
+    expect(page.url()).toMatch(/\/jobs\/[^/?#]+/);
     await page.goBack();
     await page.waitForTimeout(2000);
     expect(page.url()).toContain('/jobs');
-    expect(page.url()).not.toMatch(/\/jobs\/[a-f0-9]{24}/);
+    expect(page.url()).not.toMatch(/\/jobs\/[^/?#]+/);
   });
 
   test('J.12 nav button: click avatar (initials) → menu options appear OR navigate', async ({ page }) => {
@@ -280,7 +280,7 @@ test.describe('Section UJ-JOBSEEKER — logged-in real-UI flows', () => {
     await page.waitForTimeout(2000);
     await page.getByText('OVERNIGHT-JS', { exact: false }).first().click();
     await page.waitForTimeout(2500);
-    expect(page.url()).toMatch(/\/jobs\/[a-f0-9]{24}/);
+    expect(page.url()).toMatch(/\/jobs\/[^/?#]+/);
 
     const apps0 = (await dbFind('applications', {})).length;
     const applyBtn = page.getByRole('button', { name: /Apliko/ }).first();

@@ -23,7 +23,7 @@ test.describe('Public / homepage', () => {
     await page.goto(FRONTEND);
     await page.waitForTimeout(1500);
     await openMobileMenuIfNeeded(page);
-    for (const linkText of ['Punët', 'Rreth Nesh', 'Punëdhenes', 'Punëkërkues']) {
+    for (const linkText of ['Punët', 'Rreth Nesh', 'Punëdhënës', 'Punëkërkues']) {
       const link = page.getByRole('link', { name: linkText, exact: true }).first();
       await expect(link, `nav link "${linkText}" must exist`).toBeVisible({ timeout: 5000 });
     }

@@ -94,11 +94,11 @@ test.describe('Section UJ-DEEP — additional multi-step real-UI flows', () => {
     await page.waitForTimeout(2000);
     await page.getByText('OVERNIGHT-DEEP', { exact: false }).first().click();
     await page.waitForTimeout(2000);
-    expect(page.url()).toMatch(/\/jobs\/[a-f0-9]{24}/);
+    expect(page.url()).toMatch(/\/jobs\/[^/?#]+/);
     await page.goBack();
     await page.waitForTimeout(1500);
     // URL should now be the listing/home (not job detail)
-    expect(page.url()).not.toMatch(/\/jobs\/[a-f0-9]{24}/);
+    expect(page.url()).not.toMatch(/\/jobs\/[^/?#]+/);
   });
 
   test('Z.4 jobseeker: GDPR data export endpoint reachable + returns user data', async ({ page }) => {

@@ -4607,4 +4607,39 @@ Final candidate `1b010b3` (main + 23 commits, 354 files). Not merged to main, no
 - Removed `.github/workflows/test.yml` (Node 18/20 "Test Suite", failed every night until GitHub
   disabled its schedule; fully superseded by `qa-tests.yml`).
 - Removed the `istanbul ignore` claims that tests "always have Cloudinary configured" (no longer true).
-- E2E job: separate work in progress (see next entry).
+- Follow-up d7190e3: 4 more suites broke under the placeholder (they relied on the disk fallback or
+  the real cloud without saying so) → `stripCloudinaryEnv()` helper / `hasRealCloudinary()` gates.
+  Then the WHOLE suite was run in the clean clone with the CI env before pushing.
+  **GitHub run 40145496645: all 6 backend shards green — first green backend job since 2026-05-22.**
+- E2E job: see next entry.
+
+### 🧪 E2E repair + SEO fixes — 2026-10-25
+- The E2E job now gets past mongod (O-79) and runs the suite: ~100 distinct failures, all tests that
+  drifted from deliberate product changes (no product bug among them):
+  - employer factory/specs sent no phone — mandatory since the short signup (2026-10-22) → 400 at setup,
+    taking every employer spec with it;
+  - application messages route was removed (finding 48): message tests deleted / converted to "route is
+    gone, nothing persisted"; J-notifications now seeds via a status change;
+  - authenticated-but-wrong-role is 403 (since the first commit), several specs expected 401;
+  - job URLs are slugs (#113): 15 `/jobs/<24-hex>/` matchers — the `.not.toMatch` ones were passing
+    vacuously;
+  - embeddings are inline since Round P (no JobQueue) → assert `embedding.staleSince` instead;
+  - Node fetch's UA `node` is a bot for view counting; nav label "Punëdhënës"; logo alt "advance.al";
+    `068…` is a valid national-format mobile; change-password keeps THIS session (O-14);
+    employer ban soft-deletes all its jobs (I.11 now brings its own job); company description ≥ 50.
+- `security/csrf-and-rate-limit-real.spec.ts` can only pass against a PRODUCTION-mode backend (dev CORS
+  allows every origin, limiters skipped). The overnight config now skips it unless
+  `LAUNCHER_NODE_ENV=production`, and CI runs it as its own step in that mode. RLB.1 updated to the
+  two-bucket login limiter: with rotating IPs the per-email backstop fires at attempt 31 (by design).
+  `trust proxy` is `loopback, linklocal, uniquelocal` — spoofed XFF is ignored behind Render.
+- Verified locally with exactly the CI env, no retries: full overnight suite **882 passed, 0 failed
+  (27 min)**; production-mode step **7/7**.
+- E2E job timeout 45 → 75 min. `E2E_FRONTEND_URL` overrides the :5174 frontend for local runs.
+- **SEO (real bugs, live site):**
+  - `api/seo.js` (bot prerender): unknown paths returned an indexable 200 with the homepage title
+    (soft 404 / duplicate of "/"), signed-in app screens were indexable, and /companies + /company/:id
+    had no content. Now: real 404 + noindex for unknown paths, noindex for app screens, real company
+    profile (name, about, open positions) and a companies directory; /companies added to sitemap.xml.
+  - `index.html` defaults (description, canonical, robots, og/twitter) are marked `data-rh="true"` so
+    react-helmet-async REPLACES them per page. Before, every rendered page carried two canonicals (one
+    always "/"), two robots and two descriptions.

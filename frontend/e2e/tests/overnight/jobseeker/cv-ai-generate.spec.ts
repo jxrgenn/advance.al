@@ -30,7 +30,8 @@ test.describe('Jobseeker / AI CV generate', () => {
       method: 'POST', headers: authHeaders(emp.token),
       body: JSON.stringify({ language: 'sq' }),
     });
-    expect(r.status).toBe(401);
+    // Authenticated but wrong role → 403 (requireJobSeeker).
+    expect(r.status).toBe(403);
   });
 
   test('AI.3 POST /cv/generate with no OpenAI key fails with 4xx/5xx (no silent success)', async () => {

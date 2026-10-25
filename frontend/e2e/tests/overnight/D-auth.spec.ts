@@ -6,6 +6,7 @@
  */
 
 import { test } from '@playwright/test';
+import { createHash } from 'crypto';
 import { dbClear } from '../../real-backend/db-helpers';
 import {
   expect, FRONTEND, API, registerJobseekerViaUI, loginViaUI,
@@ -328,9 +329,18 @@ test.describe('Section D — Auth flows', () => {
       body: JSON.stringify({ currentPassword: 'NewQaOvernight2026!', newPassword: 'YetAnotherPass123!' }),
     });
     expect(cp.status).toBe(200);
+    const cb = await cp.json();
 
-    // Verify refreshTokens are now empty in DB
+    // O-14: every earlier session is revoked; only the fresh refresh token
+    // issued to this device remains (same contract as TR.5).
+    const sha256 = (t: string) => createHash('sha256').update(t).digest('hex');
     const after = (await dbFind('users', { email: registeredEmail }))[0];
-    expect(after.refreshTokens?.length || 0, 'F-21 fix: refresh tokens cleared').toBe(0);
+    const tokens = (after.refreshTokens || []).map((t: { token: string }) => t.token);
+    expect(tokens, 'F-21 fix: earlier refresh tokens cleared').toEqual([sha256(cb.data.refreshToken)]);
+    const old = await fetch(`${API}/auth/refresh`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refreshToken: b1.data.refreshToken }),
+    });
+    expect(old.status).toBe(401);
   });
 });

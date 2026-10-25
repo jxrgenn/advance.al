@@ -37,6 +37,13 @@
     <priority>0.7</priority>
   </url>
 
+  <url>
+    <loc>https://advance.al/companies</loc>
+    <lastmod>2026-10-25</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.6</priority>
+  </url>
+
   <!--
     /login, /register, /employer-register intentionally REMOVED from the
     sitemap (2026-06-08): they are thin auth pages served noindex. Listing

@@ -54,6 +54,9 @@ test.describe('Admin / employer approval', () => {
       method: 'PATCH', headers: authHeaders(emp.token),
       body: JSON.stringify({ action: 'approve_employer' }),
     });
-    expect(r.status).toBe(401);
+    // Authenticated but not an admin → 403 (authorize() in middleware/auth.js).
+    expect(r.status).toBe(403);
+    const after = await dbFindOne('users', { email: emp.email });
+    expect(after.profile?.employerProfile?.verificationStatus).not.toBe('approved');
   });
 });

@@ -22,12 +22,12 @@ test.describe('Section UJ-EDGE — multi-step edge case flows', () => {
     await page.waitForTimeout(2500);
     await page.getByText('OVERNIGHT-X1', { exact: false }).first().click();
     await page.waitForTimeout(2000);
-    expect(page.url()).toMatch(/\/jobs\/[a-f0-9]{24}/);
+    expect(page.url()).toMatch(/\/jobs\/[^/?#]+/);
 
     await page.goBack();
     await page.waitForTimeout(2000);
     expect(page.url(), 'back should return to listing').toContain('/jobs');
-    expect(page.url()).not.toMatch(/\/jobs\/[a-f0-9]{24}/);
+    expect(page.url()).not.toMatch(/\/jobs\/[^/?#]+/);
   });
 
   test('X.2 multi-tab: open /jobs in 2nd context → both render independently', async ({ page, context }) => {

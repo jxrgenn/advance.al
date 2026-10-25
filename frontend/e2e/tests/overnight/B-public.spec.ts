@@ -35,7 +35,7 @@ test.describe('Section B — Public pages', () => {
     // Navigation links present (exact text matches — Albanian accents matter).
     // On mobile the nav lives behind the hamburger; open it first.
     await openMobileMenuIfNeeded(page);
-    for (const linkText of ['Punët', 'Rreth Nesh', 'Punëdhenes', 'Punëkërkues']) {
+    for (const linkText of ['Punët', 'Rreth Nesh', 'Punëdhënës', 'Punëkërkues']) {
       const link = page.getByRole('link', { name: linkText, exact: true }).first();
       await expect(link, `nav link "${linkText}" should exist`).toBeVisible({ timeout: 5000 });
     }

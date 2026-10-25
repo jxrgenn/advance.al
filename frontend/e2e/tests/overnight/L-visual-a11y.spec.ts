@@ -149,11 +149,19 @@ test.describe('Section L — Visual + a11y', () => {
     }
   });
 
-  test('L.12 page has meta description', async ({ page }) => {
-    await page.goto(FRONTEND);
-    const desc = await page.locator('meta[name="description"]').getAttribute('content');
-    expect(desc, 'home should have meta description').toBeTruthy();
-    expect(desc!.length).toBeGreaterThan(20);
+  test('L.12 page has ONE meta description, canonical and robots tag', async ({ page }) => {
+    // index.html ships defaults; react-helmet-async must replace them (data-rh),
+    // not add a second set — two canonicals (one always "/") let crawlers
+    // fold every page into the homepage.
+    for (const [path, canonical] of [['/', 'https://advance.al/'], ['/jobs', 'https://advance.al/jobs'], ['/about', 'https://advance.al/about']]) {
+      await page.goto(`${FRONTEND}${path}`);
+      await expect(page.locator('link[rel="canonical"]')).toHaveCount(1);
+      await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', canonical);
+      await expect(page.locator('meta[name="description"]')).toHaveCount(1);
+      await expect(page.locator('meta[name="robots"]')).toHaveCount(1);
+      const desc = await page.locator('meta[name="description"]').getAttribute('content');
+      expect(desc!.length, `${path} description`).toBeGreaterThan(20);
+    }
   });
 
   test('L.13 console no a11y warnings (axe-style sentinel)', async ({ page }) => {

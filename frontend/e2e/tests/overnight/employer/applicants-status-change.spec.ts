@@ -124,7 +124,10 @@ test.describe('Employer / applicants status change', () => {
       method: 'PATCH', headers: authHeaders(js.token),
       body: JSON.stringify({ status: 'shortlisted' })
     });
-    expect(r.status).toBe(401);
+    // Authenticated but wrong role → 403 (requireEmployer).
+    expect(r.status).toBe(403);
+    const after = await dbFindOne('applications', { _id: app._id });
+    expect(after.status).toBe(app.status);
   });
 
   test('AS.8 idempotent: re-setting same status does not duplicate notifications', async () => {

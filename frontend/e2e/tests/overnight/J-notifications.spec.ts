@@ -5,7 +5,7 @@
  */
 
 import { test } from '@playwright/test';
-import { dbClear } from '../../real-backend/db-helpers';
+import { dbClear, dbFindOne } from '../../real-backend/db-helpers';
 import {
   expect, FRONTEND, API, makeJobseeker, makeEmployer, authHeaders, dbFind,
   loginViaStorage, NORMAL_PLATFORM,
@@ -28,7 +28,7 @@ test.beforeAll(async () => {
     method: 'POST', headers: authHeaders(emp.token),
     body: JSON.stringify({
       title: '[OVERNIGHT-J] Notification Source Job',
-      description: 'Job created to seed notifications by triggering apply + employer message which should fan out a notification to the jobseeker.',
+      description: 'Job created to seed notifications by triggering apply + an employer status change, which fans out a notification to the jobseeker.',
       category: 'Teknologji', jobType: 'full-time',
       location: { city: 'Tiranë' }, platformCategories: NORMAL_PLATFORM,
     }),
@@ -39,16 +39,19 @@ test.beforeAll(async () => {
   }
   const jobId = jrBody.data.job._id;
 
-  // Apply, employer messages → notification on jobseeker
+  // Apply, employer shortlists → notification on jobseeker
   await fetch(`${API}/applications/apply`, {
     method: 'POST', headers: authHeaders(jsToken),
     body: JSON.stringify({ jobId, applicationMethod: 'one_click' }),
   });
   const apps = await dbFind('applications', {});
-  await fetch(`${API}/applications/${apps[0]._id}/message`, {
-    method: 'POST', headers: authHeaders(emp.token),
-    body: JSON.stringify({ message: '[OVERNIGHT-J] Welcome message', type: 'text' }),
+  // Application messages were removed (finding 48); a status change is what
+  // notifies the jobseeker now (models/Application.js post-save hook).
+  const st = await fetch(`${API}/applications/${apps[0]._id}/status`, {
+    method: 'PATCH', headers: authHeaders(emp.token),
+    body: JSON.stringify({ status: 'shortlisted' }),
   });
+  if (st.status !== 200) throw new Error(`J setup: status change failed ${st.status}`);
   // Wait for notification fan-out
   await new Promise((r) => setTimeout(r, 1500));
 });
@@ -79,13 +82,15 @@ test.describe('Section J — Notifications', () => {
 
   test('J.3 mark single notification read', async ({ page }) => {
     const list = await (await fetch(`${API}/notifications`, { headers: authHeaders(jsToken) })).json();
-    if (list.data.notifications.length > 0) {
-      const id = list.data.notifications[0]._id;
-      const r = await fetch(`${API}/notifications/${id}/read`, {
-        method: 'PATCH', headers: authHeaders(jsToken),
-      });
-      expect(r.status).toBeLessThan(500);
-    }
+    // beforeAll's shortlist created at least one notification.
+    expect(list.data.notifications.length).toBeGreaterThan(0);
+    const id = list.data.notifications[0]._id;
+    const r = await fetch(`${API}/notifications/${id}/read`, {
+      method: 'PATCH', headers: authHeaders(jsToken),
+    });
+    expect(r.status).toBe(200);
+    const stored = await dbFindOne('notifications', { _id: id });
+    expect(stored.read).toBe(true);
   });
 
   test('J.4 mark-all-read', async ({ page }) => {

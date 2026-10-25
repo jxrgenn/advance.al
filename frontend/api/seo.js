@@ -82,6 +82,18 @@ async function fetchJob(idOrSlug) {
   return body?.data?.job || null;
 }
 
+async function fetchCompany(id) {
+  // Public employer profile (status active, not deleted); 404 → null.
+  if (!/^[a-f0-9]{24}$/i.test(id)) return null;
+  const body = await safeFetch(`${API_BASE}/companies/${id}`);
+  return body?.data?.company || null;
+}
+
+async function fetchCompanies(limit = 50) {
+  const body = await safeFetch(`${API_BASE}/companies?page=1&limit=${limit}&sortBy=activeJobs&sortOrder=desc`);
+  return body?.data?.companies || [];
+}
+
 async function fetchActiveJobs(limit = 20) {
   const body = await safeFetch(`${API_BASE}/jobs?page=1&limit=${limit}`);
   return body?.data?.jobs || [];
@@ -338,6 +350,62 @@ async function handleRoute(req) {
     };
   }
 
+  // /company/<id> — public employer profile with its open positions.
+  const companyMatch = pathname.match(/^\/company\/([^/]+)$/);
+  if (companyMatch) {
+    const company = await fetchCompany(companyMatch[1]);
+    if (!company) {
+      return {
+        status: 404,
+        cacheControl: 's-maxage=60',
+        html: buildBotHtml({
+          title: 'Kompania nuk u gjet',
+          description: 'Kjo kompani nuk ekziston ose nuk është më aktive në Advance.al.',
+          canonical: `${SITE_URL}${pathname}`,
+          noindex: true,
+          bodyContent: `    <section><h1>Kompania nuk u gjet</h1><p><a href="${SITE_URL}/companies">Shiko kompanitë</a> ose <a href="${SITE_URL}/jobs">punët aktive</a>.</p></section>`,
+        }),
+      };
+    }
+    const about = String(company.description || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const city = company.location?.city || '';
+    const jobs = Array.isArray(company.jobs) ? company.jobs : [];
+    const facts = [company.industry, city].filter(Boolean).map(escapeHtml).join(' · ');
+    const jobList = jobs.length
+      ? `      <h2>Pozicione të hapura (${jobs.length})</h2>\n      <ul>\n${jobs.map((j) => `        <li><a href="${SITE_URL}/jobs/${escapeHtml(j.slug || j._id)}">${escapeHtml(j.title)}</a>${j.location?.city ? ` (${escapeHtml(j.location.city)})` : ''}</li>`).join('\n')}\n      </ul>`
+      : `      <p>Nuk ka pozicione të hapura për momentin. <a href="${SITE_URL}/jobs">Shiko të gjitha punët</a>.</p>`;
+    return {
+      status: 200,
+      cacheControl: 's-maxage=600, stale-while-revalidate=3600',
+      html: buildBotHtml({
+        title: `${company.name} — punë dhe profili i kompanisë`,
+        description: about.slice(0, 160) || `${company.name}${city ? `, ${city}` : ''} — pozicione pune në Advance.al.`,
+        canonical: `${SITE_URL}/company/${company._id}`,
+        imageUrl: /^https:\/\//.test(company.logo || '') ? company.logo : undefined,
+        bodyContent: `    <section>\n      <h1>${escapeHtml(company.name)}</h1>\n${facts ? `      <p>${facts}</p>\n` : ''}${about ? `      <p>${escapeHtml(about.slice(0, 2000))}</p>\n` : ''}${jobList}\n    </section>`,
+      }),
+    };
+  }
+
+  // /companies — directory of employers (crawl path to the company pages).
+  if (pathname === '/companies') {
+    const companies = await fetchCompanies();
+    const list = companies
+      .map((c) => `        <li><a href="${SITE_URL}/company/${escapeHtml(c._id)}">${escapeHtml(c.name)}</a>${c.city ? ` (${escapeHtml(c.city)})` : ''}${c.activeJobs ? ` — ${c.activeJobs} pozicione` : ''}</li>`)
+      .join('\n');
+    const description = 'Kompanitë që punësojnë në Shqipëri përmes Advance.al — profili dhe pozicionet e hapura të secilës.';
+    return {
+      status: 200,
+      cacheControl: 's-maxage=600, stale-while-revalidate=3600',
+      html: buildBotHtml({
+        title: 'Kompanitë që punësojnë në Shqipëri',
+        description,
+        canonical: `${SITE_URL}/companies`,
+        bodyContent: `    <section>\n      <h1>Kompanitë</h1>\n      <p>${escapeHtml(description)}</p>\n${companies.length ? `      <ul>\n${list}\n      </ul>` : `      <p><a href="${SITE_URL}/jobs">Shiko punët aktive</a>.</p>`}\n    </section>`,
+      }),
+    };
+  }
+
   // Utility / auth routes — intentionally NOINDEX. Previously these fell
   // through to the catch-all below and were served an indexable Organization
   // shell with the DEFAULT homepage title, so Google clustered them as
@@ -379,17 +447,37 @@ async function handleRoute(req) {
     };
   }
 
-  // Catch-all: a path we don't have explicit content for. Serve an indexable
-  // Organization shell so bots can still pick up the brand entity. They'll
-  // discover content via internal links + sitemap.
+  // Signed-in app screens (SPA routes in App.tsx): real pages for a user, but
+  // no public content — noindex, never the homepage-titled indexable shell
+  // (that made Google cluster them as duplicates of "/").
+  const APP_ONLY = /^\/(admin(\/.*)?|employer-dashboard|post-job|edit-job\/[^/]+|profile|saved-jobs|payment\/.+)$/;
+  if (APP_ONLY.test(pathname)) {
+    return {
+      status: 200,
+      cacheControl: 's-maxage=3600, stale-while-revalidate=86400',
+      html: buildBotHtml({
+        title: null,
+        description: DEFAULT_DESCRIPTION,
+        canonical: `${SITE_URL}${pathname}`,
+        noindex: true,
+        bodyContent: `    <section><h1>${escapeHtml(SITE_NAME)}</h1><p>Portal i punës në Shqipëri. <a href="${SITE_URL}/jobs">Shiko punët aktive</a>.</p></section>`,
+        jsonLdBlocks: [],
+      }),
+    };
+  }
+
+  // Anything else is not a page of the site (the SPA shows its 404 screen):
+  // answer 404 + noindex. An indexable 200 here was a soft 404 — every typo
+  // URL became a duplicate of the homepage in Google's eyes.
   return {
-    status: 200,
+    status: 404,
     cacheControl: 's-maxage=600',
     html: buildBotHtml({
-      title: null,
-      description: undefined,
+      title: 'Faqja nuk u gjet',
+      description: DEFAULT_DESCRIPTION,
       canonical: `${SITE_URL}${pathname}`,
-      bodyContent: `    <section><h1>${escapeHtml(SITE_NAME)}</h1><p>Portal i punës në Shqipëri. <a href="${SITE_URL}/jobs">Shiko punët aktive</a>.</p></section>`,
+      noindex: true,
+      bodyContent: `    <section><h1>Faqja nuk u gjet</h1><p><a href="${SITE_URL}/">Kryefaqja</a> · <a href="${SITE_URL}/jobs">Punët aktive</a></p></section>`,
       jsonLdBlocks: [organizationJsonLd()],
     }),
   };

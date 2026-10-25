@@ -72,7 +72,9 @@ test.describe('Section E — Jobseeker profile build', () => {
   });
 
   test('E.3 phone validation rejects bad formats', async ({ page }) => {
-    for (const badPhone of ['0681234567', '+38612345', '+355abc']) {
+    // 068 123 4567 is a valid national-format mobile (normalized to +355…), so
+    // the bad ones are: a landline, a foreign number, and letters.
+    for (const badPhone of ['042123456', '+38612345', '+355abc']) {
       const r = await fetch(`${API}/users/profile`, {
         method: 'PUT', headers: authHeaders(jsToken),
         body: JSON.stringify({ phone: badPhone }),

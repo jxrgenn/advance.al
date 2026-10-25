@@ -102,12 +102,16 @@ test.describe('Jobseeker / saved jobs', () => {
     expect([400, 404]).toContain(r.status);
   });
 
-  test('SJ.7 invalid ObjectId in saved-jobs URL → 400', async () => {
+  test('SJ.7 unknown job (non-ObjectId) in saved-jobs URL → 404, nothing saved', async () => {
+    // The param may be an ObjectId or a slug (dual lookup), so a non-ObjectId
+    // is an unknown slug → 404.
     const js = await makeJobseeker();
     const r = await fetch(`${API}/users/saved-jobs/not-an-id`, {
       method: 'POST', headers: authHeaders(js.token),
     });
-    expect(r.status).toBe(400);
+    expect(r.status).toBe(404);
+    const u = await dbFindOne('users', { email: js.email });
+    expect(u.profile?.jobSeekerProfile?.savedJobs ?? []).toEqual([]);
   });
 
   test('SJ.8 unsaving a job not in array is no-op (200/204, no error)', async () => {

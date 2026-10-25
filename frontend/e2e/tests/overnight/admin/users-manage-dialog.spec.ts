@@ -131,7 +131,10 @@ test.describe('Admin / users manage actions', () => {
       method: 'PATCH', headers: authHeaders(js.token),
       body: JSON.stringify({ action: 'suspend', reason: 'x', duration: 7 }),
     });
-    expect(r.status).toBe(401);
+    // Authenticated but not an admin → 403 (authorize() in middleware/auth.js).
+    expect(r.status).toBe(403);
+    const after = await dbFindOne('users', { email: target.email });
+    expect(after.status).toBe(targetDoc.status);
   });
 
   test('UM.9 manage on suspended user can re-suspend / escalate to ban', async () => {

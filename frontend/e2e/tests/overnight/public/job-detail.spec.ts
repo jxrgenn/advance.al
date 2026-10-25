@@ -42,11 +42,23 @@ test.describe('Public / job detail', () => {
   test('JD.2 GET /api/jobs/:id increments viewCount', async () => {
     const emp = await makeEmployer({ preApprove: true });
     const job = await makeJob(emp.token);
+    // Browser UA: Node's fetch sends "node", which GET /jobs/:id treats as a
+    // bot and does not count (routes/jobs.js BOT_UA_RE).
+    const headers = { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0 Safari/537.36' };
+    await fetch(`${API}/jobs/${job._id}`, { headers });
+    await fetch(`${API}/jobs/${job._id}`, { headers });
+    await fetch(`${API}/jobs/${job._id}`, { headers });
+    // The $inc is fire-and-forget after the response — poll briefly.
+    let viewCount = 0;
+    for (let i = 0; i < 25 && viewCount < 3; i++) {
+      viewCount = (await dbFindOne('jobs', { _id: job._id })).viewCount;
+      if (viewCount < 3) await new Promise((res) => setTimeout(res, 200));
+    }
+    expect(viewCount, '3 GETs should increment viewCount').toBe(3);
+    // A bot user agent is not a view.
     await fetch(`${API}/jobs/${job._id}`);
-    await fetch(`${API}/jobs/${job._id}`);
-    await fetch(`${API}/jobs/${job._id}`);
-    const after = await dbFindOne('jobs', { _id: job._id });
-    expect(after.viewCount, '3 GETs should increment viewCount').toBeGreaterThanOrEqual(3);
+    await new Promise((res) => setTimeout(res, 500));
+    expect((await dbFindOne('jobs', { _id: job._id })).viewCount).toBe(3);
   });
 
   test('JD.3 GET non-existent ObjectId → 404', async () => {
@@ -54,9 +66,12 @@ test.describe('Public / job detail', () => {
     expect(r.status).toBe(404);
   });
 
-  test('JD.4 GET invalid ObjectId format → 400', async () => {
+  test('JD.4 GET unknown slug (non-ObjectId) → 404', async () => {
+    // /jobs/:id accepts an ObjectId OR a slug (#113), so a non-ObjectId is
+    // looked up as a slug and simply not found.
     const r = await fetch(`${API}/jobs/not-a-valid-id`);
-    expect(r.status).toBe(400);
+    expect(r.status).toBe(404);
+    expect((await r.json()).success).toBe(false);
   });
 
   test('JD.5 soft-deleted job → 404', async () => {

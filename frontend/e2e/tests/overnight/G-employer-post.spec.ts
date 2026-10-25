@@ -222,7 +222,8 @@ test.describe('Section G — Employer post-job', () => {
       body: JSON.stringify({
         employerProfile: {
           companyName: 'BadActorRenamedCo',
-          description: 'Legitimate description update',
+          // ≥ 50 chars: the company-description rule (lib/companyProfile.js).
+          description: 'Legitimate description update for the company profile page.',
         },
       }),
     });

@@ -166,12 +166,17 @@ test.describe('Employer / post-job wizard', () => {
         platformCategories: { diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false }
       })
     });
-    expect(r.status).toBe(401);
+    // Logged in but not yet approved → 403 (requireVerifiedEmployer; RE.7 too).
+    expect(r.status).toBe(403);
+    expect(await dbCount('jobs', { title: 'PJ9 test job' })).toBe(0);
   });
 
-  test('PJ.10 post adds embedding task to JobQueue', async () => {
+  test('PJ.10 post kicks embedding generation (job marked stale)', async () => {
+    // Round P: embeddings are generated inline by fireEmbedding (no JobQueue
+    // any more). Its first step stamps embedding.staleSince on the job —
+    // before any cap or a missing OpenAI key can drop the kick.
     const emp = await makeEmployer({ preApprove: true });
-    const before = await dbCount('jobqueues', { taskType: 'generate_embedding' });
+    const t0 = Date.now();
     const r = await fetch(`${API}/jobs`, {
       method: 'POST', headers: authHeaders(emp.token),
       body: JSON.stringify({
@@ -182,16 +187,16 @@ test.describe('Employer / post-job wizard', () => {
         platformCategories: { diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false }
       })
     });
-    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-    expect([200, 201]).toContain(r.status);
-    // setImmediate fanout — poll for the queue task to land.
-    let after = before;
-    for (let i = 0; i < 30; i++) {
-      after = await dbCount('jobqueues', { taskType: 'generate_embedding' });
-      if (after > before) break;
-      await new Promise((r) => setTimeout(r, 200));
+    expect(r.status).toBe(201);
+    const jobId = (await r.json()).data.job._id;
+    let staleSince: number | null = null;
+    for (let i = 0; i < 30 && !staleSince; i++) {
+      const doc = await dbFindOne('jobs', { _id: jobId });
+      staleSince = doc?.embedding?.staleSince ? new Date(doc.embedding.staleSince).getTime() : null;
+      if (!staleSince) await new Promise((res) => setTimeout(res, 200));
     }
-    expect(after, 'POST /jobs should queue an embedding task').toBeGreaterThan(before);
+    expect(staleSince, 'POST /jobs must kick embedding generation').not.toBeNull();
+    expect(staleSince!).toBeGreaterThanOrEqual(t0 - 1000);
   });
 
   test('PJ.11 post increments Location.jobCount', async () => {

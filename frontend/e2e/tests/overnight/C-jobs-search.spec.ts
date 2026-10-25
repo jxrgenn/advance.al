@@ -127,7 +127,7 @@ test.describe('Section C — Jobs listing + search', () => {
     expect(await seededTitle.count(), 'seeded job title should appear').toBeGreaterThan(0);
     await seededTitle.click();
     await page.waitForTimeout(1500);
-    expect(page.url(), 'should navigate to /jobs/:id').toMatch(/\/jobs\/[a-f0-9]{24}/);
+    expect(page.url(), 'should navigate to /jobs/:id').toMatch(/\/jobs\/[^/?#]+/);
   });
 
   test('C.7 job detail — Apliko button visible (logged-out)', async ({ page }) => {
@@ -159,7 +159,7 @@ test.describe('Section C — Jobs listing + search', () => {
     const newPage = await context.newPage();
     await newPage.goto(`${FRONTEND}/jobs/${seededJobIds[0]}`);
     await newPage.waitForTimeout(1500);
-    expect(newPage.url()).toMatch(/\/jobs\/[a-f0-9]{24}/);
+    expect(newPage.url()).toMatch(/\/jobs\/[^/?#]+/);
     await newPage.close();
   });
 
@@ -174,7 +174,7 @@ test.describe('Section C — Jobs listing + search', () => {
     await page.goBack();
     await page.waitForTimeout(1500);
     expect(page.url(), 'back should return to /jobs').toContain('/jobs');
-    expect(page.url(), 'back should NOT be on detail').not.toMatch(/\/jobs\/[a-f0-9]{24}/);
+    expect(page.url(), 'back should NOT be on detail').not.toMatch(/\/jobs\/[^/?#]+/);
   });
 
   test('C.11 sort URL params accepted by API (verify backend respects sortBy)', async ({ page }) => {

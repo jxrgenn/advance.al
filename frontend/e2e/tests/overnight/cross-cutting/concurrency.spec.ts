@@ -175,11 +175,19 @@ test.describe('Cross-cutting / concurrency', () => {
     });
     const job = (await jr.json()).data.job;
 
-    const promises = Array.from({ length: 20 }, () => fetch(`${API}/jobs/${job._id}`));
+    // A browser user agent: Node's fetch sends "node", which GET /jobs/:id
+    // treats as a bot and does not count as a view (routes/jobs.js).
+    const ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0 Safari/537.36';
+    const promises = Array.from({ length: 20 }, () => fetch(`${API}/jobs/${job._id}`, { headers: { 'user-agent': ua } }));
     await Promise.all(promises);
 
-    const after = await dbFindOne('jobs', { _id: job._id });
-    expect(after.viewCount, 'viewCount must be exactly 20 after 20 concurrent views').toBeGreaterThanOrEqual(15);
+    // The $inc is fire-and-forget after the response, so poll briefly.
+    let viewCount = 0;
+    for (let i = 0; i < 25 && viewCount < 20; i++) {
+      viewCount = (await dbFindOne('jobs', { _id: job._id })).viewCount;
+      if (viewCount < 20) await new Promise(r => setTimeout(r, 200));
+    }
+    expect(viewCount, 'viewCount must be exactly 20 after 20 concurrent views').toBe(20);
   });
 
   test('CC.8 concurrent admin manage on same target → final state is one of the actions', async () => {
@@ -201,39 +209,6 @@ test.describe('Cross-cutting / concurrency', () => {
 
     const after = await dbFindOne('users', { _id: targetDoc._id });
     expect(['active', 'suspended']).toContain(after.status);
-  });
-
-  test('CC.9 concurrent message thread additions → all messages persisted', async () => {
-    const emp = await makeEmployer({ preApprove: true });
-    const js = await makeJobseeker();
-    const jr = await fetch(`${API}/jobs`, {
-      method: 'POST', headers: authHeaders(emp.token),
-      body: JSON.stringify({
-        title: 'CC9 test job', description: 'x'.repeat(80), category: 'Teknologji',
-        jobType: 'full-time', location: { city: 'Tiranë' },
-        salary: { min: 1000, max: 2000, currency: 'EUR' },
-        platformCategories: { diaspora: false, ngaShtepia: false, partTime: false, administrata: false, sezonale: false }
-      })
-    });
-    const job = (await jr.json()).data.job;
-    const ar = await fetch(`${API}/applications/apply`, {
-      method: 'POST', headers: authHeaders(js.token),
-      body: JSON.stringify({ jobId: job._id, coverLetter: 'cover ' + 'x'.repeat(40), applicationMethod: 'one_click' })
-    });
-    const app = (await ar.json()).data.application;
-
-    const messages = ['msg1', 'msg2', 'msg3', 'msg4', 'msg5'];
-    const promises = messages.map(m =>
-      fetch(`${API}/applications/${app._id}/message`, {
-        method: 'POST', headers: authHeaders(emp.token),
-        body: JSON.stringify({ message: m, messageType: 'text' })
-      })
-    );
-    await Promise.all(promises);
-
-    const after = await dbFindOne('applications', { _id: app._id });
-    const msgs = after.messages || [];
-    expect(msgs.length, 'all 5 messages should be persisted').toBeGreaterThanOrEqual(5);
   });
 
   test('CC.10 concurrent edit on same job by owner → final value matches one of the writes', async () => {

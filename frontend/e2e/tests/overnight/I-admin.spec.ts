@@ -18,7 +18,6 @@ let adminEmail: string;
 let empToken: string;
 let jsTokens: string[] = [];
 let jobIds: string[] = [];
-let pendingJobId: string;
 
 test.beforeAll(async () => {
   await dbClear();
@@ -49,9 +48,6 @@ test.beforeAll(async () => {
     if (b.success) jobIds.push(b.data.job._id);
   }
 
-  // Force one job into pending_approval state
-  await dbUpdate('jobs', { _id: jobIds[2] }, { $set: { status: 'pending_approval' } });
-  pendingJobId = jobIds[2];
 
   // Apply some applications
   for (let i = 0; i < 3; i++) {
@@ -174,6 +170,20 @@ test.describe('Section I — Admin moderation', () => {
   });
 
   test('I.11 approve a pending job (F-23 fix verification)', async ({ page }) => {
+    // I.8 banned the shared employer, which closes and soft-deletes ALL of
+    // its jobs (lib/employerSanctions.js) — so this test brings its own.
+    const emp2 = await makeEmployer({ preApprove: true });
+    const jr = await fetch(`${API}/jobs`, {
+      method: 'POST', headers: authHeaders(emp2.token),
+      body: JSON.stringify({
+        title: '[OVERNIGHT-I] Pending approval',
+        description: 'Pending role for admin moderation tests at QA Overnight Co. Full-time position with comprehensive responsibilities.',
+        category: 'Teknologji', jobType: 'full-time',
+        location: { city: 'Tiranë' }, platformCategories: NORMAL_PLATFORM,
+      }),
+    });
+    const pendingJobId = (await jr.json()).data.job._id;
+    await dbUpdate('jobs', { _id: pendingJobId }, { $set: { status: 'pending_approval' } });
     const r = await fetch(`${API}/admin/jobs/${pendingJobId}/manage`, {
       method: 'PATCH', headers: authHeaders(adminToken),
       body: JSON.stringify({ action: 'approve' }),

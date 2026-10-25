@@ -65,6 +65,9 @@ export async function makeEmployer(opts: {
     companyName: opts.companyName || `TestCo-${Date.now()}`,
     industry: 'Teknologji',
     companySize: '11-50',
+    // Mobile is required for employers since the short signup (owner
+    // decision 2026-10-22); without it initiate-registration returns 400.
+    phone: '+355691234567',
     // Required by /auth/initiate-registration for employers (50-1000 chars).
     // Missing since the rule was added → 400, no verification code, and every
     // spec that creates an employer failed in beforeAll (W2-4b / O-79).
@@ -175,4 +178,34 @@ export function authHeaders(token: string) {
     'content-type': 'application/json',
     Authorization: `Bearer ${token}`
   };
+}
+
+/**
+ * Jobseeker for a launcher running with LAUNCHER_NODE_ENV=production, where
+ * the backend never logs verification codes (so makeJobseeker cannot finish
+ * the signup). The user document is inserted directly, then the token comes
+ * from the real POST /auth/login.
+ */
+export async function makeJobseekerByInsert(opts: { email?: string; password?: string } = {}): Promise<FactoryResult> {
+  const { default: bcrypt } = await import('bcryptjs');
+  const email = opts.email || `jsi-${Date.now()}-${Math.random().toString(36).slice(2,7)}@example.com`;
+  const password = opts.password || 'StrongPass123!';
+  await dbInsert('users', {
+    email,
+    password: await bcrypt.hash(password, 10),
+    userType: 'jobseeker',
+    status: 'active',
+    emailVerified: true,
+    isDeleted: false,
+    tokenVersion: 0,
+    profile: { firstName: 'Js', lastName: 'Inserted', location: { city: 'Tiranë' } },
+  });
+  const loginRes = await fetch(`${API}/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+  const body = await loginRes.json();
+  if (!body.data?.token) throw new Error(`Login failed for inserted jobseeker ${email}: ${JSON.stringify(body)}`);
+  return { email, password, token: body.data.token };
 }

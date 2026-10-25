@@ -53,6 +53,7 @@ test.describe('Cross-cutting / XSS deep payload matrix', () => {
         body: JSON.stringify({
           email, password: 'StrongPass123!',
           userType: 'employer',
+          phone: '+355691234567', // required for employers since the short signup (2026-10-22)
           firstName: 'Emp', lastName: 'Loyer', city: 'Tiranë',
           companyName: `XCo${p.value}`,
           industry: 'Teknologji', companySize: '11-50'

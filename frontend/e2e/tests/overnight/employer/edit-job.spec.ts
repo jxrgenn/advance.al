@@ -66,25 +66,28 @@ test.describe('Employer / edit job', () => {
     expect([400, 422]).toContain(r.status);
   });
 
-  test('EJ.4 title change queues new embedding task', async () => {
+  test('EJ.4 title change kicks embedding regeneration (job marked stale)', async () => {
+    // Round P: no JobQueue — fireEmbedding regenerates inline and first stamps
+    // embedding.staleSince with the kick time (routes/jobs.js PUT /:id).
     const emp = await makeEmployer({ preApprove: true });
     const job = await makeJob(emp.token);
-    const before = await dbCount('jobqueues', { taskType: 'generate_embedding' });
-    await fetch(`${API}/jobs/${job._id}`, {
+    await new Promise((res) => setTimeout(res, 1100)); // let the create's own kick land
+    const t0 = Date.now();
+    const r = await fetch(`${API}/jobs/${job._id}`, {
       method: 'PUT', headers: authHeaders(emp.token),
       body: JSON.stringify({
         title: 'New Substantially Different Title For Embedding Re-Gen',
         description: 'New ' + 'y'.repeat(80)
       }),
     });
-    // setImmediate fanout — poll for the queue task to land.
-    let after = before;
-    for (let i = 0; i < 30; i++) {
-      after = await dbCount('jobqueues', { taskType: 'generate_embedding' });
-      if (after > before) break;
-      await new Promise((r) => setTimeout(r, 200));
+    expect(r.status).toBe(200);
+    let staleSince = 0;
+    for (let i = 0; i < 30 && staleSince < t0; i++) {
+      const doc = await dbFindOne('jobs', { _id: job._id });
+      staleSince = doc?.embedding?.staleSince ? new Date(doc.embedding.staleSince).getTime() : 0;
+      if (staleSince < t0) await new Promise((res) => setTimeout(res, 200));
     }
-    expect(after, 'title+desc edit must trigger new embedding task').toBeGreaterThan(before);
+    expect(staleSince, 'title+desc edit must kick embedding regeneration').toBeGreaterThanOrEqual(t0);
   });
 
   test('EJ.5 location change updates Location.jobCount on both old and new', async () => {

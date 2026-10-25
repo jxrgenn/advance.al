@@ -1,8 +1,10 @@
 /**
- * applicants-message.spec.ts — employer/jobseeker message thread.
+ * applicants-message.spec.ts — the application message thread is GONE.
  *
- * 8 tests: 4 message types (text, interview_invite, offer, rejection),
- * bidirectional, length limits, sanitization, ownership.
+ * POST /api/applications/:id/message was removed (finding 48, 2026-10-22):
+ * no screen could send or read messages, yet the endpoint let either party
+ * e-mail the other through the platform. These tests pin the removal: the
+ * route 404s for both parties and nothing is written to application.messages.
  */
 
 import { test } from '@playwright/test';
@@ -31,106 +33,20 @@ async function setup() {
   return { emp, js, app };
 }
 
-test.describe('Employer / applicant messages', () => {
+test.describe('Employer / applicant messages (removed endpoint)', () => {
   test.beforeEach(async () => { await dbClear(); });
 
-  test('AM.1 text message from employer persists in app.messages', async () => {
-    const { emp, app } = await setup();
-    const r = await fetch(`${API}/applications/${app._id}/message`, {
-      method: 'POST', headers: authHeaders(emp.token),
-      body: JSON.stringify({ message: 'Hello, interested in interview?', messageType: 'text' })
+  for (const who of ['employer', 'jobseeker'] as const) {
+    test(`AM.1 ${who} POST /applications/:id/message → 404, nothing persisted`, async () => {
+      const { emp, js, app } = await setup();
+      const token = who === 'employer' ? emp.token : js.token;
+      const r = await fetch(`${API}/applications/${app._id}/message`, {
+        method: 'POST', headers: authHeaders(token),
+        body: JSON.stringify({ message: 'Hello, interested in interview?', messageType: 'text' })
+      });
+      expect(r.status).toBe(404);
+      const after = await dbFindOne('applications', { _id: app._id });
+      expect(after.messages ?? []).toEqual([]);
     });
-    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-    expect([200, 201]).toContain(r.status);
-
-    const after = await dbFindOne('applications', { _id: app._id });
-    expect((after.messages || []).length).toBeGreaterThanOrEqual(1);
-    expect(after.messages[after.messages.length - 1].message).toBe('Hello, interested in interview?');
-  });
-
-  test('AM.2 interview_invite messageType', async () => {
-    const { emp, app } = await setup();
-    const r = await fetch(`${API}/applications/${app._id}/message`, {
-      method: 'POST', headers: authHeaders(emp.token),
-      body: JSON.stringify({
-        message: 'Interview at our office on Monday at 10am',
-        messageType: 'interview_invite'
-      })
-    });
-    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-    expect([200, 201]).toContain(r.status);
-  });
-
-  test('AM.3 offer messageType', async () => {
-    const { emp, app } = await setup();
-    const r = await fetch(`${API}/applications/${app._id}/message`, {
-      method: 'POST', headers: authHeaders(emp.token),
-      body: JSON.stringify({
-        message: 'We would like to offer you the position with a salary of 2000 EUR/month',
-        messageType: 'offer'
-      })
-    });
-    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-    expect([200, 201]).toContain(r.status);
-  });
-
-  test('AM.4 rejection messageType', async () => {
-    const { emp, app } = await setup();
-    const r = await fetch(`${API}/applications/${app._id}/message`, {
-      method: 'POST', headers: authHeaders(emp.token),
-      body: JSON.stringify({
-        message: 'Thank you, but we have selected another candidate',
-        messageType: 'rejection'
-      })
-    });
-    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-    expect([200, 201]).toContain(r.status);
-  });
-
-  test('AM.5 jobseeker can reply to employer thread', async () => {
-    const { emp, js, app } = await setup();
-    await fetch(`${API}/applications/${app._id}/message`, {
-      method: 'POST', headers: authHeaders(emp.token),
-      body: JSON.stringify({ message: 'Are you available?', messageType: 'text' })
-    });
-    const r = await fetch(`${API}/applications/${app._id}/message`, {
-      method: 'POST', headers: authHeaders(js.token),
-      body: JSON.stringify({ message: 'Yes, available', messageType: 'text' })
-    });
-    // JUSTIFIED: HTTP convention — POST returns 200 (with body) or 201 (created).
-    expect([200, 201]).toContain(r.status);
-
-    const after = await dbFindOne('applications', { _id: app._id });
-    expect((after.messages || []).length).toBeGreaterThanOrEqual(2);
-  });
-
-  test('AM.6 unrelated employer cannot post to this thread', async () => {
-    const { app } = await setup();
-    const otherEmp = await makeEmployer({ preApprove: true });
-    const r = await fetch(`${API}/applications/${app._id}/message`, {
-      method: 'POST', headers: authHeaders(otherEmp.token),
-      body: JSON.stringify({ message: 'I should not see this', messageType: 'text' })
-    });
-    // JUSTIFIED: IDOR uniformity — cross-tenant resource access returns 403 (not yours) or 404 (uniform with non-existent).
-    expect([403, 404]).toContain(r.status);
-  });
-
-  test('AM.7 empty message body → 400', async () => {
-    const { emp, app } = await setup();
-    const r = await fetch(`${API}/applications/${app._id}/message`, {
-      method: 'POST', headers: authHeaders(emp.token),
-      body: JSON.stringify({ message: '', messageType: 'text' })
-    });
-    expect(r.status).toBe(400);
-  });
-
-  test('AM.8 5000+ char message rejected', async () => {
-    const { emp, app } = await setup();
-    const r = await fetch(`${API}/applications/${app._id}/message`, {
-      method: 'POST', headers: authHeaders(emp.token),
-      body: JSON.stringify({ message: 'x'.repeat(5001), messageType: 'text' })
-    });
-    // JUSTIFIED: Express body-parser rejects with 413 (size limit) or 400 (parse failure).
-    expect([400, 413]).toContain(r.status);
-  });
+  }
 });

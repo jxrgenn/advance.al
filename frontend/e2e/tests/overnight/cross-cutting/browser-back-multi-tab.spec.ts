@@ -25,12 +25,12 @@ test.describe('Cross-cutting / browser back + multi-tab', () => {
     if (await link.isVisible({ timeout: 4000 }).catch(() => false)) {
       await link.click();
       await page.waitForTimeout(2000);
-      expect(page.url()).toMatch(/\/jobs\/[a-f0-9]{24}/);
+      expect(page.url()).toMatch(/\/jobs\/[^/?#]+/);
 
       await page.goBack();
       await page.waitForTimeout(2000);
       expect(page.url(), 'back should return to /jobs').toContain('/jobs');
-      expect(page.url()).not.toMatch(/\/jobs\/[a-f0-9]{24}/);
+      expect(page.url()).not.toMatch(/\/jobs\/[^/?#]+/);
     }
   });
 
