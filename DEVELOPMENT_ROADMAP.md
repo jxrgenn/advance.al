@@ -4634,6 +4634,8 @@ Final candidate `1b010b3` (main + 23 commits, 354 files). Not merged to main, no
   `trust proxy` is `loopback, linklocal, uniquelocal` — spoofed XFF is ignored behind Render.
 - Verified locally with exactly the CI env, no retries: full overnight suite **882 passed, 0 failed
   (27 min)**; production-mode step **7/7**.
+- **GitHub QA Tests run 40148355757 (fc7be8b): FULLY GREEN** — 6/6 backend shards, E2E 882 passed +
+  production-mode step 7 passed, E2E job 34 min.
 - E2E job timeout 45 → 75 min. `E2E_FRONTEND_URL` overrides the :5174 frontend for local runs.
 - **SEO (real bugs, live site):**
   - `api/seo.js` (bot prerender): unknown paths returned an indexable 200 with the homepage title
