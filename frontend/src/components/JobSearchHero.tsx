@@ -3,6 +3,7 @@ import { Container } from "@mantine/core";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { ArrowRight, Search } from "lucide-react";
+import { WalkingPath } from "@/components/illustrations/WalkingPath";
 import { useAuth } from "@/contexts/AuthContext";
 
 export function JobSearchHero() {
@@ -140,20 +141,10 @@ export function JobSearchHero() {
             animate={{ opacity: 1, scale: 1, x: 0 }}
             transition={{ delay: 0.4, duration: 1, ease: [0.16, 1, 0.3, 1] }}
           >
-            {/* Image container - breathing animation only */}
-            <motion.img 
-              src="/3d_assets/walking.png" 
-              alt="Rritje në karrierë" 
-              className="w-full max-w-[360px] md:max-w-[480px] h-auto relative z-10"
-              animate={{ 
-                scale: [1, 1.03, 1]
-              }}
-              transition={{ 
-                duration: 3,
-                repeat: Infinity,
-                ease: "easeInOut"
-              }}
-            />
+            {/* A person walking along a path that ends in an arrow (code-animated) */}
+            <div className="relative z-10 w-full max-w-[360px] md:max-w-[480px] aspect-square">
+              <WalkingPath className="absolute inset-0 w-full h-full" />
+            </div>
           </motion.div>
         </div>
         </Container>
