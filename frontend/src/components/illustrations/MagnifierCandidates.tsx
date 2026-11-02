@@ -3,168 +3,184 @@ import { useInView, useReducedMotion } from "motion/react";
 import { useSvgId } from "./useSvgId";
 
 /**
- * Employers hero: a magnifying glass searching a crowd for the right person.
+ * Employers hero: a magnifying glass finds the right candidate for a job.
  *
- * Round 2 (owner: "better, higher-quality animation"; no AI look). Same
- * concept, elevated:
- *   - the lens really magnifies — the crowd is drawn a second time inside
- *     the glass, scaled around the lens centre, so people swell as it passes;
- *   - it searches: glides, pauses on a couple of people, then lands on the
- *     right one, who turns into the blue suit, and a check pops; it holds,
- *     then moves on to find the next one (three candidates, looping);
- *   - flat two-tone shading only — no gradients, glows or blur.
+ * Round 3 (owner, 2026-11-02: the figurine crowd "looks ugly"; the "Kurse
+ * kohë" CV animation is "very cool"). Same magnifier concept, drawn in the
+ * CV animation's language: flat light panel, ink outlines, real product UI
+ * with real Albanian text — candidate cards with avatar, name, role and a
+ * match bar, like advance.al's candidate matching.
+ *
+ * Loop (three jobs): the job at the top changes, every card's match bar
+ * re-ranks for it, the lens checks two candidates, then lands on the best
+ * one — the card turns blue and a check pops — and holds.
+ * The glass really magnifies: the cards are drawn a second time inside it.
  * One requestAnimationFrame clock, paused off-screen. Reduced motion: the
- * lens rests on the first candidate, already found.
+ * first job, already found.
  */
 
-const W = 480;
-const LENS_R = 74;
-const MAG = 1.75;
+const INK = "#0B2A6B";
+const BLUE = "#2F65BE";
+const SKY = "#EAF2FF";
+const LINE = "#B9CDEF";
+const MUTED = "#64748B";
+const GREY = "#CBD5E1";
 
-function mulberry32(seed: number) {
-  let a = seed;
-  return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+const W = 560;
+const H = 400;
+const CARD_W = 150;
+const CARD_H = 76;
+const GAP_X = 18;
+const GAP_Y = 16;
+const X0 = (W - (3 * CARD_W + 2 * GAP_X)) / 2;
+const Y0 = 98;
+const LENS_R = 62;
+const MAG = 1.5;
 
-const TONES = ["#CBD5E1", "#94A3B8", "#64748B", "#475569", "#334155", "#B6C2D2"];
-
-type P = { x: number; y: number; s: number; tone: string };
-
-const CROWD: P[] = (() => {
-  const rnd = mulberry32(4802);
-  const out: P[] = [];
-  const cols = 5;
-  const rows = 5;
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const x = 62 + c * 89 + (r % 2 ? 30 : -8) + (rnd() - 0.5) * 22;
-      const y = 58 + r * 86 + (rnd() - 0.5) * 18;
-      if (x > W - 40) continue;
-      out.push({ x, y, s: 0.86 + rnd() * 0.22, tone: TONES[Math.floor(rnd() * TONES.length)] });
-    }
-  }
-  return out;
-})();
-
-// people the lens finds, and the ones it checks on the way
-function nearest(x: number, y: number, exclude: number[] = []) {
-  let best = 0;
-  let d = Infinity;
-  CROWD.forEach((p, i) => {
-    if (exclude.includes(i)) return;
-    const dd = (p.x - x) ** 2 + (p.y - y) ** 2;
-    if (dd < d) {
-      d = dd;
-      best = i;
-    }
-  });
-  return best;
-}
-const TARGETS = [nearest(250, 230), nearest(150, 330), nearest(330, 150)];
-const DECOYS = [
-  [nearest(140, 150, TARGETS), nearest(170, 250, TARGETS)],
-  [nearest(330, 330, TARGETS), nearest(250, 380, TARGETS)],
-  [nearest(230, 120, TARGETS), nearest(340, 250, TARGETS)],
+const PEOPLE = [
+  { name: "Arta Hoxha", role: "Kontabiliste" },
+  { name: "Besnik Krasniqi", role: "Shitës" },
+  { name: "Elira Gjoka", role: "Recepsioniste" },
+  { name: "Dritan Leka", role: "Financier" },
+  { name: "Ardit Dervishi", role: "Zhvillues web" },
+  { name: "Klea Shehu", role: "Marketing" },
+  { name: "Gentian Meta", role: "Shitës" },
+  { name: "Sara Bregu", role: "Dizajnere" },
+  { name: "Erion Pasha", role: "Zhvillues" },
 ];
 
-// lens centre for a person: a little above their shoulders
-// (clamped so the rim never leaves the picture)
-const clampLens = (n: number) => Math.min(W - LENS_R - 14, Math.max(LENS_R + 14, n));
-const focus = (i: number) => ({ x: clampLens(CROWD[i].x), y: clampLens(CROWD[i].y + 12) });
+// one entry per job: each person's match %; the best one is found
+const JOBS = [
+  { title: "Kontabilist/e", city: "Tiranë", match: [94, 22, 31, 81, 12, 27, 18, 15, 20], decoys: [3, 2] },
+  { title: "Zhvillues/e web", city: "Durrës", match: [14, 10, 12, 21, 96, 33, 9, 58, 84], decoys: [8, 7] },
+  { title: "Shitës/e", city: "Tiranë", match: [19, 91, 40, 25, 11, 63, 86, 22, 13], decoys: [5, 6] },
+].map((j) => ({ ...j, best: j.match.indexOf(Math.max(...j.match)) }));
 
-type Seg = { from: { x: number; y: number }; to: { x: number; y: number }; t0: number; t1: number };
-type Hold = { t0: number; t1: number; target: number; found: boolean };
+const cardPos = (i: number) => ({ x: X0 + (i % 3) * (CARD_W + GAP_X), y: Y0 + Math.floor(i / 3) * (CARD_H + GAP_Y) });
+// the lens looks at the card's name and bar
+const focus = (i: number) => {
+  const p = cardPos(i);
+  return { x: p.x + CARD_W * 0.45, y: p.y + CARD_H * 0.5 };
+};
 
-const TIMELINE = (() => {
-  const segs: Seg[] = [];
-  const holds: Hold[] = [];
-  let t = 0;
-  let at = focus(TARGETS[TARGETS.length - 1]);
-  const go = (i: number, hold: number, found: boolean) => {
-    const to = focus(i);
-    const dur = Math.max(0.7, Math.hypot(to.x - at.x, to.y - at.y) / 190);
-    segs.push({ from: at, to, t0: t, t1: t + dur });
-    t += dur;
-    holds.push({ t0: t, t1: t + hold, target: i, found });
-    t += hold;
-    at = to;
-  };
-  TARGETS.forEach((target, k) => {
-    go(DECOYS[k][0], 0.45, false);
-    go(DECOYS[k][1], 0.45, false);
-    go(target, 2.4, true);
-  });
-  return { segs, holds, period: t };
-})();
-
+const CYCLE = 7.6;
+const PERIOD = CYCLE * JOBS.length;
+const clamp = (v: number) => Math.min(1, Math.max(0, v));
 const ease = (k: number) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
 
+// within one cycle: [arrive, leave] for decoy 1, decoy 2, the best one
+const STOPS = [
+  [1.4, 1.95],
+  [2.7, 3.25],
+  [4.0, 7.3],
+] as const;
+
 function lensAt(t: number) {
-  const tt = ((t % TIMELINE.period) + TIMELINE.period) % TIMELINE.period;
-  for (const s of TIMELINE.segs) {
-    if (tt >= s.t0 && tt < s.t1) {
-      const e = ease((tt - s.t0) / (s.t1 - s.t0));
-      return { x: s.from.x + (s.to.x - s.from.x) * e, y: s.from.y + (s.to.y - s.from.y) * e, hold: null as Hold | null, k: 0 };
+  const tt = ((t % PERIOD) + PERIOD) % PERIOD;
+  const c = Math.floor(tt / CYCLE);
+  const u = tt - c * CYCLE;
+  const job = JOBS[c];
+  const prevJob = JOBS[(c + JOBS.length - 1) % JOBS.length];
+  const stops = [job.decoys[0], job.decoys[1], job.best].map(focus);
+  let prev = focus(prevJob.best);
+  let x = prev.x;
+  let y = prev.y;
+  let at = -1;
+  let k = 0;
+  let leave = 0.6; // moves once the bars have re-ranked
+  for (let s = 0; s < 3; s++) {
+    const [arrive, go] = STOPS[s];
+    if (u < leave) break;
+    if (u < arrive) {
+      const e = ease((u - leave) / (arrive - leave));
+      x = prev.x + (stops[s].x - prev.x) * e;
+      y = prev.y + (stops[s].y - prev.y) * e;
+      break;
     }
-  }
-  for (const h of TIMELINE.holds) {
-    if (tt >= h.t0 && tt < h.t1) {
-      const f = focus(h.target);
-      return { x: f.x, y: f.y, hold: h, k: (tt - h.t0) / (h.t1 - h.t0) };
+    x = stops[s].x;
+    y = stops[s].y;
+    if (u < go || s === 2) {
+      at = s;
+      k = clamp((u - arrive) / (go - arrive));
+      break;
     }
+    prev = stops[s];
+    leave = go;
   }
-  const f = focus(TARGETS[TARGETS.length - 1]);
-  return { x: f.x, y: f.y, hold: null, k: 0 };
+  return { x, y, cycle: c, u, at, k };
 }
 
-/** One person, head and shoulders, flat with a darker right side. */
-function Bust({ tone }: { tone: string }) {
-  return (
-    <>
-      <path d="M-21 40 C-21 25 -12 17 0 17 C12 17 21 25 21 40 Z" fill={tone} />
-      <path d="M6 17.8 C15 20 21 27 21 40 L9 40 C11 31 9.5 23 6 17.8 Z" fill="#0F172A" opacity={0.14} />
-      <circle cx={0} cy={0} r={11.5} fill={tone} />
-      <path d="M4.5 -10.6 A11.5 11.5 0 0 1 4.5 10.6 A13 13 0 0 0 4.5 -10.6 Z" fill="#0F172A" opacity={0.14} />
-    </>
-  );
-}
+type Refs = {
+  bars: (SVGRectElement | null)[];
+  pcts: (SVGTextElement | null)[];
+  frames: (SVGRectElement | null)[];
+  avatars: (SVGCircleElement | null)[];
+};
+const newRefs = (): Refs => ({ bars: [], pcts: [], frames: [], avatars: [] });
 
-/** The blue suit the found candidate turns into (drawn over the bust). */
-function Suit() {
+function Cards({ refs }: { refs: React.MutableRefObject<Refs> }) {
   return (
     <>
-      <path d="M-21 40 C-21 25 -12 17 0 17 C12 17 21 25 21 40 Z" fill="#1D4ED8" />
-      <path d="M6 17.8 C15 20 21 27 21 40 L9 40 C11 31 9.5 23 6 17.8 Z" fill="#1E3A8A" />
-      <path d="M-6 17.4 L0 33 L6 17.4 Z" fill="#F8FAFC" />
-      <path d="M-1.6 19.5 L1.6 19.5 L2.6 30 L0 34 L-2.6 30 Z" fill="#0F2A6B" />
-      <circle cx={0} cy={0} r={11.5} fill="#1E293B" />
-      <path d="M4.5 -10.6 A11.5 11.5 0 0 1 4.5 10.6 A13 13 0 0 0 4.5 -10.6 Z" fill="#0F172A" opacity={0.3} />
-    </>
-  );
-}
-
-function Crowd({ suitRefs }: { suitRefs: React.MutableRefObject<(SVGGElement | null)[]> }) {
-  return (
-    <>
-      {CROWD.map((p, i) => (
-        <g key={i} transform={`translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) scale(${p.s.toFixed(3)})`}>
-          <Bust tone={p.tone} />
-          <g
-            ref={(el) => {
-              suitRefs.current[i] = el;
-            }}
-            style={{ opacity: 0 }}
-          >
-            <Suit />
+      {PEOPLE.map((p, i) => {
+        const { x, y } = cardPos(i);
+        return (
+          <g key={i} transform={`translate(${x} ${y})`}>
+            <rect
+              ref={(el) => {
+                refs.current.frames[i] = el;
+              }}
+              width={CARD_W}
+              height={CARD_H}
+              rx={10}
+              fill="#FFFFFF"
+              stroke={INK}
+              strokeWidth={1.6}
+            />
+            <circle
+              ref={(el) => {
+                refs.current.avatars[i] = el;
+              }}
+              cx={24}
+              cy={27}
+              r={13}
+              fill={GREY}
+            />
+            <circle cx={24} cy={23} r={4.6} fill="#FFFFFF" />
+            <path d="M15.5 35.5 q8.5 -9.5 17 0" fill="#FFFFFF" />
+            <text x={44} y={25} fontSize={11.5} fontWeight={700} fill={INK}>
+              {p.name}
+            </text>
+            <text x={44} y={40} fontSize={10} fill={MUTED}>
+              {p.role}
+            </text>
+            <rect x={14} y={56} width={92} height={6} rx={3} fill={SKY} />
+            <rect
+              ref={(el) => {
+                refs.current.bars[i] = el;
+              }}
+              x={14}
+              y={56}
+              width={0}
+              height={6}
+              rx={3}
+              fill={LINE}
+            />
+            <text
+              ref={(el) => {
+                refs.current.pcts[i] = el;
+              }}
+              x={CARD_W - 14}
+              y={63}
+              fontSize={10.5}
+              fontWeight={700}
+              fill={MUTED}
+              textAnchor="end"
+            >
+              0%
+            </text>
           </g>
-        </g>
-      ))}
+        );
+      })}
     </>
   );
 }
@@ -178,21 +194,53 @@ export function MagnifierCandidates({ className }: MagnifierCandidatesProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const inView = useInView(svgRef, { amount: 0.2 });
   const reduced = !!useReducedMotion();
+  const clock = useRef(0);
 
-  const lensRef = useRef<SVGGElement>(null);
+  const base = useRef<Refs>(newRefs());
+  const mag = useRef<Refs>(newRefs());
+  const handleRef = useRef<SVGGElement>(null);
+  const rimRef = useRef<SVGGElement>(null);
   const clipRef = useRef<SVGCircleElement>(null);
   const magRef = useRef<SVGGElement>(null);
   const checkRef = useRef<SVGGElement>(null);
-  const rimRef = useRef<SVGGElement>(null);
-  const suitsBase = useRef<(SVGGElement | null)[]>([]);
-  const suitsMag = useRef<(SVGGElement | null)[]>([]);
-  const clock = useRef(0);
+  const titleRef = useRef<SVGTextElement>(null);
+  const cityRef = useRef<SVGTextElement>(null);
+  const headRef = useRef<SVGGElement>(null);
 
   useEffect(() => {
     const render = (t: number) => {
       const l = lensAt(t);
+      const job = JOBS[l.cycle];
+      const prevJob = JOBS[(l.cycle + JOBS.length - 1) % JOBS.length];
+
+      // the job at the top swaps at the start of each cycle
+      if (titleRef.current && titleRef.current.textContent !== job.title) titleRef.current.textContent = job.title;
+      if (cityRef.current && cityRef.current.textContent !== job.city) cityRef.current.textContent = job.city;
+      if (headRef.current) headRef.current.style.opacity = String(0.2 + 0.8 * clamp(l.u / 0.35));
+
+      // every card's bar re-ranks for the new job; the best one lights up when found
+      const r = ease(clamp(l.u / 0.6));
+      const found = l.at === 2 ? job.best : -1;
+      const lit = found >= 0 && l.k > 0.03 && l.k < 0.95;
+      for (const set of [base.current, mag.current]) {
+        PEOPLE.forEach((_, i) => {
+          const v = prevJob.match[i] + (job.match[i] - prevJob.match[i]) * r;
+          const on = lit && i === found;
+          set.bars[i]?.setAttribute("width", ((92 * v) / 100).toFixed(1));
+          set.bars[i]?.setAttribute("fill", on ? BLUE : LINE);
+          const pt = set.pcts[i];
+          if (pt) {
+            pt.textContent = `${Math.round(v)}%`;
+            pt.setAttribute("fill", on ? BLUE : MUTED);
+          }
+          set.frames[i]?.setAttribute("stroke", on ? BLUE : INK);
+          set.frames[i]?.setAttribute("stroke-width", on ? "2.6" : "1.6");
+          set.avatars[i]?.setAttribute("fill", on ? BLUE : GREY);
+        });
+      }
+
       const tr = `translate(${l.x.toFixed(2)} ${l.y.toFixed(2)})`;
-      lensRef.current?.setAttribute("transform", tr);
+      handleRef.current?.setAttribute("transform", tr);
       rimRef.current?.setAttribute("transform", tr);
       clipRef.current?.setAttribute("cx", l.x.toFixed(2));
       clipRef.current?.setAttribute("cy", l.y.toFixed(2));
@@ -200,32 +248,19 @@ export function MagnifierCandidates({ className }: MagnifierCandidatesProps) {
         "transform",
         `translate(${l.x.toFixed(2)} ${l.y.toFixed(2)}) scale(${MAG}) translate(${(-l.x).toFixed(2)} ${(-l.y).toFixed(2)})`,
       );
-
-      const found = l.hold?.found ? l.hold.target : -1;
-      // suit fades in quickly once found, fades out as the lens leaves
-      const on = found >= 0 ? Math.min(1, l.k / 0.12) * Math.min(1, (1 - l.k) / 0.1) : 0;
-      CROWD.forEach((_, i) => {
-        const o = i === found ? on : 0;
-        const a = suitsBase.current[i];
-        const b = suitsMag.current[i];
-        if (a) a.style.opacity = String(o);
-        if (b) b.style.opacity = String(o);
-      });
       if (checkRef.current) {
-        const k = found >= 0 ? Math.min(1, Math.max(0, (l.k - 0.1) / 0.12)) : 0;
-        const out = found >= 0 ? Math.min(1, (1 - l.k) / 0.1) : 0;
-        const sc = k === 0 ? 0 : k < 0.7 ? (k / 0.7) * 1.15 : 1.15 - ((k - 0.7) / 0.3) * 0.15;
-        checkRef.current.style.opacity = String(Math.min(k * 3, 1) * out);
+        const c = found >= 0 ? clamp((l.k - 0.03) / 0.07) : 0;
+        const s = c < 0.7 ? (c / 0.7) * 1.15 : 1.15 - ((c - 0.7) / 0.3) * 0.15;
+        checkRef.current.style.opacity = String(c * clamp((1 - l.k) / 0.06));
         checkRef.current.setAttribute(
           "transform",
-          `translate(${(LENS_R * 0.72).toFixed(1)} ${(-LENS_R * 0.72).toFixed(1)}) scale(${sc.toFixed(3)})`,
+          `translate(${(LENS_R * 0.72).toFixed(1)} ${(-LENS_R * 0.72).toFixed(1)}) scale(${s.toFixed(3)})`,
         );
       }
     };
 
     if (reduced) {
-      const h = TIMELINE.holds.find((x) => x.found)!;
-      render(h.t0 + (h.t1 - h.t0) * 0.5);
+      render(STOPS[2][0] + 1.2);
       return;
     }
     if (!inView) {
@@ -247,60 +282,64 @@ export function MagnifierCandidates({ className }: MagnifierCandidatesProps) {
   return (
     <svg
       ref={svgRef}
-      viewBox={`0 0 ${W} ${W}`}
+      viewBox={`0 0 ${W} ${H}`}
       className={className}
-      style={{ overflow: "visible" }}
       role="img"
       aria-labelledby={`${id}-title`}
+      style={{ fontFamily: "inherit" }}
     >
-      <title id={`${id}-title`}>
-        Një lupë kërkon mes njerëzve dhe gjen kandidatin e duhur, me kostum blu
-      </title>
+      <title id={`${id}-title`}>Një lupë kalon mbi kandidatët dhe gjen më të përshtatshmin për punën</title>
       <defs>
         <clipPath id={`${id}-lens`}>
-          <circle ref={clipRef} cx={0} cy={0} r={LENS_R} />
+          <circle ref={clipRef} r={LENS_R} />
         </clipPath>
       </defs>
+      <rect width={W} height={H} rx={24} fill={SKY} />
 
-      {/* the crowd */}
-      <Crowd suitRefs={suitsBase} />
+      {/* the job being filled */}
+      <g ref={headRef}>
+        <text x={X0} y={46} fontSize={10} fontWeight={700} letterSpacing={1} fill={MUTED}>
+          POZICIONI
+        </text>
+        <text ref={titleRef} x={X0} y={72} fontSize={19} fontWeight={700} fill={INK}>
+          {JOBS[0].title}
+        </text>
+        <text ref={cityRef} x={W - X0} y={72} fontSize={12} fill={BLUE} textAnchor="end">
+          {JOBS[0].city}
+        </text>
+      </g>
 
-      {/* the glass's flat shadow and its handle */}
-      <g ref={lensRef}>
-        <circle cx={10} cy={14} r={LENS_R + 8} fill="#0F172A" opacity={0.07} />
-        {/* handle, pointing down-right */}
+      <Cards refs={base} />
+
+      {/* handle, under the glass */}
+      <g ref={handleRef}>
         <g transform="rotate(45)">
-          <rect x={LENS_R + 6} y={-9} width={22} height={18} rx={3} fill="#64748B" />
-          <rect x={LENS_R + 6} y={-9} width={22} height={7} rx={3} fill="#94A3B8" />
-          <rect x={LENS_R + 26} y={-12} width={74} height={24} rx={12} fill="#1E293B" />
-          <rect x={LENS_R + 32} y={-12} width={62} height={8} rx={4} fill="#334155" />
+          <rect x={LENS_R} y={-7} width={18} height={14} rx={3} fill="#FFFFFF" stroke={INK} strokeWidth={2} />
+          <rect x={LENS_R + 16} y={-10} width={60} height={20} rx={10} fill={INK} />
         </g>
       </g>
 
-      {/* what the glass shows: the same crowd, magnified around the lens */}
+      {/* what the glass shows: the same cards, magnified */}
       <g clipPath={`url(#${id}-lens)`}>
-        <rect x={0} y={0} width={W} height={W} fill="#F8FBFF" />
+        <rect width={W} height={H} fill="#FFFFFF" />
         <g ref={magRef}>
-          <Crowd suitRefs={suitsMag} />
+          <Cards refs={mag} />
         </g>
       </g>
 
-      {/* rim, glare and the check, on top, moving with the lens */}
+      {/* rim and check */}
       <g ref={rimRef}>
-        <circle r={LENS_R + 5} fill="none" stroke="#1E293B" strokeWidth={10} />
-        <circle r={LENS_R + 5} fill="none" stroke="#475569" strokeWidth={3} strokeDasharray="110 400" transform="rotate(200)" />
-        <circle r={LENS_R} fill="none" stroke="#CBD5E1" strokeWidth={1.5} />
-        <path
-          d={`M${-LENS_R * 0.72} ${-LENS_R * 0.3} A${LENS_R * 0.8} ${LENS_R * 0.8} 0 0 1 ${-LENS_R * 0.28} ${-LENS_R * 0.74}`}
-          stroke="#FFFFFF"
-          strokeWidth={6}
-          strokeLinecap="round"
-          fill="none"
-          opacity={0.9}
-        />
+        <circle r={LENS_R} fill="none" stroke={INK} strokeWidth={4} />
         <g ref={checkRef} style={{ opacity: 0 }}>
-          <circle r={16} fill="#16A34A" stroke="#FFFFFF" strokeWidth={3.5} />
-          <path d="M-6.5 0.5 L-2 5 L7 -4.5" stroke="#FFFFFF" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+          <circle r={13} fill={BLUE} stroke="#FFFFFF" strokeWidth={3} />
+          <path
+            d="M-5.5 0.5 L-1.6 4.2 L5.8 -3.8"
+            stroke="#FFFFFF"
+            strokeWidth={2.6}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
         </g>
       </g>
     </svg>

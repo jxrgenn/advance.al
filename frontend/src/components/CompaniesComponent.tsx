@@ -116,8 +116,8 @@ export function Companies() {
               transition={{ delay: 0.4, duration: 1, ease: [0.16, 1, 0.3, 1] }}
             >
               {/* Magnifier over a crowd: the one right candidate, in a blue suit */}
-              <div className="relative w-full max-w-[340px] md:max-w-[480px] aspect-square">
-                <MagnifierCandidates className="absolute inset-0 w-full h-full" />
+              <div className="relative w-full max-w-[460px] md:max-w-[560px] aspect-[7/5]">
+                <MagnifierCandidates className="absolute inset-0 w-full h-full overflow-visible" />
               </div>
             </motion.div>
           </div>
