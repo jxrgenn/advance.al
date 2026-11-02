@@ -1,41 +1,171 @@
-import { useRef } from "react";
-import { useInView } from "motion/react";
+import { useEffect, useRef } from "react";
+import { useInView, useReducedMotion } from "motion/react";
 import { useSvgId } from "./useSvgId";
-import "./illustrations.css";
 
 /**
- * Employers hero: a crowd of anonymous person icons with a magnifying glass
- * settling on the one right candidate — the only figure in colour, wearing
- * a brand-blue suit, shirt and tie. Hand-built SVG (no raster), scales
- * crisply to any size. Motion: the crowd fades in, the glass drifts in and
- * settles, a check confirms the match. Static under prefers-reduced-motion.
+ * Employers hero: a magnifying glass searching a crowd for the right person.
+ *
+ * Round 2 (owner: "better, higher-quality animation"; no AI look). Same
+ * concept, elevated:
+ *   - the lens really magnifies — the crowd is drawn a second time inside
+ *     the glass, scaled around the lens centre, so people swell as it passes;
+ *   - it searches: glides, pauses on a couple of people, then lands on the
+ *     right one, who turns into the blue suit, and a check pops; it holds,
+ *     then moves on to find the next one (three candidates, looping);
+ *   - flat two-tone shading only — no gradients, glows or blur.
+ * One requestAnimationFrame clock, paused off-screen. Reduced motion: the
+ * lens rests on the first candidate, already found.
  */
 
-// Head-centre positions of the crowd (viewBox 480×480). The lens sits at
-// (290,250) r≈98 with its handle going down-right, so nothing is placed there.
-const CROWD: Array<[x: number, y: number, scale: number, fill: string]> = [
-  [262, 74, 1.08, "#334155"],
-  [176, 102, 1.0, "#64748B"],
-  [352, 96, 1.04, "#1E293B"],
-  [96, 150, 0.94, "#94A3B8"],
-  [428, 166, 0.96, "#94A3B8"],
-  [152, 212, 1.08, "#1E293B"],
-  [58, 252, 1.0, "#475569"],
-  [446, 268, 1.0, "#475569"],
-  [146, 318, 1.0, "#64748B"],
-  [74, 382, 0.96, "#334155"],
-  [192, 404, 1.08, "#1E293B"],
-  [300, 424, 0.98, "#94A3B8"],
+const W = 480;
+const LENS_R = 74;
+const MAG = 1.75;
+
+function mulberry32(seed: number) {
+  let a = seed;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const TONES = ["#CBD5E1", "#94A3B8", "#64748B", "#475569", "#334155", "#B6C2D2"];
+
+type P = { x: number; y: number; s: number; tone: string };
+
+const CROWD: P[] = (() => {
+  const rnd = mulberry32(4802);
+  const out: P[] = [];
+  const cols = 5;
+  const rows = 5;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = 62 + c * 89 + (r % 2 ? 30 : -8) + (rnd() - 0.5) * 22;
+      const y = 58 + r * 86 + (rnd() - 0.5) * 18;
+      if (x > W - 40) continue;
+      out.push({ x, y, s: 0.86 + rnd() * 0.22, tone: TONES[Math.floor(rnd() * TONES.length)] });
+    }
+  }
+  return out;
+})();
+
+// people the lens finds, and the ones it checks on the way
+function nearest(x: number, y: number, exclude: number[] = []) {
+  let best = 0;
+  let d = Infinity;
+  CROWD.forEach((p, i) => {
+    if (exclude.includes(i)) return;
+    const dd = (p.x - x) ** 2 + (p.y - y) ** 2;
+    if (dd < d) {
+      d = dd;
+      best = i;
+    }
+  });
+  return best;
+}
+const TARGETS = [nearest(250, 230), nearest(150, 330), nearest(330, 150)];
+const DECOYS = [
+  [nearest(140, 150, TARGETS), nearest(170, 250, TARGETS)],
+  [nearest(330, 330, TARGETS), nearest(250, 380, TARGETS)],
+  [nearest(230, 120, TARGETS), nearest(340, 250, TARGETS)],
 ];
 
-const LENS = { x: 290, y: 250 };
+// lens centre for a person: a little above their shoulders
+// (clamped so the rim never leaves the picture)
+const clampLens = (n: number) => Math.min(W - LENS_R - 14, Math.max(LENS_R + 14, n));
+const focus = (i: number) => ({ x: clampLens(CROWD[i].x), y: clampLens(CROWD[i].y + 12) });
 
-function Bust({ fill }: { fill: string }) {
+type Seg = { from: { x: number; y: number }; to: { x: number; y: number }; t0: number; t1: number };
+type Hold = { t0: number; t1: number; target: number; found: boolean };
+
+const TIMELINE = (() => {
+  const segs: Seg[] = [];
+  const holds: Hold[] = [];
+  let t = 0;
+  let at = focus(TARGETS[TARGETS.length - 1]);
+  const go = (i: number, hold: number, found: boolean) => {
+    const to = focus(i);
+    const dur = Math.max(0.7, Math.hypot(to.x - at.x, to.y - at.y) / 190);
+    segs.push({ from: at, to, t0: t, t1: t + dur });
+    t += dur;
+    holds.push({ t0: t, t1: t + hold, target: i, found });
+    t += hold;
+    at = to;
+  };
+  TARGETS.forEach((target, k) => {
+    go(DECOYS[k][0], 0.45, false);
+    go(DECOYS[k][1], 0.45, false);
+    go(target, 2.4, true);
+  });
+  return { segs, holds, period: t };
+})();
+
+const ease = (k: number) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
+
+function lensAt(t: number) {
+  const tt = ((t % TIMELINE.period) + TIMELINE.period) % TIMELINE.period;
+  for (const s of TIMELINE.segs) {
+    if (tt >= s.t0 && tt < s.t1) {
+      const e = ease((tt - s.t0) / (s.t1 - s.t0));
+      return { x: s.from.x + (s.to.x - s.from.x) * e, y: s.from.y + (s.to.y - s.from.y) * e, hold: null as Hold | null, k: 0 };
+    }
+  }
+  for (const h of TIMELINE.holds) {
+    if (tt >= h.t0 && tt < h.t1) {
+      const f = focus(h.target);
+      return { x: f.x, y: f.y, hold: h, k: (tt - h.t0) / (h.t1 - h.t0) };
+    }
+  }
+  const f = focus(TARGETS[TARGETS.length - 1]);
+  return { x: f.x, y: f.y, hold: null, k: 0 };
+}
+
+/** One person, head and shoulders, flat with a darker right side. */
+function Bust({ tone }: { tone: string }) {
   return (
-    <g fill={fill}>
-      <circle cx={0} cy={0} r={11} />
-      <path d="M-20 38 C-20 24 -11 16 0 16 C11 16 20 24 20 38 Q20 40 18 40 L-18 40 Q-20 40 -20 38 Z" />
-    </g>
+    <>
+      <path d="M-21 40 C-21 25 -12 17 0 17 C12 17 21 25 21 40 Z" fill={tone} />
+      <path d="M6 17.8 C15 20 21 27 21 40 L9 40 C11 31 9.5 23 6 17.8 Z" fill="#0F172A" opacity={0.14} />
+      <circle cx={0} cy={0} r={11.5} fill={tone} />
+      <path d="M4.5 -10.6 A11.5 11.5 0 0 1 4.5 10.6 A13 13 0 0 0 4.5 -10.6 Z" fill="#0F172A" opacity={0.14} />
+    </>
+  );
+}
+
+/** The blue suit the found candidate turns into (drawn over the bust). */
+function Suit() {
+  return (
+    <>
+      <path d="M-21 40 C-21 25 -12 17 0 17 C12 17 21 25 21 40 Z" fill="#1D4ED8" />
+      <path d="M6 17.8 C15 20 21 27 21 40 L9 40 C11 31 9.5 23 6 17.8 Z" fill="#1E3A8A" />
+      <path d="M-6 17.4 L0 33 L6 17.4 Z" fill="#F8FAFC" />
+      <path d="M-1.6 19.5 L1.6 19.5 L2.6 30 L0 34 L-2.6 30 Z" fill="#0F2A6B" />
+      <circle cx={0} cy={0} r={11.5} fill="#1E293B" />
+      <path d="M4.5 -10.6 A11.5 11.5 0 0 1 4.5 10.6 A13 13 0 0 0 4.5 -10.6 Z" fill="#0F172A" opacity={0.3} />
+    </>
+  );
+}
+
+function Crowd({ suitRefs }: { suitRefs: React.MutableRefObject<(SVGGElement | null)[]> }) {
+  return (
+    <>
+      {CROWD.map((p, i) => (
+        <g key={i} transform={`translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) scale(${p.s.toFixed(3)})`}>
+          <Bust tone={p.tone} />
+          <g
+            ref={(el) => {
+              suitRefs.current[i] = el;
+            }}
+            style={{ opacity: 0 }}
+          >
+            <Suit />
+          </g>
+        </g>
+      ))}
+    </>
   );
 }
 
@@ -45,167 +175,132 @@ interface MagnifierCandidatesProps {
 
 export function MagnifierCandidates({ className }: MagnifierCandidatesProps) {
   const id = useSvgId("mag");
-  const ref = useRef<SVGSVGElement>(null);
-  const inView = useInView(ref, { once: true, amount: 0.3 });
+  const svgRef = useRef<SVGSVGElement>(null);
+  const inView = useInView(svgRef, { amount: 0.2 });
+  const reduced = !!useReducedMotion();
+
+  const lensRef = useRef<SVGGElement>(null);
+  const clipRef = useRef<SVGCircleElement>(null);
+  const magRef = useRef<SVGGElement>(null);
+  const checkRef = useRef<SVGGElement>(null);
+  const rimRef = useRef<SVGGElement>(null);
+  const suitsBase = useRef<(SVGGElement | null)[]>([]);
+  const suitsMag = useRef<(SVGGElement | null)[]>([]);
+  const clock = useRef(0);
+
+  useEffect(() => {
+    const render = (t: number) => {
+      const l = lensAt(t);
+      const tr = `translate(${l.x.toFixed(2)} ${l.y.toFixed(2)})`;
+      lensRef.current?.setAttribute("transform", tr);
+      rimRef.current?.setAttribute("transform", tr);
+      clipRef.current?.setAttribute("cx", l.x.toFixed(2));
+      clipRef.current?.setAttribute("cy", l.y.toFixed(2));
+      magRef.current?.setAttribute(
+        "transform",
+        `translate(${l.x.toFixed(2)} ${l.y.toFixed(2)}) scale(${MAG}) translate(${(-l.x).toFixed(2)} ${(-l.y).toFixed(2)})`,
+      );
+
+      const found = l.hold?.found ? l.hold.target : -1;
+      // suit fades in quickly once found, fades out as the lens leaves
+      const on = found >= 0 ? Math.min(1, l.k / 0.12) * Math.min(1, (1 - l.k) / 0.1) : 0;
+      CROWD.forEach((_, i) => {
+        const o = i === found ? on : 0;
+        const a = suitsBase.current[i];
+        const b = suitsMag.current[i];
+        if (a) a.style.opacity = String(o);
+        if (b) b.style.opacity = String(o);
+      });
+      if (checkRef.current) {
+        const k = found >= 0 ? Math.min(1, Math.max(0, (l.k - 0.1) / 0.12)) : 0;
+        const out = found >= 0 ? Math.min(1, (1 - l.k) / 0.1) : 0;
+        const sc = k === 0 ? 0 : k < 0.7 ? (k / 0.7) * 1.15 : 1.15 - ((k - 0.7) / 0.3) * 0.15;
+        checkRef.current.style.opacity = String(Math.min(k * 3, 1) * out);
+        checkRef.current.setAttribute(
+          "transform",
+          `translate(${(LENS_R * 0.72).toFixed(1)} ${(-LENS_R * 0.72).toFixed(1)}) scale(${sc.toFixed(3)})`,
+        );
+      }
+    };
+
+    if (reduced) {
+      const h = TIMELINE.holds.find((x) => x.found)!;
+      render(h.t0 + (h.t1 - h.t0) * 0.5);
+      return;
+    }
+    if (!inView) {
+      render(clock.current);
+      return;
+    }
+    let raf = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      clock.current += Math.min(0.05, (now - last) / 1000);
+      last = now;
+      render(clock.current);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [inView, reduced]);
 
   return (
     <svg
-      ref={ref}
-      viewBox="0 0 480 480"
-      className={`ill-stage ${className ?? ""}`}
-      data-play={inView ? "true" : "false"}
+      ref={svgRef}
+      viewBox={`0 0 ${W} ${W}`}
+      className={className}
+      style={{ overflow: "visible" }}
       role="img"
       aria-labelledby={`${id}-title`}
     >
       <title id={`${id}-title`}>
-        Një lupë zmadhon kandidatin e duhur, me kostum blu, mes shumë njerëzve
+        Një lupë kërkon mes njerëzve dhe gjen kandidatin e duhur, me kostum blu
       </title>
       <defs>
-        <radialGradient id={`${id}-plate`} cx="0.5" cy="0.5" r="0.5">
-          <stop offset="0" stopColor="#FFFFFF" stopOpacity="0.95" />
-          <stop offset="0.7" stopColor="#FFFFFF" stopOpacity="0.5" />
-          <stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
-        </radialGradient>
-        <radialGradient id={`${id}-glass`} cx="0.4" cy="0.35" r="0.75">
-          <stop offset="0" stopColor="#FFFFFF" />
-          <stop offset="0.65" stopColor="#F1F6FC" />
-          <stop offset="1" stopColor="#D5E1F0" />
-        </radialGradient>
-        <radialGradient id={`${id}-shadow`} cx="0.5" cy="0.5" r="0.5">
-          <stop offset="0.55" stopColor="#0F172A" stopOpacity="0.16" />
-          <stop offset="1" stopColor="#0F172A" stopOpacity="0" />
-        </radialGradient>
-        <linearGradient id={`${id}-rim`} x1="200" y1="160" x2="380" y2="340" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#64748B" />
-          <stop offset="0.45" stopColor="#1E293B" />
-          <stop offset="1" stopColor="#0F172A" />
-        </linearGradient>
-        <linearGradient id={`${id}-grip`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#475569" />
-          <stop offset="0.45" stopColor="#1E293B" />
-          <stop offset="1" stopColor="#0F172A" />
-        </linearGradient>
-        <linearGradient id={`${id}-ferrule`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#CBD5E1" />
-          <stop offset="0.5" stopColor="#64748B" />
-          <stop offset="1" stopColor="#334155" />
-        </linearGradient>
-        <linearGradient id={`${id}-suit`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#3B76F6" />
-          <stop offset="0.5" stopColor="#1D4ED8" />
-          <stop offset="1" stopColor="#0A2E76" />
-        </linearGradient>
         <clipPath id={`${id}-lens`}>
-          <circle cx={LENS.x} cy={LENS.y} r={84.5} />
+          <circle ref={clipRef} cx={0} cy={0} r={LENS_R} />
         </clipPath>
       </defs>
 
-      {/* soft light plate so the crowd sits on a clean surface */}
-      <circle cx={250} cy={250} r={236} fill={`url(#${id}-plate)`} />
-
       {/* the crowd */}
-      {CROWD.map(([x, y, s, fill], i) => (
-        <g key={i} transform={`translate(${x} ${y}) scale(${s})`}>
-          <g
-            className="ill-wait"
-            style={{ animation: `ill-fade-in 0.6s ease-out ${0.05 * i}s both` }}
-          >
-            <Bust fill={fill} />
-          </g>
+      <Crowd suitRefs={suitsBase} />
+
+      {/* the glass's flat shadow and its handle */}
+      <g ref={lensRef}>
+        <circle cx={10} cy={14} r={LENS_R + 8} fill="#0F172A" opacity={0.07} />
+        {/* handle, pointing down-right */}
+        <g transform="rotate(45)">
+          <rect x={LENS_R + 6} y={-9} width={22} height={18} rx={3} fill="#64748B" />
+          <rect x={LENS_R + 6} y={-9} width={22} height={7} rx={3} fill="#94A3B8" />
+          <rect x={LENS_R + 26} y={-12} width={74} height={24} rx={12} fill="#1E293B" />
+          <rect x={LENS_R + 32} y={-12} width={62} height={8} rx={4} fill="#334155" />
         </g>
-      ))}
+      </g>
 
-      {/* the magnifier: drifts in, settles, then floats very gently */}
-      <g
-        className="ill-wait"
-        style={{
-          transformBox: "view-box",
-          transformOrigin: `${LENS.x}px ${LENS.y}px`,
-          animation: "ill-settle 1.9s cubic-bezier(0.22, 1, 0.36, 1) 0.45s both",
-        }}
-      >
-        <g style={{ animation: "ill-float 7s ease-in-out 2.6s infinite" }}>
-          {/* contact shadow */}
-          <ellipse cx={LENS.x + 16} cy={LENS.y + 22} rx={112} ry={104} fill={`url(#${id}-shadow)`} />
-          <g transform={`translate(${LENS.x + 16} ${LENS.y + 22}) rotate(45)`}>
-            <ellipse cx={160} cy={0} rx={62} ry={22} fill={`url(#${id}-shadow)`} />
-          </g>
+      {/* what the glass shows: the same crowd, magnified around the lens */}
+      <g clipPath={`url(#${id}-lens)`}>
+        <rect x={0} y={0} width={W} height={W} fill="#F8FBFF" />
+        <g ref={magRef}>
+          <Crowd suitRefs={suitsMag} />
+        </g>
+      </g>
 
-          {/* handle */}
-          <g transform={`translate(${LENS.x} ${LENS.y}) rotate(45)`}>
-            <rect x={92} y={-12} width={30} height={24} rx={4} fill={`url(#${id}-ferrule)`} />
-            <rect x={119} y={-14.5} width={96} height={29} rx={14.5} fill={`url(#${id}-grip)`} />
-            <rect x={128} y={-10} width={76} height={4} rx={2} fill="#FFFFFF" opacity={0.14} />
-          </g>
-
-          {/* glass + what it magnifies */}
-          <circle cx={LENS.x} cy={LENS.y} r={85} fill={`url(#${id}-glass)`} />
-          <g clipPath={`url(#${id}-lens)`}>
-            <g transform={`translate(${LENS.x} ${LENS.y})`}>
-              {/* neighbours, magnified, at the edge of the glass */}
-              <g transform="translate(-96 -46) scale(2.3)">
-                <Bust fill="#CBD5E1" />
-              </g>
-              <g transform="translate(94 40) scale(2.3)">
-                <Bust fill="#D5DEE9" />
-              </g>
-
-              {/* the chosen candidate */}
-              <g transform="translate(0 -4)">
-                {/* neck + head as one silhouette, with a little hair volume on top */}
-                <path d="M-10 -6 C-9 2 -8 6 -9 12 L9 12 C8 6 9 2 10 -6 Z" fill="#1E293B" />
-                <ellipse cx={0} cy={-24} rx={21.5} ry={25} fill="#1E293B" />
-                <ellipse cx={1.5} cy={-37} rx={20} ry={14} fill="#1E293B" />
-                <ellipse cx={-21} cy={-22} rx={3.5} ry={6} fill="#1E293B" />
-                <ellipse cx={21} cy={-22} rx={3.5} ry={6} fill="#1E293B" />
-                <path d="M-68 98 C-66 40 -40 12 0 8 C40 12 66 40 68 98 Z" fill={`url(#${id}-suit)`} />
-                <path d="M-52 32 C-38 17 -20 10.5 -6 9" stroke="#93C5FD" strokeWidth={2} strokeLinecap="round" fill="none" opacity={0.55} />
-                <path d="M52 32 C38 17 20 10.5 6 9" stroke="#93C5FD" strokeWidth={2} strokeLinecap="round" fill="none" opacity={0.35} />
-                {/* lapels */}
-                <path d="M-15 9 L-34 46 L-1 68 Z" fill="#1E3A8A" />
-                <path d="M15 9 L34 46 L1 68 Z" fill="#1E3A8A" />
-                <path d="M-34 46 L-1 68" stroke="#3B82F6" strokeWidth={1.2} opacity={0.7} />
-                <path d="M34 46 L1 68" stroke="#3B82F6" strokeWidth={1.2} opacity={0.7} />
-                {/* shirt and collar */}
-                <path d="M-15 9 L0 52 L15 9 Z" fill="#F8FAFC" />
-                <path d="M-15.5 8.5 L-5 23 L-0.5 10 Z" fill="#E2E8F0" />
-                <path d="M15.5 8.5 L5 23 L0.5 10 Z" fill="#E2E8F0" />
-                {/* tie */}
-                <path d="M-5 11 L5 11 L3.6 19 L-3.6 19 Z" fill="#0A2E76" />
-                <path d="M-3.6 19 L3.6 19 L7.6 46 L0 56 L-7.6 46 Z" fill="#0A2E76" />
-                <path d="M-1.2 22 L1.2 22 L3 44 L0 48 Z" fill="#1E40AF" opacity={0.8} />
-                {/* pocket square and button */}
-                <path d="M30 52 L45 48 L43 55 Z" fill="#DBEAFE" />
-                <path d="M0 68 V100" stroke="#0A2E76" strokeWidth={1.2} opacity={0.4} />
-                <circle cx={0} cy={79} r={2.6} fill="#0A2E76" />
-              </g>
-            </g>
-          </g>
-
-          {/* rim, bevels and glare */}
-          <circle cx={LENS.x} cy={LENS.y} r={91} fill="none" stroke={`url(#${id}-rim)`} strokeWidth={13} />
-          <circle cx={LENS.x} cy={LENS.y} r={84.5} fill="none" stroke="#E2E8F0" strokeWidth={1.5} />
-          <circle cx={LENS.x} cy={LENS.y} r={97.5} fill="none" stroke="#94A3B8" strokeWidth={1} opacity={0.5} />
-          <path
-            d={`M${LENS.x - 62} ${LENS.y - 26} A68 68 0 0 1 ${LENS.x - 22} ${LENS.y - 64}`}
-            stroke="#FFFFFF"
-            strokeWidth={7}
-            strokeLinecap="round"
-            fill="none"
-            opacity={0.85}
-          />
-          <circle cx={LENS.x - 66} cy={LENS.y - 6} r={3.5} fill="#FFFFFF" opacity={0.85} />
-
-          {/* match confirmed */}
-          <g transform={`translate(${LENS.x + 65} ${LENS.y - 65})`}>
-            <g
-              className="ill-wait ill-box"
-              style={{ animation: "ill-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 2.2s both" }}
-            >
-              <circle r={17} fill="#16A34A" stroke="#FFFFFF" strokeWidth={3.5} />
-              <path d="M-7 0.5 L-2 5.5 L7.5 -5" stroke="#FFFFFF" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
-            </g>
-          </g>
+      {/* rim, glare and the check, on top, moving with the lens */}
+      <g ref={rimRef}>
+        <circle r={LENS_R + 5} fill="none" stroke="#1E293B" strokeWidth={10} />
+        <circle r={LENS_R + 5} fill="none" stroke="#475569" strokeWidth={3} strokeDasharray="110 400" transform="rotate(200)" />
+        <circle r={LENS_R} fill="none" stroke="#CBD5E1" strokeWidth={1.5} />
+        <path
+          d={`M${-LENS_R * 0.72} ${-LENS_R * 0.3} A${LENS_R * 0.8} ${LENS_R * 0.8} 0 0 1 ${-LENS_R * 0.28} ${-LENS_R * 0.74}`}
+          stroke="#FFFFFF"
+          strokeWidth={6}
+          strokeLinecap="round"
+          fill="none"
+          opacity={0.9}
+        />
+        <g ref={checkRef} style={{ opacity: 0 }}>
+          <circle r={16} fill="#16A34A" stroke="#FFFFFF" strokeWidth={3.5} />
+          <path d="M-6.5 0.5 L-2 5 L7 -4.5" stroke="#FFFFFF" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="none" />
         </g>
       </g>
     </svg>
