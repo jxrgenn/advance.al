@@ -4695,6 +4695,22 @@ Final candidate `1b010b3` (main + 23 commits, 354 files). Not merged to main, no
       start = end frame), background levelled to white + multiply, ~100–250 KB.
     - "Bashkohu me elitën": even cards, flat, image fitted so both columns end level.
     - Blurred blobs / radial glows removed from both heroes and Kurse kohë (still on About).
+  - Round 4 (owner verdicts 2026-11-02, both versions): "components have different widths", hates
+    the arrow, form taller than its visual, labels unwanted, hero video "stops", Plotë/Shpejtë switch
+    jumps the layout, blue too faint, registration chooser too wordy on mobile.
+    - Widths: pricing (was max-w-4xl) and the shared "Na Kontaktoni" block (was max-w-5xl, px-6) now
+      match the 1140 px page Containers + the same side padding (verified 143–1283 at 1440, 16–359 at 390).
+    - Employer signup: people-arrow deleted; `ApplicantsInbox` (HTML, CV-animation language) fills the
+      grid row, so it is exactly as tall as tutorial bar + form (725 = 725 px measured).
+    - Forms: visible labels/descriptions removed (employer signup, jobseeker quick form); placeholders
+      say what each field is; aria-labels keep the old names for screen readers and getByLabel tests.
+    - Jobseeker: the form column keeps its tallest height (ResizeObserver), left cards flex to the row
+      height → switching Plotë/Shpejtë no longer moves the page (4103 px before/after, desktop).
+      Selected card = #2F65BE border + #EAF2FF fill; form borders #bfdbfe → #93c5fd.
+    - Chooser box replaced by one line. Password placeholders shortened (were clipped on phones).
+    - Hero video: WebKit picked the WebM (no duration in the mux) and never left 0:00. MP4 only,
+      `muted` attribute set in the DOM, explicit play(), `ended` → restart. Verified looping in
+      Chromium and WebKit.
   - Preview data: no proxy needed — VITE_API_URL is shared by Production/Preview/Development and the
     live API's CORS already allows `advance-al(-frontend)-*.vercel.app` origins (verified 2026-11-02).
 
