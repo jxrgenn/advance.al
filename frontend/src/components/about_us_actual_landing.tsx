@@ -426,7 +426,7 @@ export default function AdvanceLanding() {
 
       {/* Hero Section */}
       <section className="py-20 lg:py-24 min-h-screen flex items-center relative z-10">
-        <div className="container mx-auto px-2 sm:px-4">
+        <div className="page-container">
           <div className="flex flex-col lg:flex-row items-center lg:items-center justify-between gap-12 lg:gap-16">
             {/* Left Content */}
             <div className="flex-1 w-full lg:max-w-[650px] text-center lg:text-left relative pt-10 sm:pt-12 lg:pt-0">

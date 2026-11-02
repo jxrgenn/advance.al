@@ -4711,6 +4711,19 @@ Final candidate `1b010b3` (main + 23 commits, 354 files). Not merged to main, no
     - Hero video: WebKit picked the WebM (no duration in the mux) and never left 0:00. MP4 only,
       `muted` attribute set in the DOM, explicit play(), `ended` → restart. Verified looping in
       Chromium and WebKit.
+  - Round 5 (owner 2026-11-02: "widths are still not the same", "video still doesnt loop", wants the
+    arrow back, likes the 3D employer hero of version A, wants more 3D options in the old style).
+    - One page width site-wide: `.page-container` (index.css) = 1140 px content + 16/24/32 px padding,
+      identical to `px-4 sm:px-6 lg:px-8` + Mantine Container lg. Applied to Navigation, Footer, jobs
+      (Index), About (all sections), Companies, CompanyProfile, Blog, Terms, SavedJobs,
+      EmployerDashboard. Verified 143–1283 @1440, 63–1203 @1280, 16–359 @390 on 5 pages.
+    - Video: frame-diff showed ~0.6 s standstill at every seam (model eased in/out of the shared
+      start/end frame). Re-cut to frames 41–95 (stride matches, seam diff 0.67 ≈ normal step),
+      2.3 s, 66 KB, renamed walk-loop-2.mp4 to bypass caches.
+    - Employer signup: ApplicantsInbox removed; original 3D arrow.png back (Higgsfield 2K upscale,
+      alpha from the original, cropped → arrow_crop.webp), centred in the column.
+    - Version A: 4 new 3D employer-hero options (gpt_image_2_5, refs = searching.png + the liked
+      magnifier) as `public/3d_assets/v2/emp-hero-1..4.webp`, switchable with `?hero=1..4`.
   - Preview data: no proxy needed — VITE_API_URL is shared by Production/Preview/Development and the
     live API's CORS already allows `advance-al(-frontend)-*.vercel.app` origins (verified 2026-11-02).
 

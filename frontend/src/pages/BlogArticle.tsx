@@ -74,7 +74,7 @@ const BlogArticle = () => {
       />
       <Navigation />
 
-      <nav className="container mx-auto px-4 pt-6 text-sm text-muted-foreground">
+      <nav className="page-container pt-6 text-sm text-muted-foreground">
         <Link to="/" className="hover:text-foreground inline-flex items-center gap-1">
           <Home className="h-3 w-3" /> Faqja kryesore
         </Link>

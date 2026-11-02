@@ -126,7 +126,7 @@ const CompanyProfile = () => {
       <div className="min-h-screen bg-background">
         <SEO title="Kompania" path={`/company/${id}`} noindex />
         <Navigation />
-        <div className="container mx-auto px-4 py-20">
+        <div className="page-container py-20">
           <div className="text-center">
             <Building className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-xl font-semibold mb-2">Kompania nuk u gjet</h3>
@@ -148,7 +148,7 @@ const CompanyProfile = () => {
       <SEO title={company.name} path={`/company/${company._id}`} description={(company.description || `${company.name} në advance.al`).slice(0, 155)} />
       <Navigation />
 
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
+      <div className="page-container py-8">
         {/* Header Section - Company Name and Logo */}
         <Card className="mb-6 border-2">
           <CardContent className="p-4 md:p-8">

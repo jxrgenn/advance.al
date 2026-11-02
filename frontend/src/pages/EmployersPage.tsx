@@ -5,7 +5,6 @@ import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import RotatingContact from "@/components/RotatingContact";
 import { Companies } from "@/components/CompaniesComponent";
-import { ApplicantsInbox } from "@/components/illustrations/ApplicantsInbox";
 import {
   Container,
   Title,
@@ -981,8 +980,15 @@ const EmployersPage = () => {
         {/* Round 4: the left panel fills the row, so it is exactly as tall as
             the tutorial bar + form on the right. */}
         <Grid gutter={40} align="stretch">
-          <Grid.Col span={{ base: 12, md: 5 }} className="hidden md:block">
-            <ApplicantsInbox className="h-full" />
+          {/* Round 5 (owner: "i want the arrow back"): the original 3D
+              people-arrow, centred in a column as tall as the form. */}
+          <Grid.Col span={{ base: 12, md: 5 }} className="hidden md:flex items-center justify-center">
+            <img
+              src="/3d_assets/arrow_crop.webp"
+              alt="Njerëz që formojnë një shigjetë përpara"
+              className="w-full max-w-[520px] h-auto object-contain"
+              loading="lazy"
+            />
           </Grid.Col>
 
           <Grid.Col span={{ base: 12, md: 7 }}>

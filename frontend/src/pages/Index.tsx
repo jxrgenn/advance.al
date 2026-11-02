@@ -1012,7 +1012,7 @@ const Index = () => {
       />
       <Navigation />
 
-      <div className="container py-8">
+      <div className="page-container py-8">
         {/* Premium Jobs Carousel — no wrapper div, sticky needs tall parent */}
         {premiumJobs.length > 0 && (
           <PremiumJobsCarousel jobs={premiumJobs} />

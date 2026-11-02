@@ -91,8 +91,8 @@ const FeatureShowcase = () => {
       <div className="absolute -top-32 -left-48 w-[600px] h-[600px] rounded-full bg-primary/[0.025] blur-3xl pointer-events-none" />
       <div className="absolute -bottom-40 -right-32 w-[500px] h-[500px] rounded-full bg-blue-300/[0.03] blur-3xl pointer-events-none" />
 
-      <div className="container mx-auto px-4 relative">
-        <div className="max-w-6xl mx-auto">
+      <div className="page-container relative">
+        <div>
 
           {/* ── Heading ── */}
           <motion.div
@@ -365,7 +365,7 @@ const AboutUs = () => {
 
       {/* What We Do Section */}
       <section className="py-16">
-        <div className="container mx-auto px-4">
+        <div className="page-container">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             {/* Left side - Image */}
             <div className="flex justify-center items-center">
@@ -426,7 +426,7 @@ const AboutUs = () => {
 
       {/* Why Choose advance.al Section */}
       <section className="py-16 bg-muted/30">
-        <div className="container mx-auto px-4">
+        <div className="page-container">
           <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">
             Pse të Zgjidhni advance.al?
           </h2>
@@ -481,7 +481,7 @@ const AboutUs = () => {
       <section className="relative overflow-hidden py-16 md:py-20 text-primary-foreground bg-[linear-gradient(135deg,#0A2E76_0%,#1E40AF_55%,#2563EB_100%)]">
         <div aria-hidden="true" className="pointer-events-none absolute -top-40 left-1/2 h-[380px] w-[820px] -translate-x-1/2 rounded-full bg-white/10 blur-3xl" />
         <div aria-hidden="true" className="pointer-events-none absolute -bottom-44 -right-24 h-[380px] w-[380px] rounded-full bg-sky-400/20 blur-3xl" />
-        <div className="relative container mx-auto px-4 text-center">
+        <div className="relative page-container text-center">
           <h2 className="text-3xl md:text-4xl font-bold mb-4">
             Gati të Filloni?
           </h2>
