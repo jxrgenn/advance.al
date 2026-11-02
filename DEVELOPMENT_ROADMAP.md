@@ -4686,6 +4686,15 @@ Final candidate `1b010b3` (main + 23 commits, 354 files). Not merged to main, no
     hero, magnifier crowd → employer hero, hiring manager → ideal_career1 slots, CV woman → the small
     "Krijo CV me AI" image. Stills keyed off their flat background locally, cropped, WebP in
     `public/3d_assets/v2/`. People-arrow, Tre Mënyra, About and Kurse kohë stay as in B.
+  - Round 3 (owner verdicts 2026-11-02): code-drawn people = ugly (walker "insanely bad", figurine
+    crowds); the Kurse kohë CV animation = "very cool" → that language (flat #EAF2FF panel, ink outlines,
+    real product UI + real Albanian text) is the house style for code visuals.
+    - Employer hero magnifier: candidate cards re-rank per job; lens magnifies, finds the best match.
+    - People-arrow: the same avatar tokens pop in tail→tip into a clear arrow; application counter.
+    - Jobseeker hero (both versions): approved 3D walker as a seamless 5 s video loop (MiniMax H3,
+      start = end frame), background levelled to white + multiply, ~100–250 KB.
+    - "Bashkohu me elitën": even cards, flat, image fitted so both columns end level.
+    - Blurred blobs / radial glows removed from both heroes and Kurse kohë (still on About).
   - Preview data: no proxy needed — VITE_API_URL is shared by Production/Preview/Development and the
     live API's CORS already allows `advance-al(-frontend)-*.vercel.app` origins (verified 2026-11-02).
 
