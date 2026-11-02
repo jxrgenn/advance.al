@@ -70,6 +70,33 @@ const JobSeekersPage = () => {
   const [quickDone, setQuickDone] = useState<{ message: string; emailAlerts: boolean } | null>(null);
   const cvInputRef = useRef<HTMLInputElement>(null);
 
+  // Round 4 (owner: switching Profil i Plotë / i Shpejtë "shouldnt change the
+  // layout"): the form column keeps the tallest height it has had, so the
+  // switch never makes the page jump. Re-measured when the width changes.
+  const formColRef = useRef<HTMLDivElement>(null);
+  const [formMinH, setFormMinH] = useState(0);
+  useEffect(() => {
+    const el = formColRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let width = window.innerWidth;
+    const onResize = () => {
+      if (window.innerWidth !== width) {
+        width = window.innerWidth;
+        setFormMinH(0);
+      }
+    };
+    const ro = new ResizeObserver(() => {
+      const h = Math.ceil(el.getBoundingClientRect().height);
+      setFormMinH((m) => (h > m ? h : m));
+    });
+    ro.observe(el);
+    window.addEventListener('resize', onResize);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', onResize);
+    };
+  }, []);
+
   // Email verification flow state
   const [verificationOpen, setVerificationOpen] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
@@ -1063,41 +1090,11 @@ CERTIFIKATA (opsionale)
           {/* Signup choices are for visitors only (a signed-in user saw the
               registration forms here). */}
           {!isAuthenticated && (
-          <Paper
-            withBorder
-            p="md"
-            radius="md"
-            shadow="xs"
-            className="mb-6"
-          >
-            <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={4}>
-              Zgjidhni mënyrën e regjistrimit
-            </Text>
-            <Text size="sm" c="dimmed" mb={6}>
-              Në këtë faqe mund të krijoni një <strong>profil të plotë punëkërkuesi</strong> me llogari ose një <strong>profil të shpejtë</strong> vetëm për
-              njoftime me email. Zgjidhni opsionin që ju përshtatet më shumë për mënyrën se si doni të aplikoni për punë.
-            </Text>
-            <Group gap="lg" align="flex-start" wrap="wrap">
-              <Box className="flex-1 min-w-[220px]">
-                <Text size="sm" fw={600} mb={2}>
-                  Profil i Shpejtë
-                </Text>
-                <Text size="xs" c="dimmed">
-                  Plotësoni vetëm disa fusha bazë dhe merrni njoftime për punë që ju përputhen. Nuk krijohet llogari e plotë,
-                  por punëdhënësit mund t’ju kontaktojnë direkt.
-                </Text>
-              </Box>
-              <Box className="flex-1 min-w-[220px]">
-                <Text size="sm" fw={600} mb={2}>
-                  Profil i Plotë
-                </Text>
-                <Text size="xs" c="dimmed">
-                  Krijoni llogari me të dhëna të plota, ruani aplikimet tuaja, aplikoni me 1 klik dhe përdorni mjetet tona të AI
-                  për CV dhe përputhje më të mira me punët.
-                </Text>
-              </Box>
-            </Group>
-          </Paper>
+          /* Round 4 (owner: "too wordy and way too big on mobile"): one line;
+             the two cards below explain the options. */
+          <Text size="sm" c="dimmed" mb="md">
+            <strong>Profil i Shpejtë</strong> për njoftime, ose <strong>Profil i Plotë</strong> për të aplikuar.
+          </Text>
           )}
 
           {/* Hero Section with 3D Asset */}
@@ -1160,10 +1157,11 @@ CERTIFIKATA (opsionale)
             </Group>
           </Paper>
         ) : (
-        <Grid gutter={40}>
-          {/* Left Side: Options & Context */}
+        <Grid gutter={40} align="stretch">
+          {/* Left Side: Options & Context — the two cards share the row height
+              with the form (round 4: "the forms need to be same height") */}
           <Grid.Col span={{ base: 12, md: 5 }}>
-            <Stack gap="lg" style={{ position: 'sticky', top: 100 }}>
+            <Stack gap="lg" h="100%">
 
               {/* Option 1: Quick Profile */}
               <Paper
@@ -1171,7 +1169,8 @@ CERTIFIKATA (opsionale)
                 p="xl"
                 radius="md"
                 withBorder
-                className={`flex flex-col cursor-pointer transition-all duration-200 ${showQuickForm ? 'border-blue-500 ring-2 ring-blue-500 ring-opacity-50 bg-blue-50/20' : 'hover:border-blue-300'}`}
+                style={{ flex: 1 }}
+                className={`flex flex-col cursor-pointer transition-colors duration-200 ${showQuickForm ? '!border-[#2F65BE] ring-2 ring-[#2F65BE] !bg-[#EAF2FF]' : 'hover:border-blue-300'}`}
                 onClick={() => {
                   setShowQuickForm(true);
                   // Scroll to form on mobile
@@ -1221,7 +1220,8 @@ CERTIFIKATA (opsionale)
                 p="xl"
                 radius="md"
                 withBorder
-                className={`flex flex-col cursor-pointer transition-all duration-200 ${!showQuickForm ? 'border-blue-500 ring-2 ring-blue-500 ring-opacity-50 bg-blue-50/20' : 'hover:border-blue-300'}`}
+                style={{ flex: 1 }}
+                className={`flex flex-col cursor-pointer transition-colors duration-200 ${!showQuickForm ? '!border-[#2F65BE] ring-2 ring-[#2F65BE] !bg-[#EAF2FF]' : 'hover:border-blue-300'}`}
                 onClick={() => {
                   setShowQuickForm(false);
                   // Scroll to form on mobile
@@ -1268,6 +1268,7 @@ CERTIFIKATA (opsionale)
 
           {/* Right Side: Active Form */}
           <Grid.Col span={{ base: 12, md: 7 }}>
+          <div ref={formColRef} className="flex h-full flex-col" style={{ minHeight: formMinH || undefined }}>
 
             {/* Tutorial Help Button - Prominent CTA (Moved Above Form) */}
             {!showTutorial && user?.preferences?.tutorialsEnabled !== false && (
@@ -1298,7 +1299,7 @@ CERTIFIKATA (opsionale)
 
             {/* Form Selector */}
             {!showQuickForm ? (
-              <Paper shadow="sm" p="xl" radius="md" withBorder data-signup-form style={{ borderColor: '#bfdbfe', borderWidth: 2 }}>
+              <Paper shadow="sm" p="xl" radius="md" withBorder data-signup-form style={{ borderColor: '#93c5fd', borderWidth: 2, flex: 1 }}>
                 {/* Header — identical structure to the quick-form header so
                     switching forms reconciles instead of remounting (QA R2-D1) */}
                 <Group mb="lg" wrap="nowrap" align="start">
@@ -1352,7 +1353,7 @@ CERTIFIKATA (opsionale)
 
                     <Box data-tutorial="password">
                       <TextInput
-                        placeholder="Fjalëkalimi (min. 8 karaktere, 1 e madhe, 1 e vogël, 1 numër) *"
+                        placeholder="Fjalëkalimi (min. 8 karaktere) *"
                         type={showPassword ? "text" : "password"}
                         {...fullForm.getInputProps('password')}
                         required
@@ -1366,7 +1367,8 @@ CERTIFIKATA (opsionale)
 
                     <Box data-tutorial="phone">
                       <TextInput
-                        placeholder="69 123 4567"
+                        placeholder="Celulari (opsional)"
+                        aria-label="Celulari"
                         leftSection={<Text size="sm" c="dimmed" fw={500}>+355</Text>}
                         leftSectionWidth={52}
                         {...fullForm.getInputProps('phone')}
@@ -1436,7 +1438,7 @@ CERTIFIKATA (opsionale)
                 radius="md"
                 withBorder
                 data-quick-form
-                style={{ borderColor: '#bfdbfe', borderWidth: 2 }}
+                style={{ borderColor: '#93c5fd', borderWidth: 2, flex: 1 }}
               >
                 {/* Header — identical structure to the full-form header so
                     switching forms reconciles instead of remounting (QA R2-D1) */}
@@ -1589,14 +1591,14 @@ CERTIFIKATA (opsionale)
                       {quickMode === 'confirm' && (
                         <SimpleGrid cols={{ base: 1, xs: 2 }} spacing="md" data-tutorial="quick-name">
                           <TextInput
-                            label="Emri"
+                            aria-label="Emri"
                             placeholder="Emri"
                             autoComplete="given-name"
                             maxLength={50}
                             {...quickForm.getInputProps('firstName')}
                           />
                           <TextInput
-                            label="Mbiemri"
+                            aria-label="Mbiemri"
                             placeholder="Mbiemri"
                             autoComplete="family-name"
                             maxLength={50}
@@ -1608,9 +1610,8 @@ CERTIFIKATA (opsionale)
                       <SimpleGrid cols={{ base: 1, xs: 2 }} spacing="md">
                         <Box data-tutorial="quick-email">
                           <TextInput
-                            label="Email"
-                            description="Njoftimet dërgohen këtu"
-                            placeholder="emri@shembull.com"
+                            aria-label="Email"
+                            placeholder="Email (njoftimet vijnë këtu)"
                             type="email"
                             autoComplete="email"
                             {...quickForm.getInputProps('email')}
@@ -1625,9 +1626,8 @@ CERTIFIKATA (opsionale)
                         </Box>
                         <Box data-tutorial="quick-phone">
                           <TextInput
-                            label="Celulari"
-                            description="Opsional nëse keni email"
-                            placeholder="69 123 4567"
+                            aria-label="Celulari"
+                            placeholder="Celulari (opsional)"
                             type="tel"
                             inputMode="numeric"
                             autoComplete="tel-national"
@@ -1649,9 +1649,8 @@ CERTIFIKATA (opsionale)
 
                       <Box data-tutorial="interests">
                         <TagsInput
-                          label="Profesioni / industria"
-                          description="Zgjidhni nga lista ose shkruani profesionin — Enter ose presje për të ndarë."
-                          placeholder={quickForm.values.interests.length ? '' : 'p.sh. Teknologji, Kamarier'}
+                          aria-label="Profesioni / industria"
+                          placeholder={quickForm.values.interests.length ? '' : 'Profesioni, p.sh. Kamarier (Enter për të shtuar)'}
                           data={jobCategories}
                           {...quickForm.getInputProps('interests')}
                           maxTags={10}
@@ -1663,8 +1662,8 @@ CERTIFIKATA (opsionale)
 
                       <Box data-tutorial="quick-city">
                         <Select
-                          label="Qyteti"
-                          placeholder="Zgjidhni qytetin"
+                          aria-label="Qyteti"
+                          placeholder="Qyteti"
                           searchable
                           nothingFoundMessage="Qyteti nuk u gjet"
                           {...quickForm.getInputProps('city')}
@@ -1710,6 +1709,7 @@ CERTIFIKATA (opsionale)
               </Paper>
             )}
 
+          </div>
           </Grid.Col>
         </Grid>
         )}

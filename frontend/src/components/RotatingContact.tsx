@@ -2,8 +2,8 @@ import React from 'react';
 
 const RotatingContact: React.FC<{ className?: string }> = ({ className = '' }) => {
   return (
-    <section id="contact-section" className={`w-full py-8 px-6 ${className}`}>
-      <div className="max-w-5xl mx-auto">
+    <section id="contact-section" className={`w-full py-8 px-4 sm:px-6 lg:px-8 ${className}`}>
+      <div className="max-w-[1140px] mx-auto">{/* same width as the page Containers (Mantine lg) */}
         <h2 className="text-2xl md:text-3xl font-bold mb-6 text-foreground">
           Na Kontaktoni
         </h2>

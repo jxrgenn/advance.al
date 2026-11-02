@@ -5,7 +5,7 @@ import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import RotatingContact from "@/components/RotatingContact";
 import { Companies } from "@/components/CompaniesComponent";
-import { PeopleArrow } from "@/components/illustrations/PeopleArrow";
+import { ApplicantsInbox } from "@/components/illustrations/ApplicantsInbox";
 import {
   Container,
   Title,
@@ -830,16 +830,16 @@ const EmployersPage = () => {
     <Stack gap="md">
       <SimpleGrid cols={{ base: 1, xs: 2 }} spacing="md" data-tutorial="firstName">
         <TextInput
-          label="Emri"
-          placeholder="p.sh. Arben"
+          aria-label="Emri"
+          placeholder="Emri"
           autoComplete="given-name"
           maxLength={50}
           {...employerForm.getInputProps('firstName')}
           required
         />
         <TextInput
-          label="Mbiemri"
-          placeholder="p.sh. Kola"
+          aria-label="Mbiemri"
+          placeholder="Mbiemri"
           autoComplete="family-name"
           maxLength={50}
           {...employerForm.getInputProps('lastName')}
@@ -849,8 +849,8 @@ const EmployersPage = () => {
 
       <Box data-tutorial="companyName">
         <TextInput
-          label="Emri i kompanisë"
-          placeholder="p.sh. Kola Tech Sh.p.k"
+          aria-label="Emri i kompanisë"
+          placeholder="Emri i kompanisë"
           autoComplete="organization"
           maxLength={100}
           {...employerForm.getInputProps('companyName')}
@@ -860,8 +860,8 @@ const EmployersPage = () => {
 
       <Box data-tutorial="email">
         <TextInput
-          label="Email"
-          placeholder="emri@kompania.al"
+          aria-label="Email"
+          placeholder="Email"
           type="email"
           autoComplete="email"
           {...employerForm.getInputProps('email')}
@@ -871,8 +871,8 @@ const EmployersPage = () => {
 
       <Box data-tutorial="phone">
         <TextInput
-          label="Numri i celularit"
-          placeholder="69 123 4567"
+          aria-label="Numri i celularit"
+          placeholder="Celulari"
           type="tel"
           inputMode="numeric"
           autoComplete="tel-national"
@@ -886,8 +886,8 @@ const EmployersPage = () => {
 
       <Box data-tutorial="password">
         <TextInput
-          label="Fjalëkalimi"
-          placeholder="Min. 8 karaktere, 1 e madhe, 1 e vogël, 1 numër"
+          aria-label="Fjalëkalimi"
+          placeholder="Fjalëkalimi (min. 8 karaktere)"
           type={showPassword ? "text" : "password"}
           autoComplete="new-password"
           {...employerForm.getInputProps('password')}
@@ -978,12 +978,11 @@ const EmployersPage = () => {
         </div>
 
         {/* Two Column Layout */}
-        <Grid gutter={40}>
-          <Grid.Col span={{ base: 12, md: 5 }}>
-            {/* Left: Mascot Image */}
-            <div className="hidden md:flex md:items-start md:justify-center pt-6" style={{ position: 'sticky', top: 100 }}>
-              <PeopleArrow className="w-full max-w-[520px] h-auto" />
-            </div>
+        {/* Round 4: the left panel fills the row, so it is exactly as tall as
+            the tutorial bar + form on the right. */}
+        <Grid gutter={40} align="stretch">
+          <Grid.Col span={{ base: 12, md: 5 }} className="hidden md:block">
+            <ApplicantsInbox className="h-full" />
           </Grid.Col>
 
           <Grid.Col span={{ base: 12, md: 7 }}>
@@ -1015,7 +1014,7 @@ const EmployersPage = () => {
                 </Paper>
               )}
 
-              <Paper shadow="sm" p="xl" radius="md" withBorder data-signup-form style={{ borderColor: '#bfdbfe', borderWidth: 2 }}>
+              <Paper shadow="sm" p="xl" radius="md" withBorder data-signup-form style={{ borderColor: '#93c5fd', borderWidth: 2 }}>
                 {/* Header with Step Progress */}
                 <Group mb="xl">
                   <ThemeIcon size={40} radius="md" color="blue" variant="light">
@@ -1075,8 +1074,8 @@ const EmployersPage = () => {
             </Text>
           </div>
 
-          {/* Upwork-style 2-column pricing cards — slimmer max-w-4xl */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+          {/* 2-column pricing cards — full container width like every other section (round 4) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Standard Plan */}
             <div className="bg-white rounded-2xl border border-gray-200 p-10 shadow-sm hover:shadow-md transition-shadow">
               <div className="mb-8">
