@@ -4681,6 +4681,11 @@ Final candidate `1b010b3` (main + 23 commits, 354 files). Not merged to main, no
     path ending in an arrow; dashes flow past.
   - "Kurse kohë" Krijo CV visual: dark "AI chip" panel replaced by a flat one — the person's own words
     are typed, pass through the advance.al mark, and become the CV (AiRecruitVisual removed).
-  - All of the above = version B ("everything in code"). Next: version A (3D stills) branch,
-    preview API proxy so Kompanitë/jobs load on previews.
+  - All of the above = version B ("everything in code"), branch `preview/design-round2`.
+  - Version A, branch `preview/design-stills` (= B + the 4 Higgsfield 3D stills): walker → jobseeker
+    hero, magnifier crowd → employer hero, hiring manager → ideal_career1 slots, CV woman → the small
+    "Krijo CV me AI" image. Stills keyed off their flat background locally, cropped, WebP in
+    `public/3d_assets/v2/`. People-arrow, Tre Mënyra, About and Kurse kohë stay as in B.
+  - Preview data: no proxy needed — VITE_API_URL is shared by Production/Preview/Development and the
+    live API's CORS already allows `advance-al(-frontend)-*.vercel.app` origins (verified 2026-11-02).
 

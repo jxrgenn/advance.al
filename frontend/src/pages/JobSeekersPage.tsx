@@ -1115,7 +1115,7 @@ CERTIFIKATA (opsionale)
           </div>
           <div className="hidden md:flex justify-end items-center">
             <img
-              src="/3d_assets/ideal_career1.png"
+              src="/3d_assets/v2/manager.webp"
               alt="Planifikoni karrierën – gjeni rrugën tuaj ideale"
               className="w-full max-w-[160px] object-contain"
               loading="eager"
@@ -1732,7 +1732,7 @@ CERTIFIKATA (opsionale)
                 </Group>
                 <div className="hidden md:flex justify-end items-center">
                   <img
-                    src="/3d_assets/generating_cv1.png"
+                    src="/3d_assets/v2/cv.webp"
                     alt="Krijim CV-je me AI"
                     className="w-full max-w-[110px] object-contain"
                     loading="lazy"

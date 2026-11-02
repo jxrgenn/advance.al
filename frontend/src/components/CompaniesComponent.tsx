@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, Briefcase, Building2, Users, TrendingUp, ChevronDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { MagnifierCandidates } from "@/components/illustrations/MagnifierCandidates";
 
 export function Companies() {
   const navigate = useNavigate();
@@ -156,9 +155,11 @@ export function Companies() {
               transition={{ delay: 0.4, duration: 1, ease: [0.16, 1, 0.3, 1] }}
             >
               {/* Magnifier over a crowd: the one right candidate, in a blue suit */}
-              <div className="relative w-full max-w-[340px] md:max-w-[480px] aspect-square">
-                <MagnifierCandidates className="absolute inset-0 w-full h-full" />
-              </div>
+              <img
+                src="/3d_assets/v2/magnifier.webp"
+                alt="Një lupë gjen kandidatin e duhur mes shumë njerëzve"
+                className="w-full max-w-[340px] md:max-w-[500px] h-auto"
+              />
             </motion.div>
           </div>
           </Container>

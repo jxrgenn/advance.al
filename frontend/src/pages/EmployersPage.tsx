@@ -969,7 +969,7 @@ const EmployersPage = () => {
           </div>
           <div className="hidden md:flex justify-end items-center">
             <img
-              src="/3d_assets/ideal_career1.png"
+              src="/3d_assets/v2/manager.webp"
               alt="Gjeni kandidatët idealë për ekipin tuaj"
               className="w-full max-w-[160px] object-contain"
               loading="eager"
