@@ -60,7 +60,7 @@ const cardPos = (i: number) => ({ x: X0 + (i % 3) * (CARD_W + GAP_X), y: Y0 + Ma
 // the lens looks at the card's name and bar
 const focus = (i: number) => {
   const p = cardPos(i);
-  return { x: p.x + CARD_W * 0.45, y: p.y + CARD_H * 0.5 };
+  return { x: p.x + CARD_W * 0.53, y: p.y + CARD_H * 0.47 };
 };
 
 const CYCLE = 7.6;

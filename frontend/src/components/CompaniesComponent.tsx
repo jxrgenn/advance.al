@@ -128,48 +128,8 @@ export function Companies() {
 
       {/* Stats and Info Section */}
       <section className="w-full relative overflow-hidden">
-        {/* Animated gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-muted/30 to-primary/5" />
-        <motion.div
-          className="absolute inset-0"
-          style={{
-            background: "radial-gradient(circle at 80% 30%, hsl(220 85% 25% / 0.15) 0%, transparent 50%)",
-          }}
-          animate={{
-            opacity: [0.3, 0.5, 0.3],
-          }}
-          transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-        />
-        <motion.div
-          className="absolute inset-0"
-          style={{
-            background: "radial-gradient(circle at 20% 70%, hsl(220 85% 25% / 0.12) 0%, transparent 50%)",
-          }}
-          animate={{
-            opacity: [0.2, 0.4, 0.2],
-          }}
-          transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-        />
-        
-        {/* Decorative blobs */}
-        <motion.div
-          className="absolute top-0 left-0 w-96 h-96 bg-primary/15 rounded-full blur-3xl"
-          animate={{
-            scale: [1, 1.2, 1],
-            x: [0, -50, 0],
-            y: [0, 30, 0],
-          }}
-          transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
-        />
-        <motion.div
-          className="absolute bottom-0 right-0 w-80 h-80 bg-primary/8 rounded-full blur-3xl"
-          animate={{
-            scale: [1, 1.3, 1],
-            x: [0, 40, 0],
-            y: [0, -40, 0],
-          }}
-          transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
-        />
+        {/* flat background (design round 2: blurred blobs and radial glows removed) */}
+        <div className="absolute inset-0 bg-[#F4F7FC]" />
 
         <div className="px-4 sm:px-6 lg:px-8">
           <Container size="lg" px={0} className="relative !pt-8 md:!pt-12 !pb-1 md:!pb-2">
