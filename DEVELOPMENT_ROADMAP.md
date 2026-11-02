@@ -4650,7 +4650,7 @@ Final candidate `1b010b3` (main + 23 commits, 354 files). Not merged to main, no
     react-helmet-async REPLACES them per page. Before, every rendered page carried two canonicals (one
     always "/"), two robots and two descriptions.
 
-### 🎨 Visual elevation round — 2026-10-31 (client feedback, IN PROGRESS, not committed)
+### 🎨 Visual elevation round — 2026-10-31 (client feedback, IN PROGRESS, preview branch only)
 - Kompanitë back on: /companies + /company/:id routes, nav (desktop + mobile) and footer links
   re-enabled; label "Kompanitë". Test companies stay for now (owner: still testing).
 - Own feature-icon set `components/icons/FeatureIcons.tsx` (duotone: navy ink, soft-blue body, one
@@ -4664,4 +4664,15 @@ Final candidate `1b010b3` (main + 23 commits, 354 files). Not merged to main, no
   site blues instead of rainbow shirts; moved to the top of its column.
 - Higgsfield: 4 new 3D stills (walking jobseeker, CV woman, magnifier crowd, hiring manager) awaiting
   owner approval before animating them into loops.
+- Round 2 (2026-11-02, branch `preview/design-round2`, NOT on main):
+  - Kompanitë "not found" fixed: hardcoded mock companies (mock_1..6) removed from CompaniesPageSimple;
+    an API failure now shows an error instead of fake cards that link nowhere.
+  - "Çfarë Bëjmë Ne?": original text and hub layout restored (owner: don't redo concepts); hub elevated
+    (flat panel, advance.al mark in the centre instead of "AI", drawn objects per tile, one 8 s loop).
+    Owner: "okay for now".
+  - "Tre Mënyra": "Aplikim Fleksibël" was not a real mode → the three ways are now the three real ones,
+    phrased as intents: "Dua vetëm njoftime" (Profil i Shpejtë, no account) / "Dua të aplikoj"
+    (Profil i Plotë) / "Dua të punësoj" (Punëdhënës). Original card layout, flat, lucide icons.
+  - Next: people-arrow rebuild, employer + jobseeker hero animations, Krijo CV animation,
+    version A (3D stills) vs version B (all code) previews, preview API proxy.
 

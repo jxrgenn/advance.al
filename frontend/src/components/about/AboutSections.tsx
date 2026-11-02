@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion, useInView, useReducedMotion } from "motion/react";
-import { ArrowRight, Check } from "lucide-react";
+import { ArrowRight, Bell, Briefcase, Check, MousePointerClick } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CvIcon, FlexibleIcon, FullProfileIcon, QuickIcon } from "@/components/icons/FeatureIcons";
+import { CvIcon } from "@/components/icons/FeatureIcons";
 
 /* ─────────────────────────────────────────────────────────────────────────
  * "Krijo CV-në me AI" callout (About page).
@@ -183,43 +183,45 @@ export function AiCvCallout() {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
- * "Tre Mënyra për të Përdorur advance.al" — rethought (client feedback
- * 2026-10-31). Before: three equal checklist cards in blue/orange/green.
- * Now one question the visitor actually has — "how much do I want to put
- * in?" — answered on one scale from fastest to most complete, in the site's
- * blues, with our own icons and a clear next step on each.
+ * "Tre Mënyra për të Përdorur advance.al" — round 2 (owner: "still doesn't
+ * make sense"). The old third card, "Aplikim Fleksibël", was not a real
+ * mode (it is just the optional cover letter inside a normal account).
+ * The three ways are now the three things the product really does, each
+ * phrased as what the visitor wants: alerts only (QuickUser, no account),
+ * applying (jobseeker account), hiring (employer account).
+ * Original card layout kept; flat, blue only, no gradients or badges.
  * ───────────────────────────────────────────────────────────────────────── */
 
 const WAYS = [
   {
-    key: "quick",
-    Icon: QuickIcon,
+    key: "alerts",
+    Icon: Bell,
+    want: "Dua vetëm njoftime",
     title: "Profil i Shpejtë",
-    time: "Pa llogari · 2 minuta",
-    lead: "Pa llogari. Jepni të dhënat bazë dhe punët vijnë tek ju me email.",
-    points: ["Pa regjistrim, pa fjalëkalim", "Njoftime për punë që ju përshtaten", "Punëdhënësit mund t'ju kontaktojnë"],
-    cta: "Fillo pa llogari",
+    lead: "Pa llogari. Na thoni çfarë pune kërkoni dhe ju njoftojmë kur del një e tillë.",
+    points: ["Pa regjistrim dhe pa fjalëkalim", "Gati për 2 minuta", "Punët e reja ju vijnë me email", "Punëdhënësit mund t'ju kontaktojnë"],
+    cta: "Merr njoftime",
     to: "/jobseekers",
   },
   {
-    key: "flexible",
-    Icon: FlexibleIcon,
-    title: "Aplikim Fleksibël",
-    time: "Me llogari",
-    lead: "Me llogari, por vendosni vetë çfarë dërgoni në çdo aplikim.",
-    points: ["Letër motivuese për çdo punë", "Zgjidhni çfarë informacioni ndani", "Ideal për aplikime të kujdesshme"],
+    key: "apply",
+    Icon: MousePointerClick,
+    want: "Dua të aplikoj",
+    title: "Profil i Plotë",
+    lead: "Krijoni llogari njëherë dhe aplikoni për çdo punë me një klik.",
+    points: ["Aplikim me 1 klik", "Letër motivuese kur të doni", "Ndiqni statusin e çdo aplikimi", "Krijoni CV me AI"],
     cta: "Krijo llogari",
     to: "/login?tab=register&type=jobseeker",
   },
   {
-    key: "full",
-    Icon: FullProfileIcon,
-    title: "Profil i Plotë",
-    time: "Llogari + profil",
-    lead: "Plotësoni profilin njëherë dhe aplikoni kudo me një klik.",
-    points: ["Aplikim me 1 klik", "Ndiqni të gjitha aplikimet tuaja", "Krijo CV me AI automatikisht"],
-    cta: "Krijo profilin",
-    to: "/login?tab=register&type=jobseeker",
+    key: "hire",
+    Icon: Briefcase,
+    want: "Dua të punësoj",
+    title: "Punëdhënës",
+    lead: "Publikoni një pozicion dhe merrni aplikimet në një vend.",
+    points: ["Publikoni punë në pak minuta", "Të gjitha aplikimet në panel", "Kandidatët që përputhen me punën", "Kontakt i drejtpërdrejtë"],
+    cta: "Publiko një punë",
+    to: "/employers",
   },
 ] as const;
 
@@ -236,63 +238,43 @@ export function ThreeWays() {
             Tre Mënyra për të Përdorur advance.al
           </h2>
           <p className="text-lg text-muted-foreground md:text-xl">
-            Sa kohë doni të jepni sot? Zgjidhni hapin — mund të kaloni te tjetri kur të doni.
+            Çfarë doni të bëni? Zgjidhni njërën — mund të kaloni te tjetra kur të doni.
           </p>
         </div>
 
-        <div ref={ref} className="relative mx-auto max-w-6xl">
-          {/* the scale: fastest → most complete */}
-          <div className="mb-6 hidden items-center gap-4 px-2 text-sm font-semibold text-blue-700 md:flex">
-            <span>Më e shpejta</span>
-            <span className="relative h-[3px] flex-1 overflow-hidden rounded-full bg-blue-100">
-              <motion.span
-                className="absolute inset-y-0 left-0 w-full origin-left rounded-full bg-gradient-to-r from-blue-300 to-blue-700"
-                initial={reduced ? false : { scaleX: 0 }}
-                animate={inView ? { scaleX: 1 } : undefined}
-                transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1], delay: 0.15 }}
-              />
-            </span>
-            <span>Më e plota</span>
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-3">
-            {WAYS.map((w, i) => (
-              <motion.div
-                key={w.key}
-                initial={reduced ? false : { opacity: 0, y: 18 }}
-                animate={inView ? { opacity: 1, y: 0 } : undefined}
-                transition={{ duration: 0.5, ease: "easeOut", delay: 0.25 + i * 0.12 }}
+        <div ref={ref} className="mx-auto grid max-w-6xl gap-6 md:grid-cols-3">
+          {WAYS.map((w, i) => (
+            <motion.div
+              key={w.key}
+              initial={reduced ? false : { opacity: 0, y: 16 }}
+              animate={inView ? { opacity: 1, y: 0 } : undefined}
+              transition={{ duration: 0.45, ease: "easeOut", delay: 0.1 + i * 0.1 }}
+            >
+              <Link
+                to={w.to}
+                className="group flex h-full flex-col rounded-xl border-2 border-slate-200 bg-white p-6 transition-colors duration-200 hover:border-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
               >
-                <Link
-                  to={w.to}
-                  className="group flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-6 transition-all duration-300 hover:-translate-y-1 hover:border-blue-300 hover:shadow-[0_24px_48px_-28px_rgba(30,64,175,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-                >
-                  <div className="flex items-start justify-between">
-                    <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 transition-transform duration-300 group-hover:scale-105">
-                      <w.Icon width={34} height={34} />
-                    </span>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                      {w.time}
-                    </span>
-                  </div>
-                  <h3 className="mt-5 text-xl font-semibold text-slate-900">{w.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-slate-600">{w.lead}</p>
-                  <ul className="mt-5 space-y-2.5">
-                    {w.points.map((p) => (
-                      <li key={p} className="flex items-start gap-2.5 text-sm text-slate-700">
-                        <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-600" strokeWidth={2.6} aria-hidden="true" />
-                        {p}
-                      </li>
-                    ))}
-                  </ul>
-                  <span className="mt-auto inline-flex items-center gap-1.5 pt-6 text-sm font-semibold text-primary">
-                    {w.cta}
-                    <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" aria-hidden="true" />
-                  </span>
-                </Link>
-              </motion.div>
-            ))}
-          </div>
+                <div className="flex items-center gap-3">
+                  <w.Icon className="h-7 w-7 text-blue-700" strokeWidth={1.8} aria-hidden="true" />
+                  <span className="text-sm font-semibold uppercase tracking-wide text-blue-700">{w.want}</span>
+                </div>
+                <h3 className="mt-4 text-xl font-semibold text-slate-900">{w.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">{w.lead}</p>
+                <ul className="mt-5 space-y-2.5 border-t border-slate-100 pt-5">
+                  {w.points.map((p) => (
+                    <li key={p} className="flex items-start gap-2.5 text-sm text-slate-700">
+                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-700" strokeWidth={2.6} aria-hidden="true" />
+                      {p}
+                    </li>
+                  ))}
+                </ul>
+                <span className="mt-auto inline-flex items-center gap-1.5 pt-6 text-sm font-semibold text-blue-700">
+                  {w.cta}
+                  <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" aria-hidden="true" />
+                </span>
+              </Link>
+            </motion.div>
+          ))}
         </div>
       </div>
     </section>
