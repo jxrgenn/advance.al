@@ -3,7 +3,7 @@ import { Container } from "@mantine/core";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { ArrowRight, Search } from "lucide-react";
-import { WalkingPath } from "@/components/illustrations/WalkingPath";
+import { WalkLoop } from "@/components/illustrations/WalkLoop";
 import { useAuth } from "@/contexts/AuthContext";
 
 export function JobSearchHero() {
@@ -141,10 +141,8 @@ export function JobSearchHero() {
             animate={{ opacity: 1, scale: 1, x: 0 }}
             transition={{ delay: 0.4, duration: 1, ease: [0.16, 1, 0.3, 1] }}
           >
-            {/* A person walking along a path that ends in an arrow (code-animated) */}
-            <div className="relative z-10 w-full max-w-[360px] md:max-w-[480px] aspect-square">
-              <WalkingPath className="absolute inset-0 w-full h-full" />
-            </div>
+            {/* The approved 3D walker, as a seamless video loop */}
+            <WalkLoop className="relative z-10 w-full max-w-[420px] md:max-w-[560px] h-auto" />
           </motion.div>
         </div>
         </Container>
