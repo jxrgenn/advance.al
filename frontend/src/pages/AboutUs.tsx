@@ -34,8 +34,7 @@ import {
   ArrowRight,
   Sparkles
 } from "lucide-react";
-import { MatchScene } from "@/components/illustrations/MatchScene";
-import { WhatWeDoHandDrawn, WhatWeDoProduct, WhatWeDoTypography } from "@/components/about/WhatWeDoVariants";
+import { AiConnectedSystem } from "@/components/illustrations/AiConnectedSystem";
 import { AiCvCallout, ThreeWays } from "@/components/about/AboutSections";
 
 /* ─── Data ─── */
@@ -287,8 +286,6 @@ const FeatureShowcase = () => {
 };
 
 const AboutUs = () => {
-  // Preview-only switch between the three "Çfarë Bëjmë Ne?" directions.
-  const ccb = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ccb") : null;
   const [scrollProgress, setScrollProgress] = useState(0);
   const [positionMode, setPositionMode] = useState<'absolute-top' | 'fixed' | 'absolute-bottom'>('absolute-top');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -366,46 +363,58 @@ const AboutUs = () => {
         <AdvanceLanding />
       </div>
 
-      {/* What We Do — three directions for the owner to pick from (?ccb=a|b|c) */}
-      {ccb === "a" || ccb === "b" || ccb === "c" ? (
-        <section className="py-16 md:py-24 bg-white">
-          <div className="container mx-auto px-4">
-            {ccb === "a" ? <WhatWeDoTypography /> : ccb === "b" ? <WhatWeDoProduct /> : <WhatWeDoHandDrawn />}
-          </div>
-        </section>
-      ) : (
-      // current version (MatchScene), kept until a direction is chosen
-      <section className="py-16 md:py-24 bg-white">
+      {/* What We Do Section */}
+      <section className="py-16">
         <div className="container mx-auto px-4">
-          <div className="grid items-center gap-12 md:grid-cols-[1.1fr_1fr] lg:gap-20">
-            <MatchScene className="w-full max-w-[560px] h-auto mx-auto" />
+          <div className="grid md:grid-cols-2 gap-12 items-center">
+            {/* Left side - Image */}
+            <div className="flex justify-center items-center">
+              <AiConnectedSystem className="w-full max-w-[500px] h-auto" />
+            </div>
+
+            {/* Right side - Title + Pse advance.al? */}
             <div>
-              <h2 className="text-3xl md:text-4xl font-bold mb-4 text-[#0B2A6B]">Çfarë Bëjmë Ne?</h2>
-              <p className="text-lg md:text-xl text-slate-600 leading-relaxed">
-                Lidhim njerëzit me punën e duhur. AI krahason profilin tuaj me çdo punë — gjuhët, përvojën,
-                qytetin — dhe ju tregon vetëm ato që vërtet ju përshtaten.
-              </p>
-              <ul className="mt-8 border-t-2 border-[#0B2A6B]">
-                {[
-                  ['Punë nga kompani të verifikuara', 'Çdo punëdhënës kontrollohet para se të postojë.'],
-                  ['Aplikim i shpejtë', 'Profili dërgohet me një klik.'],
-                  ['Njoftime automatike', 'Punët e reja që ju përshtaten vijnë me email.'],
-                  ['Falas për punëkërkuesit', 'Gjithmonë.'],
-                ].map(([title, detail], i) => (
-                  <li key={title} className="grid grid-cols-[2.25rem_1fr] gap-x-2 border-b border-slate-200 py-4">
-                    <span className="text-sm font-bold tabular-nums text-[#2F6FDE] pt-0.5">0{i + 1}</span>
-                    <div>
-                      <p className="font-semibold text-[#0B2A6B]">{title}</p>
-                      <p className="text-sm text-slate-500">{detail}</p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <div className="text-left mb-6">
+                <h2 className="text-3xl md:text-4xl font-bold mb-3">
+                  Çfarë Bëjmë Ne?
+                </h2>
+                <p className="text-lg md:text-xl text-muted-foreground leading-relaxed">
+                  Advance.al është një platformë që ju shërben me entusiazëm e kombinuar me inteligjencë artificiale e cila shkurton kohë dhe përmirëson cilësinë.
+                </p>
+              </div>
+              <div className="bg-[#EAF2FF] rounded-2xl p-8">
+                <h3 className="text-2xl font-bold mb-6 text-foreground">Pse advance.al?</h3>
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
+                  <span className="text-muted-foreground">Platforma #1 në Shqipëri për punësim</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
+                  <span className="text-muted-foreground">Mijëra punë të reja çdo javë</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
+                  <span className="text-muted-foreground">Kompani të verifikuara dhe të besueshme</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
+                  <span className="text-muted-foreground">Aplikim i shpejtë dhe i thjeshtë</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
+                  <span className="text-muted-foreground">Njoftime automatike për punë të reja</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
+                  <span className="text-muted-foreground">100% falas për punëkërkuesit</span>
+                </div>
+              </div>
+            </div>
             </div>
           </div>
         </div>
       </section>
-      )}
 
       <AiCvCallout />
 
