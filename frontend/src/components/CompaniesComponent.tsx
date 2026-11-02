@@ -4,10 +4,29 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, Briefcase, Building2, Users, TrendingUp, ChevronDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useState } from "react";
+
+// Version A employer-hero candidates (round 5). "A" = the one the owner liked.
+const EMP_HEROES = [
+  { src: "/3d_assets/v2/magnifier.webp", label: "A" },
+  { src: "/3d_assets/v2/emp-hero-1.webp", label: "1" },
+  { src: "/3d_assets/v2/emp-hero-2.webp", label: "2" },
+  { src: "/3d_assets/v2/emp-hero-3.webp", label: "3" },
+  { src: "/3d_assets/v2/emp-hero-4.webp", label: "4" },
+];
+const initialHero = () => {
+  if (typeof window === "undefined") return 0;
+  const n = Number(new URLSearchParams(window.location.search).get("hero"));
+  return Number.isInteger(n) && n >= 0 && n < EMP_HEROES.length ? n : 0;
+};
+// only on preview / local hosts — never on advance.al
+const showHeroPicker =
+  typeof window !== "undefined" && /(\.vercel\.app|localhost|127\.0\.0\.1)$/.test(window.location.hostname);
 
 export function Companies() {
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
+  const [hero, setHero] = useState(initialHero);
 
   const handlePostJobClick = () => {
     if (isAuthenticated && user?.userType === 'employer') {
@@ -109,17 +128,41 @@ export function Companies() {
             
             {/* Right illustration with glassmorphism card */}
             <motion.div 
-              className="flex justify-center items-center relative"
+              className="flex flex-col justify-center items-center relative"
               initial={{ opacity: 0, scale: 0.8, x: 50 }}
               animate={{ opacity: 1, scale: 1, x: 0 }}
               transition={{ delay: 0.4, duration: 1, ease: [0.16, 1, 0.3, 1] }}
             >
-              {/* Magnifier over a crowd: the one right candidate, in a blue suit */}
-              <img
-                src="/3d_assets/v2/magnifier.webp"
-                alt="Një lupë gjen kandidatin e duhur mes shumë njerëzve"
-                className="w-full max-w-[340px] md:max-w-[500px] h-auto"
-              />
+              {/* Magnifier over a crowd: the one right candidate, in a blue suit.
+                  Round 5: owner liked this and asked for more 3D options in the
+                  old "searching" style; on preview hosts a small switcher (or
+                  ?hero=1..4) shows each option in place. Option 0 is keyed
+                  (transparent); 1–4 are on white, blended away with multiply. */}
+              {/* the motion wrapper is its own layer, so multiply needs the
+                  section colour behind the image inside that layer */}
+              <div className="w-full max-w-[340px] md:max-w-[500px] bg-[#F4F7FC]">
+                <img
+                  src={EMP_HEROES[hero].src}
+                  alt="Një lupë gjen kandidatin e duhur mes shumë njerëzve"
+                  className="block w-full h-auto"
+                  style={hero > 0 ? { mixBlendMode: "multiply" } : undefined}
+                />
+              </div>
+              {showHeroPicker && (
+                <div className="mt-3 flex items-center justify-center gap-1 text-xs text-slate-500" aria-label="Opsionet e imazhit (vetëm në preview)">
+                  <span className="mr-1">Opsioni:</span>
+                  {EMP_HEROES.map((h, i) => (
+                    <button
+                      key={h.src}
+                      type="button"
+                      onClick={() => setHero(i)}
+                      className={`h-7 w-7 rounded-md border text-xs font-semibold ${i === hero ? "border-[#2F65BE] bg-[#2F65BE] text-white" : "border-slate-300 bg-white text-slate-700"}`}
+                    >
+                      {h.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </motion.div>
           </div>
           </Container>
