@@ -4673,6 +4673,14 @@ Final candidate `1b010b3` (main + 23 commits, 354 files). Not merged to main, no
   - "Tre Mënyra": "Aplikim Fleksibël" was not a real mode → the three ways are now the three real ones,
     phrased as intents: "Dua vetëm njoftime" (Profil i Shpejtë, no account) / "Dua të aplikoj"
     (Profil i Plotë) / "Dua të punësoj" (Punëdhënës). Original card layout, flat, lucide icons.
-  - Next: people-arrow rebuild, employer + jobseeker hero animations, Krijo CV animation,
-    version A (3D stills) vs version B (all code) previews, preview API proxy.
+  - People-arrow (Punëdhënës signup) rebuilt: arrow painted on a floor seen at an angle, ~80 figurines
+    walk in from the bottom-left to their places, then march in step behind a flag-bearer.
+  - Punëdhënës hero: the magnifier really magnifies (crowd redrawn inside the glass) and searches —
+    checks a couple of people, finds the right one (blue suit + check), moves on. No gradients.
+  - Punëkërkues hero: walking.png replaced by a code-animated walker (real walk cycle) on a ribbon
+    path ending in an arrow; dashes flow past.
+  - "Kurse kohë" Krijo CV visual: dark "AI chip" panel replaced by a flat one — the person's own words
+    are typed, pass through the advance.al mark, and become the CV (AiRecruitVisual removed).
+  - All of the above = version B ("everything in code"). Next: version A (3D stills) branch,
+    preview API proxy so Kompanitë/jobs load on previews.
 
