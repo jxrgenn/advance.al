@@ -44,48 +44,8 @@ export function Companies() {
     <div className="w-full">
       {/* Hero Section */}
       <section className="w-full relative overflow-hidden">
-        {/* Animated gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-primary/10" />
-        <motion.div
-          className="absolute inset-0"
-          style={{
-            background: "radial-gradient(circle at 20% 50%, hsl(220 85% 25% / 0.1) 0%, transparent 50%)",
-          }}
-          animate={{
-            opacity: [0.3, 0.5, 0.3],
-          }}
-          transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-        />
-        <motion.div
-          className="absolute inset-0"
-          style={{
-            background: "radial-gradient(circle at 80% 50%, hsl(220 85% 25% / 0.15) 0%, transparent 50%)",
-          }}
-          animate={{
-            opacity: [0.2, 0.4, 0.2],
-          }}
-          transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-        />
-        
-        {/* Decorative blobs */}
-        <motion.div
-          className="absolute top-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl"
-          animate={{
-            scale: [1, 1.2, 1],
-            x: [0, 50, 0],
-            y: [0, -30, 0],
-          }}
-          transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
-        />
-        <motion.div
-          className="absolute bottom-0 left-0 w-80 h-80 bg-primary/5 rounded-full blur-3xl"
-          animate={{
-            scale: [1, 1.3, 1],
-            x: [0, -40, 0],
-            y: [0, 40, 0],
-          }}
-          transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
-        />
+        {/* flat background (round 2: blurred blobs and radial glows removed) */}
+        <div className="absolute inset-0 bg-[#F4F7FC]" />
 
         <div className="px-4 sm:px-6 lg:px-8">
           <Container size="lg" px={0} className="relative !pt-12 md:!pt-16 !pb-4 md:!pb-8">
@@ -212,19 +172,18 @@ export function Companies() {
 
         <div className="px-4 sm:px-6 lg:px-8">
           <Container size="lg" px={0} className="relative !pt-8 md:!pt-12 !pb-1 md:!pb-2">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 items-stretch">
             {/* Left Column */}
-            <div className="space-y-6 md:space-y-8 z-10 relative">
+            <div className="flex flex-col gap-4 md:gap-6 z-10 relative">
               {/* Two Cards in Row */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                 <motion.div 
-                  className="bg-background/60 backdrop-blur-sm border border-primary/10 p-6 rounded-2xl shadow-lg hover:shadow-xl transition-shadow"
+                  className="bg-white border-2 border-slate-200 p-6 rounded-xl flex flex-col"
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2, duration: 0.6 }}
-                  whileHover={{ scale: 1.02 }}
                 >
-                  <h3 className="text-xl font-bold mb-3 text-foreground">
+                  <h3 className="text-xl font-bold mb-3 text-slate-900">
                     Gjeni kandidatët më të mirë për kompaninë tuaj.
                   </h3>
                   <p className="text-muted-foreground">
@@ -233,15 +192,12 @@ export function Companies() {
                 </motion.div>
 
                 <motion.div 
-                  className="bg-background/60 backdrop-blur-sm border border-primary/10 p-6 rounded-2xl flex flex-col items-center justify-center text-center gap-3 shadow-lg hover:shadow-xl transition-shadow"
+                  className="bg-white border-2 border-slate-200 p-6 rounded-xl flex flex-col"
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.3, duration: 0.6 }}
-                  whileHover={{ scale: 1.02 }}
                 >
-                  <div className="bg-primary/10 rounded-full w-20 h-20 flex items-center justify-center shadow-md border border-primary/20">
-                    <span className="text-3xl font-bold text-primary">92%</span>
-                  </div>
+                  <span className="text-4xl font-extrabold leading-none text-blue-700 mb-3">92%</span>
                   <p className="text-muted-foreground text-sm">
                     E punojnësve do ta merrin në konsideratë ndryshimin e punës nëse do të kontaktoheshin nga një kompani me reputacion shumë të mirë
                   </p>
@@ -250,15 +206,12 @@ export function Companies() {
 
               {/* Single Card Below */}
               <motion.div
-                className="bg-gradient-to-br from-primary to-primary/80 p-8 rounded-2xl flex flex-col items-center text-center md:flex-row md:items-start md:text-left gap-4 md:gap-6 text-primary-foreground shadow-2xl"
+                className="bg-primary p-6 md:p-8 rounded-xl flex flex-col md:flex-row md:items-start gap-3 md:gap-6 text-primary-foreground"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4, duration: 0.6 }}
-                whileHover={{ scale: 1.02 }}
               >
-                <div className="bg-background/20 rounded-full w-20 h-20 md:w-24 md:h-24 flex items-center justify-center shadow-md flex-shrink-0 border border-primary-foreground/20">
-                  <span className="text-3xl md:text-4xl font-bold text-primary-foreground">75%</span>
-                </div>
+                <span className="text-4xl md:text-5xl font-extrabold leading-none flex-shrink-0">75%</span>
                 <div>
                   <p className="text-base md:text-lg font-medium">
                     Shumica e kandidatëve do të aplikonin për punë në një kompani me markë të konsoliduar, të regjistruar dhe të verifikuar.
@@ -271,7 +224,7 @@ export function Companies() {
             </div>
 
             {/* Right Column - Title + Image */}
-            <div className="flex flex-col justify-start z-10 relative">
+            <div className="flex flex-col z-10 relative">
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -287,7 +240,7 @@ export function Companies() {
                 <Button
                   size="lg"
                   onClick={handleRegisterCompanyClick}
-                  className="mt-6 h-14 px-7 text-base md:text-lg font-semibold shadow-xl shadow-primary/25 hover:shadow-primary/35 transition-shadow group w-full sm:w-auto"
+                  className="mt-6 h-14 px-7 text-base md:text-lg font-semibold group w-full sm:w-auto"
                   data-testid="elite-register-company"
                 >
                   <Building2 className="mr-2 h-5 w-5" aria-hidden="true" />
@@ -295,20 +248,17 @@ export function Companies() {
                   <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform duration-200" aria-hidden="true" />
                 </Button>
               </motion.div>
-              <motion.img
-                src="/3d_assets/elite.png"
-                alt="Ekip i larmishëm profesionistësh"
-                className="w-full h-auto relative z-10"
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ 
-                  opacity: 1,
-                  scale: [1, 1.03, 1]
-                }}
-                transition={{ 
-                  opacity: { delay: 0.4, duration: 0.8 },
-                  scale: { duration: 3, repeat: Infinity, ease: "easeInOut" }
-                }}
-              />
+              {/* fills the space left beside the cards, so both columns end level */}
+              <div className="relative flex-1 min-h-[200px] mt-6">
+                <motion.img
+                  src="/3d_assets/elite_crop.png"
+                  alt="Ekip i larmishëm profesionistësh"
+                  className="absolute inset-0 w-full h-full object-contain object-left-bottom"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.4, duration: 0.8 }}
+                />
+              </div>
             </div>
           </div>
 
