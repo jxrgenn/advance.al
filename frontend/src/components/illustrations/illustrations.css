@@ -74,6 +74,43 @@
   100% { opacity: 1; transform: translate(0, 0) rotate(0deg); }
 }
 
+/* One signal per cycle along a path with pathLength="100" and
+   stroke-dasharray "16 100": travels in the first ~14% of the cycle, then
+   fades out and waits. Base state (attribute) is opacity 0 = hidden. */
+@keyframes ill-signal {
+  0% { stroke-dashoffset: 116; opacity: 0; }
+  2% { opacity: 1; }
+  13% { stroke-dashoffset: 0; opacity: 1; }
+  17%, 100% { stroke-dashoffset: 0; opacity: 0; }
+}
+/* A tile lighting up once per cycle (base opacity 0). */
+@keyframes ill-ping {
+  0% { opacity: 0.95; transform: scale(0.96); }
+  22% { opacity: 0; transform: scale(1.1); }
+  100% { opacity: 0; transform: scale(1.1); }
+}
+/* The AI core ripple (base opacity 0). */
+@keyframes ill-ripple {
+  0% { opacity: 0.55; transform: scale(1); }
+  30%, 100% { opacity: 0; transform: scale(2.4); }
+}
+
+/* People arrow: walk from (--dx, --dy) to their place. */
+@keyframes ill-gather {
+  0% { opacity: 0; transform: translate(var(--dx, 0px), var(--dy, 0px)); }
+  18% { opacity: 1; }
+  100% { opacity: 1; transform: translate(0, 0); }
+}
+@keyframes ill-step {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1.8px); }
+}
+@keyframes ill-wave {
+  0% { transform: translateY(0); }
+  5% { transform: translateY(-4.5px); }
+  10%, 100% { transform: translateY(0); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ill-stage,
   .ill-stage * {

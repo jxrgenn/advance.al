@@ -981,7 +981,7 @@ const EmployersPage = () => {
         <Grid gutter={40}>
           <Grid.Col span={{ base: 12, md: 5 }}>
             {/* Left: Mascot Image */}
-            <div className="hidden md:flex md:items-center md:justify-center md:min-h-full" style={{ position: 'sticky', top: 100 }}>
+            <div className="hidden md:flex md:items-start md:justify-center pt-6" style={{ position: 'sticky', top: 100 }}>
               <PeopleArrow className="w-full max-w-[520px] h-auto" />
             </div>
           </Grid.Col>

@@ -34,7 +34,9 @@ import {
   ArrowRight,
   Sparkles
 } from "lucide-react";
-import { AiConnectedSystem } from "@/components/illustrations/AiConnectedSystem";
+import { MatchScene } from "@/components/illustrations/MatchScene";
+import { WhatWeDoHandDrawn, WhatWeDoProduct, WhatWeDoTypography } from "@/components/about/WhatWeDoVariants";
+import { AiCvCallout, ThreeWays } from "@/components/about/AboutSections";
 
 /* ─── Data ─── */
 const aiFeatures = [
@@ -75,102 +77,6 @@ const scenarios = [
     result: 'Kandidati i duhur, pa agjenci, pa pritje të gjatë.',
   },
 ];
-
-/* ─── AI CV callout ─── */
-// Client feedback: the AI-CV call to action must be far more visible and sit
-// BEFORE the "three ways to use advance.al" cards. The right half shows what
-// actually happens — free text in, a structured CV out.
-const AI_CV_DEMO_ROWS = [
-  { label: 'Përvoja', value: 'Recepsioniste, hotel në Durrës (3 vjet)' },
-  { label: 'Gjuhët', value: 'Anglisht, italisht' },
-  { label: 'Aftësitë', value: 'Sisteme rezervimi, shërbim ndaj klientit' },
-];
-
-const AiCvCallout = () => (
-  <section className="py-10 md:py-14" aria-labelledby="ai-cv-callout-title">
-    <div className="container mx-auto px-4">
-      <div className="relative max-w-6xl mx-auto overflow-hidden rounded-3xl bg-primary text-primary-foreground shadow-[0_32px_64px_-28px_hsl(220_85%_25%/0.65)]">
-        <div aria-hidden="true" className="pointer-events-none absolute -top-48 -right-32 h-[460px] w-[460px] rounded-full bg-blue-500/35 blur-3xl" />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 opacity-[0.07]"
-          style={{
-            backgroundImage: 'linear-gradient(to right, #fff 1px, transparent 1px), linear-gradient(to bottom, #fff 1px, transparent 1px)',
-            backgroundSize: '32px 32px',
-          }}
-        />
-        <div className="relative grid gap-10 p-6 sm:p-10 md:p-12 lg:grid-cols-[1.05fr_1fr] lg:items-center">
-          <div>
-            <ul className="flex flex-wrap gap-2 mb-5">
-              {['Shkrim i lirë', 'Në çdo gjuhë', 'Falas'].map((t) => (
-                <li key={t} className="rounded-full border border-white/25 bg-white/10 px-3 py-1 text-sm font-medium text-blue-50">
-                  {t}
-                </li>
-              ))}
-            </ul>
-            <h2 id="ai-cv-callout-title" className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-[1.08]">
-              Krijo CV-në me AI
-            </h2>
-            <p className="mt-4 text-base md:text-lg text-blue-100 leading-relaxed max-w-xl">
-              Shkruani lirshëm për veten, përvojën dhe aftësitë tuaja, në çdo gjuhë. AI e kthen tekstin
-              në një CV profesionale, të formatuar dhe gati për t'u dërguar.
-            </p>
-            <Button
-              size="lg"
-              asChild
-              className="mt-7 h-14 w-full sm:w-auto px-8 text-base md:text-lg font-semibold bg-white text-primary hover:bg-blue-50 shadow-lg focus-visible:ring-white focus-visible:ring-offset-primary"
-            >
-              <Link to="/jobseekers#ai-cv-section">
-                <Sparkles className="mr-2 h-5 w-5" aria-hidden="true" />
-                Krijo CV-në tani
-                <ArrowRight className="ml-2 h-5 w-5" aria-hidden="true" />
-              </Link>
-            </Button>
-          </div>
-
-          {/* Illustration of the flow: free text → AI → structured CV */}
-          <div aria-hidden="true" className="relative">
-            <div className="max-w-md rounded-2xl border border-white/15 bg-white/10 p-4 sm:p-5">
-              <p className="text-xs font-semibold text-blue-200 mb-2">Ju shkruani</p>
-              <p className="text-sm sm:text-base text-white/95 leading-relaxed">
-                “Kam 3 vjet që punoj si recepsioniste në një hotel në Durrës. Flas anglisht dhe italisht dhe
-                di të punoj me sistemet e rezervimeve.”
-              </p>
-            </div>
-            <div className="flex items-center gap-3 py-3 pl-6 text-blue-100">
-              <span className="h-9 w-px bg-white/30" />
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">
-                <Sparkles className="h-3.5 w-3.5" />
-                AI krijon CV-në
-              </span>
-            </div>
-            <div className="max-w-md sm:ml-auto rounded-2xl bg-white p-5 text-foreground shadow-2xl">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-primary">EH</div>
-                <div>
-                  <p className="font-bold leading-tight">Elira Hoxha</p>
-                  <p className="text-sm text-muted-foreground">Recepsioniste</p>
-                </div>
-              </div>
-              <div className="my-4 h-px bg-border" />
-              <dl className="space-y-2.5">
-                {AI_CV_DEMO_ROWS.map((row) => (
-                  <div key={row.label} className="flex items-start gap-2.5">
-                    <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                    <div className="text-sm leading-snug">
-                      <dt className="inline font-semibold">{row.label}: </dt>
-                      <dd className="inline text-muted-foreground">{row.value}</dd>
-                    </div>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-);
 
 /* ─── Showcase ─── */
 const FeatureShowcase = () => {
@@ -381,6 +287,8 @@ const FeatureShowcase = () => {
 };
 
 const AboutUs = () => {
+  // Preview-only switch between the three "Çfarë Bëjmë Ne?" directions.
+  const ccb = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ccb") : null;
   const [scrollProgress, setScrollProgress] = useState(0);
   const [positionMode, setPositionMode] = useState<'absolute-top' | 'fixed' | 'absolute-bottom'>('absolute-top');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -458,177 +366,51 @@ const AboutUs = () => {
         <AdvanceLanding />
       </div>
 
-      {/* What We Do Section */}
-      <section className="py-16">
+      {/* What We Do — three directions for the owner to pick from (?ccb=a|b|c) */}
+      {ccb === "a" || ccb === "b" || ccb === "c" ? (
+        <section className="py-16 md:py-24 bg-white">
+          <div className="container mx-auto px-4">
+            {ccb === "a" ? <WhatWeDoTypography /> : ccb === "b" ? <WhatWeDoProduct /> : <WhatWeDoHandDrawn />}
+          </div>
+        </section>
+      ) : (
+      // current version (MatchScene), kept until a direction is chosen
+      <section className="py-16 md:py-24 bg-white">
         <div className="container mx-auto px-4">
-          <div className="grid md:grid-cols-2 gap-12 items-center">
-            {/* Left side - Image */}
-            <div className="flex justify-center items-center">
-              <AiConnectedSystem className="w-full max-w-[500px] h-auto rounded-[6.15%] shadow-[0_30px_60px_-30px_rgba(5,18,47,0.7)]" />
-            </div>
-
-            {/* Right side - Title + Pse advance.al? */}
+          <div className="grid items-center gap-12 md:grid-cols-[1.1fr_1fr] lg:gap-20">
+            <MatchScene className="w-full max-w-[560px] h-auto mx-auto" />
             <div>
-              <div className="text-left mb-6">
-                <h2 className="text-3xl md:text-4xl font-bold mb-3">
-                  Çfarë Bëjmë Ne?
-                </h2>
-                <p className="text-lg md:text-xl text-muted-foreground leading-relaxed">
-                  Advance.al është një platformë që ju shërben me entusiazëm e kombinuar me inteligjencë artificiale e cila shkurton kohë dhe përmirëson cilësinë.
-                </p>
-              </div>
-              <div className="bg-gradient-to-br from-primary/5 to-primary/10 rounded-2xl p-8 border border-primary/20">
-                <h3 className="text-2xl font-bold mb-6 text-foreground">Pse advance.al?</h3>
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
-                  <span className="text-muted-foreground">Platforma #1 në Shqipëri për punësim</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
-                  <span className="text-muted-foreground">Mijëra punë të reja çdo javë</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
-                  <span className="text-muted-foreground">Kompani të verifikuara dhe të besueshme</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
-                  <span className="text-muted-foreground">Aplikim i shpejtë dhe i thjeshtë</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
-                  <span className="text-muted-foreground">Njoftime automatike për punë të reja</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
-                  <span className="text-muted-foreground">100% falas për punëkërkuesit</span>
-                </div>
-              </div>
-            </div>
+              <h2 className="text-3xl md:text-4xl font-bold mb-4 text-[#0B2A6B]">Çfarë Bëjmë Ne?</h2>
+              <p className="text-lg md:text-xl text-slate-600 leading-relaxed">
+                Lidhim njerëzit me punën e duhur. AI krahason profilin tuaj me çdo punë — gjuhët, përvojën,
+                qytetin — dhe ju tregon vetëm ato që vërtet ju përshtaten.
+              </p>
+              <ul className="mt-8 border-t-2 border-[#0B2A6B]">
+                {[
+                  ['Punë nga kompani të verifikuara', 'Çdo punëdhënës kontrollohet para se të postojë.'],
+                  ['Aplikim i shpejtë', 'Profili dërgohet me një klik.'],
+                  ['Njoftime automatike', 'Punët e reja që ju përshtaten vijnë me email.'],
+                  ['Falas për punëkërkuesit', 'Gjithmonë.'],
+                ].map(([title, detail], i) => (
+                  <li key={title} className="grid grid-cols-[2.25rem_1fr] gap-x-2 border-b border-slate-200 py-4">
+                    <span className="text-sm font-bold tabular-nums text-[#2F6FDE] pt-0.5">0{i + 1}</span>
+                    <div>
+                      <p className="font-semibold text-[#0B2A6B]">{title}</p>
+                      <p className="text-sm text-slate-500">{detail}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         </div>
       </section>
+      )}
 
-      {/* AI CV call to action — moved here, before the three ways (client request) */}
       <AiCvCallout />
 
-      {/* How It Works - Different Ways to Use Platform */}
-      <section className="py-16 bg-gradient-to-br from-blue-50/50 to-background">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              Tre Mënyra për të Përdorur advance.al
-            </h2>
-            <p className="text-lg md:text-xl text-muted-foreground max-w-3xl mx-auto">
-              Zgjidhni mënyrën që ju përshtatet më së miri. Fleksibël, i thjeshtë, dhe gjithmonë efektiv.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8 mb-12">
-            {/* Full Account */}
-            <Link to="/login?tab=register&type=jobseeker">
-            <Card className="p-6 bg-background border-2 hover:border-primary/60 transition-all duration-300 hover:shadow-lg cursor-pointer">
-              <CardContent className="space-y-4 p-0">
-                <div className="bg-primary/10 p-4 rounded-full w-16 h-16 mx-auto flex items-center justify-center">
-                  <UserCheck className="h-8 w-8 text-primary" />
-                </div>
-                <h3 className="text-xl font-semibold text-center">Profil i Plotë</h3>
-                <p className="text-muted-foreground text-center text-sm">
-                  Krijoni një llogari të plotë dhe aplikoni për punë me vetëm një klik.
-                </p>
-                <div className="space-y-3 pt-4">
-                  <div className="flex items-start space-x-2">
-                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Aplikim me 1 klik për të gjitha punët</span>
-                  </div>
-                  <div className="flex items-start space-x-2">
-                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Menaxhim i aplikimeve tuaja</span>
-                  </div>
-                  <div className="flex items-start space-x-2">
-                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Njoftime për përputhje të reja</span>
-                  </div>
-                  <div className="flex items-start space-x-2">
-                    <Lightbulb className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                    <span className="text-sm font-medium">Krijo CV me AI automatikisht</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            </Link>
-
-            {/* Flexible Application */}
-            <Link to="/login?tab=register&type=jobseeker">
-            <Card className="p-6 bg-background border-2 hover:border-primary/60 transition-all duration-300 hover:shadow-lg cursor-pointer">
-              <CardContent className="space-y-4 p-0">
-                <div className="bg-orange-500/10 p-4 rounded-full w-16 h-16 mx-auto flex items-center justify-center">
-                  <Zap className="h-8 w-8 text-orange-600" />
-                </div>
-                <h3 className="text-xl font-semibold text-center">Aplikim Fleksibël</h3>
-                <p className="text-muted-foreground text-center text-sm">
-                  Krijoni llogari por plotësoni të dhënat për çdo aplikim veç e veç.
-                </p>
-                <div className="space-y-3 pt-4">
-                  <div className="flex items-start space-x-2">
-                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Kontroll i plotë mbi çdo aplikim</span>
-                  </div>
-                  <div className="flex items-start space-x-2">
-                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Personalizoni mesazhin për çdo punë</span>
-                  </div>
-                  <div className="flex items-start space-x-2">
-                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Zgjidhni çfarë informacioni të ndani</span>
-                  </div>
-                  <div className="flex items-start space-x-2">
-                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Ideal për aplikime të kujdesshme</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            </Link>
-
-            {/* Quick Profile */}
-            <Link to="/jobseekers">
-            <Card className="p-6 bg-background border-2 hover:border-primary/60 transition-all duration-300 hover:shadow-lg cursor-pointer">
-              <CardContent className="space-y-4 p-0">
-                <div className="bg-green-500/10 p-4 rounded-full w-16 h-16 mx-auto flex items-center justify-center">
-                  <Bell className="h-8 w-8 text-green-600" />
-                </div>
-                <h3 className="text-xl font-semibold text-center">Profil i Shpejtë</h3>
-                <p className="text-muted-foreground text-center text-sm">
-                  Vetëm jepni të dhënat bazë dhe merrni njoftime për punë të reja.
-                </p>
-                <div className="space-y-3 pt-4">
-                  <div className="flex items-start space-x-2">
-                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Pa nevojë për regjistrim të plotë</span>
-                  </div>
-                  <div className="flex items-start space-x-2">
-                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Email njoftime për punë të reja</span>
-                  </div>
-                  <div className="flex items-start space-x-2">
-                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Punëdhënësit mund t'ju kontaktojnë</span>
-                  </div>
-                  <div className="flex items-start space-x-2">
-                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">Më e shpejta - vetëm 2 minuta</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            </Link>
-          </div>
-
-        </div>
-      </section>
+      {/* Three ways to use advance.al — rethought 2026-10-31 */}
+      <ThreeWays />
 
       {/* How Advance.al Works — Technology & Scenarios */}
       <FeatureShowcase />

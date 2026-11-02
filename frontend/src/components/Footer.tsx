@@ -57,13 +57,11 @@ const Footer = () => {
                   Krijo CV me AI
                 </button>
               </li>
-              {/* TEMPORARILY DISABLED - No companies using platform yet
-              <li>
+                            <li>
                 <button onClick={() => handleNavigation('/companies')} className="text-muted-foreground hover:text-primary transition-colors text-left">
                   Shfleto Kompanitë
                 </button>
               </li>
-              */}
             </ul>
           </div>
 
@@ -76,13 +74,11 @@ const Footer = () => {
                   Regjistrohu si Punëdhënës
                 </button>
               </li>
-              {/* TEMPORARILY DISABLED - No companies using platform yet
-              <li>
+                            <li>
                 <button onClick={() => handleNavigation('/companies')} className="text-muted-foreground hover:text-primary transition-colors text-left">
                   Profili i Kompanisë
                 </button>
               </li>
-              */}
             </ul>
           </div>
 

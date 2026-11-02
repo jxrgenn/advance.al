@@ -4649,3 +4649,19 @@ Final candidate `1b010b3` (main + 23 commits, 354 files). Not merged to main, no
   - `index.html` defaults (description, canonical, robots, og/twitter) are marked `data-rh="true"` so
     react-helmet-async REPLACES them per page. Before, every rendered page carried two canonicals (one
     always "/"), two robots and two descriptions.
+
+### 🎨 Visual elevation round — 2026-10-31 (client feedback, IN PROGRESS, not committed)
+- Kompanitë back on: /companies + /company/:id routes, nav (desktop + mobile) and footer links
+  re-enabled; label "Kompanitë". Test companies stay for now (owner: still testing).
+- Own feature-icon set `components/icons/FeatureIcons.tsx` (duotone: navy ink, soft-blue body, one
+  bright accent) — marketing feature icons only; lucide stays in forms/dashboards until approved.
+- About "Çfarë Bëjmë Ne?": AI hub redone light, with a 6 s story loop (CV + employer → AI ripples →
+  match / job / notification / application light up), floating tiles, custom icons.
+- About "Krijo CV me AI": light card; the sentence types itself (clock-driven) and the CV builds row by
+  row; loops while visible; finished state under reduced motion.
+- About "Tre Mënyra": one scale from fastest to most complete, single palette, our icons, a CTA per card.
+- Employers people-arrow: people walk in and form the arrow tail-first, then a wave runs to the tip;
+  site blues instead of rainbow shirts; moved to the top of its column.
+- Higgsfield: 4 new 3D stills (walking jobseeker, CV woman, magnifier crowd, hiring manager) awaiting
+  owner approval before animating them into loops.
+

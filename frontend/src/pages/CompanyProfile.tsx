@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import Navigation from "@/components/Navigation";
+import SEO from "@/components/SEO";
 import Footer from "@/components/Footer";
 import { Link } from "react-router-dom";
 import {
@@ -110,6 +111,7 @@ const CompanyProfile = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
+        <SEO title="Kompania" path={`/company/${id}`} noindex />
         <Navigation />
         <div className="flex justify-center items-center py-20">
           <Loader2 className="h-8 w-8 animate-spin" />
@@ -122,6 +124,7 @@ const CompanyProfile = () => {
   if (error || !company) {
     return (
       <div className="min-h-screen bg-background">
+        <SEO title="Kompania" path={`/company/${id}`} noindex />
         <Navigation />
         <div className="container mx-auto px-4 py-20">
           <div className="text-center">
@@ -142,6 +145,7 @@ const CompanyProfile = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <SEO title={company.name} path={`/company/${company._id}`} description={(company.description || `${company.name} në advance.al`).slice(0, 155)} />
       <Navigation />
 
       <div className="container mx-auto px-4 py-8 max-w-6xl">

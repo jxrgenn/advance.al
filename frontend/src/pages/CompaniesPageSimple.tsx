@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Navigation from "@/components/Navigation";
+import SEO from "@/components/SEO";
 import Footer from "@/components/Footer";
 import { Link } from "react-router-dom";
 import {
@@ -39,69 +40,6 @@ const CompaniesPageSimple = () => {
   const [selectedIndustry, setSelectedIndustry] = useState("");
   const [selectedSize, setSelectedSize] = useState("");
 
-  // Mock data for fallback
-  const mockCompanies: Company[] = [
-    {
-      _id: "mock_1",
-      name: "TechShqip",
-      city: "Tiranë",
-      industry: "Teknologji",
-      companySize: "51-200",
-      activeJobs: 12,
-      verified: true,
-      description: "Kompani teknologjie e fokusuar në zhvillimin e software-it dhe aplikacioneve mobile."
-    },
-    {
-      _id: "mock_2",
-      name: "AlbaniaBank",
-      city: "Tiranë",
-      industry: "Financë",
-      companySize: "200+",
-      activeJobs: 8,
-      verified: true,
-      description: "Bankë moderne që ofron shërbime financiare të avancuara për individë dhe biznese."
-    },
-    {
-      _id: "mock_3",
-      name: "ConstructAL",
-      city: "Durrës",
-      industry: "Ndërtim",
-      companySize: "11-50",
-      activeJobs: 6,
-      verified: false,
-      description: "Kompani ndërtimi me përvojë të gjatë në projekte të mëdha infrastrukturore."
-    },
-    {
-      _id: "mock_4",
-      name: "MarketingPro",
-      city: "Tiranë",
-      industry: "Marketing",
-      companySize: "1-10",
-      activeJobs: 4,
-      verified: true,
-      description: "Agjenci marketingu digjital që ndihmon bizneset të rriten online."
-    },
-    {
-      _id: "mock_5",
-      name: "HealthCare Plus",
-      city: "Vlorë",
-      industry: "Shëndetësi",
-      companySize: "51-200",
-      activeJobs: 7,
-      verified: true,
-      description: "Rrjet klinikash dhe shërbimesh shëndetësore në të gjithë vendin."
-    },
-    {
-      _id: "mock_6",
-      name: "EduFuture",
-      city: "Shkodër",
-      industry: "Arsim",
-      companySize: "1-10",
-      activeJobs: 3,
-      verified: true,
-      description: "Platforma edukimi online dhe qendër trajnimi profesional."
-    }
-  ];
 
   useEffect(() => {
     const fetchCompanies = async () => {
@@ -124,14 +62,15 @@ const CompaniesPageSimple = () => {
             logo: company.logo
           }));
           setCompanies(transformedCompanies);
-        } else {
-          // Use mock data if no real companies found
-          setCompanies(mockCompanies);
+        } else if (!response.success) {
+          setError('Kompanitë nuk u ngarkuan. Provoni përsëri pas pak.');
         }
+        // success with zero companies → the normal empty state below
       } catch (error) {
-        console.error('❌ ERROR FETCHING COMPANIES - FALLING BACK TO MOCK DATA:', error);
-        // Use mock data on error
-        setCompanies(mockCompanies);
+        // Never show invented companies: their ids (mock_1…) cannot open,
+        // which is exactly the "Kompania nuk u gjet" bug of 2026-10-31.
+        console.error('Error fetching companies:', error);
+        setError('Kompanitë nuk u ngarkuan. Provoni përsëri pas pak.');
       } finally {
         setLoading(false);
       }
@@ -157,6 +96,7 @@ const CompaniesPageSimple = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="Kompanitë" path="/companies" description="Kompanitë që punësojnë në Shqipëri në advance.al — profili, qyteti, industria dhe punët e hapura." />
       <Navigation />
 
       {/* Header */}

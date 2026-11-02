@@ -91,9 +91,8 @@ const App = () => (
                 <Route path="/jobseekers" element={<JobSeekersPage />} />
                 <Route path="/blog" element={<Blog />} />
                 <Route path="/blog/:slug" element={<BlogArticle />} />
-                {/* TEMPORARILY DISABLED - No companies using platform yet */}
-                {/* <Route path="/companies" element={<CompaniesPageSimple />} /> */}
-                {/* <Route path="/company/:id" element={<CompanyProfile />} /> */}
+                <Route path="/companies" element={<CompaniesPageSimple />} />
+                <Route path="/company/:id" element={<CompanyProfile />} />
                 <Route path="/employer-register" element={<EmployerRegister />} />
                 <Route path="/employer-dashboard" element={
                   <ProtectedRoute allowedUserTypes={['employer']}>

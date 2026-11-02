@@ -263,16 +263,14 @@ const Navigation = () => {
           >
             Punëkërkues
           </Link>
-          {/* TEMPORARILY DISABLED - No companies using platform yet
-          <Link
+                    <Link
             to="/companies"
             className={`text-sm font-medium transition-colors hover:text-primary ${
               location.pathname === "/companies" ? "text-primary" : "text-muted-foreground"
             }`}
           >
-            Kompanite
+            Kompanitë
           </Link>
-          */}
         </div>
 
         <div className="flex items-center space-x-2">
@@ -545,17 +543,15 @@ loadNotifications();
             >
               Punëkërkues
             </Link>
-            {/* TEMPORARILY DISABLED - No companies using platform yet
-            <Link
+                        <Link
               to="/companies"
               className={`block py-2 text-sm font-medium transition-colors hover:text-primary ${
                 location.pathname === "/companies" ? "text-primary" : "text-muted-foreground"
               }`}
               onClick={() => setMobileMenuOpen(false)}
             >
-              Kompanite
+              Kompanitë
             </Link>
-            */}
           </div>
         </div>
       )}
