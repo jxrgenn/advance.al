@@ -31,6 +31,7 @@ import {
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { Play, Building, ArrowRight, ArrowLeft, User, FileText, CheckCircle, HelpCircle, X, Lightbulb, Euro, TrendingUp, Star, Users, Eye, EyeOff, Mail, RefreshCw } from "lucide-react";
+import { EmployerSmallSlot, EmployerSignupSlot } from "@/components/design/slots";
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi, configApi, locationsApi } from "@/lib/api";
 import { validateForm, employerSignupRules, formatValidationErrors, normalizeAlbanianPhone, cleanAlbanianPhoneInput, isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE, validatePassword, PASSWORD_RULE_MESSAGE, COMPANY_DESCRIPTION_LIMITS } from "@/lib/formValidation";
@@ -966,13 +967,8 @@ const EmployersPage = () => {
               Plotësoni ekipin tuaj të punës në mënyrën më efikase ndonjëherë.
             </Text>
           </div>
-          <div className="hidden md:flex justify-end items-center">
-            <img
-              src="/3d_assets/v2/manager.webp"
-              alt="Gjeni kandidatët idealë për ekipin tuaj"
-              className="w-full max-w-[160px] object-contain"
-              loading="eager"
-            />
+          <div className="hidden md:flex flex-col items-end justify-center">
+            <EmployerSmallSlot />
           </div>
         </div>
 
@@ -982,13 +978,8 @@ const EmployersPage = () => {
         <Grid gutter={40} align="stretch">
           {/* Round 5 (owner: "i want the arrow back"): the original 3D
               people-arrow, centred in a column as tall as the form. */}
-          <Grid.Col span={{ base: 12, md: 5 }} className="hidden md:flex items-center justify-center">
-            <img
-              src="/3d_assets/arrow_crop.webp"
-              alt="Njerëz që formojnë një shigjetë përpara"
-              className="w-full max-w-[520px] h-auto object-contain"
-              loading="lazy"
-            />
+          <Grid.Col span={{ base: 12, md: 5 }} className="hidden md:flex flex-col items-center justify-center">
+            <EmployerSignupSlot />
           </Grid.Col>
 
           <Grid.Col span={{ base: 12, md: 7 }}>

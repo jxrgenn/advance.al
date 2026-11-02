@@ -4724,6 +4724,20 @@ Final candidate `1b010b3` (main + 23 commits, 354 files). Not merged to main, no
       alpha from the original, cropped → arrow_crop.webp), centred in the column.
     - Version A: 4 new 3D employer-hero options (gpt_image_2_5, refs = searching.png + the liked
       magnifier) as `public/3d_assets/v2/emp-hero-1..4.webp`, switchable with `?hero=1..4`.
+  - Round 6 (owner 2026-11-02: loves the "Opsioni" switcher — "add all our design as options, 7+
+    per component, be creative"; profile cards fill the whole phone screen).
+    - `components/design/DesignSlot.tsx`: generic preview-only switcher (*.vercel.app / localhost);
+      option 1 = what is live, shown alone on advance.al. Picks persist (localStorage), can be forced
+      with `?d=slot:N,...`; floating "Opsionet" panel lists picks + "Kopjo zgjedhjet".
+    - `components/design/slots.tsx`: 8 slots, 79 options — emp-hero 13, emp-signup 12, js-hero 10,
+      cv-visual 9, elite 9, emp-small 9, js-small 9, js-cv-small 8. Sources: every earlier code
+      animation restored from git into `illustrations/legacy/` (Magnifier v1/v2, PeopleArrow v1/v2/v3,
+      WalkingPath, AiRecruitVisual, ApplicantsInbox), the original 3D assets, the A stills, and 24
+      new gpt_image_2_5 renders keyed white→alpha into `public/3d_assets/opt/` (≈110 KB each; only
+      the selected option loads). Every option clicked through in Chromium: no errors.
+    - Jobseeker sign-up on phones: the two big cards are desktop-only; a compact two-button switch
+      sits above the form — switch + whole form fit in one 390×844 view.
+    - This branch (preview/design-stills) is now the single design preview; B's visuals are options.
   - Preview data: no proxy needed — VITE_API_URL is shared by Production/Preview/Development and the
     live API's CORS already allows `advance-al(-frontend)-*.vercel.app` origins (verified 2026-11-02).
 

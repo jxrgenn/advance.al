@@ -41,6 +41,7 @@ import {
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { Play, Users, Bell, HelpCircle, X, Lightbulb, CheckCircle, ArrowRight, Briefcase, Zap, UserPlus, FileText, Send, Download, Eye, EyeOff, Mail, RefreshCw, Upload, Sparkles } from "lucide-react";
+import { JobseekerSmallSlot, JobseekerCvSmallSlot } from "@/components/design/slots";
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi, quickUsersApi, cvApi, configApi, locationsApi, type QuickProfileCvResult } from "@/lib/api";
 import { validateForm, jobSeekerSignupRules, formatValidationErrors, normalizeAlbanianPhone, cleanAlbanianPhoneInput, isValidAlbanianPhone, ALBANIAN_PHONE_MESSAGE, validatePassword, PASSWORD_RULE_MESSAGE, quickProfileContactProblem, RESUME_UPLOAD, uploadProblem } from "@/lib/formValidation";
@@ -1110,13 +1111,8 @@ CERTIFIKATA (opsionale)
               advance.al ju lidh me punëdhënës të shkëlqyer dhe ju ofron mundësi të reja për të rritur në fushën tuaj profesionale.
             </Text>
           </div>
-          <div className="hidden md:flex justify-end items-center">
-            <img
-              src="/3d_assets/v2/manager.webp"
-              alt="Planifikoni karrierën – gjeni rrugën tuaj ideale"
-              className="w-full max-w-[160px] object-contain"
-              loading="eager"
-            />
+          <div className="hidden md:flex flex-col items-end justify-center">
+            <JobseekerSmallSlot />
           </div>
         </div>
 
@@ -1160,7 +1156,10 @@ CERTIFIKATA (opsionale)
         <Grid gutter={40} align="stretch">
           {/* Left Side: Options & Context — the two cards share the row height
               with the form (round 4: "the forms need to be same height") */}
-          <Grid.Col span={{ base: 12, md: 5 }}>
+          {/* Round 6 (owner: the two cards "take up the whole screen on
+              mobile"): cards on desktop only; phones get the compact switch
+              above the form. */}
+          <Grid.Col span={{ base: 12, md: 5 }} className="hidden md:block">
             <Stack gap="lg" h="100%">
 
               {/* Option 1: Quick Profile */}
@@ -1269,6 +1268,27 @@ CERTIFIKATA (opsionale)
           {/* Right Side: Active Form */}
           <Grid.Col span={{ base: 12, md: 7 }}>
           <div ref={formColRef} className="flex h-full flex-col" style={{ minHeight: formMinH || undefined }}>
+
+            <div className="mb-3 grid grid-cols-2 gap-2 md:hidden" role="group" aria-label="Mënyra e regjistrimit">
+              {[
+                { quick: true, title: 'Profil i Shpejtë', sub: 'Vetëm njoftime, pa llogari' },
+                { quick: false, title: 'Profil i Plotë', sub: 'Llogari, aplikim me 1 klik' },
+              ].map((o) => {
+                const on = showQuickForm === o.quick;
+                return (
+                  <button
+                    key={o.title}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setShowQuickForm(o.quick)}
+                    className={`rounded-lg border-2 px-3 py-2 text-left transition-colors ${on ? 'border-[#2F65BE] bg-[#EAF2FF]' : 'border-slate-200 bg-white'}`}
+                  >
+                    <span className={`block text-sm font-semibold ${on ? 'text-[#0B2A6B]' : 'text-slate-800'}`}>{o.title}</span>
+                    <span className="block text-xs text-slate-500">{o.sub}</span>
+                  </button>
+                );
+              })}
+            </div>
 
             {/* Tutorial Help Button - Prominent CTA (Moved Above Form) */}
             {!showTutorial && user?.preferences?.tutorialsEnabled !== false && (
@@ -1730,13 +1750,8 @@ CERTIFIKATA (opsionale)
                     </Text>
                   </Box>
                 </Group>
-                <div className="hidden md:flex justify-end items-center">
-                  <img
-                    src="/3d_assets/v2/cv.webp"
-                    alt="Krijim CV-je me AI"
-                    className="w-full max-w-[110px] object-contain"
-                    loading="lazy"
-                  />
+                <div className="hidden md:flex flex-col items-end justify-center">
+                  <JobseekerCvSmallSlot />
                 </div>
               </div>
             </Grid.Col>

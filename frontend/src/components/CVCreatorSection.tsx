@@ -3,7 +3,7 @@ import { Container } from "@mantine/core";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { ArrowRight, FileText, Sparkles, Clock, Gift } from "lucide-react";
-import { CvWriteVisual } from "@/components/illustrations/CvWriteVisual";
+import { CvVisualSlot } from "@/components/design/slots";
 
 export function CVCreatorSection() {
   return (
@@ -16,15 +16,13 @@ export function CVCreatorSection() {
           <div className="grid md:grid-cols-[1.2fr_1fr] gap-6 md:gap-8 items-center">
           {/* Image - shown first on mobile, aligned with top component */}
           <motion.div 
-            className="flex justify-center md:justify-start items-center relative order-2 md:order-1"
+            className="flex flex-col justify-center items-center md:items-start relative order-2 md:order-1"
             initial={{ opacity: 0, x: -50 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.2, duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
           >
             {/* Their own words become a CV (code-animated, flat) */}
-            <div className="w-full max-w-[400px] md:max-w-[480px] lg:max-w-[560px] relative z-10">
-              <CvWriteVisual className="block w-full h-auto" />
-            </div>
+            <CvVisualSlot />
           </motion.div>
           
           {/* Content - shown second on mobile */}

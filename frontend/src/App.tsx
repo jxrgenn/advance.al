@@ -13,6 +13,7 @@ import ScrollToTop from "@/components/ScrollToTop";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import CookieConsent from "@/components/CookieConsent";
 import RobotAssistant from "@/components/RobotAssistant";
+import { DesignPicks } from "@/components/design/DesignSlot";
 
 // Lazy-loaded page components
 const Index = lazy(() => import("./pages/Index"));
@@ -160,6 +161,8 @@ const App = () => (
             </Suspense>
             <RobotAssistant />
             <CookieConsent />
+            {/* preview-only: design option picks (renders nothing on advance.al) */}
+            <DesignPicks />
           </BrowserRouter>
         </AuthProvider>
       </QueryClientProvider>

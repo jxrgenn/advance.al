@@ -3,7 +3,7 @@ import { Container } from "@mantine/core";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { ArrowRight, Search } from "lucide-react";
-import { WalkLoop } from "@/components/illustrations/WalkLoop";
+import { JobseekerHeroSlot } from "@/components/design/slots";
 import { useAuth } from "@/contexts/AuthContext";
 
 export function JobSearchHero() {
@@ -96,13 +96,13 @@ export function JobSearchHero() {
           
           {/* Right illustration with glassmorphism card */}
           <motion.div 
-            className="flex justify-center items-center relative"
+            className="flex flex-col justify-center items-center relative"
             initial={{ opacity: 0, scale: 0.8, x: 50 }}
             animate={{ opacity: 1, scale: 1, x: 0 }}
             transition={{ delay: 0.4, duration: 1, ease: [0.16, 1, 0.3, 1] }}
           >
             {/* The approved 3D walker, as a seamless video loop */}
-            <WalkLoop className="relative z-10 w-full max-w-[420px] md:max-w-[560px] h-auto" />
+            <JobseekerHeroSlot />
           </motion.div>
         </div>
         </Container>

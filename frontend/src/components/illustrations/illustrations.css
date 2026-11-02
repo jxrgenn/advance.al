@@ -74,6 +74,14 @@
   100% { opacity: 1; transform: translate(0, 0) rotate(0deg); }
 }
 
+/* Restored (round 6) for the legacy AiRecruitVisual option. One signal per
+   cycle along a path with pathLength="100" and stroke-dasharray "16 100". */
+@keyframes ill-signal {
+  0% { stroke-dashoffset: 116; opacity: 0; }
+  2% { opacity: 1; }
+  13% { stroke-dashoffset: 0; opacity: 1; }
+  17%, 100% { stroke-dashoffset: 0; opacity: 0; }
+}
 @media (prefers-reduced-motion: reduce) {
   .ill-stage,
   .ill-stage * {
