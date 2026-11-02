@@ -101,7 +101,7 @@ const CompaniesPageSimple = () => {
 
       {/* Header */}
       <section className="bg-gradient-to-br from-primary/10 to-background py-6 md:py-8">
-        <div className="container mx-auto px-4">
+        <div className="page-container">
           <div className="text-center space-y-6">
             <h1 className="text-4xl md:text-5xl font-bold">
               Kompanitë Partnere
@@ -117,7 +117,7 @@ const CompaniesPageSimple = () => {
 
       {/* Search and Filters */}
       <section className="py-4 md:py-6 border-b">
-        <div className="container mx-auto px-4">
+        <div className="page-container">
           <div className="flex flex-col md:flex-row gap-4 max-w-4xl mx-auto">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
@@ -168,7 +168,7 @@ const CompaniesPageSimple = () => {
 
       {/* Companies List */}
       <section className="py-8 md:py-8">
-        <div className="container mx-auto px-4">
+        <div className="page-container">
           {loading ? (
             <div className="flex justify-center items-center py-20">
               <Loader2 className="h-8 w-8 animate-spin" />

@@ -251,3 +251,21 @@ All colors MUST be HSL.
     overflow-wrap: anywhere;
   }
 }
+
+/* Round 5 (owner: "the widths are still not the same"): one page width for
+   every section. Same box as `px-4 sm:px-6 lg:px-8` + Mantine <Container
+   size="lg">: 1140px of content, 16/24/32px side padding. */
+@layer components {
+  .page-container {
+    width: 100%;
+    margin-inline: auto;
+    padding-inline: 1rem;
+    max-width: calc(1140px + 2rem);
+  }
+  @media (min-width: 640px) {
+    .page-container { padding-inline: 1.5rem; max-width: calc(1140px + 3rem); }
+  }
+  @media (min-width: 1024px) {
+    .page-container { padding-inline: 2rem; max-width: calc(1140px + 4rem); }
+  }
+}

@@ -15,6 +15,12 @@ import { useReducedMotion } from "motion/react";
  * file), the `muted` attribute is set in the DOM (React only sets the
  * property, and Safari/iOS refuse to autoplay without the attribute), play()
  * is called explicitly, and `ended` restarts it in case `loop` is ignored.
+ *
+ * Round 5 (owner: "still doesnt loop"): the 5 s clip stood still for its
+ * first ~9 and last ~6 frames (the model eased into and out of the start/end
+ * frame), so every loop paused ~0.6 s. walk-loop-2.mp4 is frames 41–95 only:
+ * 2.3 s of continuous walking cut where the stride matches, so it never
+ * stands still. New file name so no cached copy of the old clip is served.
  */
 // the path runs off the frame at the bottom and left: fade those two edges out
 const STYLE: React.CSSProperties = {
@@ -49,7 +55,7 @@ export function WalkLoop({ className }: { className?: string }) {
   }, [reduced]);
   const alt = "Një person ecën përgjatë një rruge që përfundon me një shigjetë përpara";
   if (reduced) {
-    return <img src="/3d_assets/v2/walk-loop-poster.webp" alt={alt} className={className} style={STYLE} />;
+    return <img src="/3d_assets/v2/walk-loop-2-poster.webp" alt={alt} className={className} style={STYLE} />;
   }
   return (
     <video
@@ -61,9 +67,9 @@ export function WalkLoop({ className }: { className?: string }) {
       loop
       playsInline
       preload="auto"
-      poster="/3d_assets/v2/walk-loop-poster.webp"
+      poster="/3d_assets/v2/walk-loop-2-poster.webp"
       aria-label={alt}
-      src="/3d_assets/v2/walk-loop.mp4"
+      src="/3d_assets/v2/walk-loop-2.mp4"
     />
   );
 }

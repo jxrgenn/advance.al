@@ -184,7 +184,7 @@ const SavedJobs = () => {
       <SEO title="Punët e ruajtura" path="/saved-jobs" noindex />
       <Navigation />
 
-      <div className="container py-8">
+      <div className="page-container py-8">
         {/* Header — back button gets its own row above so the title isn't
             pushed off-center on mobile. */}
         <div className="mb-8">

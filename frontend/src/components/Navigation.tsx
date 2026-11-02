@@ -221,7 +221,7 @@ const Navigation = () => {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-[9998] w-full border-b bg-background">
-      <div className="container relative flex h-16 items-center justify-between">
+      <div className="page-container relative flex h-16 items-center justify-between">
         <Link to="/" className="flex items-center">
           <img
             src={logo}
@@ -506,7 +506,7 @@ loadNotifications();
       {/* Mobile Menu */}
       {mobileMenuOpen && (
         <div className="md:hidden border-t bg-background">
-          <div className="container py-4 space-y-3">
+          <div className="page-container py-4 space-y-3">
             <Link
               to="/"
               className={`block py-2 text-sm font-medium transition-colors hover:text-primary ${

@@ -155,8 +155,8 @@ function CvDemo() {
 export function AiCvCallout() {
   return (
     <section className="py-10 md:py-14" aria-labelledby="ai-cv-callout-title">
-      <div className="container mx-auto px-4">
-        <div className="relative mx-auto max-w-6xl overflow-hidden rounded-3xl border border-blue-100 bg-gradient-to-br from-[#F5F9FF] via-[#EEF4FF] to-[#E4EEFF]">
+      <div className="page-container">
+        <div className="relative overflow-hidden rounded-3xl border border-blue-100 bg-gradient-to-br from-[#F5F9FF] via-[#EEF4FF] to-[#E4EEFF]">
           <div className="relative grid gap-10 p-6 sm:p-10 md:p-12 lg:grid-cols-[1fr_1.05fr] lg:items-center">
             <div>
               <p className="mb-4 text-sm font-semibold text-blue-700">Shkrim i lirë · Në çdo gjuhë · Falas</p>
@@ -232,7 +232,7 @@ export function ThreeWays() {
 
   return (
     <section className="py-16 md:py-20" aria-labelledby="three-ways-title">
-      <div className="container mx-auto px-4">
+      <div className="page-container">
         <div className="mx-auto mb-12 max-w-3xl text-center">
           <h2 id="three-ways-title" className="mb-4 text-3xl font-bold md:text-4xl">
             Tre Mënyra për të Përdorur advance.al
@@ -242,7 +242,7 @@ export function ThreeWays() {
           </p>
         </div>
 
-        <div ref={ref} className="mx-auto grid max-w-6xl gap-6 md:grid-cols-3">
+        <div ref={ref} className="grid gap-6 md:grid-cols-3">
           {WAYS.map((w, i) => (
             <motion.div
               key={w.key}

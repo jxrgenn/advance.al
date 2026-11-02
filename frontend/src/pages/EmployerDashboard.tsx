@@ -1439,7 +1439,7 @@ const EmployerDashboard = () => {
       <SEO title="Paneli i punëdhënësit" path="/employer-dashboard" noindex />
       <Navigation />
 
-      <div className="container py-8">
+      <div className="page-container py-8">
         <div className="mb-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
