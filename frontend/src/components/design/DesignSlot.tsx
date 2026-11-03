@@ -79,9 +79,11 @@ interface DesignSlotProps {
   switcherClassName?: string;
   /** optional frame around the rendered option (the switcher stays outside) */
   wrap?: (node: ReactNode) => ReactNode;
+  /** the visual is hidden on phones in production; preview shows it anyway with a note */
+  phoneNote?: boolean;
 }
 
-export function DesignSlot({ id, title, options, switcherClassName = "justify-center", wrap = (n) => n }: DesignSlotProps) {
+export function DesignSlot({ id, title, options, switcherClassName = "justify-center", wrap = (n) => n, phoneNote = false }: DesignSlotProps) {
   const all = useDesignPicks();
   const raw = all[id] ?? 0;
   const i = raw >= 0 && raw < options.length ? raw : 0;
@@ -117,6 +119,11 @@ export function DesignSlot({ id, title, options, switcherClassName = "justify-ce
           </button>
         ))}
         <span className="ml-1 w-full text-center text-[11px] text-slate-400 sm:w-auto sm:text-left">{options[i].name}</span>
+        {phoneNote && (
+          <span className="w-full text-center text-[11px] text-amber-700 md:hidden">
+            Në telefon ky imazh nuk shfaqet në faqen e vërtetë — e shihni këtu vetëm për ta zgjedhur.
+          </span>
+        )}
       </div>
     </>
   );

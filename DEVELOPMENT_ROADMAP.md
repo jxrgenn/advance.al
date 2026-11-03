@@ -4738,6 +4738,19 @@ Final candidate `1b010b3` (main + 23 commits, 354 files). Not merged to main, no
     - Jobseeker sign-up on phones: the two big cards are desktop-only; a compact two-button switch
       sits above the form — switch + whole form fit in one 390×844 view.
     - This branch (preview/design-stills) is now the single design preview; B's visuals are options.
+  - Round 7 (owner 2026-11-03: "a lot of the options dont show up, the about us components should
+    also have the options").
+    - Cause found: on phones 4 of 8 slots (emp-signup, emp-small, js-small, js-cv-small) sat inside
+      `hidden md:flex` wrappers, so image AND switcher were invisible. In preview those wrappers are
+      now `flex` (production unchanged) and DesignSlot `phoneNote` adds an "only on computer" note.
+    - `components/design/aboutSlots.tsx`: about-hero 11 (Three.js network + 3D + animations;
+      AdvanceLanding remounts per pick so the network's one-time setup re-runs), about-what 10
+      (current hub, AiConnectedSystem v1/v2 + MatchScene restored from git into legacy/,
+      WhatWeDoProduct/HandDrawn restored with `visualOnly`, roughjs re-added), about-cv 9,
+      about-ways 9 card styles (icons, 3 image sets, numbers, rows, navy header, compact, highlighted
+      middle). 5 new gpt_image_2_5 renders (opt/about-*.webp, 1.25 credits).
+    - Verified: every option on /about, /employers, /jobseekers rendered in Chromium + WebKit at
+      1440 and 390 (size check + contact sheets); no page errors.
   - Preview data: no proxy needed — VITE_API_URL is shared by Production/Preview/Development and the
     live API's CORS already allows `advance-al(-frontend)-*.vercel.app` origins (verified 2026-11-02).
 

@@ -1,3 +1,4 @@
+import { designPreview } from "@/components/design/DesignSlot";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import SEO from "@/components/SEO";
@@ -1111,8 +1112,8 @@ CERTIFIKATA (opsionale)
               advance.al ju lidh me punëdhënës të shkëlqyer dhe ju ofron mundësi të reja për të rritur në fushën tuaj profesionale.
             </Text>
           </div>
-          <div className="hidden md:flex flex-col items-end justify-center">
-            <JobseekerSmallSlot />
+          <div className={`${designPreview ? "flex" : "hidden md:flex"} flex-col items-end justify-center`}>
+            <JobseekerSmallSlot phoneNote />
           </div>
         </div>
 
@@ -1750,8 +1751,8 @@ CERTIFIKATA (opsionale)
                     </Text>
                   </Box>
                 </Group>
-                <div className="hidden md:flex flex-col items-end justify-center">
-                  <JobseekerCvSmallSlot />
+                <div className={`${designPreview ? "flex" : "hidden md:flex"} flex-col items-end justify-center`}>
+                  <JobseekerCvSmallSlot phoneNote />
                 </div>
               </div>
             </Grid.Col>

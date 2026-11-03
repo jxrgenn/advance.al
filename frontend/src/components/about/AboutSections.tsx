@@ -4,6 +4,7 @@ import { motion, useInView, useReducedMotion } from "motion/react";
 import { ArrowRight, Bell, Briefcase, Check, MousePointerClick } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CvIcon } from "@/components/icons/FeatureIcons";
+import { AboutCvSlot, ThreeWaysSlot } from "@/components/design/aboutSlots";
 
 /* ─────────────────────────────────────────────────────────────────────────
  * "Krijo CV-në me AI" callout (About page).
@@ -174,7 +175,9 @@ export function AiCvCallout() {
                 </Link>
               </Button>
             </div>
-            <CvDemo />
+            <div className="min-w-0">
+              <AboutCvSlot demo={() => <CvDemo />} />
+            </div>
           </div>
         </div>
       </div>
@@ -192,7 +195,7 @@ export function AiCvCallout() {
  * Original card layout kept; flat, blue only, no gradients or badges.
  * ───────────────────────────────────────────────────────────────────────── */
 
-const WAYS = [
+export const WAYS = [
   {
     key: "alerts",
     Icon: Bell,
@@ -242,39 +245,8 @@ export function ThreeWays() {
           </p>
         </div>
 
-        <div ref={ref} className="grid gap-6 md:grid-cols-3">
-          {WAYS.map((w, i) => (
-            <motion.div
-              key={w.key}
-              initial={reduced ? false : { opacity: 0, y: 16 }}
-              animate={inView ? { opacity: 1, y: 0 } : undefined}
-              transition={{ duration: 0.45, ease: "easeOut", delay: 0.1 + i * 0.1 }}
-            >
-              <Link
-                to={w.to}
-                className="group flex h-full flex-col rounded-xl border-2 border-slate-200 bg-white p-6 transition-colors duration-200 hover:border-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-              >
-                <div className="flex items-center gap-3">
-                  <w.Icon className="h-7 w-7 text-blue-700" strokeWidth={1.8} aria-hidden="true" />
-                  <span className="text-sm font-semibold uppercase tracking-wide text-blue-700">{w.want}</span>
-                </div>
-                <h3 className="mt-4 text-xl font-semibold text-slate-900">{w.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">{w.lead}</p>
-                <ul className="mt-5 space-y-2.5 border-t border-slate-100 pt-5">
-                  {w.points.map((p) => (
-                    <li key={p} className="flex items-start gap-2.5 text-sm text-slate-700">
-                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-700" strokeWidth={2.6} aria-hidden="true" />
-                      {p}
-                    </li>
-                  ))}
-                </ul>
-                <span className="mt-auto inline-flex items-center gap-1.5 pt-6 text-sm font-semibold text-blue-700">
-                  {w.cta}
-                  <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" aria-hidden="true" />
-                </span>
-              </Link>
-            </motion.div>
-          ))}
+        <div ref={ref}>
+          <ThreeWaysSlot inView={inView} reduced={reduced} />
         </div>
       </div>
     </section>

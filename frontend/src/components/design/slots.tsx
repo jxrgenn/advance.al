@@ -77,8 +77,9 @@ const EMP_SIGNUP: DesignOption[] = [
   img("Shtrëngim duarsh", O + "handshake.webp", SIDE_ALT, SIDE),
   img("Ekipi festön", O + "team-table.webp", SIDE_ALT, SIDE),
 ];
-export const EmployerSignupSlot = () => (
+export const EmployerSignupSlot = ({ phoneNote = false }: { phoneNote?: boolean }) => (
   <DesignSlot
+    phoneNote={phoneNote}
     id="emp-signup"
     title="Punëdhënës — pranë formularit"
     options={EMP_SIGNUP}
@@ -149,11 +150,11 @@ const smallOptions = (alt: string): DesignOption[] => [
 const EMP_SMALL = smallOptions("Gjeni kandidatët idealë për ekipin tuaj");
 const JS_SMALL = smallOptions("Planifikoni karrierën – gjeni rrugën tuaj ideale");
 const smallWrap = (n: ReactNode) => <div className="flex w-full max-w-[160px] justify-center">{n}</div>;
-export const EmployerSmallSlot = () => (
-  <DesignSlot id="emp-small" title="Punëdhënës — imazhi i vogël" options={EMP_SMALL} wrap={smallWrap} switcherClassName="justify-end" />
+export const EmployerSmallSlot = ({ phoneNote = false }: { phoneNote?: boolean }) => (
+  <DesignSlot phoneNote={phoneNote} id="emp-small" title="Punëdhënës — imazhi i vogël" options={EMP_SMALL} wrap={smallWrap} switcherClassName="justify-end" />
 );
-export const JobseekerSmallSlot = () => (
-  <DesignSlot id="js-small" title="Punëkërkues — imazhi i vogël" options={JS_SMALL} wrap={smallWrap} switcherClassName="justify-end" />
+export const JobseekerSmallSlot = ({ phoneNote = false }: { phoneNote?: boolean }) => (
+  <DesignSlot phoneNote={phoneNote} id="js-small" title="Punëkërkues — imazhi i vogël" options={JS_SMALL} wrap={smallWrap} switcherClassName="justify-end" />
 );
 
 /* ── Punëkërkues: "Krijo CV me AI" (ikona) ────────────────────────── */
@@ -169,8 +170,9 @@ const JS_CV_SMALL: DesignOption[] = [
   img("CV-të në kuti", O + "cv-inbox.webp", CVS_ALT, CVS),
   img("Origjinali: personazhi", A + "cv_character.jpg", CVS_ALT, CVS, true),
 ];
-export const JobseekerCvSmallSlot = () => (
+export const JobseekerCvSmallSlot = ({ phoneNote = false }: { phoneNote?: boolean }) => (
   <DesignSlot
+    phoneNote={phoneNote}
     id="js-cv-small"
     title="Punëkërkues — ikona Krijo CV"
     options={JS_CV_SMALL}

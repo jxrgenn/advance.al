@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { useDesignPicks } from '@/components/design/DesignSlot';
+import { AboutHeroSlot } from '@/components/design/aboutSlots';
 import * as THREE from 'three';
 import { User } from 'lucide-react';
 
@@ -23,7 +25,14 @@ interface Connection {
   to: number;
 }
 
+/** Preview: remount on every "about-hero" pick so the network's one-time
+ *  Three.js setup runs again when option 1 is chosen after another one. */
 export default function AdvanceLanding() {
+  const pick = useDesignPicks()["about-hero"] ?? 0;
+  return <AdvanceLandingInner key={pick} />;
+}
+
+function AdvanceLandingInner() {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const nodesContainerRef = useRef<HTMLDivElement>(null);
@@ -462,12 +471,13 @@ export default function AdvanceLanding() {
             </div>
 
             {/* Right Visualization */}
-            <div className="flex-1 w-full flex justify-center lg:justify-end items-center relative">
+            <div className="flex-1 w-full flex flex-col items-center lg:items-end justify-center relative">
               {/* Decorative background circles */}
               <div className="absolute -right-20 -top-20 w-96 h-96 bg-primary/5 rounded-full blur-3xl pointer-events-none"></div>
               <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-primary/3 rounded-full blur-2xl pointer-events-none"></div>
               
-              <div className="relative z-10">
+              <AboutHeroSlot network={() => (
+<div className="relative z-10">
                 <div 
                   ref={containerRef}
                   className="relative w-[95vw] h-[95vw] sm:w-[420px] sm:h-[420px] md:w-[500px] md:h-[500px] lg:w-[600px] lg:h-[600px] xl:w-[650px] xl:h-[650px]"
@@ -531,6 +541,7 @@ export default function AdvanceLanding() {
                   </div>
                 </div>
               </div>
+                )} />
             </div>
           </div>
         </div>

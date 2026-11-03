@@ -34,7 +34,7 @@ import {
   ArrowRight,
   Sparkles
 } from "lucide-react";
-import { AiConnectedSystem } from "@/components/illustrations/AiConnectedSystem";
+import { AboutWhatSlot } from "@/components/design/aboutSlots";
 import { AiCvCallout, ThreeWays } from "@/components/about/AboutSections";
 
 /* ─── Data ─── */
@@ -368,8 +368,8 @@ const AboutUs = () => {
         <div className="page-container">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             {/* Left side - Image */}
-            <div className="flex justify-center items-center">
-              <AiConnectedSystem className="w-full max-w-[500px] h-auto" />
+            <div className="flex flex-col justify-center items-center">
+              <AboutWhatSlot />
             </div>
 
             {/* Right side - Title + Pse advance.al? */}

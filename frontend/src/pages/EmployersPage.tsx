@@ -1,3 +1,4 @@
+import { designPreview } from "@/components/design/DesignSlot";
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import SEO from "@/components/SEO";
@@ -967,8 +968,8 @@ const EmployersPage = () => {
               Plotësoni ekipin tuaj të punës në mënyrën më efikase ndonjëherë.
             </Text>
           </div>
-          <div className="hidden md:flex flex-col items-end justify-center">
-            <EmployerSmallSlot />
+          <div className={`${designPreview ? "flex" : "hidden md:flex"} flex-col items-end justify-center`}>
+            <EmployerSmallSlot phoneNote />
           </div>
         </div>
 
@@ -978,8 +979,8 @@ const EmployersPage = () => {
         <Grid gutter={40} align="stretch">
           {/* Round 5 (owner: "i want the arrow back"): the original 3D
               people-arrow, centred in a column as tall as the form. */}
-          <Grid.Col span={{ base: 12, md: 5 }} className="hidden md:flex flex-col items-center justify-center">
-            <EmployerSignupSlot />
+          <Grid.Col span={{ base: 12, md: 5 }} className={`${designPreview ? "flex" : "hidden md:flex"} flex-col items-center justify-center`}>
+            <EmployerSignupSlot phoneNote />
           </Grid.Col>
 
           <Grid.Col span={{ base: 12, md: 7 }}>
