@@ -4751,6 +4751,13 @@ Final candidate `1b010b3` (main + 23 commits, 354 files). Not merged to main, no
       middle). 5 new gpt_image_2_5 renders (opt/about-*.webp, 1.25 credits).
     - Verified: every option on /about, /employers, /jobseekers rendered in Chromium + WebKit at
       1440 and 390 (size check + contact sheets); no page errors.
+    - 7b (same day, "continue with everything else"): the remaining About sections got options too —
+      about-how 7 (current accordion + scenarios, card grid + columns, columns only, big-step tabs,
+      timeline, list + tabs, navy box), about-why 7 (current, 3D icons opt/why-*.webp, left, row,
+      navy, numbers, pale), about-cta 7 (current gradient, flat navy/blue/pale, bordered card,
+      navy + team image, pale + handshake). Data moved to `about/aboutData.ts`; options in
+      `about/AboutMoreOptions.tsx`. Preview protection (Vercel Authentication) turned OFF on the
+      project at the owner's request so the client can open preview links.
   - Preview data: no proxy needed — VITE_API_URL is shared by Production/Preview/Development and the
     live API's CORS already allows `advance-al(-frontend)-*.vercel.app` origins (verified 2026-11-02).
 
